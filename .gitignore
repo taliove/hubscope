@@ -20,3 +20,4 @@ web/dist/
 .env
 .env.*
 !.env.example
+.claude/

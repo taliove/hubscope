@@ -46,7 +46,7 @@ func TestWalkingSkeleton(t *testing.T) {
 	defer stubHub.Close()
 
 	// Setup API server
-	apiServer := server.New(db)
+	apiServer := server.New(db, testAdminPassword)
 	ts := httptest.NewServer(apiServer)
 	defer ts.Close()
 
@@ -564,9 +564,10 @@ func (s *stubHubServer) handleStreaming(w http.ResponseWriter, isAnthropic bool)
 	}
 }
 
-// HTTP helper functions
+// HTTP helper functions. All helpers go through authedClient so write
+// requests carry a valid admin session cookie after ticket 07.
 func doGet(t *testing.T, url string) *http.Response {
-	resp, err := http.Get(url)
+	resp, err := authedClient(t, url).Get(url)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
@@ -579,7 +580,7 @@ func doPost(t *testing.T, url string, body interface{}) *http.Response {
 		data, _ := json.Marshal(body)
 		reqBody = bytes.NewReader(data)
 	}
-	resp, err := http.Post(url, "application/json", reqBody)
+	resp, err := authedClient(t, url).Post(url, "application/json", reqBody)
 	if err != nil {
 		t.Fatalf("POST %s: %v", url, err)
 	}
@@ -590,7 +591,7 @@ func doPut(t *testing.T, url string, body interface{}) *http.Response {
 	data, _ := json.Marshal(body)
 	req, _ := http.NewRequest("PUT", url, bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authedClient(t, url).Do(req)
 	if err != nil {
 		t.Fatalf("PUT %s: %v", url, err)
 	}
@@ -599,7 +600,7 @@ func doPut(t *testing.T, url string, body interface{}) *http.Response {
 
 func doDelete(t *testing.T, url string) *http.Response {
 	req, _ := http.NewRequest("DELETE", url, nil)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authedClient(t, url).Do(req)
 	if err != nil {
 		t.Fatalf("DELETE %s: %v", url, err)
 	}

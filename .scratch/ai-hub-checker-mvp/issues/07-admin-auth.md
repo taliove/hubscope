@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Walking skeleton:单 Endpoint 手动探测
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 口令仅从环境变量读取,启动缺失时拒绝启动并给出明确提示
 - [ ] 登录成功签发 session cookie,登出失效

@@ -49,13 +49,20 @@ func run() error {
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
 
+	// The admin password gates all write APIs; without it the service would
+	// run unlocked, so refuse to start. It never touches disk or logs.
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	if adminPassword == "" {
+		return errors.New("ADMIN_PASSWORD environment variable is required (admin login password)")
+	}
+
 	db, err := store.Open(dataPath)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer db.Close()
 
-	srv := server.New(db)
+	srv := server.New(db, adminPassword)
 	if dist, err := fs.Sub(web.DistFS, "dist"); err == nil {
 		srv.SetStaticFS(dist)
 	}
