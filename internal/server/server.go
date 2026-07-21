@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,6 +21,7 @@ type Server struct {
 	discovery *discovery.Syncer
 	router    chi.Router
 	staticFS  fs.FS
+	now       func() time.Time
 
 	// adminPassword is kept in memory only for login comparison; it is never
 	// logged, persisted, or returned in any response. sessionKey is derived
@@ -28,9 +30,20 @@ type Server struct {
 	sessionKey    []byte
 }
 
+// Option customizes a Server at construction time.
+type Option func(*Server)
+
+// WithNow overrides the server's clock. Tests use it to evaluate time-window
+// statistics against seeded probe history at controlled timestamps.
+func WithNow(now func() time.Time) Option {
+	return func(s *Server) {
+		s.now = now
+	}
+}
+
 // New builds a Server with all API routes registered. The admin password is
 // required: it backs both login comparison and session cookie signing.
-func New(db *store.DB, adminPassword string) *Server {
+func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 	if adminPassword == "" {
 		panic("server.New: admin password must not be empty")
 	}
@@ -40,6 +53,10 @@ func New(db *store.DB, adminPassword string) *Server {
 		discovery:     discovery.New(db, hubclient.New()),
 		adminPassword: adminPassword,
 		sessionKey:    deriveSessionKey(adminPassword),
+		now:           time.Now,
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 	s.router = s.routes()
 	return s
@@ -90,6 +107,8 @@ func (s *Server) routes() chi.Router {
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
 			r.Post("/discovery/run", s.handleRunDiscovery)
+
+			r.Get("/overview", s.handleGetOverview)
 		})
 	})
 

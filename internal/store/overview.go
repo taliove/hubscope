@@ -1,0 +1,96 @@
+package store
+
+import (
+	"database/sql"
+	"time"
+)
+
+// ProbeSample is the minimal probe data used for window statistics.
+type ProbeSample struct {
+	OK        bool
+	LatencyMs int
+}
+
+// CountConsecutiveFailures returns how many probes have failed in a row
+// since the most recent success, ordered by creation time.
+func (db *DB) CountConsecutiveFailures(endpointID int64) (int, error) {
+	var count int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM probes
+		WHERE endpoint_id = ? AND ok = 0
+		AND created_at > COALESCE(
+			(SELECT MAX(created_at) FROM probes WHERE endpoint_id = ? AND ok = 1),
+			''
+		)
+	`, endpointID, endpointID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// LatestProbe returns the newest probe for an endpoint, or nil when the
+// endpoint has never been probed.
+func (db *DB) LatestProbe(endpointID int64) (*Probe, error) {
+	row := db.conn.QueryRow(`
+		SELECT id, endpoint_id, streaming, ok, http_status, error_summary, latency_ms, ttft_ms, input_tokens, output_tokens, created_at
+		FROM probes
+		WHERE endpoint_id = ?
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1
+	`, endpointID)
+
+	var p Probe
+	var streaming, ok int
+	var createdAt string
+	err := row.Scan(&p.ID, &p.EndpointID, &streaming, &ok, &p.HTTPStatus, &p.ErrorSummary, &p.LatencyMs, &p.TTFTMs, &p.InputTokens, &p.OutputTokens, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.Streaming = streaming == 1
+	p.OK = ok == 1
+	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return &p, nil
+}
+
+// CountProbes returns the total number of probes recorded for an endpoint.
+func (db *DB) CountProbes(endpointID int64) (int, error) {
+	var count int
+	err := db.conn.QueryRow(
+		"SELECT COUNT(*) FROM probes WHERE endpoint_id = ?",
+		endpointID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListProbeSamplesSince returns ok/latency pairs for all probes created at
+// or after the given time, oldest first.
+func (db *DB) ListProbeSamplesSince(endpointID int64, since time.Time) ([]ProbeSample, error) {
+	rows, err := db.conn.Query(`
+		SELECT ok, latency_ms FROM probes
+		WHERE endpoint_id = ? AND created_at >= ?
+		ORDER BY created_at
+	`, endpointID, since.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var samples []ProbeSample
+	for rows.Next() {
+		var s ProbeSample
+		var ok int
+		if err := rows.Scan(&ok, &s.LatencyMs); err != nil {
+			return nil, err
+		}
+		s.OK = ok == 1
+		samples = append(samples, s)
+	}
+	return samples, rows.Err()
+}

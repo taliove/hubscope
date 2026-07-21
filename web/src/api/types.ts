@@ -46,3 +46,24 @@ export interface ProbeRunResult {
   endpoint_id: number
   results: ProbeRecord[] // [non-streaming, streaming]
 }
+
+// Endpoint health states produced by the status machine.
+export type EndpointStatus = 'healthy' | 'degraded' | 'down' | 'failing'
+
+export interface OverviewEntry {
+  endpoint_id: number
+  model_id: string // the model identifier string, not the database id
+  protocol: Protocol
+  enabled: boolean
+  status: EndpointStatus
+  status_reason: string
+  success_rate_24h: number | null // 0~1, null when the window has no data
+  p50_ms: number | null
+  p95_ms: number | null
+  last_probe_at: string | null // RFC3339
+}
+
+export interface Overview {
+  generated_at: string // RFC3339
+  endpoints: OverviewEntry[]
+}

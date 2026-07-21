@@ -20,3 +20,16 @@ export function formatMetric(value: number | null): string {
   if (value === null || value === undefined) return '-'
   return String(value)
 }
+
+// Render a 0~1 ratio as a percentage with one decimal, dash when null.
+export function formatPercent(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  return `${(value * 100).toFixed(1)}%`
+}
+
+// Render a millisecond latency: raw ms below 1s, seconds above; dash when null.
+export function formatMs(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  if (value < 1000) return `${Math.round(value)}ms`
+  return `${(value / 1000).toFixed(2)}s`
+}

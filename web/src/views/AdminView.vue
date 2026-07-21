@@ -3,6 +3,7 @@
     <header class="admin-header">
       <h1>AI Hub Checker</h1>
       <span class="subtitle">管理视图</span>
+      <router-link to="/" class="nav-link">状态总览</router-link>
       <el-button class="logout-button" size="small" @click="onLogout">退出登录</el-button>
     </header>
 
@@ -73,8 +74,14 @@ onMounted(async () => {
   color: #909399;
   font-size: 14px;
 }
-.logout-button {
+.nav-link {
   margin-left: auto;
+  font-size: 14px;
+  color: #409eff;
+  text-decoration: none;
+}
+.logout-button {
+  margin-left: 12px;
 }
 .admin-body {
   display: flex;
