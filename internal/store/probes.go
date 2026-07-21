@@ -61,8 +61,10 @@ func (db *DB) CreateProbe(p Probe) (Probe, error) {
 	return p, nil
 }
 
-// ListProbes returns probe records for an endpoint, newest first.
-func (db *DB) ListProbes(endpointID int64, limit int) ([]Probe, error) {
+// ListProbes returns probe records for an endpoint, newest first. okFilter
+// restricts the result to successful (true) or failed (false) probes when
+// non-nil; nil returns both kinds.
+func (db *DB) ListProbes(endpointID int64, limit int, okFilter *bool) ([]Probe, error) {
 	if limit <= 0 {
 		limit = defaultProbeLimit
 	}
@@ -70,13 +72,24 @@ func (db *DB) ListProbes(endpointID int64, limit int) ([]Probe, error) {
 		limit = maxProbeLimit
 	}
 
-	rows, err := db.conn.Query(`
+	query := `
 		SELECT id, endpoint_id, streaming, ok, http_status, error_summary, latency_ms, ttft_ms, input_tokens, output_tokens, created_at
 		FROM probes
 		WHERE endpoint_id = ?
-		ORDER BY created_at DESC
-		LIMIT ?
-	`, endpointID, limit)
+	`
+	args := []interface{}{endpointID}
+	if okFilter != nil {
+		ok := 0
+		if *okFilter {
+			ok = 1
+		}
+		query += " AND ok = ?"
+		args = append(args, ok)
+	}
+	query += " ORDER BY created_at DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := db.conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

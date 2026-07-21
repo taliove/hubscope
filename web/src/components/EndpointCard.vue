@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="hover" class="endpoint-card" :class="`card-${entry.status}`">
+  <el-card shadow="hover" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
     <div class="card-head">
       <span class="model-id" :title="entry.model_id">{{ entry.model_id }}</span>
       <el-tag :type="entry.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
@@ -36,17 +36,25 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import type { OverviewEntry } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
 import { formatPercent, formatMs, formatTime } from '@/utils/format'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
-defineProps<{ entry: OverviewEntry }>()
+// Clicking navigates to the endpoint detail page.
+const props = defineProps<{ entry: OverviewEntry }>()
+const router = useRouter()
+
+function goDetail() {
+  router.push(`/endpoints/${props.entry.endpoint_id}`)
+}
 </script>
 
 <style scoped>
 .endpoint-card {
   border-top: 3px solid transparent;
+  cursor: pointer;
 }
 /* A thin colored edge mirrors the status light for quick scanning. */
 .card-healthy {

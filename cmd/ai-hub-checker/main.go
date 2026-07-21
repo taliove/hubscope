@@ -99,6 +99,13 @@ func run() error {
 		}
 	}()
 
+	// The rollup worker aggregates old probes into hourly rollups and prunes
+	// raw probes past the retention window. Like discovery it runs on its own
+	// loop: its hourly/daily cadence is unrelated to probe dispatch. It shares
+	// schedCtx and stops during graceful shutdown.
+	rollupWorker := scheduler.NewRollupWorker(db, scheduler.RealClock{})
+	go rollupWorker.Run(schedCtx)
+
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: srv,

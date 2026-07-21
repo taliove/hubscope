@@ -107,6 +107,8 @@ func (s *Server) routes() chi.Router {
 
 			r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 			r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
+			r.Get("/endpoints/{id}", s.handleGetEndpointDetail)
+			r.Get("/endpoints/{id}/series", s.handleGetEndpointSeries)
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
 			r.Post("/discovery/run", s.handleRunDiscovery)

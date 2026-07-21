@@ -67,3 +67,24 @@ export interface Overview {
   generated_at: string // RFC3339
   endpoints: OverviewEntry[]
 }
+
+// Endpoint detail page types (ticket 04).
+
+export interface EndpointDetail extends Endpoint {
+  model_id_str: string // the model identifier string
+  hub_name: string
+  status: EndpointStatus
+  status_reason: string
+}
+
+// Streaming selector of the series API; "all" merges both probe kinds.
+export type SeriesStreaming = 'all' | 'streaming' | 'non_streaming'
+
+export interface SeriesBucket {
+  bucket_start: string // RFC3339, hour-aligned
+  total: number
+  failures: number
+  p50_ms: number | null
+  p95_ms: number | null
+  avg_ttft_ms: number | null
+}

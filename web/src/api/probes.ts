@@ -8,7 +8,11 @@ export async function triggerProbe(endpointId: number): Promise<ProbeRunResult> 
 
 export async function listProbeHistory(
   endpointId: number,
-  limit = 50
+  limit = 50,
+  ok?: boolean
 ): Promise<ProbeRecord[]> {
-  return http.get<ProbeRecord[]>(`/endpoints/${endpointId}/probes?limit=${limit}`)
+  let url = `/endpoints/${endpointId}/probes?limit=${limit}`
+  // Optional ok filter, used by the recent-failures list on the detail page.
+  if (ok !== undefined) url += `&ok=${ok}`
+  return http.get<ProbeRecord[]>(url)
 }

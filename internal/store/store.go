@@ -95,6 +95,23 @@ func (db *DB) migrate() error {
 
 		CREATE INDEX IF NOT EXISTS idx_probes_endpoint_time ON probes(endpoint_id, created_at DESC);
 
+		CREATE TABLE IF NOT EXISTS probe_rollups (
+			endpoint_id INTEGER NOT NULL,
+			streaming INTEGER NOT NULL,
+			bucket_start TEXT NOT NULL,
+			total INTEGER NOT NULL,
+			failures INTEGER NOT NULL,
+			p50_ms REAL,
+			p95_ms REAL,
+			avg_ttft_ms REAL,
+			UNIQUE(endpoint_id, streaming, bucket_start)
+		);
+
+		CREATE TABLE IF NOT EXISTS rollup_watermarks (
+			endpoint_id INTEGER PRIMARY KEY,
+			rolled_up_to TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS suites (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
