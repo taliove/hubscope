@@ -3,6 +3,7 @@
     <header class="admin-header">
       <h1>AI Hub Checker</h1>
       <span class="subtitle">管理视图</span>
+      <router-link to="/" class="nav-link">状态总览</router-link>
     </header>
 
     <main class="admin-body">
@@ -57,6 +58,12 @@ onMounted(async () => {
 .subtitle {
   color: #909399;
   font-size: 14px;
+}
+.nav-link {
+  margin-left: auto;
+  font-size: 14px;
+  color: #409eff;
+  text-decoration: none;
 }
 .admin-body {
   display: flex;

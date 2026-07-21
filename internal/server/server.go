@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -18,13 +19,29 @@ type Server struct {
 	prober   *prober.Prober
 	router   chi.Router
 	staticFS fs.FS
+	now      func() time.Time
+}
+
+// Option customizes a Server at construction time.
+type Option func(*Server)
+
+// WithNow overrides the server's clock. Tests use it to evaluate time-window
+// statistics against seeded probe history at controlled timestamps.
+func WithNow(now func() time.Time) Option {
+	return func(s *Server) {
+		s.now = now
+	}
 }
 
 // New builds a Server with all API routes registered.
-func New(db *store.DB) *Server {
+func New(db *store.DB, opts ...Option) *Server {
 	s := &Server{
 		db:     db,
 		prober: prober.New(db, hubclient.New()),
+		now:    time.Now,
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 	s.router = s.routes()
 	return s
@@ -56,6 +73,8 @@ func (s *Server) routes() chi.Router {
 		r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 		r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 		r.Get("/endpoints/{id}/probes", s.handleListProbes)
+
+		r.Get("/overview", s.handleGetOverview)
 	})
 
 	// Any unmatched route is handled by the SPA (or JSON 404 under /api).

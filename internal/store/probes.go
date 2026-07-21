@@ -24,9 +24,15 @@ type Probe struct {
 }
 
 // CreateProbe inserts a probe record and returns the stored copy with its
-// assigned ID and creation time. The input is not mutated.
+// assigned ID and creation time. The input is not mutated. When p.CreatedAt
+// is zero the current time is used; a non-zero CreatedAt is stored as-is so
+// tests can seed history at controlled timestamps.
 func (db *DB) CreateProbe(p Probe) (Probe, error) {
 	now := time.Now().UTC()
+	createdAt := now
+	if !p.CreatedAt.IsZero() {
+		createdAt = p.CreatedAt.UTC()
+	}
 
 	streaming := 0
 	if p.Streaming {
@@ -40,7 +46,7 @@ func (db *DB) CreateProbe(p Probe) (Probe, error) {
 	result, err := db.conn.Exec(`
 		INSERT INTO probes (endpoint_id, streaming, ok, http_status, error_summary, latency_ms, ttft_ms, input_tokens, output_tokens, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, p.EndpointID, streaming, ok, p.HTTPStatus, p.ErrorSummary, p.LatencyMs, p.TTFTMs, p.InputTokens, p.OutputTokens, now.Format(time.RFC3339))
+	`, p.EndpointID, streaming, ok, p.HTTPStatus, p.ErrorSummary, p.LatencyMs, p.TTFTMs, p.InputTokens, p.OutputTokens, createdAt.Format(time.RFC3339))
 	if err != nil {
 		return Probe{}, err
 	}
@@ -51,7 +57,7 @@ func (db *DB) CreateProbe(p Probe) (Probe, error) {
 	}
 
 	p.ID = id
-	p.CreatedAt = now
+	p.CreatedAt = createdAt
 	return p, nil
 }
 
