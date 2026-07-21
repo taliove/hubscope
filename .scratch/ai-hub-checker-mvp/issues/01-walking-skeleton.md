@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 可通过写 API 创建/修改/删除 Hub,任何读接口不回传 token 明文
 - [ ] 可通过写 API 手工添加模型,自动建立双协议 Endpoint
