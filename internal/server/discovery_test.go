@@ -332,8 +332,8 @@ func TestDiscoveryNeverRetiresManualModels(t *testing.T) {
 		t.Errorf("retired: expected 0 (manual models never retire), got %d", got)
 	}
 
-	// The hub listing shrinks to empty: only the discovered model may retire.
-	stub.setModels(nil)
+	// The hub listing shrinks: only the discovered model may retire.
+	stub.setModels([]string{"some-other-model"})
 	stats = runDiscovery(t, ts.URL)
 	if got := statNumber(t, stats, "retired"); got != 1 {
 		t.Errorf("retired: expected 1 (auto-model only), got %d", got)
@@ -349,5 +349,30 @@ func TestDiscoveryNeverRetiresManualModels(t *testing.T) {
 	}
 	if origin := manual["origin"]; origin != "manual" {
 		t.Errorf("manual model origin: expected manual, got %v", origin)
+	}
+}
+
+// TestDiscoveryEmptyListRetiresNothing guards against a hub anomaly that
+// returns 200 with an empty model list: nothing may be retired in that case.
+func TestDiscoveryEmptyListRetiresNothing(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"auto-model"})
+	createHubViaAPI(t, ts.URL, stub.URL)
+
+	stats := runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "added"); got != 1 {
+		t.Fatalf("added: expected 1, got %d", got)
+	}
+
+	stub.setModels(nil)
+	stats = runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 0 {
+		t.Errorf("retired: expected 0 (empty list anomaly guard), got %d", got)
+	}
+	models := listModelsViaAPI(t, ts.URL)
+	if status := models["auto-model"]["status"]; status != "active" {
+		t.Errorf("auto-model status: expected active, got %v", status)
 	}
 }

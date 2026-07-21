@@ -50,9 +50,13 @@ func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability string) (*M
 
 // MarkRetiredMissing marks every discovered, still-active model of the hub
 // whose model_id is not in seenIDs as 'retired' and returns the number of
-// rows affected. Manual models are never touched. An empty seenIDs retires
-// all discovered models of the hub.
+// rows affected. Manual models are never touched. An empty seenIDs is
+// treated as "list fetch anomaly" and retires nothing — a hub returning
+// 200 with an empty model list must not wipe out every discovered model.
 func (db *DB) MarkRetiredMissing(hubID int64, seenIDs []string) (int, error) {
+	if len(seenIDs) == 0 {
+		return 0, nil
+	}
 	query := "UPDATE models SET status = 'retired' WHERE hub_id = ? AND origin = 'discovered' AND status = 'active'"
 	args := []interface{}{hubID}
 	if len(seenIDs) > 0 {

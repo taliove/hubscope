@@ -6,6 +6,7 @@ package evaluator
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
@@ -146,10 +147,12 @@ func (e *Evaluator) failAllCases(run *store.EvalRun, modelDBID int64, modelID st
 	}
 }
 
-// storeResult persists one result; persistence errors are intentionally
-// swallowed so one bad write cannot abort the whole run.
+// storeResult persists one result; persistence errors are logged but never
+// abort the whole run.
 func (e *Evaluator) storeResult(r store.EvalResult) {
-	_, _ = e.db.CreateEvalResult(r)
+	if _, err := e.db.CreateEvalResult(r); err != nil {
+		log.Printf("evaluator: persist result for case %d: %v", r.CaseID, err)
+	}
 }
 
 // selectProtocol picks the protocol used to call a model: anthropic when its

@@ -119,11 +119,28 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 // probeAndCreateEndpoints fires one minimal non-streaming request per
 // protocol at a newly discovered model and creates one endpoint per
 // protocol: enabled where the probe succeeded, disabled where it failed —
-// both are created so the UI shows which protocol is unreachable.
+// both are created so the UI shows which protocol is unreachable. The trial
+// probes are persisted as probe records so the failure reason (HTTP status,
+// upstream error) stays visible through the probes API and detail pages.
 func (s *Syncer) probeAndCreateEndpoints(ctx context.Context, hub store.Hub, model *store.Model) error {
 	for _, protocol := range protocols {
 		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false)
-		if _, err := s.db.CreateEndpoint(model.ID, protocol, result.OK); err != nil {
+		endpoint, err := s.db.CreateEndpoint(model.ID, protocol, result.OK)
+		if err != nil {
+			return err
+		}
+		_, err = s.db.CreateProbe(store.Probe{
+			EndpointID:   endpoint.ID,
+			Streaming:    false,
+			OK:           result.OK,
+			HTTPStatus:   result.HTTPStatus,
+			ErrorSummary: result.ErrorSummary,
+			LatencyMs:    result.LatencyMs,
+			TTFTMs:       result.TTFTMs,
+			InputTokens:  result.InputTokens,
+			OutputTokens: result.OutputTokens,
+		})
+		if err != nil {
 			return err
 		}
 	}

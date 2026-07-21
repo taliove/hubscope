@@ -8,6 +8,7 @@ const router = createRouter({
       path: '/',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
+      meta: { public: true },
     },
     {
       path: '/login',
@@ -23,8 +24,9 @@ const router = createRouter({
   ],
 })
 
-// Page-level guard: unauthenticated visitors are bounced to /login. This is
-// only UX guidance; the server re-validates the session on every write.
+// Page-level guard: read pages (dashboard) stay public like the read APIs;
+// only admin pages bounce unauthenticated visitors to /login. This is only
+// UX guidance; the server re-validates the session on every write.
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
   try {

@@ -137,7 +137,7 @@ func Evaluate(in Input) Result {
 	if rate, ok := SuccessRate(in.Samples24h); ok && rate < minSuccessRate {
 		return Result{
 			Kind:   KindDegraded,
-			Reason: fmt.Sprintf("24h 成功率 %.1f%% 低于 95%%", rate*100),
+			Reason: fmt.Sprintf("24h 成功率 %.1f%% 低于 %.0f%%", rate*100, minSuccessRate*100),
 		}
 	}
 
