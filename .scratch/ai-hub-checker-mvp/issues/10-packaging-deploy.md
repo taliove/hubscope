@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — Endpoint 详情页 + rollup 与数据清理;05 — 模型自动发现;06 — 飞书告警;07 — 管理员认证;09 — 评估中心 UI + 每周定时 + 分数大跌告警
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 单条命令产出可直接运行的 Linux 单二进制(前端与迁移内嵌)
 - [ ] 备选 Dockerfile 可构建可运行,数据文件经卷持久化
