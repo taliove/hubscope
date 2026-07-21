@@ -13,11 +13,6 @@ import (
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
 
-// DefaultJudgeModel scores judge-type cases when nothing else is configured.
-// TODO(ticket 06): read from the settings table (settings.judge_model) once
-// it exists; until then this package-level constant is the single source.
-const DefaultJudgeModel = "claude-opus-4-8"
-
 // evalMaxTokens gives evaluated models room for a complete answer (unlike
 // the 16-token probe budget).
 const evalMaxTokens = 1024
@@ -26,9 +21,15 @@ const evalMaxTokens = 1024
 const RequestTimeout = 120 * time.Second
 
 // Evaluator executes eval runs and persists per-case results.
+//
+// AfterRun, when set, is invoked once after a run reaches "done" (never for
+// failed runs). The score-drop alerter hooks in here; hook errors must be
+// handled by the hook itself (the alerter logs instead of failing).
 type Evaluator struct {
 	db     *store.DB
 	client *hubclient.Client
+
+	AfterRun func(ctx context.Context, runID int64)
 }
 
 // New creates an Evaluator backed by the given store and hub client.
@@ -39,11 +40,17 @@ func New(db *store.DB, client *hubclient.Client) *Evaluator {
 // RunEval executes every enabled case of the run's suite against each
 // selected model and marks the run done. A failing model never blocks the
 // others; per-case failures are recorded as results with nil scores.
+//
+// The judge model is read from settings at run start (default
+// store.DefaultJudgeModel); the run record is updated when the configured
+// value differs from the snapshot taken at creation, so eval_runs.judge_model
+// always reflects the judge actually used.
 func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64) error {
 	run, err := e.db.GetEvalRun(runID)
 	if err != nil {
 		return fmt.Errorf("load eval run %d: %w", runID, err)
 	}
+	run = e.resolveJudgeModel(run)
 
 	cases, err := e.db.ListEnabledCases(run.SuiteID)
 	if err != nil {
@@ -59,7 +66,37 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 		e.evalModel(ctx, run, modelDBID, cases)
 	}
 
-	return e.db.FinishEvalRun(runID, "done", time.Now().UTC())
+	if err := e.db.FinishEvalRun(runID, "done", time.Now().UTC()); err != nil {
+		return err
+	}
+	if e.AfterRun != nil {
+		// Detach cancellation so a graceful shutdown cannot abort the alert
+		// send mid-flight (mirrors the prober's WithoutCancel rounds).
+		e.AfterRun(context.WithoutCancel(ctx), runID)
+	}
+	return nil
+}
+
+// resolveJudgeModel reads the configured judge model from settings and, when
+// it differs from the run's snapshot, persists it onto the run. It returns a
+// copy of the run carrying the effective judge model; the input is not
+// mutated. Read/write failures fall back to the snapshot.
+func (e *Evaluator) resolveJudgeModel(run *store.EvalRun) *store.EvalRun {
+	judgeModel, err := e.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
+	if err != nil {
+		log.Printf("evaluator: read judge_model setting, keeping run snapshot: %v", err)
+		return run
+	}
+	if judgeModel == "" || judgeModel == run.JudgeModel {
+		return run
+	}
+	if err := e.db.SetEvalRunJudgeModel(run.ID, judgeModel); err != nil {
+		log.Printf("evaluator: record judge_model on run %d: %v", run.ID, err)
+		return run
+	}
+	updated := *run
+	updated.JudgeModel = judgeModel
+	return &updated
 }
 
 // evalModel runs all cases against one model. Any setup failure (model gone,

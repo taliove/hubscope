@@ -22,9 +22,9 @@ export interface Model {
   id: number
   hub_id: number
   model_id: string
-  origin: 'manual'
-  status: 'active'
-  capability: 'chat'
+  origin: string // "manual" | "discovered"
+  status: string // "active" | "retired"
+  capability: string // "chat" | "non_chat"
   endpoints: Endpoint[]
 }
 
@@ -87,4 +87,72 @@ export interface SeriesBucket {
   p50_ms: number | null
   p95_ms: number | null
   avg_ttft_ms: number | null
+}
+
+// Evaluation center types (tickets 08/09).
+
+export type VerdictType = 'rule' | 'judge'
+
+export interface RuleConfig {
+  mode: 'exact' | 'regex' | 'contains'
+  expected: string
+}
+
+// Named EvalCase to avoid clashing with the JS reserved-word flavor of "Case".
+export interface EvalCase {
+  id: number
+  suite_id: number
+  prompt: string
+  verdict_type: VerdictType
+  rule_config: RuleConfig | null // only for verdict_type "rule"
+  rubric: string | null // only for verdict_type "judge"
+  enabled: boolean
+}
+
+export interface Suite {
+  id: number
+  key: string
+  name: string
+  cases: EvalCase[]
+}
+
+export type EvalTrigger = 'scheduled' | 'manual'
+export type EvalRunStatus = 'running' | 'done' | 'failed'
+
+export interface EvalRun {
+  id: number
+  suite_id: number
+  trigger: EvalTrigger
+  judge_model: string
+  status: EvalRunStatus
+  started_at: string // RFC3339
+  finished_at: string | null
+  score: number | null // aggregate over non-null result scores
+}
+
+export interface EvalResult {
+  id: number
+  model_id: string // the model identifier string
+  case_id: number
+  answer_text: string | null
+  score: number | null // null when the case could not be judged
+  verdict_detail: string | null
+  latency_ms: number
+  input_tokens: number | null
+  output_tokens: number | null
+}
+
+export interface EvalRunDetail extends EvalRun {
+  results: EvalResult[]
+}
+
+// Latest aggregate score of one (suite, model) pair (GET /api/evals/latest).
+export interface LatestScore {
+  suite_id: number
+  suite_key: string
+  model_id: string
+  model_db_id: number
+  score: number | null
+  eval_run_id: number
+  finished_at: string
 }

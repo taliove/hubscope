@@ -38,6 +38,18 @@ type EvalRun struct {
 	FinishedAt *time.Time
 }
 
+// LatestEvalScore is the aggregate score of the most recent done run for one
+// (suite, model) pair. Score is nil when that run scored nothing.
+type LatestEvalScore struct {
+	SuiteID    int64
+	SuiteKey   string
+	ModelDBID  int64
+	ModelID    string
+	Score      *float64
+	EvalRunID  int64
+	FinishedAt time.Time
+}
+
 // EvalResult is the outcome of one (model, case) pair inside a run. Score is
 // nil when the case could not be judged (answer call failed, judge failed).
 type EvalResult struct {
@@ -248,6 +260,82 @@ func (db *DB) ListEvalRuns() ([]EvalRun, error) {
 		runs = append(runs, r)
 	}
 	return runs, rows.Err()
+}
+
+// SetEvalRunJudgeModel records the judge model a run actually used. The
+// evaluator calls this at run start when the configured judge differs from
+// the value snapshot at creation time.
+func (db *DB) SetEvalRunJudgeModel(id int64, judgeModel string) error {
+	_, err := db.conn.Exec("UPDATE eval_runs SET judge_model = ? WHERE id = ?", judgeModel, id)
+	return err
+}
+
+// ListLatestEvalScores returns, for every (suite, model) pair that has at
+// least one done run, the aggregate score of the most recent such run. The
+// aggregate is the average of the pair's non-null scores inside that run
+// (null when nothing was scored), matching the read-time run aggregation.
+func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
+	rows, err := db.conn.Query(`
+		SELECT suite_id, suite_key, model_db_id, model_id, eval_run_id, finished_at, score
+		FROM (
+			SELECT r.suite_id AS suite_id, s.key AS suite_key,
+				res.model_db_id AS model_db_id, res.model_id AS model_id,
+				r.id AS eval_run_id, r.finished_at AS finished_at,
+				AVG(res.score) AS score,
+				ROW_NUMBER() OVER (
+					PARTITION BY r.suite_id, res.model_db_id ORDER BY r.id DESC
+				) AS rn
+			FROM eval_runs r
+			JOIN eval_results res ON res.eval_run_id = r.id
+			JOIN suites s ON s.id = r.suite_id
+			WHERE r.status = 'done'
+			GROUP BY r.id, res.model_db_id
+		)
+		WHERE rn = 1
+		ORDER BY suite_id, model_db_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []LatestEvalScore
+	for rows.Next() {
+		var ls LatestEvalScore
+		var finishedAt string
+		if err := rows.Scan(&ls.SuiteID, &ls.SuiteKey, &ls.ModelDBID, &ls.ModelID,
+			&ls.EvalRunID, &finishedAt, &ls.Score); err != nil {
+			return nil, err
+		}
+		ls.FinishedAt, _ = time.Parse(time.RFC3339, finishedAt)
+		out = append(out, ls)
+	}
+	return out, rows.Err()
+}
+
+// PreviousDoneScore returns the aggregate score of the latest done run for a
+// (suite, model) pair strictly before the given run, or (nil, 0, nil) when no
+// earlier done run covered the pair. The score-drop alert compares against
+// this baseline.
+func (db *DB) PreviousDoneScore(suiteID, modelDBID, beforeRunID int64) (*float64, int64, error) {
+	var runID int64
+	var score *float64
+	err := db.conn.QueryRow(`
+		SELECT r.id, AVG(res.score)
+		FROM eval_runs r
+		JOIN eval_results res ON res.eval_run_id = r.id
+		WHERE r.status = 'done' AND r.suite_id = ? AND res.model_db_id = ? AND r.id < ?
+		GROUP BY r.id
+		ORDER BY r.id DESC
+		LIMIT 1
+	`, suiteID, modelDBID, beforeRunID).Scan(&runID, &score)
+	if err == sql.ErrNoRows {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	return score, runID, nil
 }
 
 // FinishEvalRun marks a run done/failed with its finish time.

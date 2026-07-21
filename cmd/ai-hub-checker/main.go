@@ -110,6 +110,13 @@ func run() error {
 	rollupWorker := scheduler.NewRollupWorker(db, scheduler.RealClock{})
 	go rollupWorker.Run(schedCtx)
 
+	// The eval worker runs the full evaluation batch (all suites x all active
+	// chat models) every Sunday early morning. It executes through the
+	// server's shared evaluator so judge-model resolution and score-drop
+	// alerting behave identically to manual runs.
+	evalWorker := scheduler.NewEvalWorker(db, srv.Evaluator(), scheduler.RealClock{})
+	go evalWorker.Run(schedCtx)
+
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: srv,

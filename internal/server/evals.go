@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/evaluator"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
 
@@ -228,7 +227,15 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	run, err := s.db.CreateEvalRun(req.SuiteID, "manual", evaluator.DefaultJudgeModel)
+	// Snapshot the configured judge model at creation; the evaluator re-reads
+	// settings at run start and updates the record if it changed in between.
+	judgeModel, err := s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read judge model setting")
+		return
+	}
+
+	run, err := s.db.CreateEvalRun(req.SuiteID, "manual", judgeModel)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create eval run")
 		return
@@ -293,6 +300,22 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 		evalRunDTO: toEvalRunDTO(*run, averageScore(results)),
 		Results:    resultDTOs,
 	})
+}
+
+// handleLatestEvals handles GET /api/evals/latest: for every (suite, model)
+// pair with at least one done run, the aggregate score of the most recent one.
+func (s *Server) handleLatestEvals(w http.ResponseWriter, r *http.Request) {
+	latest, err := s.db.ListLatestEvalScores()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load latest eval scores")
+		return
+	}
+
+	dtos := make([]latestScoreDTO, 0, len(latest))
+	for _, ls := range latest {
+		dtos = append(dtos, toLatestScoreDTO(ls))
+	}
+	writeData(w, http.StatusOK, dtos)
 }
 
 // averageScore computes the mean of all non-null scores. Null scores
