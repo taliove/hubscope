@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/evaluator"
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -14,17 +15,19 @@ import (
 
 // Server holds dependencies and the HTTP router.
 type Server struct {
-	db       *store.DB
-	prober   *prober.Prober
-	router   chi.Router
-	staticFS fs.FS
+	db        *store.DB
+	prober    *prober.Prober
+	evaluator *evaluator.Evaluator
+	router    chi.Router
+	staticFS  fs.FS
 }
 
 // New builds a Server with all API routes registered.
 func New(db *store.DB) *Server {
 	s := &Server{
-		db:     db,
-		prober: prober.New(db, hubclient.New()),
+		db:        db,
+		prober:    prober.New(db, hubclient.New()),
+		evaluator: evaluator.New(db, hubclient.NewWithTimeout(evaluator.RequestTimeout)),
 	}
 	s.router = s.routes()
 	return s
@@ -56,6 +59,13 @@ func (s *Server) routes() chi.Router {
 		r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 		r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 		r.Get("/endpoints/{id}/probes", s.handleListProbes)
+
+		r.Get("/suites", s.handleListSuites)
+		r.Post("/cases", s.handleCreateCase)
+		r.Patch("/cases/{id}", s.handlePatchCase)
+		r.Post("/evals", s.handleCreateEval)
+		r.Get("/evals", s.handleListEvals)
+		r.Get("/evals/{id}", s.handleGetEval)
 	})
 
 	// Any unmatched route is handled by the SPA (or JSON 404 under /api).

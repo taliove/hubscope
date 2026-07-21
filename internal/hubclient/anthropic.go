@@ -10,15 +10,16 @@ import (
 	"time"
 )
 
-// probeAnthropic executes a probe against the anthropic /v1/messages endpoint.
-func (c *Client) probeAnthropic(ctx context.Context, baseURL, token, modelID string, streaming bool) Result {
+// callAnthropic executes a request against the anthropic /v1/messages
+// endpoint with the given prompt and token budget.
+func (c *Client) callAnthropic(ctx context.Context, baseURL, token, modelID, prompt string, maxTok int, streaming bool) Result {
 	url := strings.TrimRight(baseURL, "/") + "/v1/messages"
 
 	payload := map[string]interface{}{
 		"model":      modelID,
-		"max_tokens": maxTokens,
+		"max_tokens": maxTok,
 		"messages": []map[string]string{
-			{"role": "user", "content": probePrompt},
+			{"role": "user", "content": prompt},
 		},
 	}
 	if streaming {
@@ -82,12 +83,21 @@ func (c *Client) readAnthropicNonStream(resp *http.Response, start time.Time) Re
 			InputTokens: parsed.Usage.InputTokens, OutputTokens: parsed.Usage.OutputTokens}
 	}
 
+	// Concatenate all text blocks into the answer text.
+	var text strings.Builder
+	for _, block := range parsed.Content {
+		if block.Type == "text" {
+			text.WriteString(block.Text)
+		}
+	}
+
 	return Result{
 		OK:           true,
 		HTTPStatus:   resp.StatusCode,
 		LatencyMs:    latency,
 		InputTokens:  parsed.Usage.InputTokens,
 		OutputTokens: parsed.Usage.OutputTokens,
+		Text:         text.String(),
 	}
 }
 

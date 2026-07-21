@@ -20,7 +20,9 @@ const requestTimeout = 60 * time.Second
 // errorSummaryLimit truncates error summaries to this many characters
 const errorSummaryLimit = 500
 
-// Result is the unified probe result returned regardless of protocol or mode.
+// Result is the unified result returned regardless of protocol or mode.
+// Text carries the assistant's answer for non-streaming calls; it is left
+// empty for streaming probes, which only measure availability.
 type Result struct {
 	OK           bool
 	HTTPStatus   int
@@ -29,6 +31,7 @@ type Result struct {
 	TTFTMs       *int // only populated for streaming probes
 	InputTokens  *int
 	OutputTokens *int
+	Text         string
 }
 
 // Client executes probe requests against a Hub.
@@ -52,13 +55,27 @@ func NewWithTimeout(d time.Duration) *Client {
 
 // Probe executes a single probe request against the hub using the given
 // protocol and model ID. When streaming is true it opens an SSE stream and
-// measures TTFT.
+// measures TTFT. Probe semantics (fixed prompt, tiny token budget) are
+// unchanged; it simply delegates to call with the probe constants.
 func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool) Result {
+	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming)
+}
+
+// Complete executes a single non-streaming completion with a custom prompt
+// and token budget. Used by the evaluator, where answers need room to be
+// complete (unlike the 16-token probe). The per-request timeout comes from
+// the client construction (see NewWithTimeout).
+func (c *Client) Complete(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int) Result {
+	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false)
+}
+
+// call dispatches to the protocol-specific implementation.
+func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool) Result {
 	switch protocol {
 	case "anthropic":
-		return c.probeAnthropic(ctx, baseURL, token, modelID, streaming)
+		return c.callAnthropic(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
 	case "openai":
-		return c.probeOpenAI(ctx, baseURL, token, modelID, streaming)
+		return c.callOpenAI(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
 	default:
 		msg := "unknown protocol: " + protocol
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}
