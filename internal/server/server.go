@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/alerter"
 	"git.github.net/taliove2009/ai-hub-checker/internal/discovery"
 	"git.github.net/taliove2009/ai-hub-checker/internal/evaluator"
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
@@ -21,6 +22,7 @@ type Server struct {
 	prober    *prober.Prober
 	discovery *discovery.Syncer
 	evaluator *evaluator.Evaluator
+	alerter   *alerter.Evaluator
 	router    chi.Router
 	staticFS  fs.FS
 	now       func() time.Time
@@ -54,10 +56,14 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 		prober:        prober.New(db, hubclient.New()),
 		discovery:     discovery.New(db, hubclient.New()),
 		evaluator:     evaluator.New(db, hubclient.NewWithTimeout(evaluator.RequestTimeout)),
+		alerter:       alerter.NewEvaluator(db, alerter.NewLarkSender()),
 		adminPassword: adminPassword,
 		sessionKey:    deriveSessionKey(adminPassword),
 		now:           time.Now,
 	}
+	// Alert evaluation hooks into every probe round served by this prober.
+	// main hooks the scheduler's prober into the same evaluator via Alerter().
+	s.prober.AfterRound = s.alerter.HandleRound
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -74,6 +80,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // periodic schedule.
 func (s *Server) Discovery() *discovery.Syncer {
 	return s.discovery
+}
+
+// Alerter exposes the shared alert evaluator so main can hook the
+// scheduler's prober into the same instance (one alerted-state map per
+// process, avoiding duplicate alerts from manual vs scheduled rounds).
+func (s *Server) Alerter() *alerter.Evaluator {
+	return s.alerter
 }
 
 // routes wires up all API endpoints plus the health check.
@@ -119,6 +132,10 @@ func (s *Server) routes() chi.Router {
 			r.Post("/evals", s.handleCreateEval)
 			r.Get("/evals", s.handleListEvals)
 			r.Get("/evals/{id}", s.handleGetEval)
+
+			r.Get("/settings", s.handleGetSettings)
+			r.Put("/settings", s.handlePutSettings)
+			r.Get("/alerts", s.handleListAlerts)
 		})
 	})
 
