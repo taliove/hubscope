@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/evaluator"
 	"git.github.net/taliove2009/ai-hub-checker/internal/server"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
@@ -20,16 +19,19 @@ import (
 // evalStubHub simulates a Hub for eval tests: it answers by prompt content
 // (correctly for "smart" models, wrongly for "dumb-model"), fails hard for
 // "broken-model", and role-plays the LLM judge — including a garbage-verdict
-// branch for one specific case prompt.
+// branch for one specific case prompt. Models registered via markBad flip
+// from correct to wrong answers, which drives score-drop scenarios.
 type evalStubHub struct {
 	*httptest.Server
 	mu sync.Mutex
 	// calls records which protocols each model was called with.
 	calls map[string]map[string]bool
+	// bad marks models that currently answer everything wrong.
+	bad map[string]bool
 }
 
 func newEvalStubHub() *evalStubHub {
-	stub := &evalStubHub{calls: map[string]map[string]bool{}}
+	stub := &evalStubHub{calls: map[string]map[string]bool{}, bad: map[string]bool{}}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
 }
@@ -79,15 +81,20 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 
 // answerFor decides the response text by model and prompt content.
 func (h *evalStubHub) answerFor(model, prompt string) string {
-	// Judge calls: valid JSON verdict, except for the formal-rewrite case
-	// whose embedded prompt marker triggers an unparseable reply.
-	if model == evaluator.DefaultJudgeModel {
+	// Judge calls are recognized by the裁判 prompt marker (the judge model
+	// name is configurable via settings), returning a valid JSON verdict —
+	// except for the formal-rewrite case whose embedded prompt marker
+	// triggers an unparseable reply.
+	if strings.Contains(prompt, "你是评估裁判") {
 		if strings.Contains(prompt, "改写成更正式") {
 			return "I cannot produce a score for this."
 		}
 		return `{"score": 0.75, "reason": "meets the rubric"}`
 	}
-	if model == "dumb-model" {
+	h.mu.Lock()
+	bad := h.bad[model]
+	h.mu.Unlock()
+	if bad || model == "dumb-model" {
 		return "随便说点什么"
 	}
 	// Smart models answer every seed case correctly.
@@ -142,6 +149,21 @@ func (h *evalStubHub) sawProtocol(model, protocol string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.calls[model][protocol]
+}
+
+// sawModel reports whether any completion call carried the given model name.
+func (h *evalStubHub) sawModel(model string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.calls[model]) > 0
+}
+
+// markBad flips a model between correct (false) and always-wrong (true)
+// answers, so tests can move its eval scores between rounds.
+func (h *evalStubHub) markBad(model string, bad bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.bad[model] = bad
 }
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.
@@ -230,8 +252,8 @@ func triggerEval(t *testing.T, base string, suiteID int64, modelIDs ...int64) in
 	if run["trigger"] != "manual" {
 		t.Errorf("new run trigger = %v, want manual", run["trigger"])
 	}
-	if run["judge_model"] != evaluator.DefaultJudgeModel {
-		t.Errorf("judge_model = %v, want %s", run["judge_model"], evaluator.DefaultJudgeModel)
+	if run["judge_model"] != store.DefaultJudgeModel {
+		t.Errorf("judge_model = %v, want %s", run["judge_model"], store.DefaultJudgeModel)
 	}
 	return int64(run["id"].(float64))
 }

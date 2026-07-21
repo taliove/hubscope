@@ -64,6 +64,9 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 	// Alert evaluation hooks into every probe round served by this prober.
 	// main hooks the scheduler's prober into the same evaluator via Alerter().
 	s.prober.AfterRound = s.alerter.HandleRound
+	// Score-drop checks hook into every finished eval run served by this
+	// evaluator; the weekly eval worker shares it via Evaluator().
+	s.evaluator.AfterRun = s.alerter.HandleEvalRun
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -87,6 +90,13 @@ func (s *Server) Discovery() *discovery.Syncer {
 // process, avoiding duplicate alerts from manual vs scheduled rounds).
 func (s *Server) Alerter() *alerter.Evaluator {
 	return s.alerter
+}
+
+// Evaluator exposes the shared eval runner so main can drive the weekly
+// eval worker through the same instance (one judge-model resolution and one
+// score-drop hook per process).
+func (s *Server) Evaluator() *evaluator.Evaluator {
+	return s.evaluator
 }
 
 // routes wires up all API endpoints plus the health check.
@@ -133,6 +143,8 @@ func (s *Server) routes() chi.Router {
 			r.Patch("/cases/{id}", s.handlePatchCase)
 			r.Post("/evals", s.handleCreateEval)
 			r.Get("/evals", s.handleListEvals)
+			// Static segment wins over {id} in chi; registered first for clarity.
+			r.Get("/evals/latest", s.handleLatestEvals)
 			r.Get("/evals/{id}", s.handleGetEval)
 
 			r.Get("/settings", s.handleGetSettings)

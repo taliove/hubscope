@@ -169,10 +169,35 @@ type evalResultDTO struct {
 	OutputTokens  *int     `json:"output_tokens"`
 }
 
+// latestScoreDTO is the API representation of a (suite, model) pair's most
+// recent done-run aggregate score.
+type latestScoreDTO struct {
+	SuiteID    int64    `json:"suite_id"`
+	SuiteKey   string   `json:"suite_key"`
+	ModelID    string   `json:"model_id"`
+	ModelDBID  int64    `json:"model_db_id"`
+	Score      *float64 `json:"score"`
+	EvalRunID  int64    `json:"eval_run_id"`
+	FinishedAt string   `json:"finished_at"`
+}
+
 // evalRunDetailDTO is an EvalRun plus its per-case results.
 type evalRunDetailDTO struct {
 	evalRunDTO
 	Results []evalResultDTO `json:"results"`
+}
+
+// toLatestScoreDTO maps a store.LatestEvalScore to its API representation.
+func toLatestScoreDTO(ls store.LatestEvalScore) latestScoreDTO {
+	return latestScoreDTO{
+		SuiteID:    ls.SuiteID,
+		SuiteKey:   ls.SuiteKey,
+		ModelID:    ls.ModelID,
+		ModelDBID:  ls.ModelDBID,
+		Score:      ls.Score,
+		EvalRunID:  ls.EvalRunID,
+		FinishedAt: ls.FinishedAt.Format(time.RFC3339),
+	}
 }
 
 // toCaseDTO maps a store.Case to its API representation.

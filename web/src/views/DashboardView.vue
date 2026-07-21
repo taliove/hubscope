@@ -3,7 +3,8 @@
     <header class="dashboard-header">
       <h1>AI Hub Checker</h1>
       <span class="subtitle">状态总览</span>
-      <router-link to="/admin" class="nav-link">管理视图</router-link>
+      <router-link to="/eval" class="nav-link">评估中心</router-link>
+      <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
     </header>
 
     <!-- Summary row: total endpoint count plus per-status counts. -->
@@ -116,6 +117,9 @@ onMounted(start)
   font-size: 14px;
   color: #409eff;
   text-decoration: none;
+}
+.admin-link {
+  margin-left: 12px;
 }
 .summary-row {
   display: flex;
