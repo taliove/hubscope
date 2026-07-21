@@ -1,0 +1,22 @@
+# Binaries
+/bin/
+*.exe
+
+# Data
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Env / secrets
+.env
+.env.*
+!.env.example
