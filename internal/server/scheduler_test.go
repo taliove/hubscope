@@ -142,7 +142,7 @@ func openTempDB(t *testing.T) *store.DB {
 // newTestAPIServer starts the full API server over httptest.
 func newTestAPIServer(t *testing.T, db *store.DB) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(server.New(db))
+	ts := httptest.NewServer(server.New(db, testAdminPassword))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -271,7 +271,7 @@ func doPatch(t *testing.T, url string, body interface{}) *http.Response {
 	}
 	req, _ := http.NewRequest("PATCH", url, reader)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authedClient(t, url).Do(req)
 	if err != nil {
 		t.Fatalf("PATCH %s: %v", url, err)
 	}

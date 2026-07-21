@@ -44,6 +44,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const body = await parseBody(res)
   if (!res.ok) {
+    // Session expired or missing: send the user to the login page, preserving
+    // where they were headed. Skip when already on /login (or the login call
+    // itself failed) to avoid a redirect loop.
+    if (res.status === 401 && path !== '/auth/login' && window.location.pathname !== '/login') {
+      const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+      window.location.href = `/login?redirect=${redirect}`
+    }
     throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   // 204 and other empty successful responses carry no envelope.

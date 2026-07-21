@@ -3,6 +3,7 @@
     <header class="admin-header">
       <h1>AI Hub Checker</h1>
       <span class="subtitle">管理视图</span>
+      <el-button class="logout-button" size="small" @click="onLogout">退出登录</el-button>
     </header>
 
     <main class="admin-body">
@@ -15,17 +16,31 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAdminData } from '@/composables/useAdminData'
+import { logout } from '@/api/auth'
 import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
 
+const router = useRouter()
 const { hubs, endpointRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
 
 // Deleting a hub can cascade nothing but changing hubs may affect model hub names.
 async function onHubsChanged() {
   await reloadHubs()
+}
+
+// Clear the server session, then land on the login page regardless of outcome.
+async function onLogout() {
+  try {
+    await logout()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    router.push('/login')
+  }
 }
 
 onMounted(async () => {
@@ -57,6 +72,9 @@ onMounted(async () => {
 .subtitle {
   color: #909399;
   font-size: 14px;
+}
+.logout-button {
+  margin-left: auto;
 }
 .admin-body {
   display: flex;
