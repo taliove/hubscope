@@ -2,6 +2,7 @@ package prober
 
 import (
 	"context"
+	"log"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -49,7 +50,15 @@ func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe,
 
 	probes := []store.Probe{nonStream, stream}
 	if p.AfterRound != nil {
-		p.AfterRound(ctx, endpointID, probes)
+		// A misbehaving hook must never take down probing.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("prober: AfterRound hook panicked for endpoint %d: %v", endpointID, r)
+				}
+			}()
+			p.AfterRound(ctx, endpointID, probes)
+		}()
 	}
 	return probes, nil
 }

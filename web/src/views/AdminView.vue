@@ -11,6 +11,7 @@
       <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" />
       <ModelAdder :hubs="hubs" @added="reloadModels" />
       <EndpointTable :rows="endpointRows" :loading="loading" />
+      <SettingsPanel />
     </main>
   </div>
 </template>
@@ -24,6 +25,7 @@ import { logout } from '@/api/auth'
 import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
+import SettingsPanel from '@/components/SettingsPanel.vue'
 
 const router = useRouter()
 const { hubs, endpointRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()

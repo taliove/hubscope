@@ -6,18 +6,15 @@ import (
 	"log"
 	"sync"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/status"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
-
-// downThreshold mirrors the status machine: this many consecutive failed
-// probes mark an endpoint as down.
-const downThreshold = 3
 
 // Evaluator decides when probe results warrant a Lark alert. It is invoked
 // once per finished probe round (manual or scheduled) via HandleRound.
 //
 // Alerting rules:
-//   - failures reach downThreshold and the endpoint is not yet alerted →
+//   - failures reach status.DownThreshold and the endpoint is not yet alerted →
 //     send one "down" alert and record the event;
 //   - the outage continues → stay silent (no repeat alerts);
 //   - the endpoint was alerted and a success arrives → send one "recovered"
@@ -66,9 +63,9 @@ func (e *Evaluator) HandleRound(ctx context.Context, endpointID int64, _ []store
 	}
 
 	switch {
-	case !alerted && consecutive >= downThreshold:
+	case !alerted && consecutive >= status.DownThreshold:
 		e.transition(ctx, endpointID, store.AlertKindDown, true)
-	case alerted && consecutive < downThreshold:
+	case alerted && consecutive < status.DownThreshold:
 		// A success since the down alert ended the outage (consecutive
 		// failures reset below the threshold).
 		e.transition(ctx, endpointID, store.AlertKindRecovered, false)
@@ -160,5 +157,5 @@ func (e *Evaluator) buildMessage(endpointID int64, kind string) (string, error) 
 		lastError = *latest.ErrorSummary
 	}
 	return fmt.Sprintf("【AI Hub Checker】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
-		model.ModelID, endpoint.Protocol, downThreshold, lastError), nil
+		model.ModelID, endpoint.Protocol, status.DownThreshold, lastError), nil
 }

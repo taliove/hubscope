@@ -26,9 +26,10 @@ const (
 	KindFailing  Kind = "failing"
 )
 
-// downThreshold is the number of consecutive failures that marks an
-// endpoint as down.
-const downThreshold = 3
+// DownThreshold is the number of consecutive failures that marks an
+// endpoint as down. Exported: the alerter arms its down alert on the same
+// threshold and must never drift from the status machine.
+const DownThreshold = 3
 
 // minSuccessRate is the minimum acceptable 24h success rate.
 const minSuccessRate = 0.95
@@ -118,7 +119,7 @@ func Evaluate(in Input) Result {
 	}
 
 	// Rule 1: three or more consecutive failures means the endpoint is down.
-	if in.ConsecutiveFailures >= downThreshold {
+	if in.ConsecutiveFailures >= DownThreshold {
 		return Result{
 			Kind:   KindDown,
 			Reason: fmt.Sprintf("连续 %d 次失败,最近错误: %s", in.ConsecutiveFailures, lastError),
