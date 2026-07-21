@@ -10,15 +10,16 @@ import (
 	"time"
 )
 
-// probeOpenAI executes a probe against the openai /v1/chat/completions endpoint.
-func (c *Client) probeOpenAI(ctx context.Context, baseURL, token, modelID string, streaming bool) Result {
+// callOpenAI executes a request against the openai /v1/chat/completions
+// endpoint with the given prompt and token budget.
+func (c *Client) callOpenAI(ctx context.Context, baseURL, token, modelID, prompt string, maxTok int, streaming bool) Result {
 	url := strings.TrimRight(baseURL, "/") + "/v1/chat/completions"
 
 	payload := map[string]interface{}{
 		"model":      modelID,
-		"max_tokens": maxTokens,
+		"max_tokens": maxTok,
 		"messages": []map[string]string{
-			{"role": "user", "content": probePrompt},
+			{"role": "user", "content": prompt},
 		},
 	}
 	if streaming {
@@ -89,6 +90,7 @@ func (c *Client) readOpenAINonStream(resp *http.Response, start time.Time) Resul
 		LatencyMs:    latency,
 		InputTokens:  parsed.Usage.PromptTokens,
 		OutputTokens: parsed.Usage.CompletionTokens,
+		Text:         parsed.Choices[0].Message.Content,
 	}
 }
 

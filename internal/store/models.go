@@ -133,6 +133,14 @@ func (db *DB) GetModel(id int64) (*Model, error) {
 	return &m, nil
 }
 
+// SetModelCapability updates a model's capability tag ("chat" / "non_chat").
+// Discovery (ticket 05) sets this from the model list; eval eligibility
+// checks read it.
+func (db *DB) SetModelCapability(id int64, capability string) error {
+	_, err := db.conn.Exec("UPDATE models SET capability = ? WHERE id = ?", capability, id)
+	return err
+}
+
 // ListModels returns all models with their endpoints
 func (db *DB) ListModels() ([]Model, error) {
 	rows, err := db.conn.Query(`

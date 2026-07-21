@@ -115,3 +115,135 @@ func toProbeDTO(p store.Probe) probeDTO {
 		CreatedAt:    p.CreatedAt.Format(time.RFC3339),
 	}
 }
+
+// ruleConfigDTO is the API representation of a rule verdict configuration.
+type ruleConfigDTO struct {
+	Mode     string `json:"mode"`
+	Expected string `json:"expected"`
+}
+
+// caseDTO is the API representation of a Case. rule_config is only populated
+// for verdict_type="rule" and rubric only for "judge"; the other is null.
+type caseDTO struct {
+	ID          int64          `json:"id"`
+	SuiteID     int64          `json:"suite_id"`
+	Prompt      string         `json:"prompt"`
+	VerdictType string         `json:"verdict_type"`
+	RuleConfig  *ruleConfigDTO `json:"rule_config"`
+	Rubric      *string        `json:"rubric"`
+	Enabled     bool           `json:"enabled"`
+}
+
+// suiteDTO is the API representation of a Suite with its cases.
+type suiteDTO struct {
+	ID    int64     `json:"id"`
+	Key   string    `json:"key"`
+	Name  string    `json:"name"`
+	Cases []caseDTO `json:"cases"`
+}
+
+// evalRunDTO is the API representation of an EvalRun. Score is the average
+// of all non-null result scores, computed on read (never persisted); it is
+// null when no result has been scored yet.
+type evalRunDTO struct {
+	ID         int64    `json:"id"`
+	SuiteID    int64    `json:"suite_id"`
+	Trigger    string   `json:"trigger"`
+	JudgeModel string   `json:"judge_model"`
+	Status     string   `json:"status"`
+	StartedAt  string   `json:"started_at"`
+	FinishedAt *string  `json:"finished_at"`
+	Score      *float64 `json:"score"`
+}
+
+// evalResultDTO is the API representation of an EvalResult.
+type evalResultDTO struct {
+	ID            int64    `json:"id"`
+	ModelID       string   `json:"model_id"`
+	CaseID        int64    `json:"case_id"`
+	AnswerText    *string  `json:"answer_text"`
+	Score         *float64 `json:"score"`
+	VerdictDetail *string  `json:"verdict_detail"`
+	LatencyMs     int      `json:"latency_ms"`
+	InputTokens   *int     `json:"input_tokens"`
+	OutputTokens  *int     `json:"output_tokens"`
+}
+
+// evalRunDetailDTO is an EvalRun plus its per-case results.
+type evalRunDetailDTO struct {
+	evalRunDTO
+	Results []evalResultDTO `json:"results"`
+}
+
+// toCaseDTO maps a store.Case to its API representation.
+func toCaseDTO(c store.Case) caseDTO {
+	dto := caseDTO{
+		ID:          c.ID,
+		SuiteID:     c.SuiteID,
+		Prompt:      c.Prompt,
+		VerdictType: c.VerdictType,
+		Enabled:     c.Enabled,
+	}
+	if c.VerdictType == "rule" {
+		dto.RuleConfig = &ruleConfigDTO{
+			Mode:     deref(c.RuleMode),
+			Expected: deref(c.RuleExpected),
+		}
+	}
+	if c.VerdictType == "judge" {
+		dto.Rubric = c.Rubric
+	}
+	return dto
+}
+
+// toSuiteDTO maps a store.Suite plus its cases to the API representation.
+func toSuiteDTO(s store.Suite, cases []store.Case) suiteDTO {
+	caseDTOs := make([]caseDTO, 0, len(cases))
+	for _, c := range cases {
+		caseDTOs = append(caseDTOs, toCaseDTO(c))
+	}
+	return suiteDTO{ID: s.ID, Key: s.Key, Name: s.Name, Cases: caseDTOs}
+}
+
+// toEvalRunDTO maps a store.EvalRun to the API representation, attaching the
+// aggregate score computed from the run's results.
+func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
+	var finishedAt *string
+	if r.FinishedAt != nil {
+		s := r.FinishedAt.Format(time.RFC3339)
+		finishedAt = &s
+	}
+	return evalRunDTO{
+		ID:         r.ID,
+		SuiteID:    r.SuiteID,
+		Trigger:    r.Trigger,
+		JudgeModel: r.JudgeModel,
+		Status:     r.Status,
+		StartedAt:  r.StartedAt.Format(time.RFC3339),
+		FinishedAt: finishedAt,
+		Score:      score,
+	}
+}
+
+// toEvalResultDTO maps a store.EvalResult to the API representation.
+func toEvalResultDTO(r store.EvalResult) evalResultDTO {
+	return evalResultDTO{
+		ID:            r.ID,
+		ModelID:       r.ModelID,
+		CaseID:        r.CaseID,
+		AnswerText:    r.AnswerText,
+		Score:         r.Score,
+		VerdictDetail: r.VerdictDetail,
+		LatencyMs:     r.LatencyMs,
+		InputTokens:   r.InputTokens,
+		OutputTokens:  r.OutputTokens,
+	}
+}
+
+// deref returns the string a pointer holds, or "" for nil.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

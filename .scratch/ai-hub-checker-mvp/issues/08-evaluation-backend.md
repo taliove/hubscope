@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — Walking skeleton:单 Endpoint 手动探测
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 4 个内置 Suite 及种子 Case 随迁移存在,Case 区分规则判定与裁判判定
-- [ ] 手动触发 Eval Run 后,结果含每 Case 的作答、分数、verdict 详情,以及 Suite 聚合分
-- [ ] 规则判定三种方式(精确/正则/包含)判定正确
-- [ ] LLM 裁判返回分数与理由;裁判调用失败记未判分,不拉低聚合
-- [ ] non_chat 模型无法被选为评估对象
-- [ ] 黑盒测试:stub Hub 模拟作答与裁判响应,触发 Run 后经 API 断言分数、聚合与裁判失败分支
+- [x] 4 个内置 Suite 及种子 Case 随迁移存在,Case 区分规则判定与裁判判定
+- [x] 手动触发 Eval Run 后,结果含每 Case 的作答、分数、verdict 详情,以及 Suite 聚合分
+- [x] 规则判定三种方式(精确/正则/包含)判定正确
+- [x] LLM 裁判返回分数与理由;裁判调用失败记未判分,不拉低聚合
+- [x] non_chat 模型无法被选为评估对象
+- [x] 黑盒测试:stub Hub 模拟作答与裁判响应,触发 Run 后经 API 断言分数、聚合与裁判失败分支

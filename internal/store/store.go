@@ -94,6 +94,56 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_probes_endpoint_time ON probes(endpoint_id, created_at DESC);
+
+		CREATE TABLE IF NOT EXISTS suites (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			key TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS cases (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			suite_id INTEGER NOT NULL,
+			prompt TEXT NOT NULL,
+			verdict_type TEXT NOT NULL,
+			rule_mode TEXT,
+			rule_expected TEXT,
+			rubric TEXT,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (suite_id) REFERENCES suites(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_cases_suite ON cases(suite_id);
+
+		CREATE TABLE IF NOT EXISTS eval_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			suite_id INTEGER NOT NULL,
+			"trigger" TEXT NOT NULL,
+			judge_model TEXT NOT NULL,
+			status TEXT NOT NULL,
+			started_at TEXT NOT NULL,
+			finished_at TEXT,
+			FOREIGN KEY (suite_id) REFERENCES suites(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS eval_results (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			eval_run_id INTEGER NOT NULL,
+			model_db_id INTEGER NOT NULL,
+			model_id TEXT NOT NULL,
+			case_id INTEGER NOT NULL,
+			answer_text TEXT,
+			score REAL,
+			verdict_detail TEXT,
+			latency_ms INTEGER NOT NULL,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_eval_results_run ON eval_results(eval_run_id);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {
@@ -101,7 +151,12 @@ func (db *DB) migrate() error {
 	}
 
 	// Idempotent column migrations for databases created by older versions.
-	return db.ensureColumn("endpoints", "interval_seconds", "INTEGER NULL")
+	if err := db.ensureColumn("endpoints", "interval_seconds", "INTEGER NULL"); err != nil {
+		return err
+	}
+
+	// Seed the built-in evaluation suites on first run (no-op afterwards).
+	return db.seedSuites()
 }
 
 // ensureColumn adds a column to an existing table when it is missing. It

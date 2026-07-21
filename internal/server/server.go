@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/discovery"
+	"git.github.net/taliove2009/ai-hub-checker/internal/evaluator"
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -19,6 +20,7 @@ type Server struct {
 	db        *store.DB
 	prober    *prober.Prober
 	discovery *discovery.Syncer
+	evaluator *evaluator.Evaluator
 	router    chi.Router
 	staticFS  fs.FS
 	now       func() time.Time
@@ -51,6 +53,7 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 		db:            db,
 		prober:        prober.New(db, hubclient.New()),
 		discovery:     discovery.New(db, hubclient.New()),
+		evaluator:     evaluator.New(db, hubclient.NewWithTimeout(evaluator.RequestTimeout)),
 		adminPassword: adminPassword,
 		sessionKey:    deriveSessionKey(adminPassword),
 		now:           time.Now,
@@ -109,6 +112,13 @@ func (s *Server) routes() chi.Router {
 			r.Post("/discovery/run", s.handleRunDiscovery)
 
 			r.Get("/overview", s.handleGetOverview)
+
+			r.Get("/suites", s.handleListSuites)
+			r.Post("/cases", s.handleCreateCase)
+			r.Patch("/cases/{id}", s.handlePatchCase)
+			r.Post("/evals", s.handleCreateEval)
+			r.Get("/evals", s.handleListEvals)
+			r.Get("/evals/{id}", s.handleGetEval)
 		})
 	})
 
