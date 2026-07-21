@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -42,7 +43,7 @@ func (s *Server) handleProbeEndpoint(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleListProbes handles GET /api/endpoints/{id}/probes?limit=N.
+// handleListProbes handles GET /api/endpoints/{id}/probes?limit=N&ok=BOOL.
 func (s *Server) handleListProbes(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -56,8 +57,13 @@ func (s *Server) handleListProbes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := parseLimit(r.URL.Query().Get("limit"))
+	okFilter, err := parseOKFilter(r.URL.Query().Get("ok"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
-	probes, err := s.db.ListProbes(id, limit)
+	probes, err := s.db.ListProbes(id, limit, okFilter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list probes")
 		return
@@ -69,6 +75,23 @@ func (s *Server) handleListProbes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, dtos)
+}
+
+// parseOKFilter validates the optional ok query parameter: "true" or "false"
+// select one probe kind, an absent parameter returns both.
+func parseOKFilter(raw string) (*bool, error) {
+	switch raw {
+	case "":
+		return nil, nil
+	case "true":
+		v := true
+		return &v, nil
+	case "false":
+		v := false
+		return &v, nil
+	default:
+		return nil, fmt.Errorf("ok must be true or false")
+	}
 }
 
 // parseLimit clamps the limit query param to [1, 200] with a default of 50.

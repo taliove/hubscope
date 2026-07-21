@@ -33,3 +33,12 @@ export function formatMs(value: number | null): string {
   if (value < 1000) return `${Math.round(value)}ms`
   return `${(value / 1000).toFixed(2)}s`
 }
+
+// Render an hour-aligned bucket timestamp as a compact local "MM-dd HH:mm"
+// label for chart axes.
+export function formatBucketTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:00`
+}

@@ -68,6 +68,78 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// windowStats bundles the probe history the status machine needs for one
+// endpoint, shared by the overview matrix and the endpoint detail API.
+type windowStats struct {
+	total       int
+	consecutive int
+	latest      *store.Probe
+	samples24h  []store.ProbeSample
+	baselineP50 float64
+	hasBaseline bool
+}
+
+// gatherWindowStats collects the status-machine inputs of one endpoint as of
+// the given time.
+func (s *Server) gatherWindowStats(endpointID int64, now time.Time) (windowStats, error) {
+	var stats windowStats
+	var err error
+
+	if stats.consecutive, err = s.db.CountConsecutiveFailures(endpointID); err != nil {
+		return stats, err
+	}
+	if stats.total, err = s.db.CountProbes(endpointID); err != nil {
+		return stats, err
+	}
+	if stats.latest, err = s.db.LatestProbe(endpointID); err != nil {
+		return stats, err
+	}
+	if stats.samples24h, err = s.db.ListProbeSamplesSince(endpointID, now.Add(-overviewWindow24h)); err != nil {
+		return stats, err
+	}
+	baselineSamples, err := s.db.ListProbeSamplesSince(endpointID, now.Add(-overviewBaselineSpan))
+	if err != nil {
+		return stats, err
+	}
+
+	// Latency baseline: 7-day P50, skipped when there are too few samples.
+	if len(baselineSamples) >= status.MinBaselineSamples {
+		stats.baselineP50 = status.Percentile(status.Latencies(toStatusSamples(baselineSamples)), 50)
+		stats.hasBaseline = true
+	}
+	return stats, nil
+}
+
+// statusSamples converts the stored 24h samples into status-machine samples.
+func (ws windowStats) statusSamples() []status.Sample {
+	return toStatusSamples(ws.samples24h)
+}
+
+// evaluate runs the status machine over the gathered window stats.
+func (ws windowStats) evaluate() status.Result {
+	lastError := ""
+	if ws.latest != nil && !ws.latest.OK && ws.latest.ErrorSummary != nil {
+		lastError = *ws.latest.ErrorSummary
+	}
+	return status.Evaluate(status.Input{
+		TotalProbes:         ws.total,
+		ConsecutiveFailures: ws.consecutive,
+		LastError:           lastError,
+		Samples24h:          ws.statusSamples(),
+		BaselineP50Ms:       ws.baselineP50,
+		HasBaseline:         ws.hasBaseline,
+	})
+}
+
+// toStatusSamples converts store samples into status-machine samples.
+func toStatusSamples(in []store.ProbeSample) []status.Sample {
+	out := make([]status.Sample, 0, len(in))
+	for _, s := range in {
+		out = append(out, status.Sample{OK: s.OK, LatencyMs: s.LatencyMs})
+	}
+	return out
+}
+
 // buildOverviewEntry assembles the status and 24h statistics of a single
 // endpoint as of the given time.
 func (s *Server) buildOverviewEntry(ep store.Endpoint, modelID string, now time.Time) (overviewEntryDTO, error) {
@@ -78,41 +150,17 @@ func (s *Server) buildOverviewEntry(ep store.Endpoint, modelID string, now time.
 		Enabled:    ep.Enabled,
 	}
 
-	consecutive, err := s.db.CountConsecutiveFailures(ep.ID)
-	if err != nil {
-		return entry, err
-	}
-	total, err := s.db.CountProbes(ep.ID)
-	if err != nil {
-		return entry, err
-	}
-	latest, err := s.db.LatestProbe(ep.ID)
-	if err != nil {
-		return entry, err
-	}
-	samples24h, err := s.db.ListProbeSamplesSince(ep.ID, now.Add(-overviewWindow24h))
-	if err != nil {
-		return entry, err
-	}
-	baselineSamples, err := s.db.ListProbeSamplesSince(ep.ID, now.Add(-overviewBaselineSpan))
+	stats, err := s.gatherWindowStats(ep.ID, now)
 	if err != nil {
 		return entry, err
 	}
 
-	if latest != nil {
-		ts := latest.CreatedAt.UTC().Format(time.RFC3339)
+	if stats.latest != nil {
+		ts := stats.latest.CreatedAt.UTC().Format(time.RFC3339)
 		entry.LastProbeAt = &ts
 	}
 
-	// Convert store samples into status-machine samples.
-	toSamples := func(in []store.ProbeSample) []status.Sample {
-		out := make([]status.Sample, 0, len(in))
-		for _, s := range in {
-			out = append(out, status.Sample{OK: s.OK, LatencyMs: s.LatencyMs})
-		}
-		return out
-	}
-	stats24h := toSamples(samples24h)
+	stats24h := stats.statusSamples()
 
 	// 24h summary fields: null when the window has no data.
 	if rate, ok := status.SuccessRate(stats24h); ok {
@@ -126,27 +174,7 @@ func (s *Server) buildOverviewEntry(ep store.Endpoint, modelID string, now time.
 		entry.P95Ms = &p95
 	}
 
-	// Latency baseline: 7-day P50, skipped when there are too few samples.
-	var baselineP50 float64
-	hasBaseline := false
-	if len(baselineSamples) >= status.MinBaselineSamples {
-		baselineP50 = status.Percentile(status.Latencies(toSamples(baselineSamples)), 50)
-		hasBaseline = true
-	}
-
-	lastError := ""
-	if latest != nil && !latest.OK && latest.ErrorSummary != nil {
-		lastError = *latest.ErrorSummary
-	}
-
-	result := status.Evaluate(status.Input{
-		TotalProbes:         total,
-		ConsecutiveFailures: consecutive,
-		LastError:           lastError,
-		Samples24h:          stats24h,
-		BaselineP50Ms:       baselineP50,
-		HasBaseline:         hasBaseline,
-	})
+	result := stats.evaluate()
 	entry.Status = string(result.Kind)
 	entry.StatusReason = result.Reason
 
