@@ -391,3 +391,15 @@ func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 	}
 	return results, rows.Err()
 }
+
+// HasScheduledEvalRunSince reports whether any scheduled eval run started at
+// or after the given time. The weekly worker uses it to stay idempotent
+// across restarts inside the Sunday window.
+func (db *DB) HasScheduledEvalRunSince(since time.Time) (bool, error) {
+	var count int
+	err := db.conn.QueryRow(
+		`SELECT COUNT(*) FROM eval_runs WHERE "trigger" = 'scheduled' AND started_at >= ?`,
+		since.Format(time.RFC3339),
+	).Scan(&count)
+	return count > 0, err
+}

@@ -147,3 +147,39 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 8
 	})
 }
+
+// TestWeeklyEvalRestartDedup verifies that a fresh worker (simulating a
+// process restart) inside the Sunday window does not re-run a batch that
+// already fired today: dedup is backed by eval_runs, not just memory.
+func TestWeeklyEvalRestartDedup(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "weekly-restart.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	stub := newEvalStubHub()
+	t.Cleanup(stub.Close)
+	srv := server.New(db, testAdminPassword)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	createEvalModel(t, ts.URL, stub.URL, "restart-model")
+
+	// Start inside the window: the first worker fires the batch.
+	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
+	startEvalWorker(t, db, srv, clock)
+	waitFor(t, "initial weekly batch", func() bool {
+		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 4
+	})
+
+	// Simulate a restart: a brand-new worker with empty in-memory state over
+	// the same database must not fire again, even as the clock advances
+	// within the window.
+	startEvalWorker(t, db, srv, clock)
+	clock.Advance(2 * time.Hour)
+	time.Sleep(200 * time.Millisecond)
+	if got := countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled"); got != 4 {
+		t.Fatalf("after restart inside window: expected still 4 scheduled runs, got %d", got)
+	}
+}

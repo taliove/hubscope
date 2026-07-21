@@ -78,13 +78,36 @@ func (w *EvalWorker) Run(ctx context.Context) {
 }
 
 // tick fires the weekly batch when the clock sits inside the Sunday
-// early-morning window and no batch ran on this date yet.
+// early-morning window and no batch ran on this date yet. Deduplication is
+// two-level: an in-memory date for the common case, backed by a persistent
+// check against eval_runs so a restart inside the window does not re-run a
+// batch that already fired today.
 func (w *EvalWorker) tick(ctx context.Context) {
 	now := w.clock.Now()
 	if now.Weekday() != time.Sunday || now.Hour() >= weeklyEvalHourLimit {
 		return
 	}
 	date := now.Format("2006-01-02")
+
+	w.mu.Lock()
+	if w.lastRunDate == date {
+		w.mu.Unlock()
+		return
+	}
+	w.mu.Unlock()
+
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	ran, err := w.db.HasScheduledEvalRunSince(startOfDay)
+	if err != nil {
+		log.Printf("eval worker: check scheduled runs: %v", err)
+		return
+	}
+	if ran {
+		w.mu.Lock()
+		w.lastRunDate = date
+		w.mu.Unlock()
+		return
+	}
 
 	w.mu.Lock()
 	if w.lastRunDate == date {

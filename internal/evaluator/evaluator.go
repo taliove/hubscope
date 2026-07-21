@@ -71,8 +71,16 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 	}
 	if e.AfterRun != nil {
 		// Detach cancellation so a graceful shutdown cannot abort the alert
-		// send mid-flight (mirrors the prober's WithoutCancel rounds).
-		e.AfterRun(context.WithoutCancel(ctx), runID)
+		// send mid-flight (mirrors the prober's WithoutCancel rounds). A
+		// misbehaving hook must never take down the evaluator.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("evaluator: AfterRun hook panicked for run %d: %v", runID, r)
+				}
+			}()
+			e.AfterRun(context.WithoutCancel(ctx), runID)
+		}()
 	}
 	return nil
 }
