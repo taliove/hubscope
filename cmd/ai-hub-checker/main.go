@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,6 +28,13 @@ const defaultDataPath = "./data/app.db"
 
 // shutdownTimeout bounds graceful shutdown.
 const shutdownTimeout = 10 * time.Second
+
+// discoveryInterval is how often model auto-discovery syncs with the hubs.
+const discoveryInterval = time.Hour
+
+// discoveryInitialDelay postpones the first discovery run so it does not
+// stack on the probe storm that fires at startup.
+const discoveryInitialDelay = 30 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -60,6 +68,28 @@ func run() error {
 	go func() {
 		defer close(schedDone)
 		sched.Run(schedCtx)
+	}()
+
+	// Run model discovery on its own hourly loop instead of folding it into
+	// the probe scheduler: discovery cadence (hourly, wall-clock) is unrelated
+	// to per-endpoint probe intervals, and a separate goroutine keeps the
+	// scheduler's tight dispatch loop free of slow multi-request syncs. The
+	// first run is delayed so it does not pile onto the startup probe storm.
+	// The loop stops with the shared schedCtx during graceful shutdown.
+	go func() {
+		timer := time.NewTimer(discoveryInitialDelay)
+		defer timer.Stop()
+		for {
+			select {
+			case <-schedCtx.Done():
+				return
+			case <-timer.C:
+				if _, err := srv.Discovery().Sync(schedCtx); err != nil {
+					log.Printf("discovery sync: %v", err)
+				}
+				timer.Reset(discoveryInterval)
+			}
+		}
 	}()
 
 	httpServer := &http.Server{
