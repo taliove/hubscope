@@ -144,6 +144,23 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_eval_results_run ON eval_results(eval_run_id);
+
+		CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS alert_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			endpoint_id INTEGER,
+			kind TEXT NOT NULL,
+			message TEXT NOT NULL,
+			sent_ok INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (endpoint_id) REFERENCES endpoints(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_alert_events_endpoint ON alert_events(endpoint_id, created_at DESC);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {

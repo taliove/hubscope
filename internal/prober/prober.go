@@ -11,6 +11,12 @@ import (
 type Prober struct {
 	db     *store.DB
 	client *hubclient.Client
+
+	// AfterRound, when set, is invoked synchronously at the end of every
+	// round (manual or scheduled) with the persisted results. The alert
+	// evaluator hooks in here; it must never panic and handles its own
+	// errors internally.
+	AfterRound func(ctx context.Context, endpointID int64, results []store.Probe)
 }
 
 // New creates a Prober backed by the given store and hub client.
@@ -41,7 +47,11 @@ func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe,
 	nonStream := p.probeAndStore(ctx, hub, model, endpoint, false)
 	stream := p.probeAndStore(ctx, hub, model, endpoint, true)
 
-	return []store.Probe{nonStream, stream}, nil
+	probes := []store.Probe{nonStream, stream}
+	if p.AfterRound != nil {
+		p.AfterRound(ctx, endpointID, probes)
+	}
+	return probes, nil
 }
 
 // probeAndStore runs one probe and writes the result to the store.

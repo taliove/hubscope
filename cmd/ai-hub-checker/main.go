@@ -68,8 +68,12 @@ func run() error {
 	}
 
 	// Start the probe scheduler on the wall clock; it shares the process
-	// lifecycle and is stopped during graceful shutdown below.
-	sched := scheduler.New(db, prober.New(db, hubclient.New()), scheduler.RealClock{})
+	// lifecycle and is stopped during graceful shutdown below. Its prober
+	// reports rounds to the server's shared alert evaluator so scheduled and
+	// manual probes produce one coherent alert stream.
+	schedProber := prober.New(db, hubclient.New())
+	schedProber.AfterRound = srv.Alerter().HandleRound
+	sched := scheduler.New(db, schedProber, scheduler.RealClock{})
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	schedDone := make(chan struct{})
 	go func() {
