@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/discovery"
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -14,17 +15,19 @@ import (
 
 // Server holds dependencies and the HTTP router.
 type Server struct {
-	db       *store.DB
-	prober   *prober.Prober
-	router   chi.Router
-	staticFS fs.FS
+	db        *store.DB
+	prober    *prober.Prober
+	discovery *discovery.Syncer
+	router    chi.Router
+	staticFS  fs.FS
 }
 
 // New builds a Server with all API routes registered.
 func New(db *store.DB) *Server {
 	s := &Server{
-		db:     db,
-		prober: prober.New(db, hubclient.New()),
+		db:        db,
+		prober:    prober.New(db, hubclient.New()),
+		discovery: discovery.New(db, hubclient.New()),
 	}
 	s.router = s.routes()
 	return s
@@ -33,6 +36,12 @@ func New(db *store.DB) *Server {
 // ServeHTTP makes Server an http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+// Discovery exposes the model-discovery syncer so main can run it on a
+// periodic schedule.
+func (s *Server) Discovery() *discovery.Syncer {
+	return s.discovery
 }
 
 // routes wires up all API endpoints plus the health check.
@@ -56,6 +65,8 @@ func (s *Server) routes() chi.Router {
 		r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 		r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 		r.Get("/endpoints/{id}/probes", s.handleListProbes)
+
+		r.Post("/discovery/run", s.handleRunDiscovery)
 	})
 
 	// Any unmatched route is handled by the SPA (or JSON 404 under /api).
