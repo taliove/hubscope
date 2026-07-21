@@ -84,3 +84,10 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
 - `PUT /api/settings` → `{"data": ...同上}`(字段均可选)
 - `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop", "message": string, "sent_ok": boolean, "created_at": string}`
+
+## Endpoint Detail & Series(ticket 04)
+
+- `GET /api/endpoints/{id}` → `{"data": EndpointDetail}`。`EndpointDetail = Endpoint + {"model_id_str": string, "hub_name": string, "status": string, "status_reason": string}`(status 判定与 Overview 同规则)。
+- `GET /api/endpoints/{id}/series?hours=24&streaming=all` → `{"data": [SeriesBucket]}`。hours 默认 24、范围 1~2160(90 天);streaming ∈ all|streaming|non_streaming,默认 all(合并统计)。`SeriesBucket = {"bucket_start": string(RFC3339,整点), "total": number, "failures": number, "p50_ms": number|null, "p95_ms": number|null, "avg_ttft_ms": number|null}`,按时间正序,无数据的桶可省略。
+- `GET /api/endpoints/{id}/probes` 增加可选参数 `ok=true|false` 过滤(与 limit 组合,用于"近期失败"列表)。
+- 数据生命周期:每小时把 1 小时前的原始 probes 聚合进 probe_rollups(endpoint_id, streaming, bucket_start, total, failures, p50_ms, p95_ms, avg_ttft_ms,幂等 INSERT OR REPLACE);每天删除 90 天前的原始 probes;series 查询 = rollups + 未聚合的原始尾部合并,保证 rollup/清理后历史曲线完整可查。
