@@ -38,7 +38,7 @@ func (c *Client) probeOpenAI(ctx context.Context, baseURL, token, modelID string
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		msg := truncate("network error: " + err.Error())
+		msg := netErrorSummary("network error: ", err)
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg, LatencyMs: int(time.Since(start).Milliseconds())}
 	}
 	defer resp.Body.Close()

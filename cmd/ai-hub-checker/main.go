@@ -11,6 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
+	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
+	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
 	"git.github.net/taliove2009/ai-hub-checker/internal/server"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 	"git.github.net/taliove2009/ai-hub-checker/web"
@@ -49,6 +52,16 @@ func run() error {
 		srv.SetStaticFS(dist)
 	}
 
+	// Start the probe scheduler on the wall clock; it shares the process
+	// lifecycle and is stopped during graceful shutdown below.
+	sched := scheduler.New(db, prober.New(db, hubclient.New()), scheduler.RealClock{})
+	schedCtx, schedCancel := context.WithCancel(context.Background())
+	schedDone := make(chan struct{})
+	go func() {
+		defer close(schedDone)
+		sched.Run(schedCtx)
+	}()
+
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: srv,
@@ -69,9 +82,17 @@ func run() error {
 
 	select {
 	case err := <-errCh:
+		schedCancel()
 		return fmt.Errorf("listen: %w", err)
 	case <-stop:
 		fmt.Println("shutting down...")
+	}
+
+	// Stop dispatching new probe rounds and wait for in-flight workers.
+	schedCancel()
+	select {
+	case <-schedDone:
+	case <-time.After(shutdownTimeout):
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)

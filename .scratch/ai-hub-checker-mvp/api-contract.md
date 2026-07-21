@@ -18,7 +18,11 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `GET /api/models` → `{"data": [Model]}`
 
 `Model = {"id": number, "hub_id": number, "model_id": string, "origin": "manual", "status": "active", "capability": "chat", "endpoints": [Endpoint]}`
-`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai", "enabled": boolean}`
+`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai", "enabled": boolean, "interval_seconds": number|null}`(`interval_seconds` 为 null 表示用全局默认 300)
+
+## Endpoints
+
+- `PATCH /api/endpoints/{id}` → `{"data": Endpoint}`。Body 字段均可选:`{"enabled": boolean, "interval_seconds": number|null}`——`interval_seconds` 传数字设置覆盖(最小 60),传 null 清除覆盖回退默认。下一轮调度即生效。id 不存在 → 404;interval_seconds < 60 → 400。
 
 ## Probes
 

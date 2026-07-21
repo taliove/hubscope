@@ -27,6 +27,11 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	// SQLite permits only one writer at a time; a single connection
+	// serializes access and avoids SQLITE_BUSY under concurrent use
+	// (e.g. the scheduler writing probes while the API serves reads).
+	conn.SetMaxOpenConns(1)
+
 	db := &DB{conn: conn}
 	if err := db.migrate(); err != nil {
 		conn.Close()
@@ -91,6 +96,39 @@ func (db *DB) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_probes_endpoint_time ON probes(endpoint_id, created_at DESC);
 	`
 
-	_, err := db.conn.Exec(schema)
+	if _, err := db.conn.Exec(schema); err != nil {
+		return err
+	}
+
+	// Idempotent column migrations for databases created by older versions.
+	return db.ensureColumn("endpoints", "interval_seconds", "INTEGER NULL")
+}
+
+// ensureColumn adds a column to an existing table when it is missing. It
+// inspects PRAGMA table_info first so the migration is safe to run on every
+// startup. All arguments are internal constants, never user input.
+func (db *DB) ensureColumn(table, column, decl string) error {
+	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = db.conn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, decl))
 	return err
 }

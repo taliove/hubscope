@@ -17,10 +17,11 @@ type hubDTO struct {
 
 // endpointDTO is the API representation of an Endpoint.
 type endpointDTO struct {
-	ID       int64  `json:"id"`
-	ModelID  int64  `json:"model_id"`
-	Protocol string `json:"protocol"`
-	Enabled  bool   `json:"enabled"`
+	ID              int64  `json:"id"`
+	ModelID         int64  `json:"model_id"`
+	Protocol        string `json:"protocol"`
+	Enabled         bool   `json:"enabled"`
+	IntervalSeconds *int   `json:"interval_seconds"`
 }
 
 // modelDTO is the API representation of a Model with its endpoints.
@@ -73,10 +74,11 @@ func toHubDTO(h store.Hub) hubDTO {
 // toEndpointDTO maps a store.Endpoint to its API representation.
 func toEndpointDTO(e store.Endpoint) endpointDTO {
 	return endpointDTO{
-		ID:       e.ID,
-		ModelID:  e.ModelID,
-		Protocol: e.Protocol,
-		Enabled:  e.Enabled,
+		ID:              e.ID,
+		ModelID:         e.ModelID,
+		Protocol:        e.Protocol,
+		Enabled:         e.Enabled,
+		IntervalSeconds: e.IntervalSeconds,
 	}
 }
 

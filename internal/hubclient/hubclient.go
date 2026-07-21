@@ -2,7 +2,9 @@ package hubclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -36,9 +38,14 @@ type Client struct {
 
 // New creates a Client with the standard probe timeout.
 func New() *Client {
+	return NewWithTimeout(requestTimeout)
+}
+
+// NewWithTimeout creates a Client with a custom per-request timeout.
+func NewWithTimeout(d time.Duration) *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: requestTimeout,
+			Timeout: d,
 		},
 	}
 }
@@ -56,6 +63,16 @@ func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID st
 		msg := "unknown protocol: " + protocol
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}
 	}
+}
+
+// netErrorSummary builds an error summary for transport-level failures.
+// Timeouts are prefixed with "timeout:" so they stay recognizable in stored
+// error summaries; other failures keep the given prefix.
+func netErrorSummary(prefix string, err error) string {
+	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
+		return truncate("timeout: " + err.Error())
+	}
+	return truncate(prefix + err.Error())
 }
 
 // stringPtr returns a pointer to s.
@@ -105,7 +122,7 @@ func finalizeStream(o streamOutcome) Result {
 		msg := truncate("HTTP 200: " + o.streamErr)
 		result.ErrorSummary = &msg
 	case o.scanErr != nil:
-		msg := truncate("stream read error: " + o.scanErr.Error())
+		msg := netErrorSummary("stream read error: ", o.scanErr)
 		result.ErrorSummary = &msg
 	case !o.sawContent:
 		msg := "HTTP 200: stream produced no content"

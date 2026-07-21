@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Walking skeleton:单 Endpoint 手动探测
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 启动后启用中的 Endpoint 按间隔自动产生 Probe 记录(默认 5 分钟)
 - [ ] 同一 Endpoint 上一轮未完成不会重入;不同 Endpoint 并发执行且不超过上限

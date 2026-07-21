@@ -53,6 +53,7 @@ func (s *Server) routes() chi.Router {
 		r.Post("/models", s.handleCreateModel)
 		r.Get("/models", s.handleListModels)
 
+		r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 		r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 		r.Get("/endpoints/{id}/probes", s.handleListProbes)
 	})
