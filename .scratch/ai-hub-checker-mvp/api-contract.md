@@ -2,6 +2,14 @@
 
 Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx 状态码 + `{"error": {"message": "..."}}`。
 
+## Auth(ticket 07)
+
+- `POST /api/auth/login` → `{"data":{"authenticated":true}}`,Set-Cookie session。Body `{"password": string}`;口令错误 → 401。
+- `POST /api/auth/logout` → 204,清 session。
+- `GET /api/auth/me` → `{"data":{"authenticated": boolean}}`(公开)。
+- 口令来自 env `ADMIN_PASSWORD`,启动缺失则拒绝启动。除 `/api/auth/*` 外的**写方法**(POST/PUT/PATCH/DELETE)必须带有效 session,否则 401;GET 全部公开。session 用签名 cookie 实现,无需服务端存储。
+
+
 ## Hubs
 
 - `POST /api/hubs` → 201。Body: `{"name": string, "base_url": string, "token": string}`
@@ -39,3 +47,40 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - openai 协议:`POST {base_url}/v1/chat/completions`,header `Authorization: Bearer <token>`;流式加 `"stream": true` 与 `"stream_options": {"include_usage": true}`。
 - `ok` = HTTP 200 且响应可解析为正常完成;`error_summary` = HTTP 状态 + 上游错误消息,截断 500 字符。网络层失败 `http_status` 记 0。
 - 流式 `ttft_ms` = 发出请求到收到第一个含内容的 SSE 事件;token 用量尽量从响应/流末取得,取不到为 null。
+
+## Overview(ticket 03)
+
+- `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
+
+`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null}`
+
+状态判定规则(优先级从高到低):
+- `down`(红):最近连续 3 次 Probe 失败
+- `failing`(闪烁):最近一次 Probe 失败但未达连续 3 次
+- `degraded`(黄):24h 成功率 <0.95,或 24h P95 延迟 > 该端点 7 天 P50 基线的 2 倍(基线数据不足时跳过此项)
+- `healthy`(绿):其余
+`status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers")。
+
+## Discovery(ticket 05)
+
+- `POST /api/discovery/run` → `{"data": {"added": number, "retired": number, "endpoints_created": number}}`。立即对所有 Hub 执行一次同步(定时任务每小时也会自动跑)。
+- 同步语义:拉每个 Hub 的 `/v1/models`;新 model_id → 建 Model(origin="discovered", capability 按名单判断:含 "image"/"embedding"/"tts"/"dall" 等非对话关键词 → "non_chat",否则 "chat")并对双协议各发一次极简请求试通,通的建 enabled Endpoint,不通的建 disabled Endpoint;列表中消失且 origin="discovered" 的 Model → status="retired"(其 Endpoint 停止调度,历史保留);重新出现 → 恢复 "active"。手工添加的 Model(origin="manual")不受下线影响。
+
+## Eval(ticket 08)
+
+- `GET /api/suites` → `{"data": [Suite]}`;`Suite = {"id": number, "key": string, "name": string, "cases": [Case]}`
+- `Case = {"id": number, "suite_id": number, "prompt": string, "verdict_type": "rule"|"judge", "rule_config": {"mode": "exact"|"regex"|"contains", "expected": string}|null, "rubric": string|null, "enabled": boolean}`
+- `POST /api/cases` → 201。Body 同 Case(无 id)。`PATCH /api/cases/{id}` → `{"data": Case}`(字段均可选)。
+- `POST /api/evals` → 202 `{"data": EvalRun}`。Body: `{"suite_id": number, "model_ids": [number,...]}`(model 的数据库 id;含 non_chat 模型 → 400)。异步执行。
+- `GET /api/evals` → `{"data": [EvalRun]}`(倒序)
+- `GET /api/evals/{id}` → `{"data": EvalRunDetail}`
+- `EvalRun = {"id": number, "suite_id": number, "trigger": "scheduled"|"manual", "judge_model": string, "status": "running"|"done"|"failed", "started_at": string, "finished_at": string|null}`
+- `EvalRunDetail = EvalRun + {"results": [EvalResult]}`
+- `EvalResult = {"id": number, "model_id": string, "case_id": number, "answer_text": string|null, "score": number|null(0~1;裁判失败为 null 即未判分), "verdict_detail": string|null, "latency_ms": number, "input_tokens": number|null, "output_tokens": number|null}`
+- 判定:rule 按 mode 对 answer 全文判定(命中 1 否则 0);judge 用 judge_model(默认 claude-opus-4-8,可取 settings.judge_model)按 rubric 打 0~1,解析失败/调用失败 → score=null。
+
+## Settings & Alerts(ticket 06,本波不实现,先占位契约)
+
+- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
+- `PUT /api/settings` → `{"data": ...同上}`(字段均可选)
+- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop", "message": string, "sent_ok": boolean, "created_at": string}`
