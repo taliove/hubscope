@@ -23,3 +23,6 @@ web/dist/
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
+!.claude/rules/
+!.claude/agents/
+!.claude/skills/
