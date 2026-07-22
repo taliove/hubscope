@@ -52,6 +52,7 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/alerts",
 		"/api/audit-logs",
 		"/api/audit-logs/actions",
+		"/api/tasks",
 	}
 	for _, p := range protectedPaths {
 		resp := plainGet(t, ts.URL+p)

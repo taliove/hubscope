@@ -1,8 +1,8 @@
-# 19 — 发现同步与维护作业入任务中心
+# 28 — 发现同步与维护作业入任务中心
 
 **What to build:** 任务中心覆盖全部低频后台作业:Hub 发现同步(手动触发与 Hub 新增时的自动同步)注册为 Task,日志记录新增/更新/停用的模型数;rollup 与数据保留清理注册为 Task,日志记录处理行数。任务中心支持按任务类型过滤。探测轮次仍不进任务中心。
 
-**Blocked by:** 18 — Task 中心:任务实体 + Eval Run 接入
+**Blocked by:** 27 — Task 中心:任务实体 + Eval Run 接入
 
 **Status:** ready-for-agent
 

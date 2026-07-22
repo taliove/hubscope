@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/taliove2009/hubscope/internal/hubclient"
@@ -52,23 +53,31 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 	}
 	run = e.resolveJudgeModel(run)
 
+	// Register the run with the task center; tracking failures never abort
+	// the run itself (beginRunTask returns a no-op logger then).
+	task := e.beginRunTask(run, len(modelDBIDs))
+
 	cases, err := e.db.ListEnabledCases(run.SuiteID)
 	if err != nil {
 		_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
+		task.fail(fmt.Sprintf("load cases for suite %d: %v", run.SuiteID, err))
 		return fmt.Errorf("load cases for suite %d: %w", run.SuiteID, err)
 	}
 
 	for _, modelDBID := range modelDBIDs {
 		if err := ctx.Err(); err != nil {
 			_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
+			task.fail(err.Error())
 			return err
 		}
-		e.evalModel(ctx, run, modelDBID, cases)
+		e.evalModel(ctx, run, modelDBID, cases, task)
 	}
 
 	if err := e.db.FinishEvalRun(runID, "done", time.Now().UTC()); err != nil {
+		task.fail(err.Error())
 		return err
 	}
+	task.succeed()
 	if e.AfterRun != nil {
 		// Detach cancellation so a graceful shutdown cannot abort the alert
 		// send mid-flight (mirrors the prober's WithoutCancel rounds). A
@@ -109,39 +118,45 @@ func (e *Evaluator) resolveJudgeModel(run *store.EvalRun) *store.EvalRun {
 
 // evalModel runs all cases against one model. Any setup failure (model gone,
 // hub gone, no enabled endpoint) is recorded as failed results for every
-// case so the model x case grid stays complete.
-func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case) {
+// case so the model x case grid stays complete, and logged to the task.
+func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask) {
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, "", cases, "model not found")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model db_id=%d skipped: model not found", modelDBID))
 		return
 	}
 
 	hub, err := e.db.GetHub(model.HubID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "hub not found")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: hub not found", model.ModelID))
 		return
 	}
 
 	endpoints, err := e.db.ListEndpointsByModelID(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "failed to load endpoints")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: failed to load endpoints", model.ModelID))
 		return
 	}
 
 	protocol, ok := selectProtocol(endpoints)
 	if !ok {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "no enabled endpoint for this model")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: no enabled endpoint for this model", model.ModelID))
 		return
 	}
 
 	for _, c := range cases {
-		e.evalCase(ctx, run, hub, protocol, model, c)
+		e.evalCase(ctx, run, hub, protocol, model, c, task)
 	}
 }
 
-// evalCase executes one case against one model and stores the result.
-func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) {
+// evalCase executes one case against one model, stores the result and logs
+// the outcome to the task: scored completions at info, answer/judge failures
+// at warn.
+func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask) {
 	result := store.EvalResult{
 		EvalRunID: run.ID,
 		ModelDBID: model.ID,
@@ -161,6 +176,7 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 		}
 		result.VerdictDetail = &detail
 		e.storeResult(result)
+		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
 		return
 	}
 
@@ -169,6 +185,15 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 	result.Score = score
 	result.VerdictDetail = &detail
 	e.storeResult(result)
+
+	switch {
+	case score != nil:
+		task.log(store.TaskLogInfo, fmt.Sprintf("case %d done: model=%s score=%.2f", c.ID, model.ModelID, *score))
+	case strings.HasPrefix(detail, "judge"):
+		task.log(store.TaskLogWarn, fmt.Sprintf("case %d judge failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+	default:
+		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+	}
 }
 
 // verdict scores an answer according to the case's verdict type.

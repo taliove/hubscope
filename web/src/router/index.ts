@@ -24,6 +24,12 @@ const router = createRouter({
       // anonymous visitors to /login.
     },
     {
+      path: '/tasks',
+      name: 'task-center',
+      component: () => import('@/views/TaskCenterView.vue'),
+      // Task reads are session-gated monitoring data, like eval runs.
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue'),

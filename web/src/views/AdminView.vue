@@ -4,6 +4,7 @@
       <h1>HubScope</h1>
       <span class="subtitle">管理视图</span>
       <router-link to="/" class="nav-link">状态总览</router-link>
+      <router-link to="/tasks" class="nav-link logout-button">任务中心</router-link>
       <el-button class="logout-button" size="small" @click="onLogout">退出登录</el-button>
     </header>
 

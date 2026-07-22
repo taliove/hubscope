@@ -98,3 +98,11 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - 裁判模型来源:settings.judge_model(默认 claude-opus-4-8),evaluator 每次 run 开始时读取。
 - 每周定时:每周日凌晨(本地时区)对所有 active 且 capability=chat 的模型 × 全部 enabled suite 各跑一次(trigger="scheduled")。
 - 分数大跌告警:某 (suite × model) 本次聚合分较上次 done run 下跌超过 0.2 且 settings.score_drop_alert_enabled=true → 经飞书通道发 score_drop 告警并落 alert_events(kind="score_drop", endpoint_id=null)。
+
+## Task Center(ticket 18)
+
+- `GET /api/tasks?type=&status=&page=1&page_size=20` → `{"data": {"items": [Task], "total": number, "page": number, "page_size": number}}`(倒序,page_size 上限 100;type/status 精确过滤,可空)。读遵循监控数据分级:需登录。
+- `GET /api/tasks/{id}` → `{"data": TaskDetail}`;`TaskDetail = Task + {"logs": [TaskLog]}`(按时间正序)。未知 id → 404,非法 id → 400。
+- `Task = {"id": number, "type": "eval_run", "source": "manual"|"scheduled", "status": "pending"|"running"|"success"|"failed", "entity_type": "eval_run", "entity_id": number, "started_at": string|null, "finished_at": string|null, "duration_ms": number|null(终态才有), "created_at": string}`
+- `TaskLog = {"id": number, "at": string, "level": "info"|"warn"|"error", "message": string}`
+- 每次 Eval Run(手动 POST /api/evals 或每周定时)执行时注册一个 Task:开始 → running,逐 Case 写进度日志(完成带分数、裁判失败 warn),Run 终态映射 success/failed;进程重启时遗留 pending/running 的 Task 启动即置 failed。探测轮次不是 Task。

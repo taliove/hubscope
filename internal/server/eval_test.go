@@ -30,6 +30,9 @@ type evalStubHub struct {
 	bad map[string]bool
 	// broken marks models whose calls fail with HTTP 503.
 	broken map[string]bool
+	// gate, when non-nil, blocks every response until released; tests use it
+	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
+	gate chan struct{}
 }
 
 func newEvalStubHub() *evalStubHub {
@@ -72,7 +75,13 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 
 	h.mu.Lock()
 	broken := h.broken[req.Model]
+	gate := h.gate
 	h.mu.Unlock()
+	// A closed gate holds the response until the test releases it; the call
+	// above is already recorded, so waiters observe the call while blocked.
+	if gate != nil {
+		<-gate
+	}
 	if broken {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -184,6 +193,24 @@ func (h *evalStubHub) markBad(model string, bad bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.bad[model] = bad
+}
+
+// blockCalls makes every subsequent completion response wait until release;
+// calls in flight keep being recorded so tests can observe them while blocked.
+func (h *evalStubHub) blockCalls() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.gate = make(chan struct{})
+}
+
+// release unblocks all gated responses and reopens normal answering.
+func (h *evalStubHub) release() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.gate != nil {
+		close(h.gate)
+		h.gate = nil
+	}
 }
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.

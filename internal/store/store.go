@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -207,6 +208,31 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_alert_events_endpoint ON alert_events(endpoint_id, created_at DESC);
+
+		CREATE TABLE IF NOT EXISTS tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			source TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			entity_type TEXT NOT NULL,
+			entity_id INTEGER NOT NULL,
+			started_at TEXT NULL,
+			finished_at TEXT NULL,
+			created_at TEXT NOT NULL
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_tasks_type_status ON tasks(type, status, id DESC);
+
+		CREATE TABLE IF NOT EXISTS task_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id INTEGER NOT NULL,
+			at TEXT NOT NULL,
+			level TEXT NOT NULL,
+			message TEXT NOT NULL,
+			FOREIGN KEY (task_id) REFERENCES tasks(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id, id);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {
@@ -235,6 +261,15 @@ func (db *DB) migrate() error {
 	// phantom running sync.
 	if _, err := db.conn.Exec(
 		"UPDATE hubs SET sync_status = 'failed', last_sync_error = 'sync interrupted by restart' WHERE sync_status = 'syncing'",
+	); err != nil {
+		return err
+	}
+
+	// Tasks left pending/running mean the process died mid-execution; close
+	// them out as failed so the task center shows no phantom running jobs.
+	if _, err := db.conn.Exec(
+		"UPDATE tasks SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
+		time.Now().UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		return err
 	}
