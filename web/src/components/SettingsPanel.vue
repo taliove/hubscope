@@ -34,7 +34,7 @@
       </el-form-item>
       <el-form-item label="评估集权重">
         <div class="weights-block">
-          <div v-for="suite in suites" :key="suite.key" class="weight-item">
+          <div v-for="suite in enabledSuites" :key="suite.key" class="weight-item">
             <span class="weight-label" :title="suite.key">{{ suite.name }}</span>
             <el-input-number
               v-model="form.suite_weights[suite.key]"
@@ -74,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   getSettings,
@@ -116,11 +116,15 @@ function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning'
   return 'warning'
 }
 
-// Fill every known suite key into the weights map so the inputs stay
+// Only suites in the evaluation rotation take a weight input: retired
+// suites no longer join campaigns, so weighting them would be misleading.
+const enabledSuites = computed(() => suites.value.filter(s => s.enabled))
+
+// Fill every enabled suite key into the weights map so the inputs stay
 // controlled; suites without a configured weight default to 1 (equal).
 function fillSuiteWeights(weights: Record<string, number>) {
   const filled: Record<string, number> = {}
-  for (const suite of suites.value) {
+  for (const suite of enabledSuites.value) {
     const w = weights[suite.key]
     filled[suite.key] = w !== undefined && w > 0 ? w : 1
   }

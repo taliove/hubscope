@@ -192,11 +192,18 @@ export interface EvalCase {
   enabled: boolean
 }
 
+// Capability dimension of question-bank v3 (ADR 0010); '' marks pre-v3
+// legacy suites (retired but still listed for history).
+export type Capability = 'instruction' | 'reasoning' | 'coding' | 'language' | 'knowledge' | ''
+
 export interface Suite {
   id: number
   key: string
   name: string
   version: number // question-bank version, bumps on every case mutation
+  capability: Capability
+  nadir: number // normalization constant (ADR 0009); 0 = legacy raw-mean caliber
+  enabled: boolean // false = retired: excluded from sweeps/weekly batches, still listed
   cases: EvalCase[]
 }
 
@@ -208,12 +215,13 @@ export interface EvalRun {
   campaign_id: number // the evaluation batch this run belongs to
   suite_id: number
   suite_version: number // suite version this run scored against
+  nadir: number // run-level snapshot of the suite's normalization constant (ADR 0009)
   trigger: EvalTrigger
   judge_model: string
   status: EvalRunStatus
   started_at: string // RFC3339
   finished_at: string | null
-  score: number | null // aggregate over non-null result scores
+  score: number | null // nadir-normalized (ADR 0009) mean of non-null result scores, 0~1 scale
 }
 
 // Eval Campaign types (ticket 29): one assessment batch grouping one run per
@@ -242,12 +250,28 @@ export interface CampaignDetail extends Campaign {
 }
 
 // Campaign report types (ticket 31): the leaderboard over a campaign's done
-// runs. All scores are on the 0-100 scale (ADR 0005); null means unscored.
+// runs. All scores are on the 0-100 scale, nadir-normalized per suite (ADR
+// 0009); null means unscored.
 export interface ReportSuite {
   id: number
   key: string
   name: string
   version: number // question-bank version the campaign scored against
+}
+
+// Progress cell of one model x suite inside a campaign report (ticket 52):
+// the run's status from the model's perspective plus the judged-case
+// coverage (one result row per case; samples are averaged server-side).
+// samples is the number of judged answer attempts behind the scored cases —
+// with the coverage it forms the score's confidence marker (ticket 51).
+export type ReportCellStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface ReportCell {
+  suite_key: string
+  status: ReportCellStatus
+  judged_cases: number
+  expected_cases: number
+  samples: number
 }
 
 export interface ReportRow {
@@ -257,12 +281,18 @@ export interface ReportRow {
   total_score: number | null // weighted total, null when nothing scored
   total_delta: number | null // total vs the baseline campaign, null when not comparable
   suite_scores: Record<string, number | null> // per suite key
+  cells: ReportCell[] // per-suite progress detail, one per campaign suite
 }
+
+// View switch of the unfinished-batch board (ticket 52): the progress grid
+// is the default; "scores" is the live half-scored leaderboard.
+export type EvalBoardView = 'grid' | 'scores'
 
 // The previous done campaign a report's deltas compare against (ticket 45).
 // comparable=false means the caliber broke between batches; reason is
-// "suite_changed" (question-bank version bump, ADR 0007) or "suite_missing"
-// (the baseline never covered a suite this batch covers).
+// "suite_changed" (question-bank version bump, ADR 0007), "profile_changed"
+// (verdict-profile caliber break, ADR 0008) or "suite_missing" (the baseline
+// never covered a suite this batch covers).
 export interface ReportBaseline {
   campaign_id: number
   comparable: boolean
@@ -288,9 +318,11 @@ export interface TrendModel {
 
 export interface TrendPoint {
   campaign_id: number
-  score: number | null // 0-100, null when the batch judged nothing
+  score: number | null // 0-100 nadir-normalized (ADR 0009), null when the batch judged nothing
   suite_version: number
   version_changed: boolean // question bank changed vs the previous point
+  verdict_profile: string // scoring caliber of the point (ADR 0008)
+  profile_changed: boolean // scoring caliber changed vs the previous point
 }
 
 export interface TrendSuite {

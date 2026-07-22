@@ -34,7 +34,8 @@
 
     <template v-else-if="report">
       <!-- Running batches show progress only: half-baked rankings are never
-           displayed (spec 0002 review condition). -->
+           displayed. Ticket 54 unifies the live progress state on
+           EvalProgressGrid; this page has not followed yet. -->
       <el-card v-if="report.status === 'running' || report.status === 'pending'" shadow="never" class="state-block">
         <el-progress
           :percentage="progressPercent"

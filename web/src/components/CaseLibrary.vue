@@ -1,6 +1,16 @@
 <template>
   <el-card shadow="never" class="library-card">
-    <div class="card-title">题库</div>
+    <div class="card-header">
+      <div class="card-title">题库</div>
+      <el-select v-model="capabilityFilter" class="capability-filter" size="small" placeholder="按能力点筛选">
+        <el-option
+          v-for="opt in capabilityOptions"
+          :key="opt.value"
+          :label="opt.label"
+          :value="opt.value"
+        />
+      </el-select>
+    </div>
 
     <el-alert
       v-if="error"
@@ -13,12 +23,17 @@
     </el-alert>
 
     <div v-loading="loading">
-      <el-collapse v-if="suites.length > 0">
-        <el-collapse-item v-for="suite in suites" :key="suite.id" :name="suite.id">
+      <el-collapse v-if="filteredSuites.length > 0">
+        <el-collapse-item v-for="suite in filteredSuites" :key="suite.id" :name="suite.id">
           <template #title>
             <span class="suite-title" :title="`${suite.name}(${suite.key},${suite.cases.length} 题,v${suite.version})`">
               {{ suite.name }}({{ suite.key }},{{ suite.cases.length }} 题,v{{ suite.version }})
             </span>
+            <el-tag size="small" effect="plain" class="suite-tag">{{ capabilityLabel(suite.capability) }}</el-tag>
+            <el-tag v-if="suite.nadir > 0" size="small" effect="plain" class="suite-tag">
+              nadir {{ suite.nadir }}
+            </el-tag>
+            <el-tag v-if="!suite.enabled" size="small" type="info" class="suite-tag">已停用</el-tag>
           </template>
           <div class="suite-actions">
             <el-button size="small" type="primary" plain @click="openCreate(suite)">新增 Case</el-button>
@@ -63,7 +78,10 @@
           </el-table>
         </el-collapse-item>
       </el-collapse>
-      <el-empty v-else-if="!loading && !error" description="暂无评估集" />
+      <el-empty
+        v-else-if="!loading && !error"
+        :description="capabilityFilter === 'all' ? '暂无评估集' : '该能力点下暂无评估集'"
+      />
     </div>
 
     <!-- Create/edit dialog: fields follow the verdict type. -->
@@ -121,16 +139,51 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { createCase, listSuites, patchCase } from '@/api/evals'
-import type { Difficulty, EvalCase, Suite, VerdictType } from '@/api/types'
+import type { Capability, Difficulty, EvalCase, Suite, VerdictType } from '@/api/types'
 
-// Case library (admin console): browses suites and creates/edits cases. The
-// /admin route already gates the session, so write forms are always shown;
-// the server still re-validates. Cases are immutable server-side: a content
-// edit returns a new case id and retires the old row, which stays visible as
-// disabled after the refresh. The panel loads its own suite data.
+// Case library (admin console): browses suites by capability (question-bank
+// v3, ADR 0010) and creates/edits cases. The /admin route already gates the
+// session, so write forms are always shown; the server still re-validates.
+// Cases are immutable server-side: a content edit returns a new case id and
+// retires the old row, which stays visible as disabled after the refresh.
+// Retired suites (enabled=false) stay listed — history must keep rendering
+// them — but carry the 已停用 badge. The panel loads its own suite data.
 const suites = ref<Suite[]>([])
 const loading = ref(false)
 const error = ref('')
+
+// Capability filter: 'all' lists every suite (retired legacy included);
+// 'legacy' narrows to the pre-v3 suites (capability '').
+const capabilityFilter = ref('all')
+
+const CAPABILITY_LABELS: Record<Capability, string> = {
+  instruction: '指令遵循',
+  reasoning: '推理',
+  coding: '代码',
+  language: '语言理解与生成',
+  knowledge: '知识问答',
+  '': '旧版套件',
+}
+
+const capabilityOptions = computed(() => [
+  { value: 'all', label: '全部能力点' },
+  { value: 'instruction', label: CAPABILITY_LABELS.instruction },
+  { value: 'reasoning', label: CAPABILITY_LABELS.reasoning },
+  { value: 'coding', label: CAPABILITY_LABELS.coding },
+  { value: 'language', label: CAPABILITY_LABELS.language },
+  { value: 'knowledge', label: CAPABILITY_LABELS.knowledge },
+  { value: 'legacy', label: CAPABILITY_LABELS[''] },
+])
+
+const filteredSuites = computed(() => {
+  if (capabilityFilter.value === 'all') return suites.value
+  if (capabilityFilter.value === 'legacy') return suites.value.filter(s => s.capability === '')
+  return suites.value.filter(s => s.capability === capabilityFilter.value)
+})
+
+function capabilityLabel(c: Capability): string {
+  return CAPABILITY_LABELS[c] ?? c
+}
 
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -291,11 +344,19 @@ async function onSave() {
   margin-bottom: 16px;
   --el-card-padding: 12px;
 }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
 .card-title {
   font-size: var(--hs-text-md);
   font-weight: 600;
   color: var(--hs-text-primary);
-  margin-bottom: 8px;
+}
+.capability-filter {
+  width: 160px;
 }
 .load-alert {
   margin-bottom: 12px;
@@ -304,10 +365,14 @@ async function onSave() {
   font-size: var(--hs-text-sm);
   font-weight: 600;
   color: var(--hs-text-primary);
-  max-width: 720px;
+  max-width: 560px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.suite-tag {
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 .suite-actions {
   margin-bottom: 8px;
