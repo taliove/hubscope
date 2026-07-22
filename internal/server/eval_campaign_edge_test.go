@@ -54,28 +54,48 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 		}
 	})
 
-	// Wait until the campaign exists and its first suite's run is done. A
-	// tight poll keeps the gap to the second suite small; the gate then
-	// freezes that suite mid-run.
+	// Step the campaign one stub call at a time: the gate is armed before
+	// the campaign starts, and each release is immediately followed by
+	// re-arming, so at most a call or two slips through per step. Polling
+	// for "first suite done" with the gate open would race the whole
+	// campaign settling inside one poll window (this made the test flaky).
+	stub.blockCalls()
+	stepUntil := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(deadline) {
+			if cond() {
+				return
+			}
+			stub.release()
+			stub.blockCalls()
+		}
+		t.Fatalf("timed out stepping the campaign: %s", what)
+	}
+
 	var campaignID int64
-	waitFor(t, "first suite of the campaign to complete", func() bool {
+	stepUntil("campaign created", func() bool {
 		campaigns := listCampaigns(t, ts.URL)
 		if len(campaigns) != 1 {
-			return false
-		}
-		progress := campaignProgress(t, campaigns[0])
-		if int(progress["done"].(float64)) < 1 {
 			return false
 		}
 		campaignID = int64(campaigns[0]["id"].(float64))
 		return true
 	})
-
-	stub.blockCalls()
-	stub.resetCalls()
-	waitFor(t, "second suite's run reaching the stub", func() bool {
-		return stub.sawModel("smart-model")
+	stepUntil("first suite done", func() bool {
+		campaign := getCampaign(t, ts.URL, campaignID)
+		progress := campaignProgress(t, campaign)
+		return int(progress["done"].(float64)) >= 1
 	})
+	// The first suite being done does not mean the second run exists yet:
+	// cancelling in that gap would end the campaign as done with a single
+	// run. Step until the second run is created — the armed gate keeps it
+	// frozen — then cancel: its context check fails the run deterministically.
+	stepUntil("second suite run created", func() bool {
+		campaign := getCampaign(t, ts.URL, campaignID)
+		return len(campaignRuns(t, campaign)) == 2
+	})
+
 	cancel()
 	stub.release()
 
