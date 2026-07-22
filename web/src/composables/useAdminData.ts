@@ -13,6 +13,13 @@ export interface EndpointRow {
   modelFamily: string // vendor series, "other" when unmatched
 }
 
+// A model with zero endpoints: invisible in the endpoint table, managed via
+// the endpointless-model section (re-trial / delete).
+export interface EndpointlessModelRow {
+  model: Model
+  hubName: string
+}
+
 export function useAdminData() {
   const hubs: Ref<Hub[]> = ref([])
   const models: Ref<Model[]> = ref([])
@@ -34,6 +41,19 @@ export function useAdminData() {
           modelFamily: model.family,
         })
       }
+    }
+    return rows
+  })
+
+  // Models with no endpoint at all (all endpoints deleted, or every protocol
+  // trial failed at registration). They produce no endpoint row, so they are
+  // surfaced separately to stay visible and manageable.
+  const endpointlessRows = computed<EndpointlessModelRow[]>(() => {
+    const hubMap = new Map(hubs.value.map(h => [h.id, h.name]))
+    const rows: EndpointlessModelRow[] = []
+    for (const model of models.value) {
+      if (model.endpoints.length > 0) continue
+      rows.push({ model, hubName: hubMap.get(model.hub_id) ?? '(unknown)' })
     }
     return rows
   })
@@ -60,5 +80,5 @@ export function useAdminData() {
     await Promise.all([reloadHubs(), reloadModels()])
   }
 
-  return { hubs, models, endpointRows, loading, reloadHubs, reloadModels, reloadAll }
+  return { hubs, models, endpointRows, endpointlessRows, loading, reloadHubs, reloadModels, reloadAll }
 }

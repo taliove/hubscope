@@ -33,6 +33,15 @@ export interface Model {
   endpoints: Endpoint[]
 }
 
+// Result of a manual protocol re-trial (POST /api/models/{id}/trial):
+// one enabled endpoint per missing protocol that answered; failed trials
+// create nothing and are explained in failures ("" when nothing failed).
+export interface ModelTrialResult {
+  model: Model
+  created_protocols: Protocol[]
+  failures: string
+}
+
 // A model-classification rule: models whose ID contains keyword
 // (case-insensitive) get category on the rule's dimension. Lower priority
 // values match first.

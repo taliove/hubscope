@@ -56,13 +56,81 @@
             size="small"
             plain
             :loading="deletingModelId === row.modelDbId"
-            @click="onDeleteModel(row)"
+            @click="onDeleteModel(row.modelDbId, row.modelName)"
           >
             删模型
           </el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- Models with zero endpoints produce no row above; this section keeps
+         them visible and manageable (re-trial / delete). -->
+    <template v-if="endpointlessRows.length > 0">
+      <el-divider class="endpointless-divider" />
+      <div class="endpointless-header">
+        <span class="endpointless-title">无端点模型</span>
+        <span class="endpointless-hint">
+          以下模型没有任何端点:可重新触发协议试探补建端点,或删除(仅手动添加的模型可删)。
+        </span>
+      </div>
+      <el-table :data="endpointlessRows" v-loading="loading" size="small">
+        <el-table-column label="Hub" prop="hubName" width="140" show-overflow-tooltip />
+        <el-table-column label="模型 ID" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.model.model_id }}</template>
+        </el-table-column>
+        <el-table-column label="厂商" width="110">
+          <template #default="{ row }">
+            <el-tag :type="row.model.family === 'other' ? 'info' : 'primary'" size="small" plain>
+              {{ row.model.family }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="110">
+          <template #default="{ row }">
+            <el-tag :type="row.model.origin === 'manual' ? 'primary' : 'info'" size="small">
+              {{ row.model.origin === 'manual' ? '手动添加' : '自动发现' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.model.status === 'active' ? 'success' : 'info'" size="small">
+              {{ row.model.status === 'active' ? '活跃' : '已退役' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              type="primary"
+              size="small"
+              :loading="trialingId === row.model.id"
+              @click="onTrial(row)"
+            >
+              重新试探
+            </el-button>
+            <el-button
+              v-if="row.model.origin === 'manual'"
+              type="danger"
+              size="small"
+              plain
+              :loading="deletingModelId === row.model.id"
+              @click="onDeleteModel(row.model.id, row.model.model_id)"
+            >
+              删模型
+            </el-button>
+            <el-tooltip
+              v-else
+              content="自动发现的模型不可删除;从 Hub 消失后下次同步自动退役"
+              placement="top"
+            >
+              <span class="undeletable-hint">不可删除</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+      </el-table>
+    </template>
 
     <!-- Probe run result: shows the two records (non-streaming + streaming). -->
     <el-dialog v-model="probeVisible" title="本轮探测结果" width="920px">
@@ -81,18 +149,19 @@ import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
 import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
-import { deleteModel } from '@/api/models'
+import { deleteModel, trialModel } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
-import type { EndpointRow } from '@/composables/useAdminData'
+import type { EndpointRow, EndpointlessModelRow } from '@/composables/useAdminData'
 import ProbeRecordTable from './ProbeRecordTable.vue'
 
-// Props: flattened endpoint rows produced by the parent view.
-defineProps<{ rows: EndpointRow[]; loading: boolean }>()
+// Props: flattened endpoint rows plus endpointless-model rows from the parent view.
+defineProps<{ rows: EndpointRow[]; endpointlessRows: EndpointlessModelRow[]; loading: boolean }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const probingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingModelId = ref<number | null>(null)
+const trialingId = ref<number | null>(null)
 const pruning = ref(false)
 const probeVisible = ref(false)
 const probeResults = ref<ProbeRecord[]>([])
@@ -180,25 +249,46 @@ async function onDeleteEndpoint(row: EndpointRow) {
   }
 }
 
-async function onDeleteModel(row: EndpointRow) {
+async function onDeleteModel(modelDbId: number, modelName: string) {
   try {
     await ElMessageBox.confirm(
-      `确认删除模型「${row.modelName}」?其全部端点、探测历史与告警记录将一并删除。若该模型仍在此 Hub 的模型列表中,下次同步会以"自动发现"形式重新登记。`,
+      `确认删除模型「${modelName}」?其全部端点、探测历史与告警记录将一并删除。若该模型仍在此 Hub 的模型列表中,下次同步会以"自动发现"形式重新登记。`,
       '删除模型',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
   } catch {
     return // user cancelled
   }
-  deletingModelId.value = row.modelDbId
+  deletingModelId.value = modelDbId
   try {
-    await deleteModel(row.modelDbId)
+    await deleteModel(modelDbId)
     ElMessage.success('模型已删除')
     emit('changed')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
     deletingModelId.value = null
+  }
+}
+
+// Re-run the protocol trial for an endpointless model: answering protocols
+// get a fresh enabled endpoint, failed trials create nothing.
+async function onTrial(row: EndpointlessModelRow) {
+  trialingId.value = row.model.id
+  try {
+    const result = await trialModel(row.model.id)
+    if (result.created_protocols.length > 0) {
+      ElMessage.success(
+        `协议试探通过,已为「${row.model.model_id}」补建端点:${result.created_protocols.join('、')}`
+      )
+      emit('changed')
+    } else {
+      ElMessage.warning(`协议试探未通过,未创建端点。原因:${result.failures || '未知'}`)
+    }
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    trialingId.value = null
   }
 }
 </script>
@@ -212,5 +302,28 @@ async function onDeleteModel(row: EndpointRow) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.endpointless-divider {
+  margin: 16px 0 12px;
+}
+.endpointless-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.endpointless-title {
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+}
+.endpointless-hint {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+}
+.undeletable-hint {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-placeholder);
+  margin-left: 8px;
 }
 </style>

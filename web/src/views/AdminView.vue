@@ -6,7 +6,7 @@
           <div class="tab-stack">
             <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" @sync-settled="onSyncSettled" />
             <ModelAdder :hubs="hubs" @added="reloadModels" />
-            <EndpointTable :rows="endpointRows" :loading="loading" @changed="reloadModels" />
+            <EndpointTable :rows="endpointRows" :endpointless-rows="endpointlessRows" :loading="loading" @changed="reloadModels" />
           </div>
         </el-tab-pane>
         <el-tab-pane label="分类规则" name="rules">
@@ -52,7 +52,7 @@ import CaseLibrary from '@/components/CaseLibrary.vue'
 import AuditLogs from '@/components/AuditLogs.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 
-const { hubs, endpointRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
+const { hubs, endpointRows, endpointlessRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
 
 // Default landing tab; el-tabs keeps every pane mounted (no lazy rendering),
 // so HubManager's internal sync polling keeps running on inactive tabs.

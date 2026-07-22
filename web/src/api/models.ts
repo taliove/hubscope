@@ -1,6 +1,6 @@
 // Model and Endpoint management API calls.
 import { http } from './client'
-import type { Model } from './types'
+import type { Model, ModelTrialResult } from './types'
 
 export interface CreateModelPayload {
   hub_id: number
@@ -19,4 +19,11 @@ export async function createModel(payload: CreateModelPayload): Promise<Model> {
 // models are rejected by the backend with 409 (disable them instead).
 export async function deleteModel(modelId: number): Promise<void> {
   await http.del<void>(`/models/${modelId}`)
+}
+
+// Re-run the protocol trial for a model: an enabled endpoint is created per
+// missing protocol that answers; failed trials create nothing. Mainly used
+// to backfill endpoints for endpointless models.
+export async function trialModel(modelId: number): Promise<ModelTrialResult> {
+  return http.post<ModelTrialResult>(`/models/${modelId}/trial`)
 }
