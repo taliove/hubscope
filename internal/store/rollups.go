@@ -107,8 +107,8 @@ type bucketPair struct {
 // rollup watermark to the cutoff. Only probes at or after the previous
 // watermark are aggregated, so a bucket is never recomputed from raw rows
 // that retention may have partially deleted. Upserts make the operation
-// idempotent.
-func (db *DB) RollupProbesBefore(cutoff time.Time) error {
+// idempotent. It returns how many raw probe rows were aggregated.
+func (db *DB) RollupProbesBefore(cutoff time.Time) (int, error) {
 	cutoff = cutoff.UTC().Truncate(time.Hour)
 
 	rows, err := db.conn.Query(`
@@ -118,22 +118,24 @@ func (db *DB) RollupProbesBefore(cutoff time.Time) error {
 		WHERE p.created_at < ? AND p.created_at >= COALESCE(w.rolled_up_to, '')
 	`, cutoff.Format(time.RFC3339))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rows.Close()
 
+	aggregated := 0
 	groups := make(map[bucketKey]*bucketPair)
 	for rows.Next() {
 		var endpointID, streaming, ok, latencyMs int
 		var ttftMs *int
 		var createdAt string
 		if err := rows.Scan(&endpointID, &streaming, &ok, &latencyMs, &ttftMs, &createdAt); err != nil {
-			return err
+			return 0, err
 		}
 		ts, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
-			return err
+			return 0, err
 		}
+		aggregated++
 		key := bucketKey{endpointID: int64(endpointID), start: ts.Truncate(time.Hour)}
 		pair, exists := groups[key]
 		if !exists {
@@ -147,12 +149,12 @@ func (db *DB) RollupProbesBefore(cutoff time.Time) error {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return 0, err
 	}
 
 	tx, err := db.conn.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 
@@ -175,18 +177,21 @@ func (db *DB) RollupProbesBefore(cutoff time.Time) error {
 					(endpoint_id, streaming, bucket_start, total, failures, p50_ms, p95_ms, avg_ttft_ms)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			`, key.endpointID, m.mode, key.start.Format(time.RFC3339), b.Total, b.Failures, b.P50Ms, b.P95Ms, b.AvgTTFTMs); err != nil {
-				return err
+				return 0, err
 			}
 		}
 		if _, err := tx.Exec(`
 			INSERT OR REPLACE INTO rollup_watermarks (endpoint_id, rolled_up_to)
 			VALUES (?, ?)
 		`, key.endpointID, cutoff.Format(time.RFC3339)); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return aggregated, nil
 }
 
 // combineAggs merges two accumulators into the combined-mode aggregate.

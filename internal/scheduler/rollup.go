@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -120,7 +121,8 @@ func (w *RollupWorker) Run(ctx context.Context) {
 
 // tick runs rollup when due, then cleanup when due. Rollup always precedes
 // cleanup so retention never deletes raw probes that have not yet been
-// aggregated into rollups.
+// aggregated into rollups. Both jobs register a task in the task center with
+// the rows they processed; tracking failures never break the job itself.
 func (w *RollupWorker) tick() {
 	now := w.clock.Now()
 
@@ -136,16 +138,46 @@ func (w *RollupWorker) tick() {
 	w.mu.Unlock()
 
 	if dueRollup {
-		if err := w.db.RollupProbesBefore(now.Add(-w.rollupLag)); err != nil {
+		cutoff := now.Add(-w.rollupLag)
+		tracker := w.db.BeginTask(store.TaskTypeRollup, store.TaskSourceScheduled, "", 0,
+			fmt.Sprintf("rollup started: cutoff=%s", cutoff.UTC().Format(time.RFC3339)))
+		aggregated, err := w.db.RollupProbesBefore(cutoff)
+		if err != nil {
 			slog.Error("rollup worker: rollup probes", "error", err)
+			tracker.Fail("rollup failed: " + err.Error())
+		} else {
+			tracker.Succeed(fmt.Sprintf("rollup finished: probes_aggregated=%d", aggregated))
 		}
 	}
 	if dueCleanup {
-		if _, err := w.db.DeleteProbesBefore(now.Add(-w.retention)); err != nil {
+		probesCutoff := now.Add(-w.retention)
+		auditCutoff := now.Add(-w.auditRetention)
+		tracker := w.db.BeginTask(store.TaskTypeRetentionCleanup, store.TaskSourceScheduled, "", 0,
+			fmt.Sprintf("retention cleanup started: probes_before=%s audit_before=%s",
+				probesCutoff.UTC().Format(time.RFC3339), auditCutoff.UTC().Format(time.RFC3339)))
+
+		failed := false
+		probesDeleted, err := w.db.DeleteProbesBefore(probesCutoff)
+		if err != nil {
 			slog.Error("rollup worker: cleanup probes", "error", err)
+			tracker.Log(store.TaskLogError, "delete raw probes failed: "+err.Error())
+			failed = true
+		} else {
+			tracker.Log(store.TaskLogInfo, fmt.Sprintf("deleted raw probes: probes_deleted=%d", probesDeleted))
 		}
-		if _, err := w.db.PruneAuditLogsBefore(now.Add(-w.auditRetention)); err != nil {
+		auditPruned, err := w.db.PruneAuditLogsBefore(auditCutoff)
+		if err != nil {
 			slog.Error("rollup worker: prune audit logs", "error", err)
+			tracker.Log(store.TaskLogError, "prune audit logs failed: "+err.Error())
+			failed = true
+		} else {
+			tracker.Log(store.TaskLogInfo, fmt.Sprintf("pruned audit logs: audit_logs_pruned=%d", auditPruned))
+		}
+
+		if failed {
+			tracker.Fail("retention cleanup finished with errors")
+		} else {
+			tracker.Succeed(fmt.Sprintf("retention cleanup finished: probes_deleted=%d audit_logs_pruned=%d", probesDeleted, auditPruned))
 		}
 	}
 }

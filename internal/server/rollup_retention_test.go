@@ -42,6 +42,19 @@ func startRollupWorker(t *testing.T, db *store.DB, clock *scheduler.FakeClock) {
 	})
 }
 
+// parkRollupWorker waits until the worker has finished its current tick and
+// is parked on its poll timer. Advancing the fake clock while the worker is
+// mid-tick fires no timer (none is armed yet) and the advance is lost: the
+// worker then re-arms against the already-advanced clock and never wakes
+// again. FakeClock.TimerCount is the documented synchronization hook for
+// this.
+func parkRollupWorker(t *testing.T, clock *scheduler.FakeClock) {
+	t.Helper()
+	waitFor(t, "rollup worker parked on its timer", func() bool {
+		return clock.TimerCount() > 0
+	})
+}
+
 // rawProbeCount returns how many raw probe records the API lists for an
 // endpoint (the raw list only reflects un-deleted rows).
 func rawProbeCount(t *testing.T, baseURL string, endpointID int64) int {
@@ -73,7 +86,11 @@ func TestRollupAndRetention(t *testing.T) {
 
 	start := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
 	clock := scheduler.NewFakeClock(start)
-	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(clock.Now)))
+	// Rate limits are disabled: the wait loops below poll the read API far
+	// faster than the default read tier allows. Limit behavior is covered by
+	// dedicated tests with tiny tiers.
+	ts := httptest.NewServer(server.New(db, testAdminPassword,
+		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{})))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -117,6 +134,7 @@ func TestRollupAndRetention(t *testing.T) {
 
 	// Cross a day boundary: the recent probe ages past the rollup lag and gets
 	// rolled up too. The watermark must keep series from double counting it.
+	parkRollupWorker(t, clock)
 	clock.Advance(25 * time.Hour) // now 2026-07-21 01:00
 	waitFor(t, "rollup of the recent probe", func() bool {
 		buckets := fetchSeries(t, ts.URL, ep, "hours=240&streaming=all")
@@ -138,6 +156,7 @@ func TestRollupAndRetention(t *testing.T) {
 
 	// Advance past the retention of the recent probe as well. All raw rows are
 	// gone, but the series must still return both buckets from rollups.
+	parkRollupWorker(t, clock)
 	clock.Advance(49 * time.Hour) // now 2026-07-23 02:00
 	waitFor(t, "retention cleanup of all raw probes", func() bool {
 		return rawProbeCount(t, ts.URL, ep) == 0

@@ -9,7 +9,10 @@ import (
 // flows through, plus the known task types, trigger sources and log levels.
 // Probe rounds are deliberately not tasks (too high-frequency).
 const (
-	TaskTypeEvalRun = "eval_run"
+	TaskTypeEvalRun          = "eval_run"
+	TaskTypeDiscoverySync    = "discovery_sync"
+	TaskTypeRollup           = "rollup"
+	TaskTypeRetentionCleanup = "retention_cleanup"
 
 	TaskSourceManual    = "manual"
 	TaskSourceScheduled = "scheduled"
@@ -20,6 +23,7 @@ const (
 	TaskStatusFailed  = "failed"
 
 	TaskEntityEvalRun = "eval_run"
+	TaskEntityHub     = "hub"
 
 	TaskLogInfo  = "info"
 	TaskLogWarn  = "warn"

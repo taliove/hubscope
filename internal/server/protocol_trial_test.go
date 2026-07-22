@@ -216,7 +216,7 @@ func TestPruneKeepsRolledUpSuccess(t *testing.T) {
 	old := time.Now().UTC().Add(-100 * 24 * time.Hour)
 	seedProbe(t, db, epID, true, 200, nil, old)
 	cutoff := time.Now().UTC().Add(-90 * 24 * time.Hour)
-	if err := db.RollupProbesBefore(cutoff); err != nil {
+	if _, err := db.RollupProbesBefore(cutoff); err != nil {
 		t.Fatalf("rollup: %v", err)
 	}
 	if _, err := db.DeleteProbesBefore(cutoff); err != nil {
