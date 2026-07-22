@@ -141,8 +141,18 @@ func (db *DB) migrate() error {
 
 		CREATE INDEX IF NOT EXISTS idx_cases_suite ON cases(suite_id);
 
+		CREATE TABLE IF NOT EXISTS campaigns (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			"trigger" TEXT NOT NULL,
+			status TEXT NOT NULL,
+			started_at TEXT,
+			finished_at TEXT,
+			created_at TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS eval_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			campaign_id INTEGER NOT NULL,
 			suite_id INTEGER NOT NULL,
 			suite_version INTEGER NOT NULL DEFAULT 1,
 			"trigger" TEXT NOT NULL,
@@ -150,6 +160,7 @@ func (db *DB) migrate() error {
 			status TEXT NOT NULL,
 			started_at TEXT NOT NULL,
 			finished_at TEXT,
+			FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
 			FOREIGN KEY (suite_id) REFERENCES suites(id)
 		);
 
@@ -272,6 +283,23 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("eval_runs", "suite_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
+	// Ticket 29: every run belongs to a campaign. The column arrives as
+	// NOT NULL DEFAULT 0 (SQLite cannot add a bare NOT NULL column); the
+	// backfill below wraps each pre-existing run in its own migration
+	// campaign, so 0 never survives as a dangling reference.
+	if err := db.ensureColumn("eval_runs", "campaign_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := db.backfillRunCampaigns(); err != nil {
+		return err
+	}
+	// The campaign index lives outside the schema block: on pre-campaign
+	// databases the column only exists after the ensureColumn above.
+	if _, err := db.conn.Exec(
+		"CREATE INDEX IF NOT EXISTS idx_eval_runs_campaign ON eval_runs(campaign_id)",
+	); err != nil {
+		return err
+	}
 
 	// A hub left 'syncing' means the process died mid-sync (the in-flight
 	// guard is in-memory only); mark it failed so the UI does not show a
@@ -287,6 +315,25 @@ func (db *DB) migrate() error {
 	if _, err := db.conn.Exec(
 		"UPDATE tasks SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
 		time.Now().UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		return err
+	}
+
+	// Eval runs left running mean the process died mid-run; close them out as
+	// failed so campaign progress never shows phantom running members. This
+	// precedes the campaigns cleanup so both views of the batch agree.
+	if _, err := db.conn.Exec(
+		"UPDATE eval_runs SET status = 'failed', finished_at = ? WHERE status = 'running'",
+		time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		return err
+	}
+
+	// Campaigns left pending/running mean the process died mid-batch; close
+	// them out as failed, mirroring the tasks cleanup above.
+	if _, err := db.conn.Exec(
+		"UPDATE campaigns SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
+		time.Now().UTC().Format(time.RFC3339),
 	); err != nil {
 		return err
 	}
@@ -330,4 +377,66 @@ func (db *DB) ensureColumn(table, column, decl string) error {
 
 	_, err = db.conn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, decl))
 	return err
+}
+
+// backfillRunCampaigns wraps every pre-campaign-era eval run (campaign_id 0)
+// in its own single-run migration campaign, so the NOT NULL campaign_id
+// invariant holds for historical data. The migration campaign inherits the
+// run's trigger, status and timestamps: a done run yields a done campaign.
+// Idempotent — every backfilled run leaves the campaign_id = 0 bucket.
+func (db *DB) backfillRunCampaigns() error {
+	rows, err := db.conn.Query(`
+		SELECT id, "trigger", status, started_at, finished_at
+		FROM eval_runs WHERE campaign_id = 0 ORDER BY id
+	`)
+	if err != nil {
+		return err
+	}
+	type orphanRun struct {
+		id         int64
+		trigger    string
+		status     string
+		startedAt  string
+		finishedAt sql.NullString
+	}
+	var orphans []orphanRun
+	for rows.Next() {
+		var o orphanRun
+		if err := rows.Scan(&o.id, &o.trigger, &o.status, &o.startedAt, &o.finishedAt); err != nil {
+			rows.Close()
+			return err
+		}
+		orphans = append(orphans, o)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if len(orphans) == 0 {
+		return nil
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, o := range orphans {
+		result, err := tx.Exec(`
+			INSERT INTO campaigns ("trigger", status, started_at, finished_at, created_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, o.trigger, o.status, o.startedAt, o.finishedAt, o.startedAt)
+		if err != nil {
+			return err
+		}
+		campaignID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec("UPDATE eval_runs SET campaign_id = ? WHERE id = ?", campaignID, o.id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

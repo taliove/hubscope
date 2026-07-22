@@ -190,6 +190,28 @@ func (db *DB) ListModels() ([]Model, error) {
 	return models, rows.Err()
 }
 
+// ListActiveChatModelIDs returns the database IDs of all active,
+// chat-capable models — the population a full evaluation sweep covers
+// (non_chat and retired models are excluded).
+func (db *DB) ListActiveChatModelIDs() ([]int64, error) {
+	rows, err := db.conn.Query(
+		"SELECT id FROM models WHERE status = 'active' AND capability = 'chat' ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ListEndpointsByModelID returns all endpoints for a model
 func (db *DB) ListEndpointsByModelID(modelID int64) ([]Endpoint, error) {
 	rows, err := db.conn.Query(`

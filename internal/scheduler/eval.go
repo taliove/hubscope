@@ -120,12 +120,13 @@ func (w *EvalWorker) tick(ctx context.Context) {
 	w.runBatch(ctx)
 }
 
-// runBatch executes one scheduled run per suite against every active
-// chat-capable model. Runs execute sequentially: the batch is weekly and
-// small, and serial execution keeps hub load predictable. A suite with a
-// failed run does not block the remaining suites.
+// runBatch executes the weekly batch as one campaign: one scheduled run per
+// suite against every active chat-capable model, all grouped under a single
+// campaign so "week N assessment" is an explicit entity. Runs execute
+// sequentially (the batch is weekly and small, and serial execution keeps
+// hub load predictable); a failed suite does not block the remaining ones.
 func (w *EvalWorker) runBatch(ctx context.Context) {
-	modelIDs, err := w.evalEligibleModels()
+	modelIDs, err := w.db.ListActiveChatModelIDs()
 	if err != nil {
 		slog.Error("eval worker: list models", "error", err)
 		return
@@ -147,33 +148,11 @@ func (w *EvalWorker) runBatch(ctx context.Context) {
 		return
 	}
 
-	for _, suite := range suites {
-		if ctx.Err() != nil {
-			return
-		}
-		run, err := w.db.CreateEvalRun(suite.ID, "scheduled", judgeModel)
-		if err != nil {
-			slog.Error("eval worker: create run for suite", "suite_id", suite.ID, "error", err)
-			continue
-		}
-		if err := w.evaluator.RunEval(ctx, run.ID, modelIDs); err != nil {
-			slog.Error("eval worker: run suite", "suite_id", suite.ID, "error", err)
-		}
-	}
-}
-
-// evalEligibleModels returns the database IDs of all active, chat-capable
-// models — the population the weekly batch evaluates.
-func (w *EvalWorker) evalEligibleModels() ([]int64, error) {
-	models, err := w.db.ListModels()
+	campaign, err := w.db.CreateCampaign("scheduled", w.clock.Now().UTC())
 	if err != nil {
-		return nil, err
+		slog.Error("eval worker: create campaign", "error", err)
+		return
 	}
-	var ids []int64
-	for _, m := range models {
-		if m.Status == "active" && m.Capability == "chat" {
-			ids = append(ids, m.ID)
-		}
-	}
-	return ids, nil
+
+	w.evaluator.RunCampaign(ctx, campaign.ID, "scheduled", suites, modelIDs, judgeModel)
 }

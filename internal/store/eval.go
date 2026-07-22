@@ -35,9 +35,11 @@ type Case struct {
 
 // EvalRun is one execution of a suite against a set of models. SuiteVersion
 // snapshots the suite's version at creation, so a run is always attributable
-// to the question-bank version it scored.
+// to the question-bank version it scored. CampaignID links the run to its
+// evaluation batch (Eval Campaign); every run belongs to exactly one.
 type EvalRun struct {
 	ID           int64
+	CampaignID   int64
 	SuiteID      int64
 	SuiteVersion int
 	Trigger      string
@@ -81,7 +83,7 @@ type EvalResult struct {
 
 // evalRunColumns is the canonical eval_runs column list. "trigger" is a
 // reserved SQLite keyword and must stay quoted.
-const evalRunColumns = `id, suite_id, suite_version, "trigger", judge_model, status, started_at, finished_at`
+const evalRunColumns = `id, campaign_id, suite_id, suite_version, "trigger", judge_model, status, started_at, finished_at`
 
 // caseColumns is the canonical cases column list.
 const caseColumns = `id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at`
@@ -105,7 +107,7 @@ func scanEvalRun(s rowScanner) (EvalRun, error) {
 	var r EvalRun
 	var startedAt string
 	var finishedAt sql.NullString
-	if err := s.Scan(&r.ID, &r.SuiteID, &r.SuiteVersion, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
+	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
 		return EvalRun{}, err
 	}
 	r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
@@ -303,14 +305,14 @@ func (db *DB) SetCaseEnabled(id int64, enabled bool) (*Case, error) {
 	return db.GetCase(id)
 }
 
-// CreateEvalRun inserts a run in "running" status and returns it. The suite's
-// current version is snapshotted onto the run.
-func (db *DB) CreateEvalRun(suiteID int64, trigger, judgeModel string) (*EvalRun, error) {
+// CreateEvalRun inserts a run in "running" status under the given campaign
+// and returns it. The suite's current version is snapshotted onto the run.
+func (db *DB) CreateEvalRun(campaignID, suiteID int64, trigger, judgeModel string) (*EvalRun, error) {
 	now := time.Now().UTC()
 	result, err := db.conn.Exec(`
-		INSERT INTO eval_runs (suite_id, suite_version, "trigger", judge_model, status, started_at)
-		VALUES (?, (SELECT version FROM suites WHERE id = ?), ?, ?, 'running', ?)
-	`, suiteID, suiteID, trigger, judgeModel, now.Format(time.RFC3339))
+		INSERT INTO eval_runs (campaign_id, suite_id, suite_version, "trigger", judge_model, status, started_at)
+		VALUES (?, ?, (SELECT version FROM suites WHERE id = ?), ?, ?, 'running', ?)
+	`, campaignID, suiteID, suiteID, trigger, judgeModel, now.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
