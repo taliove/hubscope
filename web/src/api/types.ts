@@ -232,6 +232,29 @@ export interface CampaignDetail extends Campaign {
   runs: EvalRun[]
 }
 
+// Campaign report types (ticket 31): the leaderboard over a campaign's done
+// runs. All scores are on the 0-100 scale (ADR 0005); null means unscored.
+export interface ReportSuite {
+  id: number
+  key: string
+  name: string
+  version: number // question-bank version the campaign scored against
+}
+
+export interface ReportRow {
+  model_db_id: number
+  model_id: string
+  family: string
+  total_score: number | null // weighted total, null when nothing scored
+  suite_scores: Record<string, number | null> // per suite key
+}
+
+export interface CampaignReport extends Campaign {
+  suites: ReportSuite[]
+  weights: Record<string, number> // effective weight per suite key
+  rows: ReportRow[]
+}
+
 export interface EvalResult {
   id: number
   model_id: string // the model identifier string

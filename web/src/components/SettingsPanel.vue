@@ -25,6 +25,21 @@
         <el-input-number v-model="form.default_sample_count" :min="1" :max="10" />
         <span class="field-hint">每题作答次数,多次取平均;题目可单独覆盖</span>
       </el-form-item>
+      <el-form-item label="评估集权重">
+        <div class="weights-block">
+          <div v-for="suite in suites" :key="suite.key" class="weight-item">
+            <span class="weight-label" :title="suite.key">{{ suite.name }}</span>
+            <el-input-number
+              v-model="form.suite_weights[suite.key]"
+              :min="0.1"
+              :max="100"
+              :step="1"
+              size="small"
+            />
+          </div>
+          <div class="field-hint">权重越大,该评估集对排行榜总分影响越大;缺省等权 1</div>
+        </div>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="saving" @click="onSave">保存设置</el-button>
       </el-form-item>
@@ -60,7 +75,9 @@ import {
   type AlertEvent,
   type AppSettings,
 } from '@/api/settings'
+import { listSuites } from '@/api/evals'
 import { formatTime } from '@/utils/format'
+import type { Suite } from '@/api/types'
 
 const form = reactive<AppSettings>({
   lark_webhook_url: '',
@@ -68,7 +85,9 @@ const form = reactive<AppSettings>({
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
   default_sample_count: 1,
+  suite_weights: {},
 })
+const suites = ref<Suite[]>([])
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
 
@@ -88,11 +107,23 @@ function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning'
   return 'warning'
 }
 
+// Fill every known suite key into the weights map so the inputs stay
+// controlled; suites without a configured weight default to 1 (equal).
+function fillSuiteWeights(weights: Record<string, number>) {
+  const filled: Record<string, number> = {}
+  for (const suite of suites.value) {
+    const w = weights[suite.key]
+    filled[suite.key] = w !== undefined && w > 0 ? w : 1
+  }
+  form.suite_weights = filled
+}
+
 async function onSave() {
   saving.value = true
   try {
     const saved = await updateSettings({ ...form })
     Object.assign(form, saved)
+    fillSuiteWeights(saved.suite_weights)
     ElMessage.success('设置已保存,即时生效')
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -103,8 +134,11 @@ async function onSave() {
 
 onMounted(async () => {
   try {
-    Object.assign(form, await getSettings())
-    alerts.value = await listAlerts()
+    const [settings, suiteList, alertList] = await Promise.all([getSettings(), listSuites(), listAlerts()])
+    Object.assign(form, settings)
+    suites.value = suiteList
+    fillSuiteWeights(settings.suite_weights)
+    alerts.value = alertList
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
@@ -130,5 +164,26 @@ onMounted(async () => {
   margin-left: 12px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+}
+.weights-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.weight-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.weight-label {
+  width: 140px;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weights-block .field-hint {
+  margin-left: 0;
 }
 </style>

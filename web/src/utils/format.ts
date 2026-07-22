@@ -27,6 +27,13 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+// Render a 0-100 score with one decimal, dash when null. Every eval/report
+// score renders through this; components must not self-format (toFixed).
+export function formatScore(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  return value.toFixed(1)
+}
+
 // Render a millisecond latency: raw ms below 1s, seconds above; dash when null.
 export function formatMs(value: number | null): string {
   if (value === null || value === undefined) return '-'

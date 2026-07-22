@@ -7,6 +7,9 @@ export interface AppSettings {
   score_drop_alert_enabled: boolean
   judge_model: string
   default_sample_count: number
+  // Leaderboard total-score weight per suite key (ticket 31); suites absent
+  // from the map weigh 1 (equal weighting is the default).
+  suite_weights: Record<string, number>
 }
 
 export type UpdateSettingsPayload = Partial<AppSettings>

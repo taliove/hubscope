@@ -24,6 +24,12 @@ const router = createRouter({
       // anonymous visitors to /login.
     },
     {
+      path: '/campaigns/:id/report',
+      name: 'campaign-report',
+      component: () => import('@/views/CampaignReportView.vue'),
+      // Session-gated like the eval center it is entered from (ticket 31).
+    },
+    {
       path: '/tasks',
       name: 'task-center',
       component: () => import('@/views/TaskCenterView.vue'),
