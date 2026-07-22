@@ -1,8 +1,8 @@
 // Composable backing the Dashboard: polls GET /api/overview on a fixed
-// interval and exposes the entries plus per-status counts.
+// interval and exposes the entries, group aggregates, and per-status counts.
 import { ref, computed, onBeforeUnmount, type Ref } from 'vue'
 import { fetchOverview } from '@/api/overview'
-import type { OverviewEntry, EndpointStatus } from '@/api/types'
+import type { OverviewEntry, OverviewGroup, EndpointStatus } from '@/api/types'
 
 // How often the dashboard refreshes, in milliseconds.
 const POLL_INTERVAL_MS = 10_000
@@ -11,6 +11,8 @@ const STATUS_ORDER: EndpointStatus[] = ['down', 'failing', 'degraded', 'healthy'
 
 export function useOverview() {
   const entries: Ref<OverviewEntry[]> = ref([])
+  const byFamily: Ref<OverviewGroup[]> = ref([])
+  const byCapability: Ref<OverviewGroup[]> = ref([])
   const generatedAt = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -22,6 +24,8 @@ export function useOverview() {
     try {
       const overview = await fetchOverview()
       entries.value = overview.endpoints
+      byFamily.value = overview.by_family ?? []
+      byCapability.value = overview.by_capability ?? []
       generatedAt.value = overview.generated_at
       error.value = null
     } catch (err) {
@@ -61,5 +65,5 @@ export function useOverview() {
     return counts
   })
 
-  return { entries, generatedAt, loading, error, statusCounts, STATUS_ORDER, reload, start, stop }
+  return { entries, byFamily, byCapability, generatedAt, loading, error, statusCounts, STATUS_ORDER, reload, start, stop }
 }

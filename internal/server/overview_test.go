@@ -33,6 +33,8 @@ type overviewEntry struct {
 	P50Ms          *float64 `json:"p50_ms"`
 	P95Ms          *float64 `json:"p95_ms"`
 	LastProbeAt    *string  `json:"last_probe_at"`
+	Family         string   `json:"family"`
+	Capability     string   `json:"capability"`
 }
 
 // switchStubHub is a stub Hub whose success/failure behavior can be flipped

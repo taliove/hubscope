@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"sort"
 	"time"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/status"
@@ -16,8 +17,10 @@ const (
 
 // overviewDTO is the response body of GET /api/overview.
 type overviewDTO struct {
-	GeneratedAt string             `json:"generated_at"`
-	Endpoints   []overviewEntryDTO `json:"endpoints"`
+	GeneratedAt  string             `json:"generated_at"`
+	Endpoints    []overviewEntryDTO `json:"endpoints"`
+	ByFamily     []overviewGroupDTO `json:"by_family"`
+	ByCapability []overviewGroupDTO `json:"by_capability"`
 }
 
 // overviewEntryDTO is the per-endpoint status summary. Field names follow
@@ -33,9 +36,102 @@ type overviewEntryDTO struct {
 	P50Ms          *float64 `json:"p50_ms"`
 	P95Ms          *float64 `json:"p95_ms"`
 	LastProbeAt    *string  `json:"last_probe_at"`
+	Family         string   `json:"family"`
+	Capability     string   `json:"capability"`
 }
 
-// handleGetOverview builds the status matrix for every endpoint.
+// overviewGroupDTO is the health aggregate of one classification group
+// (a family or a capability): how its endpoints distribute across statuses
+// (disabled counted separately), plus probe-weighted 24h availability and
+// mean 24h latency (nil when the group has no probes in the window).
+type overviewGroupDTO struct {
+	Key             string         `json:"key"`
+	EndpointCount   int            `json:"endpoint_count"`
+	StatusCounts    map[string]int `json:"status_counts"`
+	Availability24h *float64       `json:"availability_24h"`
+	AvgLatencyMs    *float64       `json:"avg_latency_ms"`
+}
+
+// groupAccumulator aggregates per-endpoint data into group aggregates.
+type groupAccumulator struct {
+	byKey map[string]*groupBucket
+}
+
+// groupBucket is the running aggregate of one group.
+type groupBucket struct {
+	count        int
+	statusCounts map[string]int
+	probes       int
+	ok           int
+	latencySum   int
+}
+
+// statusDisabled buckets endpoints that are switched off, separately from
+// the status-machine kinds.
+const statusDisabled = "disabled"
+
+// newGroupAccumulator creates an empty accumulator.
+func newGroupAccumulator() *groupAccumulator {
+	return &groupAccumulator{byKey: map[string]*groupBucket{}}
+}
+
+// add folds one endpoint (its status entry and 24h samples) into a group.
+// Disabled endpoints count toward the endpoint total and the disabled
+// bucket, but their samples are excluded from availability and latency: a
+// switched-off endpoint is not monitored, so its stale history must not drag
+// the group's health metrics.
+func (a *groupAccumulator) add(key string, entry overviewEntryDTO, samples []store.ProbeSample) {
+	b, ok := a.byKey[key]
+	if !ok {
+		b = &groupBucket{statusCounts: map[string]int{}}
+		a.byKey[key] = b
+	}
+	b.count++
+	statusKey := entry.Status
+	if !entry.Enabled {
+		statusKey = statusDisabled
+		b.statusCounts[statusKey]++
+		return
+	}
+	b.statusCounts[statusKey]++
+	for _, s := range samples {
+		b.probes++
+		b.latencySum += s.LatencyMs
+		if s.OK {
+			b.ok++
+		}
+	}
+}
+
+// groups returns the finished aggregates ordered by key.
+func (a *groupAccumulator) groups() []overviewGroupDTO {
+	keys := make([]string, 0, len(a.byKey))
+	for k := range a.byKey {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]overviewGroupDTO, 0, len(keys))
+	for _, k := range keys {
+		b := a.byKey[k]
+		g := overviewGroupDTO{
+			Key:           k,
+			EndpointCount: b.count,
+			StatusCounts:  b.statusCounts,
+		}
+		if b.probes > 0 {
+			availability := float64(b.ok) / float64(b.probes)
+			avg := float64(b.latencySum) / float64(b.probes)
+			g.Availability24h = &availability
+			g.AvgLatencyMs = &avg
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// handleGetOverview builds the status matrix for every endpoint, plus the
+// family and capability group aggregates.
 func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	now := s.now().UTC()
 
@@ -46,6 +142,8 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entries := []overviewEntryDTO{}
+	families := newGroupAccumulator()
+	capabilities := newGroupAccumulator()
 	for _, model := range models {
 		endpoints, err := s.db.ListEndpointsByModelID(model.ID)
 		if err != nil {
@@ -53,18 +151,23 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, ep := range endpoints {
-			entry, err := s.buildOverviewEntry(ep, model.ModelID, now)
+			stats, err := s.gatherWindowStats(ep.ID, now)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to build overview")
 				return
 			}
+			entry := buildOverviewEntryFromStats(ep, model, stats)
 			entries = append(entries, entry)
+			families.add(model.Family, entry, stats.samples24h)
+			capabilities.add(model.Capability, entry, stats.samples24h)
 		}
 	}
 
 	writeData(w, http.StatusOK, overviewDTO{
-		GeneratedAt: now.Format(time.RFC3339),
-		Endpoints:   entries,
+		GeneratedAt:  now.Format(time.RFC3339),
+		Endpoints:    entries,
+		ByFamily:     families.groups(),
+		ByCapability: capabilities.groups(),
 	})
 }
 
@@ -140,19 +243,16 @@ func toStatusSamples(in []store.ProbeSample) []status.Sample {
 	return out
 }
 
-// buildOverviewEntry assembles the status and 24h statistics of a single
-// endpoint as of the given time.
-func (s *Server) buildOverviewEntry(ep store.Endpoint, modelID string, now time.Time) (overviewEntryDTO, error) {
+// buildOverviewEntryFromStats assembles the status and 24h statistics of a
+// single endpoint from already-gathered window stats.
+func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats windowStats) overviewEntryDTO {
 	entry := overviewEntryDTO{
 		EndpointID: ep.ID,
-		ModelID:    modelID,
+		ModelID:    model.ModelID,
 		Protocol:   ep.Protocol,
 		Enabled:    ep.Enabled,
-	}
-
-	stats, err := s.gatherWindowStats(ep.ID, now)
-	if err != nil {
-		return entry, err
+		Family:     model.Family,
+		Capability: model.Capability,
 	}
 
 	if stats.latest != nil {
@@ -178,5 +278,5 @@ func (s *Server) buildOverviewEntry(ep store.Endpoint, modelID string, now time.
 	entry.Status = string(result.Kind)
 	entry.StatusReason = result.Reason
 
-	return entry, nil
+	return entry
 }

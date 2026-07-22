@@ -97,11 +97,26 @@ export interface OverviewEntry {
   p50_ms: number | null
   p95_ms: number | null
   last_probe_at: string | null // RFC3339
+  family: string // vendor series classification
+  capability: string // capability classification
+}
+
+// Health aggregate of one classification group: status distribution
+// ('disabled' counted separately) plus probe-weighted 24h availability and
+// mean latency (null when the group has no probes in 24h).
+export interface OverviewGroup {
+  key: string
+  endpoint_count: number
+  status_counts: Record<string, number>
+  availability_24h: number | null
+  avg_latency_ms: number | null
 }
 
 export interface Overview {
   generated_at: string // RFC3339
   endpoints: OverviewEntry[]
+  by_family: OverviewGroup[]
+  by_capability: OverviewGroup[]
 }
 
 // Endpoint detail page types (ticket 04).
