@@ -8,18 +8,36 @@
     </header>
 
     <main class="admin-body">
-      <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" @sync-settled="onSyncSettled" />
-      <ModelAdder :hubs="hubs" @added="reloadModels" />
-      <EndpointTable :rows="endpointRows" :loading="loading" @changed="reloadModels" />
-      <ClassificationRules @changed="reloadModels" />
-      <AuditLogs />
-      <SettingsPanel />
+      <el-tabs v-model="activeTab" class="admin-tabs">
+        <el-tab-pane label="资源" name="resources">
+          <div class="tab-stack">
+            <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" @sync-settled="onSyncSettled" />
+            <ModelAdder :hubs="hubs" @added="reloadModels" />
+            <EndpointTable :rows="endpointRows" :loading="loading" @changed="reloadModels" />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="分类规则" name="rules">
+          <div class="tab-stack">
+            <ClassificationRules @changed="reloadModels" />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="操作日志" name="logs">
+          <div class="tab-stack">
+            <AuditLogs />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="设置" name="settings">
+          <div class="tab-stack">
+            <SettingsPanel />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAdminData } from '@/composables/useAdminData'
@@ -33,6 +51,10 @@ import SettingsPanel from '@/components/SettingsPanel.vue'
 
 const router = useRouter()
 const { hubs, endpointRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
+
+// Default landing tab; el-tabs keeps every pane mounted (no lazy rendering),
+// so HubManager's internal sync polling keeps running on inactive tabs.
+const activeTab = ref('resources')
 
 // Deleting a hub can cascade nothing but changing hubs may affect model hub names.
 async function onHubsChanged() {
@@ -96,6 +118,14 @@ onMounted(async () => {
   margin-left: 12px;
 }
 .admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-tabs {
+  width: 100%;
+}
+.tab-stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
