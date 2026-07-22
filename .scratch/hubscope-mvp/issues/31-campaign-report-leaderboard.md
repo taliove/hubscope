@@ -1,8 +1,8 @@
-# 22 — Campaign 报告与 Leaderboard
+# 31 — Campaign 报告与 Leaderboard
 
 **What to build:** 每个完成的 Campaign 有报告页:Leaderboard 柱状图(每模型一行,总分 = 各 Suite 分的加权平均,0–100,默认等权;权重在设置页可调),可切换到按单个 Suite 查看分数,可按模型 category 过滤,排序列可切换(总分/各 Suite)。已删除模型不上榜(沿用 17 的口径)。API:GET /api/campaigns/{id}/report 返回 Leaderboard 聚合数据与各 Suite 明细。
 
-**Blocked by:** 17 — 评估视图隐藏已删除模型;20 — Eval Campaign + 一键全量评估
+**Blocked by:** 26 — 评估视图隐藏已删除模型;29 — Eval Campaign + 一键全量评估
 
 **Status:** ready-for-agent
 

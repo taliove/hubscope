@@ -6,6 +6,7 @@ export interface AppSettings {
   alert_enabled: boolean
   score_drop_alert_enabled: boolean
   judge_model: string
+  default_sample_count: number
 }
 
 export type UpdateSettingsPayload = Partial<AppSettings>

@@ -2,6 +2,7 @@
   <el-card v-if="selection" shadow="never" class="trend-card">
     <div class="card-title">
       历史趋势:{{ selection.modelId }} · {{ selection.suiteName }}
+      <el-tag v-if="selectionDeleted" size="small" type="info">已删除</el-tag>
       <el-button class="close-button" size="small" text @click="$emit('close')">关闭</el-button>
     </div>
     <div v-loading="loading">
@@ -22,14 +23,16 @@ import { computed, ref, watch } from 'vue'
 import { getEvalRun } from '@/api/evals'
 import TimeSeriesChart from '@/components/TimeSeriesChart.vue'
 import { formatTime } from '@/utils/format'
-import type { EvalRun } from '@/api/types'
+import type { EvalRun, Model } from '@/api/types'
 
 // Per-model score trend over historical runs of one suite. Run details are
 // fetched on demand (the list only carries a cross-model aggregate), limited
-// to the most recent runs to bound the fan-out.
+// to the most recent runs to bound the fan-out. A model absent from the live
+// model list is badged as deleted; its historical points stay visible.
 const props = defineProps<{
   selection: { modelId: string; modelDbId: number; suiteId: number; suiteName: string } | null
   runs: EvalRun[]
+  models: Model[]
 }>()
 
 defineEmits<{ close: [] }>()
@@ -39,6 +42,11 @@ const maxTrendRuns = 20
 const loading = ref(false)
 // Chronological (model, run) score points, oldest first.
 const points = ref<{ finishedAt: string; score: number | null }[]>([])
+
+// The selected model counts as deleted once it left the live model list.
+const selectionDeleted = computed(
+  () => props.selection !== null && !props.models.some(m => m.id === props.selection!.modelDbId)
+)
 
 const categories = computed(() => points.value.map(p => formatTime(p.finishedAt)))
 const series = computed(() => [{ name: '聚合分', data: points.value.map(p => p.score) }])

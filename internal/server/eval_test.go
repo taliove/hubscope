@@ -21,19 +21,37 @@ import (
 // "broken-model", and role-plays the LLM judge — including a garbage-verdict
 // branch for one specific case prompt. Models registered via markBad flip
 // from correct to wrong answers, which drives score-drop scenarios.
+// setAnswerSeq/setJudgeSeq script per-call response sequences (cycled) for
+// prompts containing a marker, which drives sampling-average scenarios.
 type evalStubHub struct {
 	*httptest.Server
 	mu sync.Mutex
 	// calls records which protocols each model was called with.
 	calls map[string]map[string]bool
+	// callCounts records how many completion calls carried (model, prompt).
+	callCounts map[string]int
 	// bad marks models that currently answer everything wrong.
 	bad map[string]bool
 	// broken marks models whose calls fail with HTTP 503.
 	broken map[string]bool
+	// gate, when non-nil, blocks every response until released; tests use it
+	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
+	gate chan struct{}
+	// answerSeq scripts cycled answer responses by prompt marker.
+	answerSeq map[string][]string
+	// judgeSeq scripts cycled judge responses by prompt marker.
+	judgeSeq map[string][]string
 }
 
 func newEvalStubHub() *evalStubHub {
-	stub := &evalStubHub{calls: map[string]map[string]bool{}, bad: map[string]bool{}, broken: map[string]bool{}}
+	stub := &evalStubHub{
+		calls:      map[string]map[string]bool{},
+		callCounts: map[string]int{},
+		bad:        map[string]bool{},
+		broken:     map[string]bool{},
+		answerSeq:  map[string][]string{},
+		judgeSeq:   map[string][]string{},
+	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
 }
@@ -68,11 +86,18 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		h.calls[req.Model] = map[string]bool{}
 	}
 	h.calls[req.Model][protocol] = true
+	h.callCounts[req.Model+"\x00"+prompt]++
 	h.mu.Unlock()
 
 	h.mu.Lock()
 	broken := h.broken[req.Model]
+	gate := h.gate
 	h.mu.Unlock()
+	// A closed gate holds the response until the test releases it; the call
+	// above is already recorded, so waiters observe the call while blocked.
+	if gate != nil {
+		<-gate
+	}
 	if broken {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -89,12 +114,19 @@ func (h *evalStubHub) answerFor(model, prompt string) string {
 	// Judge calls are recognized by the裁判 prompt marker (the judge model
 	// name is configurable via settings), returning a valid JSON verdict —
 	// except for the formal-rewrite case whose embedded prompt marker
-	// triggers an unparseable reply.
+	// triggers an unparseable reply. A scripted judge sequence wins over the
+	// default verdict so sampling tests can mix scored and failed samples.
 	if strings.Contains(prompt, "你是评估裁判") {
+		if text, ok := h.nextSeq(h.judgeSeq, prompt); ok {
+			return text
+		}
 		if strings.Contains(prompt, "改写成更正式") {
 			return "I cannot produce a score for this."
 		}
 		return `{"score": 0.75, "reason": "meets the rubric"}`
+	}
+	if text, ok := h.nextSeq(h.answerSeq, prompt); ok {
+		return text
 	}
 	h.mu.Lock()
 	bad := h.bad[model]
@@ -110,21 +142,114 @@ func (h *evalStubHub) answerFor(model, prompt string) string {
 		return `{"ok": true}`
 	case strings.Contains(prompt, "数到 3"):
 		return "1\n2\n3"
+	case strings.Contains(prompt, "不要任何标点"):
+		return "hello"
+	case strings.Contains(prompt, "翻译成英文"):
+		return "artificial intelligence"
+	case strings.Contains(prompt, "什么是递归"):
+		return "递归就是函数调用自己来解决问题的编程技巧"
+	case strings.Contains(prompt, "中文大写"):
+		return "四十二"
+	case strings.Contains(prompt, "重复我说的话"):
+		return "天气真好"
+	case strings.Contains(prompt, "所有偶数"):
+		return "2,4"
+	case strings.Contains(prompt, "首字母大写"):
+		return "Hello World"
+	case strings.Contains(prompt, "3+4*2"):
+		return "11"
+	case strings.Contains(prompt, "「abcdef」"):
+		return "fedcba"
 	case strings.Contains(prompt, "17 + 25"):
 		return "42"
 	case strings.Contains(prompt, "游泳"):
 		return "3"
 	case strings.Contains(prompt, "下一个数字"):
 		return "13"
+	case strings.Contains(prompt, "最大的质数"):
+		return "97"
+	case strings.Contains(prompt, "7 的平方"):
+		return "49"
+	case strings.Contains(prompt, "乘以 3 等于 51"):
+		return "17"
+	case strings.Contains(prompt, "鸡兔同笼"):
+		return "6"
+	case strings.Contains(prompt, "一本书 120 页"):
+		return "90"
+	case strings.Contains(prompt, "等差数列"):
+		return "29"
+	case strings.Contains(prompt, "涨价 10%"):
+		return "99"
+	case strings.Contains(prompt, "log2(64)"):
+		return "6"
+	case strings.Contains(prompt, "有多少种选法"):
+		return "10"
 	case strings.Contains(prompt, "add(a, b)"):
 		return "def add(a, b):\n    return a + b"
 	case strings.Contains(prompt, "len([1,2,3])"):
 		return "6"
 	case strings.Contains(prompt, "'hello'[1]"):
 		return "e"
+	case strings.Contains(prompt, "2 ** 10"):
+		return "1024"
+	case strings.Contains(prompt, "'ab' * 3"):
+		return "ababab"
+	case strings.Contains(prompt, "is_even"):
+		return "def is_even(n):\n    return n % 2 == 0"
+	case strings.Contains(prompt, "map(x => x * 2)"):
+		return "3"
+	case strings.Contains(prompt, "sorted([3,1,2])"):
+		return "1"
+	case strings.Contains(prompt, "join(['a','b','c'])"):
+		return "a,b,c"
+	case strings.Contains(prompt, "reverse_string"):
+		return "def reverse_string(s):\n    return s[::-1]"
+	case strings.Contains(prompt, "list(range(5))"):
+		return "10"
+	case strings.Contains(prompt, "{'a':1,'b':2}"):
+		return "2"
 	default:
 		return "好的"
 	}
+}
+
+// nextSeq pops the next scripted response for the first marker contained in
+// prompt, cycling through the sequence. The second return value reports
+// whether a script matched.
+func (h *evalStubHub) nextSeq(seqs map[string][]string, prompt string) (string, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for marker, seq := range seqs {
+		if !strings.Contains(prompt, marker) || len(seq) == 0 {
+			continue
+		}
+		text := seq[0]
+		seqs[marker] = append(seq[1:], seq[0])
+		return text, true
+	}
+	return "", false
+}
+
+// setAnswerSeq scripts cycled answer responses for prompts containing marker.
+// setJudgeSeq does the same for judge calls (prompts carrying the裁判 marker).
+func (h *evalStubHub) setAnswerSeq(marker string, seq ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.answerSeq[marker] = seq
+}
+
+func (h *evalStubHub) setJudgeSeq(marker string, seq ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.judgeSeq[marker] = seq
+}
+
+// callCount reports how many completion calls carried exactly the given
+// prompt for the model (one per sample).
+func (h *evalStubHub) callCount(model, prompt string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.callCounts[model+"\x00"+prompt]
 }
 
 func (h *evalStubHub) writeCompletion(w http.ResponseWriter, isAnthropic bool, text string) {
@@ -184,6 +309,24 @@ func (h *evalStubHub) markBad(model string, bad bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.bad[model] = bad
+}
+
+// blockCalls makes every subsequent completion response wait until release;
+// calls in flight keep being recorded so tests can observe them while blocked.
+func (h *evalStubHub) blockCalls() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.gate = make(chan struct{})
+}
+
+// release unblocks all gated responses and reopens normal answering.
+func (h *evalStubHub) release() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.gate != nil {
+		close(h.gate)
+		h.gate = nil
+	}
 }
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.
@@ -329,8 +472,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "smart-model")
-	if len(smart) != 3 {
-		t.Fatalf("smart model has %d results, want 3", len(smart))
+	if len(smart) != 12 {
+		t.Fatalf("smart model has %d results, want 12", len(smart))
 	}
 	for _, r := range smart {
 		if r["score"] != 1.0 {
@@ -348,8 +491,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "dumb-model")
-	if len(dumb) != 3 {
-		t.Fatalf("dumb model has %d results, want 3", len(dumb))
+	if len(dumb) != 12 {
+		t.Fatalf("dumb model has %d results, want 12", len(dumb))
 	}
 	for _, r := range dumb {
 		if r["score"] != 0.0 {
@@ -357,7 +500,7 @@ func TestEvalRuleVerdicts(t *testing.T) {
 		}
 	}
 
-	// Aggregate: (3 x 1 + 3 x 0) / 6 = 0.5.
+	// Aggregate: (12 x 1 + 12 x 0) / 24 = 0.5.
 	if score, ok := run["score"].(float64); !ok || score != 0.5 {
 		t.Errorf("run score = %v, want 0.5", run["score"])
 	}

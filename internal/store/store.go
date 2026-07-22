@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -119,7 +120,8 @@ func (db *DB) migrate() error {
 		CREATE TABLE IF NOT EXISTS suites (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
-			name TEXT NOT NULL
+			name TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1
 		);
 
 		CREATE TABLE IF NOT EXISTS cases (
@@ -130,6 +132,8 @@ func (db *DB) migrate() error {
 			rule_mode TEXT,
 			rule_expected TEXT,
 			rubric TEXT,
+			difficulty TEXT NOT NULL DEFAULT 'basic',
+			sample_count INTEGER,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (suite_id) REFERENCES suites(id)
@@ -140,6 +144,7 @@ func (db *DB) migrate() error {
 		CREATE TABLE IF NOT EXISTS eval_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			suite_id INTEGER NOT NULL,
+			suite_version INTEGER NOT NULL DEFAULT 1,
 			"trigger" TEXT NOT NULL,
 			judge_model TEXT NOT NULL,
 			status TEXT NOT NULL,
@@ -207,6 +212,31 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_alert_events_endpoint ON alert_events(endpoint_id, created_at DESC);
+
+		CREATE TABLE IF NOT EXISTS tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			source TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			entity_type TEXT NOT NULL,
+			entity_id INTEGER NOT NULL,
+			started_at TEXT NULL,
+			finished_at TEXT NULL,
+			created_at TEXT NOT NULL
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_tasks_type_status ON tasks(type, status, id DESC);
+
+		CREATE TABLE IF NOT EXISTS task_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id INTEGER NOT NULL,
+			at TEXT NOT NULL,
+			level TEXT NOT NULL,
+			message TEXT NOT NULL,
+			FOREIGN KEY (task_id) REFERENCES tasks(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id, id);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {
@@ -229,12 +259,34 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("models", "family", "TEXT NOT NULL DEFAULT 'other'"); err != nil {
 		return err
 	}
+	// Ticket 21: suite versioning + per-case sampling.
+	if err := db.ensureColumn("suites", "version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("cases", "difficulty", "TEXT NOT NULL DEFAULT 'basic'"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("cases", "sample_count", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_runs", "suite_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
 
 	// A hub left 'syncing' means the process died mid-sync (the in-flight
 	// guard is in-memory only); mark it failed so the UI does not show a
 	// phantom running sync.
 	if _, err := db.conn.Exec(
 		"UPDATE hubs SET sync_status = 'failed', last_sync_error = 'sync interrupted by restart' WHERE sync_status = 'syncing'",
+	); err != nil {
+		return err
+	}
+
+	// Tasks left pending/running mean the process died mid-execution; close
+	// them out as failed so the task center shows no phantom running jobs.
+	if _, err := db.conn.Exec(
+		"UPDATE tasks SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
+		time.Now().UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		return err
 	}

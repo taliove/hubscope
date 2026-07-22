@@ -16,6 +16,9 @@ import (
 var validVerdictTypes = map[string]bool{"rule": true, "judge": true}
 var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true}
 
+// validDifficulties enumerates the accepted difficulty tiers.
+var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
+
 // handleListSuites handles GET /api/suites. Each suite carries its cases.
 func (s *Server) handleListSuites(w http.ResponseWriter, r *http.Request) {
 	suites, err := s.db.ListSuites()
@@ -38,25 +41,32 @@ func (s *Server) handleListSuites(w http.ResponseWriter, r *http.Request) {
 }
 
 // createCaseRequest is the body for POST /api/cases. enabled defaults to
-// true when omitted.
+// true when omitted; difficulty defaults to basic; sample_count null means
+// the case inherits the global default sample count.
 type createCaseRequest struct {
 	SuiteID     int64          `json:"suite_id"`
 	Prompt      string         `json:"prompt"`
 	VerdictType string         `json:"verdict_type"`
 	RuleConfig  *ruleConfigDTO `json:"rule_config"`
 	Rubric      *string        `json:"rubric"`
+	Difficulty  *string        `json:"difficulty"`
+	SampleCount *int           `json:"sample_count"`
 	Enabled     *bool          `json:"enabled"`
 }
 
 // patchCaseRequest is the body for PATCH /api/cases/{id}. All fields are
 // optional; absent fields stay unchanged. rubric is a pointer so it can be
 // set but not distinguished from an explicit null (treated as unchanged).
+// sample_count is raw so an explicit null clears the per-case override
+// (back to inheriting the global default) while an absent field keeps it.
 type patchCaseRequest struct {
-	Prompt      *string        `json:"prompt"`
-	VerdictType *string        `json:"verdict_type"`
-	RuleConfig  *ruleConfigDTO `json:"rule_config"`
-	Rubric      *string        `json:"rubric"`
-	Enabled     *bool          `json:"enabled"`
+	Prompt      *string         `json:"prompt"`
+	VerdictType *string         `json:"verdict_type"`
+	RuleConfig  *ruleConfigDTO  `json:"rule_config"`
+	Rubric      *string         `json:"rubric"`
+	Difficulty  *string         `json:"difficulty"`
+	SampleCount json.RawMessage `json:"sample_count"`
+	Enabled     *bool           `json:"enabled"`
 }
 
 // handleCreateCase handles POST /api/cases.
@@ -80,8 +90,13 @@ func (s *Server) handleCreateCase(w http.ResponseWriter, r *http.Request) {
 		SuiteID:     req.SuiteID,
 		Prompt:      strings.TrimSpace(req.Prompt),
 		VerdictType: req.VerdictType,
+		Difficulty:  "basic",
+		SampleCount: req.SampleCount,
 		Enabled:     true,
 		Rubric:      req.Rubric,
+	}
+	if req.Difficulty != nil {
+		c.Difficulty = *req.Difficulty
 	}
 	if req.Enabled != nil {
 		c.Enabled = *req.Enabled
@@ -107,8 +122,13 @@ func (s *Server) handleCreateCase(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, toCaseDTO(*created))
 }
 
-// handlePatchCase handles PATCH /api/cases/{id}. The patch is merged onto
-// the stored case and the merged result is validated as a whole.
+// handlePatchCase handles PATCH /api/cases/{id}. Cases are immutable: a
+// content change never edits the stored row — it disables the old case and
+// creates a new one carrying the merged fields, so historical run results
+// keep rendering the old prompt. An enabled-only change toggles the existing
+// row in place. Both paths bump the parent suite's version; a patch that
+// changes nothing is a no-op. The response carries the effective case (the
+// new one for content edits).
 func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -142,6 +162,17 @@ func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 	if req.Rubric != nil {
 		merged.Rubric = req.Rubric
 	}
+	if req.Difficulty != nil {
+		merged.Difficulty = *req.Difficulty
+	}
+	if len(req.SampleCount) > 0 {
+		sampleCount, err := parseSampleCountPatch(req.SampleCount)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		merged.SampleCount = sampleCount
+	}
 	if req.Enabled != nil {
 		merged.Enabled = *req.Enabled
 	}
@@ -151,14 +182,72 @@ func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.db.UpdateCase(merged)
+	if sameCase(*existing, merged) {
+		writeData(w, http.StatusOK, toCaseDTO(*existing))
+		return
+	}
+
+	var effective *store.Case
+	if sameCaseContent(*existing, merged) {
+		// Only the enabled flag changed: toggle in place.
+		effective, err = s.db.SetCaseEnabled(id, merged.Enabled)
+	} else {
+		// Content changed: retire the old case, insert the merged copy.
+		effective, err = s.db.ReplaceCase(id, merged)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update case")
 		return
 	}
 
-	s.audit(r, "case.update", "case", strconv.FormatInt(updated.ID, 10), "", "success")
-	writeData(w, http.StatusOK, toCaseDTO(*updated))
+	s.audit(r, "case.update", "case", strconv.FormatInt(effective.ID, 10), "", "success")
+	writeData(w, http.StatusOK, toCaseDTO(*effective))
+}
+
+// sameCase reports whether two cases are identical in every mutable field.
+func sameCase(a, b store.Case) bool {
+	return sameCaseContent(a, b) && a.Enabled == b.Enabled
+}
+
+// sameCaseContent reports whether two cases carry the same question content
+// (everything except the enabled flag and identity fields).
+func sameCaseContent(a, b store.Case) bool {
+	return a.Prompt == b.Prompt &&
+		a.VerdictType == b.VerdictType &&
+		strPtrEqual(a.RuleMode, b.RuleMode) &&
+		strPtrEqual(a.RuleExpected, b.RuleExpected) &&
+		strPtrEqual(a.Rubric, b.Rubric) &&
+		a.Difficulty == b.Difficulty &&
+		intPtrEqual(a.SampleCount, b.SampleCount)
+}
+
+// strPtrEqual compares two nullable strings by value.
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// intPtrEqual compares two nullable ints by value.
+func intPtrEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// parseSampleCountPatch interprets the raw sample_count patch field: JSON
+// null clears the override (nil), an integer sets it. Anything else is a 400.
+func parseSampleCountPatch(raw json.RawMessage) (*int, error) {
+	if string(raw) == "null" {
+		return nil, nil
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return nil, fmt.Errorf("sample_count must be an integer or null")
+	}
+	return &n, nil
 }
 
 // validateCase checks a fully-populated case for consistency.
@@ -184,6 +273,12 @@ func validateCase(c store.Case) error {
 	}
 	if c.VerdictType == "judge" && (c.Rubric == nil || strings.TrimSpace(*c.Rubric) == "") {
 		return fmt.Errorf("rubric is required for judge cases")
+	}
+	if !validDifficulties[c.Difficulty] {
+		return fmt.Errorf("difficulty must be basic, intermediate or hard")
+	}
+	if c.SampleCount != nil && (*c.SampleCount < 1 || *c.SampleCount > store.MaxSampleCount) {
+		return fmt.Errorf("sample_count must be between 1 and %d", store.MaxSampleCount)
 	}
 	return nil
 }

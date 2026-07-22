@@ -19,8 +19,8 @@ func TestEvalExactMode(t *testing.T) {
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 3 {
-		t.Fatalf("got %d results, want 3", len(results))
+	if len(results) != 12 {
+		t.Fatalf("got %d results, want 12", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -35,8 +35,8 @@ func TestEvalExactMode(t *testing.T) {
 	}
 }
 
-// TestEvalJudge covers the judge verdict path: two cases get a parsed score
-// and reason, one case gets judge garbage back and must stay unscored
+// TestEvalJudge covers the judge verdict path: eleven cases get a parsed
+// score and reason, one case gets judge garbage back and must stay unscored
 // (score null). The aggregate must average only the scored cases.
 func TestEvalJudge(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
@@ -47,8 +47,8 @@ func TestEvalJudge(t *testing.T) {
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 3 {
-		t.Fatalf("got %d results, want 3", len(results))
+	if len(results) != 12 {
+		t.Fatalf("got %d results, want 12", len(results))
 	}
 
 	var scored, unscored int
@@ -72,11 +72,11 @@ func TestEvalJudge(t *testing.T) {
 			t.Error("answer_text should still be stored when the judge ran")
 		}
 	}
-	if scored != 2 || unscored != 1 {
-		t.Errorf("scored/unscored = %d/%d, want 2/1", scored, unscored)
+	if scored != 11 || unscored != 1 {
+		t.Errorf("scored/unscored = %d/%d, want 11/1", scored, unscored)
 	}
 
-	// Aggregate averages only non-null scores: (0.75 + 0.75) / 2 = 0.75.
+	// Aggregate averages only non-null scores: (11 x 0.75) / 11 = 0.75.
 	if score, ok := run["score"].(float64); !ok || score != 0.75 {
 		t.Errorf("run score = %v, want 0.75 (nulls excluded)", run["score"])
 	}
@@ -100,8 +100,8 @@ func TestEvalModelFailure(t *testing.T) {
 	}
 
 	results := resultsByModel(run, "flaky-model")
-	if len(results) != 3 {
-		t.Fatalf("got %d results, want 3", len(results))
+	if len(results) != 12 {
+		t.Fatalf("got %d results, want 12", len(results))
 	}
 	for _, r := range results {
 		if r["answer_text"] != nil {
@@ -219,8 +219,8 @@ func TestEvalProtocolFallback(t *testing.T) {
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 3 {
-		t.Fatalf("got %d results, want 3", len(results))
+	if len(results) != 12 {
+		t.Fatalf("got %d results, want 12", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -235,7 +235,25 @@ func TestEvalProtocolFallback(t *testing.T) {
 	}
 }
 
-// TestCaseCreatePatch covers POST /api/cases and PATCH /api/cases/{id}.
+// TestCaseCreatePatch covers POST /api/cases and the immutable PATCH
+// semantics of /api/cases/{id}: a content edit retires the old case and
+// returns a new one, while an enabled-only patch toggles the row in place.
+func patchSampleCount(t *testing.T, base string, id int64, value interface{}) map[string]interface{} {
+	t.Helper()
+	resp := doPatch(t, fmt.Sprintf("%s/api/cases/%d", base, id), map[string]interface{}{
+		"sample_count": value,
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch sample_count: expected 200, got %d", resp.StatusCode)
+	}
+	var env envelope
+	_ = json.NewDecoder(resp.Body).Decode(&env)
+	var out map[string]interface{}
+	_ = json.Unmarshal(env.Data, &out)
+	return out
+}
+
 func TestCaseCreatePatch(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 	suiteID := suiteIDByKey(t, ts.URL, "basic")
@@ -264,8 +282,14 @@ func TestCaseCreatePatch(t *testing.T) {
 	if rc["mode"] != "exact" || rc["expected"] != "OK" {
 		t.Errorf("created rule_config mismatch: %v", rc)
 	}
+	if created["difficulty"] != "basic" {
+		t.Errorf("created difficulty = %v, want basic default", created["difficulty"])
+	}
+	if created["sample_count"] != nil {
+		t.Errorf("created sample_count = %v, want null (inherits default)", created["sample_count"])
+	}
 
-	// Patch prompt and disable it.
+	// A content patch creates a NEW case and disables the old one.
 	patchResp := doPatch(t, fmt.Sprintf("%s/api/cases/%d", ts.URL, caseID), map[string]interface{}{
 		"prompt":  "只回复好的",
 		"enabled": false,
@@ -277,41 +301,74 @@ func TestCaseCreatePatch(t *testing.T) {
 	patchResp.Body.Close()
 	var patched map[string]interface{}
 	_ = json.Unmarshal(env.Data, &patched)
-	if patched["prompt"] != "只回复好的" || patched["enabled"] != false {
-		t.Errorf("patched case mismatch: %v", patched)
+	newCaseID := int64(patched["id"].(float64))
+	if newCaseID == caseID {
+		t.Errorf("content patch should mint a new case id, still got %d", newCaseID)
 	}
-	// Untouched fields survive the patch.
+	if patched["prompt"] != "只回复好的" || patched["enabled"] != false {
+		t.Errorf("new case mismatch: %v", patched)
+	}
+	// Untouched fields survive the merge onto the new case.
 	if patched["rule_config"].(map[string]interface{})["expected"] != "OK" {
 		t.Errorf("rule_config should survive a partial patch: %v", patched["rule_config"])
 	}
 
-	// The new case is visible in the suite listing, disabled as patched.
-	basicID := suiteIDByKey(t, ts.URL, "basic")
-	if basicID != suiteID {
-		t.Fatalf("suite id changed: %d -> %d", suiteID, basicID)
-	}
+	// The suite listing shows both rows: the old one disabled with its
+	// original prompt, the new one carrying the patch.
 	suitesResp := doGet(t, ts.URL+"/api/suites")
 	_ = json.NewDecoder(suitesResp.Body).Decode(&env)
 	suitesResp.Body.Close()
 	var suites []map[string]interface{}
 	_ = json.Unmarshal(env.Data, &suites)
-	var found bool
+	var oldRow, newRow map[string]interface{}
 	for _, s := range suites {
 		if s["key"] != "basic" {
 			continue
 		}
 		for _, c := range s["cases"].([]interface{}) {
 			cm := c.(map[string]interface{})
-			if int64(cm["id"].(float64)) == caseID {
-				found = true
-				if cm["enabled"] != false || cm["prompt"] != "只回复好的" {
-					t.Errorf("listed case does not reflect the patch: %v", cm)
-				}
+			switch int64(cm["id"].(float64)) {
+			case caseID:
+				oldRow = cm
+			case newCaseID:
+				newRow = cm
 			}
 		}
 	}
-	if !found {
-		t.Error("created case not visible in GET /api/suites")
+	if oldRow == nil || newRow == nil {
+		t.Fatalf("expected both old case %d and new case %d in the listing", caseID, newCaseID)
+	}
+	if oldRow["enabled"] != false || oldRow["prompt"] != "只回复 OK" {
+		t.Errorf("old case should stay disabled with its original prompt: %v", oldRow)
+	}
+	if newRow["prompt"] != "只回复好的" {
+		t.Errorf("new case should carry the patched prompt: %v", newRow)
+	}
+
+	// An enabled-only patch toggles the new row in place (same id).
+	toggleResp := doPatch(t, fmt.Sprintf("%s/api/cases/%d", ts.URL, newCaseID), map[string]interface{}{
+		"enabled": true,
+	})
+	if toggleResp.StatusCode != http.StatusOK {
+		t.Fatalf("toggle case: expected 200, got %d", toggleResp.StatusCode)
+	}
+	_ = json.NewDecoder(toggleResp.Body).Decode(&env)
+	toggleResp.Body.Close()
+	var toggled map[string]interface{}
+	_ = json.Unmarshal(env.Data, &toggled)
+	if int64(toggled["id"].(float64)) != newCaseID || toggled["enabled"] != true {
+		t.Errorf("enabled-only patch should toggle in place: %v", toggled)
+	}
+
+	// sample_count can be overridden and cleared back to the inherited
+	// default via an explicit JSON null.
+	sc := patchSampleCount(t, ts.URL, newCaseID, 3)
+	if sc["sample_count"] != 3.0 {
+		t.Errorf("sample_count override = %v, want 3", sc["sample_count"])
+	}
+	cleared := patchSampleCount(t, ts.URL, int64(sc["id"].(float64)), nil)
+	if cleared["sample_count"] != nil {
+		t.Errorf("sample_count after explicit null = %v, want null (inherit default)", cleared["sample_count"])
 	}
 
 	t.Run("validation_errors", func(t *testing.T) {
@@ -332,6 +389,14 @@ func TestCaseCreatePatch(t *testing.T) {
 				"rule_config": map[string]string{"mode": "regex", "expected": "("}}, http.StatusBadRequest},
 			{"judge_without_rubric", map[string]interface{}{
 				"suite_id": suiteID, "prompt": "x", "verdict_type": "judge"}, http.StatusBadRequest},
+			{"bad_difficulty", map[string]interface{}{
+				"suite_id": suiteID, "prompt": "x", "verdict_type": "rule",
+				"rule_config": map[string]string{"mode": "exact", "expected": "x"},
+				"difficulty": "nightmare"}, http.StatusBadRequest},
+			{"bad_sample_count", map[string]interface{}{
+				"suite_id": suiteID, "prompt": "x", "verdict_type": "rule",
+				"rule_config": map[string]string{"mode": "exact", "expected": "x"},
+				"sample_count": 0}, http.StatusBadRequest},
 			{"unknown_suite", map[string]interface{}{
 				"suite_id": 99999, "prompt": "x", "verdict_type": "judge", "rubric": "r"}, http.StatusNotFound},
 		}

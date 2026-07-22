@@ -194,6 +194,9 @@ func (s *Server) routes() chi.Router {
 			r.Put("/settings", s.handlePutSettings)
 			r.Get("/alerts", s.handleListAlerts)
 
+			r.Get("/tasks", s.handleListTasks)
+			r.Get("/tasks/{id}", s.handleGetTask)
+
 			// Static segment wins over {id} in chi; registered first for clarity.
 			r.Get("/audit-logs/actions", s.handleListAuditActions)
 			r.Get("/audit-logs", s.handleListAuditLogs)

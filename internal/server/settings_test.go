@@ -42,6 +42,9 @@ func TestSettingsRoundTrip(t *testing.T) {
 	if defaults["judge_model"].(string) != "claude-opus-4-8" {
 		t.Errorf("default judge_model should be claude-opus-4-8, got %v", defaults["judge_model"])
 	}
+	if defaults["default_sample_count"].(float64) != 1 {
+		t.Errorf("default default_sample_count should be 1, got %v", defaults["default_sample_count"])
+	}
 
 	// Partial update: only the webhook URL changes.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
@@ -64,6 +67,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 		"alert_enabled":            false,
 		"score_drop_alert_enabled": false,
 		"judge_model":              "kimi-k3",
+		"default_sample_count":     3,
 	})
 	putResp.Body.Close()
 	after = getSettings()
@@ -75,6 +79,20 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 	if after["judge_model"].(string) != "kimi-k3" {
 		t.Errorf("judge_model not updated: %v", after["judge_model"])
+	}
+	if after["default_sample_count"].(float64) != 3 {
+		t.Errorf("default_sample_count not updated: %v", after["default_sample_count"])
+	}
+
+	// Out-of-range sample counts are rejected.
+	for _, bad := range []int{0, 11} {
+		badResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
+			"default_sample_count": bad,
+		})
+		badResp.Body.Close()
+		if badResp.StatusCode != http.StatusBadRequest {
+			t.Errorf("default_sample_count=%d: expected 400, got %d", bad, badResp.StatusCode)
+		}
 	}
 
 	// Writes require a session: an anonymous PUT is rejected.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/taliove2009/hubscope/internal/hubclient"
@@ -44,31 +45,41 @@ func New(db *store.DB, client *hubclient.Client) *Evaluator {
 // The judge model is read from settings at run start (default
 // store.DefaultJudgeModel); the run record is updated when the configured
 // value differs from the snapshot taken at creation, so eval_runs.judge_model
-// always reflects the judge actually used.
+// always reflects the judge actually used. The default sample count is read
+// the same way; a case's own sample_count overrides it.
 func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64) error {
 	run, err := e.db.GetEvalRun(runID)
 	if err != nil {
 		return fmt.Errorf("load eval run %d: %w", runID, err)
 	}
 	run = e.resolveJudgeModel(run)
+	defaultSamples := e.resolveDefaultSampleCount()
+
+	// Register the run with the task center; tracking failures never abort
+	// the run itself (beginRunTask returns a no-op logger then).
+	task := e.beginRunTask(run, len(modelDBIDs))
 
 	cases, err := e.db.ListEnabledCases(run.SuiteID)
 	if err != nil {
 		_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
+		task.fail(fmt.Sprintf("load cases for suite %d: %v", run.SuiteID, err))
 		return fmt.Errorf("load cases for suite %d: %w", run.SuiteID, err)
 	}
 
 	for _, modelDBID := range modelDBIDs {
 		if err := ctx.Err(); err != nil {
 			_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
+			task.fail(err.Error())
 			return err
 		}
-		e.evalModel(ctx, run, modelDBID, cases)
+		e.evalModel(ctx, run, modelDBID, cases, task, defaultSamples)
 	}
 
 	if err := e.db.FinishEvalRun(runID, "done", time.Now().UTC()); err != nil {
+		task.fail(err.Error())
 		return err
 	}
+	task.succeed()
 	if e.AfterRun != nil {
 		// Detach cancellation so a graceful shutdown cannot abort the alert
 		// send mid-flight (mirrors the prober's WithoutCancel rounds). A
@@ -107,41 +118,73 @@ func (e *Evaluator) resolveJudgeModel(run *store.EvalRun) *store.EvalRun {
 	return &updated
 }
 
+// resolveDefaultSampleCount reads the global default sample count from
+// settings, clamped to [1, store.MaxSampleCount]. Read failures fall back to
+// the built-in default.
+func (e *Evaluator) resolveDefaultSampleCount() int {
+	n, err := e.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount)
+	if err != nil {
+		slog.Error("evaluator: read default_sample_count setting, using default", "error", err)
+		return store.DefaultSampleCount
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > store.MaxSampleCount {
+		return store.MaxSampleCount
+	}
+	return n
+}
+
 // evalModel runs all cases against one model. Any setup failure (model gone,
 // hub gone, no enabled endpoint) is recorded as failed results for every
-// case so the model x case grid stays complete.
-func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case) {
+// case so the model x case grid stays complete, and logged to the task.
+func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) {
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, "", cases, "model not found")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model db_id=%d skipped: model not found", modelDBID))
 		return
 	}
 
 	hub, err := e.db.GetHub(model.HubID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "hub not found")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: hub not found", model.ModelID))
 		return
 	}
 
 	endpoints, err := e.db.ListEndpointsByModelID(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "failed to load endpoints")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: failed to load endpoints", model.ModelID))
 		return
 	}
 
 	protocol, ok := selectProtocol(endpoints)
 	if !ok {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "no enabled endpoint for this model")
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: no enabled endpoint for this model", model.ModelID))
 		return
 	}
 
 	for _, c := range cases {
-		e.evalCase(ctx, run, hub, protocol, model, c)
+		e.evalCase(ctx, run, hub, protocol, model, c, task, defaultSamples)
 	}
 }
 
-// evalCase executes one case against one model and stores the result.
-func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) {
+// evalCase answers one case sampleCount times and stores a single result
+// whose score is the average of the judged samples. Samples that cannot be
+// judged (answer call failed, judge failed) contribute no score; when no
+// sample is judged at all the case stays unscored — the same convention as a
+// single unjudged answer. The outcome is logged to the task: scored
+// completions at info, answer/judge failures at warn.
+func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) {
+	samples := defaultSamples
+	if c.SampleCount != nil && *c.SampleCount >= 1 {
+		samples = *c.SampleCount
+	}
+
 	result := store.EvalResult{
 		EvalRunID: run.ID,
 		ModelDBID: model.ID,
@@ -149,26 +192,84 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 		CaseID:    c.ID,
 	}
 
-	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
-	result.LatencyMs = res.LatencyMs
-	result.InputTokens = res.InputTokens
-	result.OutputTokens = res.OutputTokens
-
-	if !res.OK {
-		detail := "answer call failed"
-		if res.ErrorSummary != nil {
-			detail = "answer call failed: " + *res.ErrorSummary
+	var scoreSum float64
+	var scored int
+	var details []string
+	for i := 1; i <= samples; i++ {
+		sample := e.evalSample(ctx, run, hub, protocol, model, c)
+		result.LatencyMs += sample.latencyMs
+		result.InputTokens = addIntPtr(result.InputTokens, sample.inputTokens)
+		result.OutputTokens = addIntPtr(result.OutputTokens, sample.outputTokens)
+		if sample.answer != nil && result.AnswerText == nil {
+			result.AnswerText = sample.answer
 		}
-		result.VerdictDetail = &detail
-		e.storeResult(result)
-		return
+		if sample.score != nil {
+			scoreSum += *sample.score
+			scored++
+		}
+		details = append(details, fmt.Sprintf("sample %d/%d: %s", i, samples, sample.detail))
 	}
 
-	result.AnswerText = &res.Text
-	score, detail := e.verdict(ctx, hub, protocol, run.JudgeModel, c, res.Text)
-	result.Score = score
+	if scored > 0 {
+		avg := scoreSum / float64(scored)
+		result.Score = &avg
+	}
+	detail := strings.Join(details, "; ")
 	result.VerdictDetail = &detail
 	e.storeResult(result)
+
+	switch {
+	case result.Score != nil:
+		task.log(store.TaskLogInfo, fmt.Sprintf("case %d done: model=%s score=%.2f", c.ID, model.ModelID, *result.Score))
+	case strings.Contains(detail, "judge"):
+		task.log(store.TaskLogWarn, fmt.Sprintf("case %d judge failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+	default:
+		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+	}
+}
+
+// sampleOutcome is one answer-and-verdict attempt for a case.
+type sampleOutcome struct {
+	answer       *string
+	score        *float64
+	detail       string
+	latencyMs    int
+	inputTokens  *int
+	outputTokens *int
+}
+
+// evalSample executes one answer call plus its verdict.
+func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) sampleOutcome {
+	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
+	out := sampleOutcome{
+		latencyMs:    res.LatencyMs,
+		inputTokens:  res.InputTokens,
+		outputTokens: res.OutputTokens,
+	}
+
+	if !res.OK {
+		out.detail = "answer call failed"
+		if res.ErrorSummary != nil {
+			out.detail = "answer call failed: " + *res.ErrorSummary
+		}
+		return out
+	}
+
+	out.answer = &res.Text
+	out.score, out.detail = e.verdict(ctx, hub, protocol, run.JudgeModel, c, res.Text)
+	return out
+}
+
+// addIntPtr sums two nullable ints; null only when both sides are null.
+func addIntPtr(a, b *int) *int {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	sum := *a + *b
+	return &sum
 }
 
 // verdict scores an answer according to the case's verdict type.

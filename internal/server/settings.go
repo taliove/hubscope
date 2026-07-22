@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -16,6 +17,7 @@ type settingsDTO struct {
 	AlertEnabled          bool   `json:"alert_enabled"`
 	ScoreDropAlertEnabled bool   `json:"score_drop_alert_enabled"`
 	JudgeModel            string `json:"judge_model"`
+	DefaultSampleCount    int    `json:"default_sample_count"`
 }
 
 // settingsPatch is the PUT body: every field is optional; a nil field leaves
@@ -25,6 +27,7 @@ type settingsPatch struct {
 	AlertEnabled          *bool   `json:"alert_enabled"`
 	ScoreDropAlertEnabled *bool   `json:"score_drop_alert_enabled"`
 	JudgeModel            *string `json:"judge_model"`
+	DefaultSampleCount    *int    `json:"default_sample_count"`
 }
 
 // readSettings loads all settings, applying defaults for keys never written.
@@ -41,6 +44,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.JudgeModel, err = s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel); err != nil {
+		return dto, err
+	}
+	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
 		return dto, err
 	}
 	return dto, nil
@@ -66,6 +72,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patch.DefaultSampleCount != nil &&
+		(*patch.DefaultSampleCount < 1 || *patch.DefaultSampleCount > store.MaxSampleCount) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("default_sample_count must be between 1 and %d", store.MaxSampleCount))
+		return
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -82,12 +95,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingJudgeModel, func() error {
 			return s.db.SetSetting(store.SettingJudgeModel, *patch.JudgeModel)
 		}},
+		{store.SettingDefaultSampleCount, func() error {
+			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
+		}},
 	}
 	present := []bool{
 		patch.LarkWebhookURL != nil,
 		patch.AlertEnabled != nil,
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
+		patch.DefaultSampleCount != nil,
 	}
 	for i, u := range updates {
 		if !present[i] {

@@ -1,8 +1,8 @@
-# 25 — 告警与评估设置适配
+# 34 — 告警与评估设置适配
 
 **What to build:** 告警口径跟上 Campaign 与版本化:分数大跌告警改为 Campaign 级对比(同 Suite 与上一个完成的 Campaign 比,替代逐 Run 对比);告警内容附各 Suite 跌幅与变动 Case 明细(哪些 Case 从得分变未判分/分数大降);参与对比的两个 Run 的 Suite 版本不同则跳过告警并在任务日志/告警事件中标注「题目已变更,分数不可比」。设置页:告警开关与阈值文案与新口径对齐,确认裁判模型、每周计划、权重、采样等设置项齐全可用。
 
-**Blocked by:** 20 — Eval Campaign + 一键全量评估;21 — 题库专业化:扩题 + Suite 版本化 + 采样
+**Blocked by:** 29 — Eval Campaign + 一键全量评估;30 — 题库专业化:扩题 + Suite 版本化 + 采样
 
 **Status:** ready-for-agent
 
