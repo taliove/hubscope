@@ -128,8 +128,10 @@ func (s *Server) routes() chi.Router {
 
 			r.Post("/models", s.handleCreateModel)
 			r.Get("/models", s.handleListModels)
+			r.Delete("/models/{id}", s.handleDeleteModel)
 
 			r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
+			r.Delete("/endpoints/{id}", s.handleDeleteEndpoint)
 			r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 			r.Get("/endpoints/{id}", s.handleGetEndpointDetail)
 			r.Get("/endpoints/{id}/series", s.handleGetEndpointSeries)

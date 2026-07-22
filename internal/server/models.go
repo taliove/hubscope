@@ -2,8 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
+
+	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
 
 // createModelRequest is the body for POST /api/models.
@@ -69,6 +72,33 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, dtos)
+}
+
+// handleDeleteModel handles DELETE /api/models/{id}. Only manual models can
+// be deleted (a discovered one would be resurrected by the next sync); the
+// model's endpoints and their history are removed together with it.
+func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid model id")
+		return
+	}
+
+	if _, err := s.db.GetModel(id); err != nil {
+		writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
+
+	if err := s.db.DeleteModel(id); err != nil {
+		if errors.Is(err, store.ErrModelNotManual) {
+			writeError(w, http.StatusConflict, "discovered models cannot be deleted; disable their endpoints instead")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to delete model")
+		return
+	}
+
+	writeNoContent(w)
 }
 
 // isUniqueViolation reports whether err is a SQLite UNIQUE constraint failure.

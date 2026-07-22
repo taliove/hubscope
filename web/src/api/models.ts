@@ -14,3 +14,9 @@ export async function listModels(): Promise<Model[]> {
 export async function createModel(payload: CreateModelPayload): Promise<Model> {
   return http.post<Model>('/models', payload)
 }
+
+// Delete a manual model with its endpoints and their history. Discovered
+// models are rejected by the backend with 409 (disable them instead).
+export async function deleteModel(modelId: number): Promise<void> {
+  await http.del<void>(`/models/${modelId}`)
+}

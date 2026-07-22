@@ -15,3 +15,8 @@ export async function getEndpointSeries(
     `/endpoints/${endpointId}/series?hours=${hours}&streaming=${streaming}`
   )
 }
+
+// Delete an endpoint together with its probe history and alert events.
+export async function deleteEndpoint(endpointId: number): Promise<void> {
+  await http.del<void>(`/endpoints/${endpointId}`)
+}

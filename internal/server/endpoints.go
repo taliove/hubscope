@@ -56,6 +56,28 @@ func (s *Server) handlePatchEndpoint(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, toEndpointDTO(*endpoint))
 }
 
+// handleDeleteEndpoint handles DELETE /api/endpoints/{id}. The endpoint's
+// probe history and alert events are removed together with it.
+func (s *Server) handleDeleteEndpoint(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid endpoint id")
+		return
+	}
+
+	if _, err := s.db.GetEndpoint(id); err != nil {
+		writeError(w, http.StatusNotFound, "endpoint not found")
+		return
+	}
+
+	if err := s.db.DeleteEndpoint(id); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete endpoint")
+		return
+	}
+
+	writeNoContent(w)
+}
+
 // parseIntervalPatch converts the raw interval_seconds JSON value into a
 // tri-state store.IntervalPatch: absent leaves the override unchanged, an
 // explicit null clears it, and a number sets it.

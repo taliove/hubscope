@@ -10,7 +10,7 @@
     <main class="admin-body">
       <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" @sync-settled="onSyncSettled" />
       <ModelAdder :hubs="hubs" @added="reloadModels" />
-      <EndpointTable :rows="endpointRows" :loading="loading" />
+      <EndpointTable :rows="endpointRows" :loading="loading" @changed="reloadModels" />
       <SettingsPanel />
     </main>
   </div>

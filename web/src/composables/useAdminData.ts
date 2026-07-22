@@ -8,6 +8,8 @@ export interface EndpointRow {
   endpoint: Endpoint
   modelName: string
   hubName: string
+  modelDbId: number
+  modelOrigin: string // "manual" | "discovered"
 }
 
 export function useAdminData() {
@@ -22,7 +24,7 @@ export function useAdminData() {
     for (const model of models.value) {
       const hubName = hubMap.get(model.hub_id) ?? '(unknown)'
       for (const endpoint of model.endpoints) {
-        rows.push({ endpoint, modelName: model.model_id, hubName })
+        rows.push({ endpoint, modelName: model.model_id, hubName, modelDbId: model.id, modelOrigin: model.origin })
       }
     }
     return rows
