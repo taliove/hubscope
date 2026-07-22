@@ -4,7 +4,7 @@
 
 **Blocked by:** 44 — 评估运营与题库挪入管理台(先腾空 /eval 再重写)
 
-**Status:** done
+**Status:** partial — report API + 独立报告页已落地(00cb11f/727706f/2af2f0f);/eval 重写为榜单页(批次切换器/涨跌箭头/废弃 ScoreMatrix)未做,实现与 2026-07-22 重组定稿的票面有出入,待用户裁决
 
 - [ ] report API:总分加权(自定义权重生效)、family 过滤、排序切换;已删除模型不上榜
 - [ ] /eval 榜单页:批次切换器 + Leaderboard 条形排行(DesignArena 式),废弃 ScoreMatrix/EvalTrendChart
