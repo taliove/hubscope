@@ -7,13 +7,15 @@ import (
 
 // CreateDiscoveredModel registers a model found via hub discovery. When the
 // model already exists (any origin) it is not duplicated: the stored row is
-// returned with created=false, and a retired row is reactivated to 'active'
-// because it reappeared in the hub listing. Manual models keep their origin.
-func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability string) (*Model, bool, error) {
+// returned with created=false, a retired row is reactivated to 'active'
+// because it reappeared in the hub listing, and its classification is
+// refreshed so rule changes reach existing models on every sync. Manual
+// models keep their origin.
+func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability, family string) (*Model, bool, error) {
 	now := time.Now().UTC()
 	result, err := db.conn.Exec(
-		"INSERT INTO models (hub_id, model_id, origin, status, capability, created_at) VALUES (?, ?, 'discovered', 'active', ?, ?)",
-		hubID, modelID, capability, now.Format(time.RFC3339),
+		"INSERT INTO models (hub_id, model_id, origin, status, capability, family, created_at) VALUES (?, ?, 'discovered', 'active', ?, ?, ?)",
+		hubID, modelID, capability, family, now.Format(time.RFC3339),
 	)
 	if err == nil {
 		id, err := result.LastInsertId()
@@ -27,6 +29,7 @@ func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability string) (*M
 			Origin:     "discovered",
 			Status:     "active",
 			Capability: capability,
+			Family:     family,
 			CreatedAt:  now,
 		}, true, nil
 	}
@@ -34,10 +37,11 @@ func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability string) (*M
 		return nil, false, err
 	}
 
-	// Already registered. Reactivate when retired, then return the stored row.
+	// Already registered. Reactivate when retired, refresh the
+	// classification, then return the stored row.
 	if _, err := db.conn.Exec(
-		"UPDATE models SET status = 'active' WHERE hub_id = ? AND model_id = ? AND status = 'retired'",
-		hubID, modelID,
+		"UPDATE models SET status = 'active', capability = ?, family = ? WHERE hub_id = ? AND model_id = ?",
+		capability, family, hubID, modelID,
 	); err != nil {
 		return nil, false, err
 	}
@@ -109,17 +113,13 @@ func (db *DB) CreateEndpoint(modelID int64, protocol string, enabled bool) (*End
 
 // getModelByModelID fetches a model by its (hub_id, model_id) unique key.
 func (db *DB) getModelByModelID(hubID int64, modelID string) (*Model, error) {
-	var m Model
-	var createdAt string
-	err := db.conn.QueryRow(`
-		SELECT id, hub_id, model_id, origin, status, capability, created_at
-		FROM models
-		WHERE hub_id = ? AND model_id = ?
-	`, hubID, modelID).Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &createdAt)
+	m, err := scanModel(db.conn.QueryRow(
+		"SELECT "+modelColumns+" FROM models WHERE hub_id = ? AND model_id = ?",
+		hubID, modelID,
+	))
 	if err != nil {
 		return nil, err
 	}
-	m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return &m, nil
 }
 

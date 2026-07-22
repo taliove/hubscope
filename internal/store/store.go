@@ -67,6 +67,7 @@ func (db *DB) migrate() error {
 			origin TEXT NOT NULL DEFAULT 'manual',
 			status TEXT NOT NULL DEFAULT 'active',
 			capability TEXT NOT NULL DEFAULT 'chat',
+			family TEXT NOT NULL DEFAULT 'other',
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (hub_id) REFERENCES hubs(id),
 			UNIQUE(hub_id, model_id)
@@ -170,6 +171,16 @@ func (db *DB) migrate() error {
 			value TEXT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS classification_rules (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dimension TEXT NOT NULL,
+			keyword TEXT NOT NULL,
+			category TEXT NOT NULL,
+			priority INTEGER NOT NULL DEFAULT 100,
+			created_at TEXT NOT NULL,
+			UNIQUE(dimension, keyword)
+		);
+
 		CREATE TABLE IF NOT EXISTS alert_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			endpoint_id INTEGER,
@@ -200,6 +211,9 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("hubs", "last_sync_error", "TEXT NULL"); err != nil {
 		return err
 	}
+	if err := db.ensureColumn("models", "family", "TEXT NOT NULL DEFAULT 'other'"); err != nil {
+		return err
+	}
 
 	// A hub left 'syncing' means the process died mid-sync (the in-flight
 	// guard is in-memory only); mark it failed so the UI does not show a
@@ -210,8 +224,16 @@ func (db *DB) migrate() error {
 		return err
 	}
 
-	// Seed the built-in evaluation suites on first run (no-op afterwards).
-	return db.seedSuites()
+	// Seed the built-in evaluation suites and default classification rules on
+	// first run (no-op afterwards), then re-run classification so upgraded
+	// databases pick up the current rule set.
+	if err := db.seedSuites(); err != nil {
+		return err
+	}
+	if err := db.seedClassificationRules(); err != nil {
+		return err
+	}
+	return db.ReclassifyAll()
 }
 
 // ensureColumn adds a column to an existing table when it is missing. It

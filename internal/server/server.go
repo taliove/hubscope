@@ -139,6 +139,11 @@ func (s *Server) routes() chi.Router {
 
 			r.Post("/discovery/run", s.handleRunDiscovery)
 
+			r.Get("/classification-rules", s.handleListClassificationRules)
+			r.Post("/classification-rules", s.handleCreateClassificationRule)
+			r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
+			r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
+
 			r.Get("/overview", s.handleGetOverview)
 
 			r.Get("/suites", s.handleListSuites)

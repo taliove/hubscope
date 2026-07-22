@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"git.github.net/taliove2009/ai-hub-checker/internal/classifier"
 )
 
 // Model represents a model registered on a hub
@@ -15,6 +17,7 @@ type Model struct {
 	Origin     string
 	Status     string
 	Capability string
+	Family     string
 	CreatedAt  time.Time
 }
 
@@ -66,9 +69,30 @@ func scanEndpoint(s rowScanner) (Endpoint, error) {
 	return e, nil
 }
 
-// CreateModel creates a model and its two endpoints (anthropic + openai)
+// modelColumns is the canonical column list for scanning a Model.
+const modelColumns = "id, hub_id, model_id, origin, status, capability, family, created_at"
+
+// scanModel scans a row containing modelColumns into a Model.
+func scanModel(s rowScanner) (Model, error) {
+	var m Model
+	var createdAt string
+	if err := s.Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &m.Family, &createdAt); err != nil {
+		return Model{}, err
+	}
+	m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return m, nil
+}
+
+// CreateModel creates a model and its two endpoints (anthropic + openai).
+// Classification (capability + family) is derived from the current rule set.
 func (db *DB) CreateModel(hubID int64, modelID string) (*Model, error) {
 	now := time.Now().UTC()
+
+	rules, err := db.ListClassificationRules()
+	if err != nil {
+		return nil, err
+	}
+	capability, family := classifier.Classify(modelID, rules)
 
 	// Start transaction
 	tx, err := db.conn.Begin()
@@ -79,8 +103,8 @@ func (db *DB) CreateModel(hubID int64, modelID string) (*Model, error) {
 
 	// Insert model
 	result, err := tx.Exec(
-		"INSERT INTO models (hub_id, model_id, origin, status, capability, created_at) VALUES (?, ?, 'manual', 'active', 'chat', ?)",
-		hubID, modelID, now.Format(time.RFC3339),
+		"INSERT INTO models (hub_id, model_id, origin, status, capability, family, created_at) VALUES (?, ?, 'manual', 'active', ?, ?, ?)",
+		hubID, modelID, capability, family, now.Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, err
@@ -112,24 +136,21 @@ func (db *DB) CreateModel(hubID int64, modelID string) (*Model, error) {
 		ModelID:    modelID,
 		Origin:     "manual",
 		Status:     "active",
-		Capability: "chat",
+		Capability: capability,
+		Family:     family,
 		CreatedAt:  now,
 	}, nil
 }
 
 // GetModel retrieves a model by ID
 func (db *DB) GetModel(id int64) (*Model, error) {
-	var m Model
-	var createdAt string
-	err := db.conn.QueryRow(`
-		SELECT id, hub_id, model_id, origin, status, capability, created_at
-		FROM models
-		WHERE id = ?
-	`, id).Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &createdAt)
+	m, err := scanModel(db.conn.QueryRow(
+		"SELECT "+modelColumns+" FROM models WHERE id = ?",
+		id,
+	))
 	if err != nil {
 		return nil, err
 	}
-	m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return &m, nil
 }
 
@@ -141,13 +162,15 @@ func (db *DB) SetModelCapability(id int64, capability string) error {
 	return err
 }
 
+// SetModelClassification updates both classification dimensions of a model.
+func (db *DB) SetModelClassification(id int64, capability, family string) error {
+	_, err := db.conn.Exec("UPDATE models SET capability = ?, family = ? WHERE id = ?", capability, family, id)
+	return err
+}
+
 // ListModels returns all models with their endpoints
 func (db *DB) ListModels() ([]Model, error) {
-	rows, err := db.conn.Query(`
-		SELECT id, hub_id, model_id, origin, status, capability, created_at
-		FROM models
-		ORDER BY id
-	`)
+	rows, err := db.conn.Query("SELECT " + modelColumns + " FROM models ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +178,10 @@ func (db *DB) ListModels() ([]Model, error) {
 
 	var models []Model
 	for rows.Next() {
-		var m Model
-		var createdAt string
-		if err := rows.Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &createdAt); err != nil {
+		m, err := scanModel(rows)
+		if err != nil {
 			return nil, err
 		}
-		m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		models = append(models, m)
 	}
 

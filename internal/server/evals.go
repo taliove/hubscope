@@ -222,7 +222,7 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		}
 		if model.Capability != "chat" {
 			writeError(w, http.StatusBadRequest,
-				fmt.Sprintf("model %d (%s) is non_chat and cannot be evaluated", id, model.ModelID))
+				fmt.Sprintf("model %d (%s) has capability %q and cannot be evaluated", id, model.ModelID, model.Capability))
 			return
 		}
 	}

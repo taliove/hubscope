@@ -7,6 +7,13 @@
     <el-table :data="rows" v-loading="loading" size="small" empty-text="暂无 Endpoint">
       <el-table-column label="Hub" prop="hubName" width="140" show-overflow-tooltip />
       <el-table-column label="模型 ID" prop="modelName" min-width="180" show-overflow-tooltip />
+      <el-table-column label="厂商" width="110">
+        <template #default="{ row }">
+          <el-tag :type="row.modelFamily === 'other' ? 'info' : 'primary'" size="small" plain>
+            {{ row.modelFamily }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="协议" width="120">
         <template #default="{ row }">
           <el-tag :type="row.endpoint.protocol === 'anthropic' ? 'success' : 'warning'" size="small">

@@ -35,6 +35,7 @@ type modelDTO struct {
 	Origin     string        `json:"origin"`
 	Status     string        `json:"status"`
 	Capability string        `json:"capability"`
+	Family     string        `json:"family"`
 	Endpoints  []endpointDTO `json:"endpoints"`
 }
 
@@ -105,6 +106,7 @@ func toModelDTO(m store.Model, endpoints []store.Endpoint) modelDTO {
 		Origin:     m.Origin,
 		Status:     m.Status,
 		Capability: m.Capability,
+		Family:     m.Family,
 		Endpoints:  eps,
 	}
 }

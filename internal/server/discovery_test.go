@@ -276,8 +276,8 @@ func TestDiscoveryFirstSync(t *testing.T) {
 	}
 
 	img := models["gpt-image-2"]
-	if img["capability"] != "non_chat" {
-		t.Errorf("gpt-image-2 capability: expected non_chat, got %v", img["capability"])
+	if img["capability"] != "image" {
+		t.Errorf("gpt-image-2 capability: expected image, got %v", img["capability"])
 	}
 	if endpointEnabled(t, img, "openai") != true || endpointEnabled(t, img, "anthropic") != true {
 		t.Error("gpt-image-2 endpoints should both be enabled (probes succeeded)")

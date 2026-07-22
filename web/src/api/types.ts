@@ -28,8 +28,20 @@ export interface Model {
   model_id: string
   origin: string // "manual" | "discovered"
   status: string // "active" | "retired"
-  capability: string // "chat" | "non_chat"
+  capability: string // "chat" | "embedding" | "image" | "audio" | ...
+  family: string // vendor series: "gpt" | "claude" | "qwen" | ... | "other"
   endpoints: Endpoint[]
+}
+
+// A model-classification rule: models whose ID contains keyword
+// (case-insensitive) get category on the rule's dimension. Lower priority
+// values match first.
+export interface ClassificationRule {
+  id: number
+  dimension: 'capability' | 'family'
+  keyword: string
+  category: string
+  priority: number
 }
 
 export interface ProbeRecord {
