@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	working, failures := s.trialProtocols(r.Context(), *hub, req.ModelID)
+	working, failures := s.trialProtocols(r.Context(), *hub, req.ModelID, modelProtocols)
 	if len(working) == 0 {
 		s.audit(r, "model.create", "model", req.ModelID, failures, "failed: unreachable on both protocols")
 		writeError(w, http.StatusBadRequest,
@@ -75,13 +76,13 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, toModelDTO(*model, endpoints))
 }
 
-// trialProtocols probes the model on both hub protocols and returns the
+// trialProtocols probes the model on the given protocols and returns the
 // protocols that answered plus a human-readable summary of the failures.
-func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string) ([]string, string) {
+func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string, protocols []string) ([]string, string) {
 	client := hubclient.New()
 	working := []string{}
 	failures := []string{}
-	for _, protocol := range modelProtocols {
+	for _, protocol := range protocols {
 		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false)
 		if result.OK {
 			working = append(working, protocol)
@@ -153,4 +154,89 @@ func isUniqueViolation(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed")
+}
+
+// trialResultDTO is the response of POST /api/models/{id}/trial.
+type trialResultDTO struct {
+	Model            modelDTO `json:"model"`
+	CreatedProtocols []string `json:"created_protocols"`
+	// Failures summarizes the failed trials ("" when nothing failed).
+	Failures string `json:"failures"`
+}
+
+// handleTrialModel handles POST /api/models/{id}/trial. It re-runs the
+// protocol trial for the protocols the model has no endpoint for and creates
+// an enabled endpoint per protocol that answered (W3: only working protocols
+// get an endpoint). Protocols that already have an endpoint are not
+// re-probed, so the call is idempotent for a fully-covered model.
+func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid model id")
+		return
+	}
+
+	model, err := s.db.GetModel(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
+
+	hub, err := s.db.GetHub(model.HubID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load hub")
+		return
+	}
+
+	existing, err := s.db.ListEndpointsByModelID(model.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load endpoints")
+		return
+	}
+	have := make(map[string]bool, len(existing))
+	for _, ep := range existing {
+		have[ep.Protocol] = true
+	}
+	missing := []string{}
+	for _, protocol := range modelProtocols {
+		if !have[protocol] {
+			missing = append(missing, protocol)
+		}
+	}
+
+	working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, missing)
+	created := make([]string, 0, len(working))
+	for _, protocol := range working {
+		if _, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+			// Keep going: a partially created trial must not surface as a
+			// bare 500 with the already-created endpoints left invisible.
+			slog.Error("model trial: create endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
+			if failures == "" {
+				failures = fmt.Sprintf("create %s endpoint failed", protocol)
+			} else {
+				failures += fmt.Sprintf("; create %s endpoint failed", protocol)
+			}
+			continue
+		} else if isNew {
+			created = append(created, protocol)
+		}
+	}
+
+	endpoints, err := s.db.ListEndpointsByModelID(model.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load endpoints")
+		return
+	}
+
+	result := "success"
+	if len(created) == 0 && failures != "" {
+		result = "failed: unreachable on all missing protocols"
+	}
+	s.audit(r, "model.trial", "model", strconv.FormatInt(model.ID, 10),
+		fmt.Sprintf("model_id=%q created=%v failures=%q", model.ModelID, created, failures), result)
+	writeData(w, http.StatusOK, trialResultDTO{
+		Model:            toModelDTO(*model, endpoints),
+		CreatedProtocols: created,
+		Failures:         failures,
+	})
 }

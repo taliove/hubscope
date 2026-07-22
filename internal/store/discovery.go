@@ -85,30 +85,42 @@ func (db *DB) MarkRetiredMissing(hubID int64, seenIDs []string) (int, error) {
 // CreateEndpoint inserts one endpoint for a model with the given enabled
 // state. Discovery uses it to record per-protocol probe outcomes: reachable
 // protocols start enabled, unreachable ones start disabled but stay visible.
-func (db *DB) CreateEndpoint(modelID int64, protocol string, enabled bool) (*Endpoint, error) {
+//
+// The insert is idempotent: (model_id, protocol) pairs are unique in
+// practice, and the INSERT...WHERE NOT EXISTS form makes a concurrent or
+// repeated call a no-op returning the existing row (created=false) instead
+// of a duplicate. Atomicity comes from the single-connection store, so no
+// schema constraint is needed.
+func (db *DB) CreateEndpoint(modelID int64, protocol string, enabled bool) (*Endpoint, bool, error) {
 	now := time.Now().UTC()
 	enabledInt := 0
 	if enabled {
 		enabledInt = 1
 	}
-	result, err := db.conn.Exec(
-		"INSERT INTO endpoints (model_id, protocol, enabled, created_at) VALUES (?, ?, ?, ?)",
-		modelID, protocol, enabledInt, now.Format(time.RFC3339),
-	)
+	result, err := db.conn.Exec(`
+		INSERT INTO endpoints (model_id, protocol, enabled, created_at)
+		SELECT ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM endpoints WHERE model_id = ? AND protocol = ?)
+	`, modelID, protocol, enabledInt, now.Format(time.RFC3339), modelID, protocol)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	id, err := result.LastInsertId()
+	affected, err := result.RowsAffected()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &Endpoint{
-		ID:        id,
-		ModelID:   modelID,
-		Protocol:  protocol,
-		Enabled:   enabled,
-		CreatedAt: now,
-	}, nil
+	var ep Endpoint
+	var createdAt string
+	err = db.conn.QueryRow(
+		"SELECT id, model_id, protocol, enabled, created_at FROM endpoints WHERE model_id = ? AND protocol = ?",
+		modelID, protocol,
+	).Scan(&ep.ID, &ep.ModelID, &ep.Protocol, &enabledInt, &createdAt)
+	if err != nil {
+		return nil, false, err
+	}
+	ep.Enabled = enabledInt == 1
+	ep.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return &ep, affected == 1, nil
 }
 
 // getModelByModelID fetches a model by its (hub_id, model_id) unique key.

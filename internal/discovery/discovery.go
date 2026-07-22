@@ -231,10 +231,11 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 				"http_status", result.HTTPStatus, "error", errSummary(result.ErrorSummary))
 			continue
 		}
-		if _, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+		if _, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 			return created, err
+		} else if isNew {
+			created++
 		}
-		created++
 	}
 	return created, nil
 }
