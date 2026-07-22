@@ -7,11 +7,17 @@
           {{ detail.protocol }}
         </el-tag>
         <span class="hub-name">Hub:{{ detail.hub_name }}</span>
-        <StatusBadge :status="detail.status" :reason="detail.status_reason" />
-        <el-tag v-if="!detail.enabled" type="info" size="small">已停用</el-tag>
       </template>
     </header>
-    <div v-if="detail" class="status-reason">{{ detail.status_reason }}</div>
+    <!-- Status row mirrors the Dashboard card: StatusBadge first, then tags,
+         then the reason text (same colors, same words, ui-guidelines §3). -->
+    <div v-if="detail" class="status-row">
+      <StatusBadge :status="detail.status" :reason="detail.status_reason" />
+      <el-tag v-if="!detail.enabled" type="info" size="small">已停用</el-tag>
+      <span v-if="detail.status_reason" class="status-reason" :title="detail.status_reason">
+        {{ detail.status_reason }}
+      </span>
+    </div>
 
     <!-- Window and streaming selectors drive the three charts below. -->
     <div class="controls">
@@ -51,7 +57,7 @@
 
     <el-card shadow="never" class="failures-card">
       <div class="failures-title">近期失败(最近 20 条)</div>
-      <ProbeRecordTable :records="failures" />
+      <ProbeRecordTable :records="failures" :compact="false" />
     </el-card>
   </div>
 </template>
@@ -130,9 +136,9 @@ onMounted(async () => {
 
 <style scoped>
 .detail-page {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 24px 16px 32px;
 }
 .detail-header {
   display: flex;
@@ -142,20 +148,30 @@ onMounted(async () => {
 }
 .model-title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--hs-text-xl);
   color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .hub-name {
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
 }
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
 .status-reason {
-  margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   color: var(--hs-text-regular);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .controls {
   display: flex;
@@ -169,8 +185,12 @@ onMounted(async () => {
 .failures-card {
   margin-top: 8px;
 }
+/* Public status board density: 16px card padding (ui-guidelines §2). */
+.failures-card {
+  --el-card-padding: 16px;
+}
 .failures-title {
-  font-size: 14px;
+  font-size: var(--hs-text-md);
   font-weight: 600;
   color: var(--hs-text-primary);
   margin-bottom: 8px;

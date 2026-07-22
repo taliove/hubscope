@@ -1,5 +1,5 @@
 <template>
-  <el-table :data="records" size="small" empty-text="暂无探测记录">
+  <el-table :data="records" :size="compact ? 'small' : 'default'" empty-text="暂无探测记录">
     <el-table-column label="类型" width="90">
       <template #default="{ row }">
         {{ row.streaming ? '流式' : '非流式' }}
@@ -41,22 +41,25 @@ import type { ProbeRecord } from '@/api/types'
 import { formatTime, formatMetric } from '@/utils/format'
 
 // Shared table rendering a list of ProbeRecords (probe run or history).
-defineProps<{ records: ProbeRecord[] }>()
+// Density follows the surface (ui-guidelines §2): admin consoles keep the
+// compact 12px tier (`compact`, default), the public status board passes
+// `:compact="false"` for the roomier default row height.
+withDefaults(defineProps<{ records: ProbeRecord[]; compact?: boolean }>(), { compact: true })
 </script>
 
 <style scoped>
 .ok {
-  color: #67c23a;
-  font-weight: bold;
+  color: var(--el-color-success);
+  font-weight: 600;
 }
 .fail {
-  color: #f56c6c;
-  font-weight: bold;
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 .fail-text {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 .muted {
-  color: #c0c4cc;
+  color: var(--hs-text-placeholder);
 }
 </style>
