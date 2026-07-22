@@ -60,7 +60,7 @@ func authedClient(t *testing.T, rawURL string) *http.Client {
 // mint expired or tampered cookies without any server cooperation.
 func forgeSessionToken(t *testing.T, issued time.Time, tamper bool) string {
 	t.Helper()
-	key := sha256.Sum256([]byte("ai-hub-checker-session:" + testAdminPassword))
+	key := sha256.Sum256([]byte("hubscope-session:" + testAdminPassword))
 	stamp := strconv.FormatInt(issued.Unix(), 10)
 	mac := hmac.New(sha256.New, key[:])
 	mac.Write([]byte(stamp))

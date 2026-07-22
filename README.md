@@ -1,4 +1,4 @@
-# AI Hub Checker
+# HubScope
 
 对内的 AI Hub(模型网关)可用性监控与质量评估网站:Go 单二进制,内嵌 Vue 前端与 SQLite。
 
@@ -12,8 +12,8 @@
 ## Quick Start
 
 ```sh
-make build                                    # 前端构建 + 单二进制 → bin/ai-hub-checker
-ADMIN_PASSWORD=your-password ./bin/ai-hub-checker
+make build                                    # 前端构建 + 单二进制 → bin/hubscope
+ADMIN_PASSWORD=your-password ./bin/hubscope
 # 打开 http://localhost:8080 → 登录 → 添加 Hub → 自动发现模型
 ```
 

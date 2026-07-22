@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // createModelRequest is the body for POST /api/models.

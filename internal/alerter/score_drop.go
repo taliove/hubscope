@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // ScoreDropThreshold is how far a (suite, model) aggregate score must fall
@@ -132,7 +132,7 @@ func (e *Evaluator) checkPair(ctx context.Context, webhook string, run *store.Ev
 	}
 
 	message := fmt.Sprintf(
-		"【AI Hub Checker】评估分数大跌:模型 %s 在评估集「%s」的得分由 %.2f 跌至 %.2f(下跌 %.2f,超过阈值 %.1f)。",
+		"【HubScope】评估分数大跌:模型 %s 在评估集「%s」的得分由 %.2f 跌至 %.2f(下跌 %.2f,超过阈值 %.1f)。",
 		modelID, suite.Name, *previous, *current, *previous-*current, ScoreDropThreshold)
 
 	sentOK := true

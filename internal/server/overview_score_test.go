@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
-	"git.github.net/taliove2009/ai-hub-checker/internal/server"
+	"github.com/taliove2009/hubscope/internal/scheduler"
+	"github.com/taliove2009/hubscope/internal/server"
 )
 
 // findGroupedEntry returns the overview entry for one endpoint or fails.

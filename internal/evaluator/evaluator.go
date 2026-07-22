@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // evalMaxTokens gives evaluated models room for a complete answer (unlike

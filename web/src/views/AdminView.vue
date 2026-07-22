@@ -1,7 +1,7 @@
 <template>
   <div class="admin">
     <header class="admin-header">
-      <h1>AI Hub Checker</h1>
+      <h1>HubScope</h1>
       <span class="subtitle">管理视图</span>
       <router-link to="/" class="nav-link">状态总览</router-link>
       <el-button class="logout-button" size="small" @click="onLogout">退出登录</el-button>

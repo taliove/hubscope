@@ -1,4 +1,4 @@
-# AI Hub Checker
+# HubScope
 
 对内监控网站:定期对 AI HUB(模型网关)上接入的所有模型做可用性探测与质量评估。
 

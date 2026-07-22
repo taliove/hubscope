@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.

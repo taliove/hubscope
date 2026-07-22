@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
-	"git.github.net/taliove2009/ai-hub-checker/internal/server"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/scheduler"
+	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // listEvalRuns fetches GET /api/evals.

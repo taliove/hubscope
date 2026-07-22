@@ -22,7 +22,7 @@ const sessionTTL = 7 * 24 * time.Hour
 // deriveSessionKey derives the HMAC-SHA256 signing key from the admin
 // password, so no separate secret needs to be configured or stored.
 func deriveSessionKey(adminPassword string) []byte {
-	sum := sha256.Sum256([]byte("ai-hub-checker-session:" + adminPassword))
+	sum := sha256.Sum256([]byte("hubscope-session:" + adminPassword))
 	return sum[:]
 }
 

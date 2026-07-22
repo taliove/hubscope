@@ -2,7 +2,7 @@
   <div class="login-page">
     <el-card class="login-card">
       <template #header>
-        <div class="login-title">AI Hub Checker 管理登录</div>
+        <div class="login-title">HubScope 管理登录</div>
       </template>
       <el-form @submit.prevent="onSubmit">
         <el-form-item>

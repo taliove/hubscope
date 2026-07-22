@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/status"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/status"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // Evaluator decides when probe results warrant a Lark alert. It is invoked
@@ -149,7 +149,7 @@ func (e *Evaluator) buildMessage(endpointID int64, kind string) (string, error) 
 	}
 
 	if kind == store.AlertKindRecovered {
-		return fmt.Sprintf("【AI Hub Checker】端点恢复:模型 %s(%s)已恢复正常。",
+		return fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",
 			model.ModelID, endpoint.Protocol), nil
 	}
 
@@ -158,6 +158,6 @@ func (e *Evaluator) buildMessage(endpointID int64, kind string) (string, error) 
 		latest != nil && !latest.OK && latest.ErrorSummary != nil {
 		lastError = *latest.ErrorSummary
 	}
-	return fmt.Sprintf("【AI Hub Checker】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
+	return fmt.Sprintf("【HubScope】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
 		model.ModelID, endpoint.Protocol, status.DownThreshold, lastError), nil
 }

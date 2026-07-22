@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/prober"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // defaultIntervalSeconds is the global default probe interval.

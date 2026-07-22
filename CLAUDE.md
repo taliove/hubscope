@@ -1,6 +1,6 @@
-# AI Hub Checker — Constitution
+# HubScope — Constitution
 
-本项目的一切协作规则以此文件为准(宪法)。领域术语见 [CONTEXT.md](./CONTEXT.md),架构决策见 [docs/adr/](./docs/adr/),需求见 [docs/specs/](./docs/specs/),ticket 见 [.scratch/ai-hub-checker-mvp/issues/](./.scratch/ai-hub-checker-mvp/issues/)。
+本项目的一切协作规则以此文件为准(宪法)。领域术语见 [CONTEXT.md](./CONTEXT.md),架构决策见 [docs/adr/](./docs/adr/),需求见 [docs/specs/](./docs/specs/),ticket 见 [.scratch/hubscope-mvp/issues/](./.scratch/hubscope-mvp/issues/)。
 
 ## 铁律(不可违反)
 
@@ -20,6 +20,6 @@
 
 ## 工作流
 
-1. 从 frontier ticket 开工(`.scratch/ai-hub-checker-mvp/issues/`,Blocked by 全部完成的票)。
+1. 从 frontier ticket 开工(`.scratch/hubscope-mvp/issues/`,Blocked by 全部完成的票)。
 2. TDD 实现 → `make test` 全绿 → code review → 英文 commit。
 3. 一票一 commit(或一票内多个原子 commit),完成 ticket 后在其文件的 Status 处标记 done。

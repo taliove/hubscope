@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
     <header class="dashboard-header">
-      <h1>AI Hub Checker</h1>
+      <h1>HubScope</h1>
       <span class="subtitle">状态总览</span>
       <router-link to="/eval" class="nav-link">评估中心</router-link>
       <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>

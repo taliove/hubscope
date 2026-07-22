@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // TestDiscoveryBackfillsMissingProtocol verifies that when a model gains

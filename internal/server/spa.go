@@ -8,7 +8,7 @@ import (
 )
 
 // fallbackHTML is served when no built index.html is embedded yet.
-const fallbackHTML = "ai-hub-checker: frontend not built yet"
+const fallbackHTML = "hubscope: frontend not built yet"
 
 // SetStaticFS registers the frontend asset filesystem (rooted at the dist
 // directory) used to serve the SPA. Passing nil serves only the fallback text.

@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
-	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
-	"git.github.net/taliove2009/ai-hub-checker/internal/server"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
-	"git.github.net/taliove2009/ai-hub-checker/web"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/prober"
+	"github.com/taliove2009/hubscope/internal/scheduler"
+	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove2009/hubscope/web"
 )
 
 // defaultAddr is the fallback listen address.

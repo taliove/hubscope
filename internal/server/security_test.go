@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/server"
+	"github.com/taliove2009/hubscope/internal/server"
 )
 
 // plainGet issues a GET without any session cookie.

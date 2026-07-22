@@ -1,4 +1,4 @@
-BINARY := bin/ai-hub-checker
+BINARY := bin/hubscope
 GO := go
 
 .PHONY: build test dev clean frontend-build frontend-test backend-build backend-test ensure-dist hooks
@@ -10,7 +10,7 @@ build: frontend-build backend-build
 test: backend-test frontend-test
 
 backend-build: ensure-dist
-	$(GO) build -o $(BINARY) ./cmd/ai-hub-checker
+	$(GO) build -o $(BINARY) ./cmd/hubscope
 
 backend-test: ensure-dist
 	$(GO) vet ./...
@@ -32,12 +32,12 @@ frontend-test:
 
 ## dev: run backend locally (stub frontend if not built)
 dev: ensure-dist
-	$(GO) run ./cmd/ai-hub-checker
+	$(GO) run ./cmd/hubscope
 
 ## ensure-dist: go:embed needs web/dist to exist even before the first vite build
 ensure-dist:
 	@mkdir -p web/dist
-	@test -f web/dist/index.html || printf '<!doctype html><html><title>ai-hub-checker</title><body>frontend not built yet</body></html>' > web/dist/index.html
+	@test -f web/dist/index.html || printf '<!doctype html><html><title>hubscope</title><body>frontend not built yet</body></html>' > web/dist/index.html
 
 clean:
 	rm -rf bin web/dist

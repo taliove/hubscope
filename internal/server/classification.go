@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/classifier"
+	"github.com/taliove2009/hubscope/internal/classifier"
 )
 
 // classificationRuleDTO is the API representation of a classification rule.

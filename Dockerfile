@@ -16,14 +16,14 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=web /build/dist ./web/dist
-RUN CGO_ENABLED=0 go build -o /ai-hub-checker ./cmd/ai-hub-checker
+RUN CGO_ENABLED=0 go build -o /hubscope ./cmd/hubscope
 
 # Runtime
 FROM alpine:3.21
 RUN adduser -D -u 10001 ahc && mkdir -p /data && chown ahc /data
 USER ahc
-COPY --from=go /ai-hub-checker /usr/local/bin/ai-hub-checker
+COPY --from=go /hubscope /usr/local/bin/hubscope
 ENV ADDR=:8080 DATA_PATH=/data/app.db
 VOLUME /data
 EXPOSE 8080
-ENTRYPOINT ["ai-hub-checker"]
+ENTRYPOINT ["hubscope"]

@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // Prober runs probe rounds against endpoints and persists the results.

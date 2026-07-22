@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/classifier"
+	"github.com/taliove2009/hubscope/internal/classifier"
 )
 
 // Model represents a model registered on a hub

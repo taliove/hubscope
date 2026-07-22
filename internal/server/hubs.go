@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/discovery"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/discovery"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // createHubRequest is the body for POST /api/hubs.

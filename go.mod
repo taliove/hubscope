@@ -1,4 +1,4 @@
-module git.github.net/taliove2009/ai-hub-checker
+module github.com/taliove2009/hubscope
 
 go 1.26.3
 

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/status"
+	"github.com/taliove2009/hubscope/internal/status"
 )
 
 // Streaming mode identifiers stored in probe_rollups.streaming. The combined

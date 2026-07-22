@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/prober"
-	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
-	"git.github.net/taliove2009/ai-hub-checker/internal/server"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/prober"
+	"github.com/taliove2009/hubscope/internal/scheduler"
+	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // delayStubHub is a stub Hub with a configurable per-request delay and

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // ruleVerdict scores an answer by the case's rule mode: hit is 1, miss is 0.

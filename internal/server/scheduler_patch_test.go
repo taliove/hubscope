@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
-	"git.github.net/taliove2009/ai-hub-checker/internal/scheduler"
+	"github.com/taliove2009/hubscope/internal/hubclient"
+	"github.com/taliove2009/hubscope/internal/scheduler"
 )
 
 // TestPatchEndpoint covers the PATCH /api/endpoints/{id} contract: interval

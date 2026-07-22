@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"git.github.net/taliove2009/ai-hub-checker/internal/status"
-	"git.github.net/taliove2009/ai-hub-checker/internal/store"
+	"github.com/taliove2009/hubscope/internal/status"
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
 // overviewWindows defines the lookback windows used by the status machine.

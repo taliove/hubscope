@@ -1,6 +1,6 @@
 # Deployment
 
-AI Hub Checker ships as a single Linux binary with the frontend and SQLite
+HubScope ships as a single Linux binary with the frontend and SQLite
 migrations embedded. A Dockerfile is provided as an alternative.
 
 ## Binary deployment (recommended)
@@ -8,10 +8,10 @@ migrations embedded. A Dockerfile is provided as an alternative.
 ### 1. Build
 
 ```sh
-make build          # pnpm build + go build → bin/ai-hub-checker
+make build          # pnpm build + go build → bin/hubscope
 # cross-compile for a Linux target from macOS:
 cd web && pnpm build && cd ..
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/ai-hub-checker-linux ./cmd/ai-hub-checker
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/hubscope-linux ./cmd/hubscope
 ```
 
 ### 2. Ship and configure
@@ -34,17 +34,17 @@ ADR-0001).
 
 ```ini
 [Unit]
-Description=AI Hub Checker
+Description=HubScope
 After=network.target
 
 [Service]
 Type=simple
 User=ahc
-WorkingDirectory=/opt/ai-hub-checker
+WorkingDirectory=/opt/hubscope
 Environment=ADDR=:8080
-Environment=DATA_PATH=/var/lib/ai-hub-checker/app.db
+Environment=DATA_PATH=/var/lib/hubscope/app.db
 Environment=ADMIN_PASSWORD=change-me-in-production
-ExecStart=/opt/ai-hub-checker/ai-hub-checker
+ExecStart=/opt/hubscope/hubscope
 Restart=on-failure
 RestartSec=5
 
@@ -53,7 +53,7 @@ WantedBy=multi-user.target
 ```
 
 ```sh
-sudo systemctl enable --now ai-hub-checker
+sudo systemctl enable --now hubscope
 ```
 
 ### 4. nginx reverse proxy
@@ -61,7 +61,7 @@ sudo systemctl enable --now ai-hub-checker
 ```nginx
 server {
     listen 80;
-    server_name ai-hub-checker.internal.example.com;
+    server_name hubscope.internal.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -75,12 +75,12 @@ server {
 ## Docker (alternative)
 
 ```sh
-docker build -t ai-hub-checker .
-docker run -d --name ai-hub-checker \
+docker build -t hubscope .
+docker run -d --name hubscope \
   -p 8080:8080 \
   -e ADMIN_PASSWORD=change-me-in-production \
   -v ahc-data:/data \
-  ai-hub-checker
+  hubscope
 ```
 
 The SQLite database lives on the `ahc-data` volume (`/data/app.db`).

@@ -1,7 +1,7 @@
 <template>
   <div class="eval-center">
     <header class="page-header">
-      <h1>AI Hub Checker</h1>
+      <h1>HubScope</h1>
       <span class="subtitle">评估中心</span>
       <router-link to="/" class="nav-link">状态总览</router-link>
       <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
