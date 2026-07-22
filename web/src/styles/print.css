@@ -1,0 +1,13 @@
+/* Print/export layout (ticket 33): the report page prints clean — no app
+   chrome, no interactive controls. Elements opt out via the .no-print class. */
+@media print {
+  .app-header {
+    display: none;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff;
+  }
+}

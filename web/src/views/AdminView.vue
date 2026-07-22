@@ -32,6 +32,7 @@
         <el-tab-pane label="设置" name="settings">
           <div class="tab-stack">
             <SettingsPanel />
+            <ShareLinksPanel />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -51,6 +52,7 @@ import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
 import AuditLogs from '@/components/AuditLogs.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
+import ShareLinksPanel from '@/components/ShareLinksPanel.vue'
 
 const { hubs, endpointRows, endpointlessRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
 

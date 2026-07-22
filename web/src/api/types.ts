@@ -306,6 +306,18 @@ export interface CampaignTrends {
   probe: SeriesBucket[] // hourly aggregate over the model's enabled endpoints
 }
 
+// Share link types (ticket 33, ADR 0006): a token-gated read-only door onto
+// one campaign report. The token is the capability; it only ever appears in
+// session-gated management responses, never on the public shared endpoint.
+export interface ShareLink {
+  id: number
+  token: string
+  campaign_id: number
+  created_by: string
+  created_at: string // RFC3339
+  revoked_at: string | null // RFC3339; non-null means the link 404s
+}
+
 export interface EvalResult {
   id: number
   model_id: string // the model identifier string

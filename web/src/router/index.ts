@@ -30,6 +30,14 @@ const router = createRouter({
       // Session-gated like the eval center it is entered from (ticket 31).
     },
     {
+      path: '/report/:token',
+      name: 'shared-report',
+      component: () => import('@/views/CampaignReportView.vue'),
+      // Token-gated read-only report (ticket 33, ADR 0006): the same view in
+      // shared mode, no login required.
+      meta: { public: true },
+    },
+    {
       path: '/tasks',
       name: 'task-center',
       component: () => import('@/views/TaskCenterView.vue'),
