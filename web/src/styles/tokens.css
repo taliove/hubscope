@@ -1,0 +1,75 @@
+/*
+ * HubScope design tokens — single source of truth for the light theme.
+ * Spec: docs/specs/0003-ui-redesign.md §3. Components must reference these
+ * variables and never hardcode palette values in scoped styles.
+ *
+ * Two layers:
+ * 1. --el-* overrides for every semantic slot Element Plus consumes
+ *    (primary + derived shades, text, border, page bg, radius).
+ * 2. Custom --hs-* variables for slots Element Plus does not have
+ *    (failing status, brand soft fills, type scale, shadows).
+ */
+:root {
+  /* Brand primary. light-3 / light-9 use the spec's explicit values;
+     light-5 / light-7 / light-8 / dark-2 are pre-generated from #3B5BFD
+     with the Element Plus mix algorithm (white/black percentage blending)
+     so hover, disabled and tint steps stay consistent. */
+  --el-color-primary: #3b5bfd;
+  --el-color-primary-light-3: #6180ff;
+  --el-color-primary-light-5: #9dadfe;
+  --el-color-primary-light-7: #c4cefe;
+  --el-color-primary-light-8: #d8deff;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #2f49ca;
+
+  /* Text colors */
+  --el-text-color-primary: #1f2329;
+  --el-text-color-regular: #3e4450;
+  --el-text-color-secondary: #646a73;
+  --el-text-color-placeholder: #9ca3af;
+  --el-text-color-disabled: #9ca3af;
+
+  /* Border colors: base/light per spec, lighter steps derived from #E5E6EB. */
+  --el-border-color: #e5e6eb;
+  --el-border-color-light: #e5e6eb;
+  --el-border-color-lighter: #edeef1;
+  --el-border-color-extra-light: #f2f3f5;
+
+  /* Page background and global radius */
+  --el-bg-color-page: #f7f8fa;
+  --el-border-radius-base: 6px;
+
+  /* Custom HubScope tokens (mirror of the --el-* overrides plus slots
+     Element Plus does not provide). */
+  --hs-brand: #3b5bfd;
+  --hs-brand-hover: #6180ff;
+  --hs-brand-soft: #eef2ff;
+  --hs-text-primary: #1f2329;
+  --hs-text-regular: #3e4450;
+  --hs-text-secondary: #646a73;
+  --hs-text-placeholder: #9ca3af;
+  --hs-border: #e5e6eb;
+  --hs-bg-page: #f7f8fa;
+  --hs-bg-card: #ffffff;
+
+  /* failing status: more urgent than down; the only animated state.
+     Sole consumer is StatusBadge (ui-guidelines §3). */
+  --hs-status-failing: #ff4500;
+
+  /* Type scale: six fixed steps, never extended (§3.2). */
+  --hs-text-xs: 12px;
+  --hs-text-sm: 13px;
+  --hs-text-md: 14px;
+  --hs-text-lg: 16px;
+  --hs-text-xl: 20px;
+  --hs-text-2xl: 24px;
+
+  /* Radius and shadows (§3.4). Shadows only express clickable/overlay
+     semantics, never decoration. */
+  --hs-radius: 6px;
+  --hs-radius-sm: 4px;
+  --hs-shadow-card:
+    0 1px 2px rgba(31, 35, 41, 0.04),
+    0 1px 6px rgba(31, 35, 41, 0.06);
+  --hs-shadow-hover: 0 4px 12px rgba(31, 35, 41, 0.1);
+}

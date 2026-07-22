@@ -1,27 +1,33 @@
 <template>
   <div class="login-page">
-    <el-card class="login-card">
-      <template #header>
-        <div class="login-title">HubScope 管理登录</div>
-      </template>
-      <el-form @submit.prevent="onSubmit">
-        <el-form-item>
-          <el-input
-            v-model="password"
-            type="password"
-            placeholder="管理员口令"
-            show-password
-            autofocus
-            @keyup.enter="onSubmit"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button class="login-button" type="primary" :loading="submitting" @click="onSubmit">
-            登录
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="login-stack">
+      <!-- Brand block above the card (spec §4.2): 40px logo tile, wordmark
+           and platform subtitle; the page renders no AppHeader. -->
+      <div class="login-brand">
+        <span class="login-logo">HS</span>
+        <span class="login-wordmark">HubScope</span>
+        <span class="login-subtitle">LLM Hub 监控与评估平台</span>
+      </div>
+      <el-card class="login-card">
+        <el-form @submit.prevent="onSubmit">
+          <el-form-item>
+            <el-input
+              v-model="password"
+              type="password"
+              placeholder="管理员口令"
+              show-password
+              autofocus
+              @keyup.enter="onSubmit"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button class="login-button" type="primary" :loading="submitting" @click="onSubmit">
+              登录
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </div>
   </div>
 </template>
 
@@ -62,14 +68,44 @@ async function onSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--hs-bg-page);
+}
+.login-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.login-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--hs-radius);
+  background: var(--hs-brand);
+  color: var(--hs-bg-card);
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-wordmark {
+  font-size: var(--hs-text-xl);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+}
+.login-subtitle {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
 }
 .login-card {
   width: 360px;
-}
-.login-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  max-width: calc(100vw - 32px);
 }
 .login-button {
   width: 100%;

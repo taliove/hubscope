@@ -29,7 +29,7 @@ const reason = computed(() => props.reason ?? '')
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #606266;
+  color: var(--hs-text-regular);
 }
 .dot {
   width: 10px;
@@ -47,7 +47,7 @@ const reason = computed(() => props.reason ?? '')
   background: #f56c6c;
 }
 .status-failing .dot {
-  background: #ff4500;
+  background: var(--hs-status-failing);
   animation: blink 0.8s ease-in-out infinite;
 }
 /* Failing pulses to draw attention without changing layout. */
