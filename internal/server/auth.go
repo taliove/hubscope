@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -127,11 +128,20 @@ func (s *Server) hasValidSession(r *http.Request) bool {
 	return verifySession(s.sessionKey, cookie.Value, time.Now())
 }
 
-// requireSession rejects non-GET requests without a valid session cookie.
-// GET requests stay public; only writes are locked.
+// publicReadPattern matches the status-board read paths that stay public:
+// the overview matrix and the endpoint detail/series/probes reads. Every
+// other GET requires a session, like all writes.
+var publicReadPattern = regexp.MustCompile(`^/api/(overview|endpoints/\d+(/series|/probes)?)$`)
+
+// requireSession rejects requests without a valid session cookie, except
+// status-board GETs, which stay public by design.
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || s.hasValidSession(r) {
+		if s.hasValidSession(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && publicReadPattern.MatchString(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

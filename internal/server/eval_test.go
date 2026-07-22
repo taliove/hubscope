@@ -174,7 +174,7 @@ func setupEvalEnv(t *testing.T) (*httptest.Server, *evalStubHub, *store.DB) {
 		t.Fatalf("open db: %v", err)
 	}
 	stub := newEvalStubHub()
-	ts := httptest.NewServer(server.New(db, testAdminPassword))
+	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
 	t.Cleanup(func() {
 		ts.Close()
 		stub.Close()

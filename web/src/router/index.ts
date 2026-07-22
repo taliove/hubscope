@@ -20,7 +20,8 @@ const router = createRouter({
       path: '/eval',
       name: 'eval-center',
       component: () => import('@/views/EvalCenterView.vue'),
-      meta: { public: true },
+      // Eval APIs require a session since ticket 16; the guard bounces
+      // anonymous visitors to /login.
     },
     {
       path: '/login',
@@ -36,9 +37,10 @@ const router = createRouter({
   ],
 })
 
-// Page-level guard: read pages (dashboard) stay public like the read APIs;
-// only admin pages bounce unauthenticated visitors to /login. This is only
-// UX guidance; the server re-validates the session on every write.
+// Page-level guard: the status board (dashboard, endpoint detail) stays
+// public like its read APIs; admin and eval pages bounce unauthenticated
+// visitors to /login. This is only UX guidance; the server re-validates the
+// session on every protected API call.
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
   try {

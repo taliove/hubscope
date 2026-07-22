@@ -78,7 +78,7 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword)
+	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -160,7 +160,7 @@ func TestWeeklyEvalRestartDedup(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword)
+	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 

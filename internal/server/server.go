@@ -27,6 +27,14 @@ type Server struct {
 	staticFS  fs.FS
 	now       func() time.Time
 
+	// Rate-limit tiers; a nil limiter means its tier is unlimited.
+	loginLimiter *ipLimiter
+	writeLimiter *ipLimiter
+	readLimiter  *ipLimiter
+	// trustProxy controls whether X-Forwarded-For is honored when resolving
+	// client IPs for rate limiting and auditing.
+	trustProxy bool
+
 	// adminPassword is kept in memory only for login comparison; it is never
 	// logged, persisted, or returned in any response. sessionKey is derived
 	// from it and signs the stateless session cookie.
@@ -45,12 +53,31 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
+// WithRateLimits overrides the per-IP rate-limit tiers. Zero tiers leave
+// that class of traffic unlimited (used by tests).
+func WithRateLimits(limits RateLimits) Option {
+	return func(s *Server) {
+		s.loginLimiter = newIPLimiter(limits.Login.PerMinute, limits.Login.Burst, limits.MaxEntriesPerTier)
+		s.writeLimiter = newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, limits.MaxEntriesPerTier)
+		s.readLimiter = newIPLimiter(limits.Read.PerMinute, limits.Read.Burst, limits.MaxEntriesPerTier)
+	}
+}
+
+// WithTrustProxy controls whether X-Forwarded-For is trusted when resolving
+// client IPs. Enable only behind a forwarding proxy that sets the header.
+func WithTrustProxy(trust bool) Option {
+	return func(s *Server) {
+		s.trustProxy = trust
+	}
+}
+
 // New builds a Server with all API routes registered. The admin password is
 // required: it backs both login comparison and session cookie signing.
 func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 	if adminPassword == "" {
 		panic("server.New: admin password must not be empty")
 	}
+	limits := defaultRateLimits()
 	s := &Server{
 		db:            db,
 		prober:        prober.New(db, hubclient.New()),
@@ -60,6 +87,9 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 		adminPassword: adminPassword,
 		sessionKey:    deriveSessionKey(adminPassword),
 		now:           time.Now,
+		loginLimiter:  newIPLimiter(limits.Login.PerMinute, limits.Login.Burst, 0),
+		writeLimiter:  newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, 0),
+		readLimiter:   newIPLimiter(limits.Read.PerMinute, limits.Read.Burst, 0),
 	}
 	// Alert evaluation hooks into every probe round served by this prober.
 	// main hooks the scheduler's prober into the same evaluator via Alerter().
@@ -102,6 +132,7 @@ func (s *Server) Evaluator() *evaluator.Evaluator {
 // routes wires up all API endpoints plus the health check.
 func (s *Server) routes() chi.Router {
 	r := chi.NewRouter()
+	r.Use(securityHeaders)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -109,6 +140,8 @@ func (s *Server) routes() chi.Router {
 	})
 
 	r.Route("/api", func(r chi.Router) {
+		r.Use(s.rateLimit)
+		r.Use(limitBodySize)
 		// Auth endpoints stay open; login issues the session cookie.
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", s.handleLogin)

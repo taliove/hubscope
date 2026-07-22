@@ -2,10 +2,8 @@ package server
 
 import (
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -41,7 +39,7 @@ const auditActor = "admin"
 func (s *Server) audit(r *http.Request, action, objectType, objectID, detail, result string) {
 	err := s.db.InsertAudit(store.AuditLog{
 		Actor:      auditActor,
-		IP:         clientIP(r),
+		IP:         s.clientIP(r),
 		Action:     action,
 		ObjectType: objectType,
 		ObjectID:   objectID,
@@ -51,21 +49,6 @@ func (s *Server) audit(r *http.Request, action, objectType, objectID, detail, re
 	if err != nil {
 		slog.Error("audit: insert failed", "action", action, "error", err)
 	}
-}
-
-// clientIP extracts the client host. Behind a reverse proxy the first
-// X-Forwarded-For hop is the real client; the trust posture mirrors isHTTPS.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if first, _, _ := strings.Cut(xff, ","); strings.TrimSpace(first) != "" {
-			return strings.TrimSpace(first)
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // toAuditDTO maps a store.AuditLog to its API representation.

@@ -336,7 +336,7 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 	stubHub.SetMode("error_503")
 
 	// First process: configure the webhook and drive the endpoint down.
-	ts1 := httptest.NewServer(server.New(db, testAdminPassword))
+	ts1 := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
 	putResp := doPut(t, ts1.URL+"/api/settings", map[string]interface{}{
 		"lark_webhook_url": lark.URL,
 		"alert_enabled":    true,
@@ -352,7 +352,7 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 
 	// "Restart": a brand-new server (fresh alert evaluator) over the same
 	// database. Another failing round must not re-send the down alert.
-	ts2 := httptest.NewServer(server.New(db, testAdminPassword))
+	ts2 := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
 	defer ts2.Close()
 	runProbeRound(t, ts2, endpointID)
 	if got := len(lark.messages()); got != 1 {

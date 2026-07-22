@@ -148,10 +148,12 @@ func openTempDB(t *testing.T) *store.DB {
 	return db
 }
 
-// newTestAPIServer starts the full API server over httptest.
+// newTestAPIServer starts the full API server over httptest. Rate limits
+// are disabled (zero tiers): probe-heavy tests would otherwise trip the
+// write budget. Limit behavior is covered by dedicated tests with tiny tiers.
 func newTestAPIServer(t *testing.T, db *store.DB) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(server.New(db, testAdminPassword))
+	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
 	t.Cleanup(ts.Close)
 	return ts
 }

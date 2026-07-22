@@ -46,7 +46,7 @@ func TestWalkingSkeleton(t *testing.T) {
 	defer stubHub.Close()
 
 	// Setup API server
-	apiServer := server.New(db, testAdminPassword)
+	apiServer := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(apiServer)
 	defer ts.Close()
 

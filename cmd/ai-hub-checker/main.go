@@ -65,7 +65,11 @@ func run() error {
 	}
 	defer db.Close()
 
-	srv := server.New(db, adminPassword)
+	// TRUST_PROXY=true tells the server to honor X-Forwarded-For when
+	// resolving client IPs (rate limiting, audit). Enable only behind a
+	// forwarding proxy that REPLACES (not appends to) any client-supplied
+	// X-Forwarded-For header; otherwise the leftmost hop is spoofable.
+	srv := server.New(db, adminPassword, server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"))
 	if dist, err := fs.Sub(web.DistFS, "dist"); err == nil {
 		srv.SetStaticFS(dist)
 	}

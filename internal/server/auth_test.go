@@ -133,10 +133,23 @@ func TestAdminAuth(t *testing.T) {
 		}
 	})
 
-	t.Run("read_endpoints_are_public", func(t *testing.T) {
+	t.Run("admin_reads_require_session", func(t *testing.T) {
+		// Since ticket 16, only the status board (overview + endpoint
+		// detail/series/probes) is public; admin reads like /api/hubs
+		// require a session. The full tier matrix lives in security_test.go.
 		resp, err := anon.Get(ts.URL + "/api/hubs")
 		if err != nil {
 			t.Fatalf("GET /api/hubs: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("expected 401, got %d", resp.StatusCode)
+		}
+
+		// The status board stays public.
+		resp, err = anon.Get(ts.URL + "/api/overview")
+		if err != nil {
+			t.Fatalf("GET /api/overview: %v", err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
