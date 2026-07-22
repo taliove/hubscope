@@ -192,6 +192,7 @@ func (s *Server) routes() chi.Router {
 
 			r.Get("/campaigns", s.handleListCampaigns)
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
+			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 
 			r.Get("/settings", s.handleGetSettings)
 			r.Put("/settings", s.handlePutSettings)

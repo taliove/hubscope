@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
+	"log/slog"
 	"strconv"
 )
 
@@ -19,6 +21,10 @@ const (
 	// SettingDefaultSampleCount is how many times a case is answered per run
 	// when the case does not override it.
 	SettingDefaultSampleCount = "default_sample_count"
+	// SettingSuiteWeights maps suite keys to leaderboard total-score weights
+	// (JSON object, e.g. {"basic":2}); suites absent from the map weigh 1, so
+	// the default is equal weighting (ADR 0005).
+	SettingSuiteWeights = "suite_weights"
 )
 
 // Default setting values applied when a key has never been written.
@@ -99,4 +105,32 @@ func (db *DB) SetSettingBool(key string, value bool) error {
 // SetSettingInt is SetSetting for integer settings.
 func (db *DB) SetSettingInt(key string, value int) error {
 	return db.SetSetting(key, strconv.Itoa(value))
+}
+
+// GetSuiteWeights reads the configured leaderboard suite weights. An unset or
+// unparsable value yields an empty (non-nil) map, i.e. equal weighting — a
+// corrupted value must never break report reads.
+func (db *DB) GetSuiteWeights() (map[string]float64, error) {
+	raw, err := db.GetSetting(SettingSuiteWeights, "")
+	if err != nil {
+		return nil, err
+	}
+	if raw == "" {
+		return map[string]float64{}, nil
+	}
+	weights := map[string]float64{}
+	if err := json.Unmarshal([]byte(raw), &weights); err != nil {
+		slog.Warn("settings: unparsable suite_weights, falling back to equal weighting", "error", err)
+		return map[string]float64{}, nil
+	}
+	return weights, nil
+}
+
+// SetSuiteWeights persists the leaderboard suite weights as a JSON object.
+func (db *DB) SetSuiteWeights(weights map[string]float64) error {
+	data, err := json.Marshal(weights)
+	if err != nil {
+		return err
+	}
+	return db.SetSetting(SettingSuiteWeights, string(data))
 }

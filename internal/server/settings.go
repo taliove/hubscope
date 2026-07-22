@@ -13,21 +13,24 @@ import (
 // lark_webhook_url is returned as-is (internal tool, no masking per the API
 // contract).
 type settingsDTO struct {
-	LarkWebhookURL        string `json:"lark_webhook_url"`
-	AlertEnabled          bool   `json:"alert_enabled"`
-	ScoreDropAlertEnabled bool   `json:"score_drop_alert_enabled"`
-	JudgeModel            string `json:"judge_model"`
-	DefaultSampleCount    int    `json:"default_sample_count"`
+	LarkWebhookURL        string             `json:"lark_webhook_url"`
+	AlertEnabled          bool               `json:"alert_enabled"`
+	ScoreDropAlertEnabled bool               `json:"score_drop_alert_enabled"`
+	JudgeModel            string             `json:"judge_model"`
+	DefaultSampleCount    int                `json:"default_sample_count"`
+	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
 // settingsPatch is the PUT body: every field is optional; a nil field leaves
-// the stored value unchanged.
+// the stored value unchanged. SuiteWeights is a map: absent (or explicit
+// null) leaves it unchanged, an object replaces the whole weight map.
 type settingsPatch struct {
-	LarkWebhookURL        *string `json:"lark_webhook_url"`
-	AlertEnabled          *bool   `json:"alert_enabled"`
-	ScoreDropAlertEnabled *bool   `json:"score_drop_alert_enabled"`
-	JudgeModel            *string `json:"judge_model"`
-	DefaultSampleCount    *int    `json:"default_sample_count"`
+	LarkWebhookURL        *string            `json:"lark_webhook_url"`
+	AlertEnabled          *bool              `json:"alert_enabled"`
+	ScoreDropAlertEnabled *bool              `json:"score_drop_alert_enabled"`
+	JudgeModel            *string            `json:"judge_model"`
+	DefaultSampleCount    *int               `json:"default_sample_count"`
+	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
 // readSettings loads all settings, applying defaults for keys never written.
@@ -47,6 +50,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
+		return dto, err
+	}
+	if dto.SuiteWeights, err = s.db.GetSuiteWeights(); err != nil {
 		return dto, err
 	}
 	return dto, nil
@@ -79,6 +85,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patch.SuiteWeights != nil {
+		if err := s.validateSuiteWeights(patch.SuiteWeights); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -98,6 +111,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingDefaultSampleCount, func() error {
 			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
 		}},
+		{store.SettingSuiteWeights, func() error {
+			return s.db.SetSuiteWeights(patch.SuiteWeights)
+		}},
 	}
 	present := []bool{
 		patch.LarkWebhookURL != nil,
@@ -105,6 +121,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
 		patch.DefaultSampleCount != nil,
+		patch.SuiteWeights != nil,
 	}
 	for i, u := range updates {
 		if !present[i] {
@@ -132,4 +149,33 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "settings.update", "settings", "", "keys="+strings.Join(keys, ","), "success")
 	writeData(w, http.StatusOK, dto)
+}
+
+// validateSuiteWeights checks a suite_weights patch: keys must name existing
+// suites and every weight must be positive (zero or negative weights would
+// silently distort the leaderboard total). Weights are capped so absurd
+// values cannot overflow the weighted average to +Inf/NaN.
+const maxSuiteWeight = 1000.0
+
+func (s *Server) validateSuiteWeights(weights map[string]float64) error {
+	suites, err := s.db.ListSuites()
+	if err != nil {
+		return fmt.Errorf("failed to load suites")
+	}
+	known := make(map[string]bool, len(suites))
+	for _, suite := range suites {
+		known[suite.Key] = true
+	}
+	for key, weight := range weights {
+		if !known[key] {
+			return fmt.Errorf("suite_weights key %q is not a suite", key)
+		}
+		if weight <= 0 {
+			return fmt.Errorf("suite_weights[%q] must be positive", key)
+		}
+		if weight > maxSuiteWeight {
+			return fmt.Errorf("suite_weights[%q] must be at most %v", key, maxSuiteWeight)
+		}
+	}
+	return nil
 }
