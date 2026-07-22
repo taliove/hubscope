@@ -17,6 +17,10 @@
       </el-form-item>
       <el-form-item label="分数大跌告警">
         <el-switch v-model="form.score_drop_alert_enabled" active-text="开" inactive-text="关" />
+        <div class="field-hint block-hint">
+          每轮评估(Campaign)完成后,与上一轮同评估集对比,任一评估集得分跌幅超过 0.2
+          触发,告警附各评估集跌幅与变动题目明细;题目版本变更的对比自动跳过,并标注「题目已变更,分数不可比」
+        </div>
       </el-form-item>
       <el-form-item label="裁判模型">
         <el-input v-model="form.judge_model" placeholder="claude-opus-4-8" />
@@ -24,6 +28,9 @@
       <el-form-item label="默认采样次数">
         <el-input-number v-model="form.default_sample_count" :min="1" :max="10" />
         <span class="field-hint">每题作答次数,多次取平均;题目可单独覆盖</span>
+      </el-form-item>
+      <el-form-item label="每周计划">
+        <span class="field-static">每周日凌晨自动发起全量评估(内置计划,无需配置)</span>
       </el-form-item>
       <el-form-item label="评估集权重">
         <div class="weights-block">
@@ -55,7 +62,8 @@
       <el-table-column prop="message" label="内容" show-overflow-tooltip />
       <el-table-column label="发送" width="80">
         <template #default="{ row }">
-          <span :class="row.sent_ok ? 'sent-ok' : 'sent-fail'">{{ row.sent_ok ? '成功' : '失败' }}</span>
+          <span v-if="row.kind === 'score_drop_skipped'" class="sent-skip">未发送</span>
+          <span v-else :class="row.sent_ok ? 'sent-ok' : 'sent-fail'">{{ row.sent_ok ? '成功' : '失败' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="时间" width="170">
@@ -95,6 +103,7 @@ const KIND_LABELS: Record<AlertEvent['kind'], string> = {
   down: '故障',
   recovered: '恢复',
   score_drop: '分数大跌',
+  score_drop_skipped: '对比跳过',
 }
 
 function kindLabel(kind: AlertEvent['kind']): string {
@@ -165,25 +174,21 @@ onMounted(async () => {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
-.weights-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.weight-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.weight-label {
-  width: 140px;
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-regular);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .weights-block .field-hint {
   margin-left: 0;
+}
+/* Multi-line switch hints align under the control, not beside it. */
+.block-hint {
+  margin-left: 0;
+  line-height: 1.5;
+}
+/* Informational (non-editable) settings rows reuse the secondary text tone. */
+.field-static {
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-secondary);
+}
+/* A recorded-but-unsent event (skipped comparison) reads neutral. */
+.sent-skip {
+  color: var(--hs-text-secondary);
 }
 </style>
