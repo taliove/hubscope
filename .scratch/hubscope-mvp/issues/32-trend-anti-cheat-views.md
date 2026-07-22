@@ -4,7 +4,7 @@
 
 **Blocked by:** 31 — Campaign 报告与 Leaderboard
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 趋势 API:按 Campaign 有序返回分数与版本号;版本变更处数据含断点信息;探测侧 rollup 同时间轴返回
 - [ ] 榜单行点击弹趋势 dialog:分数线 + 版本断点标注 + 探测延迟/成功率并列

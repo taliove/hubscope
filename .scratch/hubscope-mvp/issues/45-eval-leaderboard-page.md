@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 31 的 API 与组件已合 main,44 已腾空 /eval
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] /eval = 批次切换器 + Leaderboard 条形排行(复用 31 的 report API)
 - [ ] 较上一批次涨跌箭头;跨版本断点占位灰 +「题目已变更」

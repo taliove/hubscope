@@ -4,7 +4,7 @@
 
 **Blocked by:** 31 — Campaign 报告与 Leaderboard
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 创建/撤销分享链接;免登录只读路由凭 token 渲染报告
 - [ ] 管理页分享链接列表与撤销;审计记录创建/撤销
