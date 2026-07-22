@@ -130,7 +130,7 @@ MVP 的评估体系(spec 0001)解决了"定期跑分",但无法回答"防供应�
 - **评估运营 tab(/admin)**:「触发评估」收进对话框(单 Suite + 可搜索模型多选,或一键全量);批次列表一行一批、展开看各 Suite Run;Run 详情沿用 EvalRunDetailDialog。
 - **题库 tab(/admin)**:CaseLibrary 平移,`authed` prop 删除(整页已有登录门禁)。
 - **设置页**:Suite 权重编辑;告警文案对齐 Campaign 口径;分享链接管理列表。
-- **评审条件(开工必须满足)**:① 下钻用 dialog,不做表格行内展开;② 跨 Suite 版本断点不显示涨跌箭头,占位灰 +「题目已变更」;③ 等待中/运行中批次榜单区呈进度态,不显示半成品名次,失败批次错误态 + 原因;④ 分数统一 0–100,`formatScore` 集中 `utils/format.ts`,组件禁自写 `toFixed`。
+- **评审条件(开工必须满足)**:① 下钻用 dialog,不做表格行内展开;② 跨 Suite 版本断点不显示涨跌箭头,占位灰 +「题目已变更」;③ 等待中/运行中批次榜单区呈进度态,不显示半成品名次,失败批次错误态 + 原因(2026-07-22 由 spec 0004 修订:运行中默认 Progress Grid,半成品榜单可查看但不排名次、带 Coverage 水印);④ 分数统一 0–100,`formatScore` 集中 `utils/format.ts`,组件禁自写 `toFixed`。
 - **密度档位**:/eval 与分享报告页走 16px 消费档(读者是看板消费者,与登录态无关);/admin 全部 tab 走 12px 紧凑档。
 - **废弃清单**:ScoreMatrix.vue、EvalTrendChart.vue 随榜单页落地废弃;EvalCenterView 重写为榜单页;EvalRunList 拆为「评估运营」tab(触发表单抽为对话框组件);CaseLibrary 挪管理台;EvalRunDetailDialog 保留。
 
