@@ -94,9 +94,9 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 	// Alert evaluation hooks into every probe round served by this prober.
 	// main hooks the scheduler's prober into the same evaluator via Alerter().
 	s.prober.AfterRound = s.alerter.HandleRound
-	// Score-drop checks hook into every finished eval run served by this
+	// Score-drop checks hook into every settled eval campaign served by this
 	// evaluator; the weekly eval worker shares it via Evaluator().
-	s.evaluator.AfterRun = s.alerter.HandleEvalRun
+	s.evaluator.AfterCampaign = s.alerter.HandleCampaign
 	for _, opt := range opts {
 		opt(s)
 	}

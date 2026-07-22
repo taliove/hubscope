@@ -360,12 +360,11 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Single-instance async execution: detached context so the run survives
-	// the request; state is persisted in the store for polling.
+	// the request; state is persisted in the store for polling. Settling goes
+	// through the evaluator so a done campaign fires the alert hook.
 	go func() {
 		_ = s.evaluator.RunEval(context.Background(), run.ID, req.ModelIDs)
-		if err := s.db.SettleCampaign(campaign.ID, time.Now().UTC()); err != nil {
-			slog.Error("settle campaign after manual run", "campaign_id", campaign.ID, "error", err)
-		}
+		s.evaluator.SettleCampaign(context.Background(), campaign.ID)
 	}()
 
 	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),

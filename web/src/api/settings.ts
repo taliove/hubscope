@@ -17,7 +17,7 @@ export type UpdateSettingsPayload = Partial<AppSettings>
 export interface AlertEvent {
   id: number
   endpoint_id: number | null
-  kind: 'down' | 'recovered' | 'score_drop'
+  kind: 'down' | 'recovered' | 'score_drop' | 'score_drop_skipped'
   message: string
   sent_ok: boolean
   created_at: string
