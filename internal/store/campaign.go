@@ -171,6 +171,25 @@ func (db *DB) SettleCampaign(id int64, now time.Time) error {
 	return err
 }
 
+// PreviousDoneCampaign returns the most recent done campaign strictly before
+// the given one, or nil when there is none. Only settled ("done") campaigns
+// serve as report baselines. Note this differs from the score-drop alert's
+// per-suite PreviousDoneCampaignRun: a manual single-suite campaign between
+// two full sweeps becomes the baseline and is then marked incomparable
+// (suite_missing) rather than skipped — conservative, never misleading.
+func (db *DB) PreviousDoneCampaign(id int64) (*Campaign, error) {
+	c, err := scanCampaign(db.conn.QueryRow(
+		"SELECT "+campaignColumns+" FROM campaigns WHERE status = ? AND id < ? ORDER BY id DESC LIMIT 1",
+		CampaignStatusDone, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // PreviousDoneCampaignRun returns the run covering the given suite inside the
 // most recent done campaign strictly before the given campaign, or nil when
 // no earlier done campaign covered the suite. It is the baseline the

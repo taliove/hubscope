@@ -16,24 +16,39 @@ type reportSuiteDTO struct {
 	Version int    `json:"version"`
 }
 
+// reportBaselineDTO names the previous done campaign the leaderboard's
+// deltas compare against, and whether that comparison is same-caliber
+// (ADR 0007): a question-bank version change — or a suite the baseline
+// never covered — breaks comparability, and reason says which.
+type reportBaselineDTO struct {
+	CampaignID int64  `json:"campaign_id"`
+	Comparable bool   `json:"comparable"`
+	Reason     string `json:"reason,omitempty"`
+}
+
 // reportRowDTO is one leaderboard row: a live model with its per-suite
-// scores (0-100, null when unscored) and the weighted total (ADR 0005).
+// scores (0-100, null when unscored), the weighted total (ADR 0005), and
+// the total's delta against the baseline campaign (null when there is no
+// comparable baseline or no score on either side).
 type reportRowDTO struct {
 	ModelDBID   int64               `json:"model_db_id"`
 	ModelID     string              `json:"model_id"`
 	Family      string              `json:"family"`
 	TotalScore  *float64            `json:"total_score"`
+	TotalDelta  *float64            `json:"total_delta"`
 	SuiteScores map[string]*float64 `json:"suite_scores"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
-// suites it covers, the effective weights used for the totals, and the
-// leaderboard rows.
+// suites it covers, the effective weights used for the totals, the
+// leaderboard rows, and the previous-batch baseline the rows' deltas
+// compare against (null when no earlier done campaign exists).
 type campaignReportDTO struct {
 	campaignDTO
-	Suites  []reportSuiteDTO   `json:"suites"`
-	Weights map[string]float64 `json:"weights"`
-	Rows    []reportRowDTO     `json:"rows"`
+	Suites   []reportSuiteDTO   `json:"suites"`
+	Weights  map[string]float64 `json:"weights"`
+	Rows     []reportRowDTO     `json:"rows"`
+	Baseline *reportBaselineDTO `json:"baseline"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -100,6 +115,29 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 		rows = make([]reportRowDTO, 0)
 	}
 
+	// The previous-batch baseline only matters once rows are visible. Rows
+	// are re-created with deltas applied rather than mutated in place
+	// (immutable data rule).
+	var baseline *reportBaselineDTO
+	if campaign.Status == "done" || campaign.Status == "failed" {
+		var deltas map[int64]*float64
+		baseline, deltas, err = s.reportBaseline(campaign.ID, suites, weights, rows)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to build report baseline")
+			return
+		}
+		if len(deltas) > 0 {
+			withDeltas := make([]reportRowDTO, len(rows))
+			for i, row := range rows {
+				if delta, ok := deltas[row.ModelDBID]; ok {
+					row.TotalDelta = delta
+				}
+				withDeltas[i] = row
+			}
+			rows = withDeltas
+		}
+	}
+
 	progress := store.CampaignWithProgress{Campaign: *campaign}
 	for _, run := range runs {
 		progress.Progress.Total++
@@ -118,19 +156,73 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 		Suites:      suites,
 		Weights:     weights,
 		Rows:        rows,
+		Baseline:    baseline,
 	})
+}
+
+// reportBaseline resolves the previous done campaign and, when it covered
+// the same suites at the same question-bank versions, computes per-row
+// total deltas against it (same weights, same suite set — the same
+// caliber). Any version or coverage mismatch marks the baseline
+// incomparable and yields no deltas, so a question-bank change never reads
+// as a model change (ADR 0007). Deltas come back as a map keyed by model
+// database id; the caller applies them to fresh rows.
+func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weights map[string]float64, rows []reportRowDTO) (*reportBaselineDTO, map[int64]*float64, error) {
+	prev, err := s.db.PreviousDoneCampaign(campaignID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if prev == nil {
+		return nil, nil, nil
+	}
+	baseline := &reportBaselineDTO{CampaignID: prev.ID, Comparable: true}
+
+	prevRuns, err := s.db.ListEvalRunsByCampaign(prev.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	prevVersions := suiteVersionSnapshot(prevRuns)
+	for _, suite := range suites {
+		prevVersion, covered := prevVersions[suite.ID]
+		if !covered {
+			baseline.Comparable = false
+			baseline.Reason = "suite_missing"
+			break
+		}
+		if prevVersion != suite.Version {
+			baseline.Comparable = false
+			baseline.Reason = "suite_changed"
+			break
+		}
+	}
+	if !baseline.Comparable {
+		return baseline, nil, nil
+	}
+
+	prevScores, err := s.db.ListCampaignSuiteScores(prev.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	prevTotals := map[int64]*float64{}
+	for _, row := range buildReportRows(prevScores, weights) {
+		prevTotals[row.ModelDBID] = row.TotalScore
+	}
+	deltas := map[int64]*float64{}
+	for _, row := range rows {
+		prevTotal, ok := prevTotals[row.ModelDBID]
+		if !ok || prevTotal == nil || row.TotalScore == nil {
+			continue
+		}
+		delta := *row.TotalScore - *prevTotal
+		deltas[row.ModelDBID] = &delta
+	}
+	return baseline, deltas, nil
 }
 
 // campaignSuites returns the suites covered by the campaign's runs, deduped
 // and ordered by suite id.
 func (s *Server) campaignSuites(runs []store.EvalRun) ([]reportSuiteDTO, error) {
-	// Version comes from the run's suite_version snapshot, not the suites
-	// table: after a question-bank edit the historical report must keep
-	// showing the version it actually scored against (ADR 0007).
-	versionBySuite := map[int64]int{}
-	for _, run := range runs {
-		versionBySuite[run.SuiteID] = run.SuiteVersion
-	}
+	versionBySuite := suiteVersionSnapshot(runs)
 	all, err := s.db.ListSuites()
 	if err != nil {
 		return nil, err
@@ -147,6 +239,19 @@ func (s *Server) campaignSuites(runs []store.EvalRun) ([]reportSuiteDTO, error) 
 		}
 	}
 	return suites, nil
+}
+
+// suiteVersionSnapshot maps each suite covered by the runs to the
+// question-bank version the runs scored against. The version comes from the
+// run's suite_version snapshot, not the suites table: after a question-bank
+// edit the historical report must keep showing the version it actually
+// scored against (ADR 0007).
+func suiteVersionSnapshot(runs []store.EvalRun) map[int64]int {
+	versions := make(map[int64]int, len(runs))
+	for _, run := range runs {
+		versions[run.SuiteID] = run.SuiteVersion
+	}
+	return versions
 }
 
 // hasSuiteKey reports whether key names one of the given suites.
