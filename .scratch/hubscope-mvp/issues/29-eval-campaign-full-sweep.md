@@ -4,7 +4,7 @@
 
 **Blocked by:** 27 — Task 中心:任务实体 + Eval Run 接入
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 一键全量:一个 Campaign 挂每 Suite 一个 Run,覆盖全部 chat 模型(non_chat 自动排除,含手动登记模型)
 - [ ] 手动单 Suite 触发也产生 Campaign(单 Run),数据模型统一

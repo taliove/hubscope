@@ -4,7 +4,7 @@
 
 **Blocked by:** 27 — Task 中心:任务实体 + Eval Run 接入
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 每次发现同步是一个 Task,日志含同步结果统计(新增/更新/停用模型数)
 - [ ] rollup/retention 清理是 Task,日志含处理行数
