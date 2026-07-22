@@ -1,12 +1,13 @@
 ---
 name: frontend-dev
-description: 前端开发流程:契约核对 → 视图/组件改动 → UI 细节自查 → 类型检查与构建。改 web/ 下任何内容时使用。
+description: 前端开发流程:设计评审(按需)→ 契约核对 → 视图/组件改动 → UI 细节自查 → 类型检查与构建。改 web/ 下任何内容时使用。
 ---
 
 # 前端开发流程
 
+0. **设计评审(按需)**:若属新增视图/新交互模式/新可复用组件/改动语义色或状态表达,先走 `design-review` 流程(design-owner 评审),评审意见作为实现约束;其余改动跳过本步。
 1. **契约核对**:先确认后端 dto,更新 `web/src/api/types.ts`(单一事实源),再动视图;字段命名/可空与后端严格一致。
-2. **改动约束**:沿用既有结构(views / components / api / router);Element Plus 组件优先,不引入新 UI 库;样式 scoped,色板沿用既有变量。
+2. **改动约束**:沿用既有结构(views / components / api / router);Element Plus 组件优先,不引入新 UI 库;样式 scoped,色板与组件用法遵循 `.claude/rules/ui-guidelines.md`。
 3. **UI 细节清单**(用户对此敏感,逐项过):
    - 卡片内容溢出与横向滚动条(历史 bug:24h 小点需弹性宽度);
    - 长文本(模型名/Hub 名/错误)截断与 hover 全显;

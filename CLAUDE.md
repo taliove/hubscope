@@ -40,7 +40,7 @@
 
 1. **先影响分析,后动手。** 每次开工前书面列出:直接影响(改哪些文件/接口)、间接影响(哪些调用方/页面/任务受波及)、公共调用方法(被动到的函数有哪些使用者)、权限与数据隔离风险(是否触碰鉴权边界、跨 Hub/租户数据)。
 2. **改动收敛。** 单次任务只改必要范围,单 commit 最多 8 个文件(票内多 commit 拆分);不做无关重构,顺手发现的问题另记 ticket。
-3. **Agent 分工。** 架构与影响分析用 `architect` 代理;代码审查一律由独立的 `code-reviewer` 代理执行(作者不自审);测试验证用 `test-verifier`;前端改动用 `frontend-checker`。高频流程见 `.claude/skills/`(new-api、db-change、frontend-dev、add-tests、review、release-check)。
+3. **Agent 分工。** 架构与影响分析用 `architect` 代理;UI/UX 规范与事前设计评审用 `design-owner`(新视图/新交互/新复用组件必过);代码审查一律由独立的 `code-reviewer` 代理执行(作者不自审);测试验证用 `test-verifier`;前端改动用 `frontend-checker`。高频流程见 `.claude/skills/`(new-api、db-change、frontend-dev、design-review、add-tests、review、release-check)。
 
 ## 工作流
 
