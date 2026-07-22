@@ -149,7 +149,7 @@ func TestScoreDropAlert(t *testing.T) {
 
 // TestScoreDropAlertSweepConsolidatesSuites runs two full-sweep campaigns and
 // asserts the alert consolidates every dropped suite of the model into one
-// message, while a suite without a drop stays out of it.
+// message rather than spamming one message per suite.
 func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	lark := newStubLarkServer(t)
@@ -164,8 +164,10 @@ func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 		t.Fatalf("first sweep: expected no alerts without a baseline, got %d", got)
 	}
 
-	// Sweep 2: the model turns bad. Every rule suite drops 1.0 -> 0.0; the
-	// judge suite keeps its 0.75 stub verdicts and must not appear.
+	// Sweep 2: the model turns bad. Every rule case drops 1.0 -> 0.0, so all
+	// five capability suites drop (the language suite's judge cases keep their
+	// 0.75 stub verdicts, but its rule cases drag the suite mean below the
+	// threshold too). All five drops must consolidate into one message.
 	stub.markBad("sweep-model", true)
 	sweep2 := triggerFullSweep(t, ts.URL)
 	waitCampaignStatus(t, ts.URL, int64(sweep2["id"].(float64)), "done")
@@ -174,13 +176,10 @@ func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 		return len(lark.messages()) == 1
 	})
 	msg := lark.messages()[0]
-	for _, want := range []string{"sweep-model", "基础指令遵循", "推理数学", "代码能力"} {
+	for _, want := range []string{"sweep-model", "指令遵循", "推理", "代码", "知识问答", "语言理解与生成"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("consolidated message should contain %q, got: %s", want, msg)
 		}
-	}
-	if strings.Contains(msg, "中文能力") {
-		t.Errorf("message must not list the judge suite (no drop there), got: %s", msg)
 	}
 
 	waitFor(t, "one consolidated score_drop event", func() bool {

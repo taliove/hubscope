@@ -120,6 +120,21 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	if final["finished_at"] == nil {
 		t.Error("failed campaign must carry finished_at")
 	}
+
+	// The failed campaign's report (ticket 52): the settled board carries
+	// per-suite cells — the completed suite done with full coverage, the
+	// aborted suite failed for every model with zero judged cases but the
+	// suite's planned case count as expected. The first two suites in the
+	// rotation are cap_instruction (done) and cap_reasoning (aborted).
+	report := getCampaignReport(t, ts.URL, campaignID, "")
+	rows := reportRows(t, report)
+	if len(rows) != 3 {
+		t.Fatalf("failed campaign report rows = %v, want all three models", rows)
+	}
+	for _, row := range rows {
+		assertCell(t, row, "cap_instruction", "done", 10, 10)
+		assertCell(t, row, "cap_reasoning", "failed", 0, 10)
+	}
 }
 
 // TestRestartClosesStaleRunningRuns stages a database with a campaign and

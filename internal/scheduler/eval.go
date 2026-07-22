@@ -136,7 +136,7 @@ func (w *EvalWorker) runBatch(ctx context.Context) {
 		return
 	}
 
-	suites, err := w.db.ListSuites()
+	suites, err := w.db.ListEnabledSuites()
 	if err != nil {
 		slog.Error("eval worker: list suites", "error", err)
 		return

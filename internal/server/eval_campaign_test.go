@@ -122,8 +122,10 @@ func triggerFullSweep(t *testing.T, base string) map[string]interface{} {
 	return campaign
 }
 
-// suiteCount returns how many suites exist, read through the API so
-// expectations track the seed bank instead of hardcoding a count.
+// suiteCount returns how many suites are in the evaluation rotation
+// (enabled), read through the API so expectations track the seed bank
+// instead of hardcoding a count. Retired suites (question-bank v3, ADR 0010)
+// stay listed by the API but no longer join sweeps or weekly batches.
 func suiteCount(t *testing.T, base string) int {
 	t.Helper()
 	resp := doGet(t, base+"/api/suites")
@@ -132,7 +134,13 @@ func suiteCount(t *testing.T, base string) int {
 	_ = json.NewDecoder(resp.Body).Decode(&env)
 	var suites []map[string]interface{}
 	_ = json.Unmarshal(env.Data, &suites)
-	return len(suites)
+	n := 0
+	for _, s := range suites {
+		if s["enabled"] == true {
+			n++
+		}
+	}
+	return n
 }
 
 // runModelIDs returns the distinct model_id strings covered by a run's results.
