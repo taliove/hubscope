@@ -47,6 +47,7 @@
       <el-select v-model="grouping" class="filter-select">
         <el-option label="按厂商分组" value="family" />
         <el-option label="按能力分组" value="capability" />
+        <el-option label="按协议" value="protocol" />
         <el-option label="不分组" value="none" />
       </el-select>
       <span class="refresh-info">每 10 秒自动刷新<template v-if="generatedAt"> · 更新于 {{ formatTime(generatedAt) }}</template></span>
@@ -88,13 +89,13 @@ import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import { formatTime } from '@/utils/format'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
-const { entries, byFamily, byCapability, generatedAt, loading, error, statusCounts, STATUS_ORDER, start } = useOverview()
+const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, STATUS_ORDER, start } = useOverview()
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
 const statusFilter = ref<EndpointStatus | ''>('')
 // Grouping dimension of the status matrix; vendor family by default.
-const grouping = ref<'family' | 'capability' | 'none'>('family')
+const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
 
 // Apply the three filters; an empty filter matches everything.
 const filteredEntries = computed(() => {
@@ -110,8 +111,14 @@ const filteredEntries = computed(() => {
 // Pair each group aggregate with its filtered entries. Groups with no
 // matching entries after filtering stay visible (they show an empty hint).
 const groupSections = computed<{ group: OverviewGroup; entries: OverviewEntry[] }[]>(() => {
-  const groups = grouping.value === 'family' ? byFamily.value : byCapability.value
-  const keyOf = (e: OverviewEntry) => (grouping.value === 'family' ? e.family : e.capability)
+  const groups =
+    grouping.value === 'family'
+      ? byFamily.value
+      : grouping.value === 'capability'
+        ? byCapability.value
+        : byProtocol.value
+  const keyOf = (e: OverviewEntry) =>
+    grouping.value === 'family' ? e.family : grouping.value === 'capability' ? e.capability : e.protocol
   return groups.map(group => ({
     group,
     entries: filteredEntries.value.filter(e => keyOf(e) === group.key),

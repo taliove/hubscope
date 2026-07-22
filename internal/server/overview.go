@@ -21,23 +21,35 @@ type overviewDTO struct {
 	Endpoints    []overviewEntryDTO `json:"endpoints"`
 	ByFamily     []overviewGroupDTO `json:"by_family"`
 	ByCapability []overviewGroupDTO `json:"by_capability"`
+	ByProtocol   []overviewGroupDTO `json:"by_protocol"`
 }
 
 // overviewEntryDTO is the per-endpoint status summary. Field names follow
 // the api-contract.md Overview section exactly.
 type overviewEntryDTO struct {
-	EndpointID     int64    `json:"endpoint_id"`
-	ModelID        string   `json:"model_id"`
-	Protocol       string   `json:"protocol"`
-	Enabled        bool     `json:"enabled"`
-	Status         string   `json:"status"`
-	StatusReason   string   `json:"status_reason"`
-	SuccessRate24h *float64 `json:"success_rate_24h"`
-	P50Ms          *float64 `json:"p50_ms"`
-	P95Ms          *float64 `json:"p95_ms"`
-	LastProbeAt    *string  `json:"last_probe_at"`
-	Family         string   `json:"family"`
-	Capability     string   `json:"capability"`
+	EndpointID     int64            `json:"endpoint_id"`
+	ModelID        string           `json:"model_id"`
+	Protocol       string           `json:"protocol"`
+	Enabled        bool             `json:"enabled"`
+	Status         string           `json:"status"`
+	StatusReason   string           `json:"status_reason"`
+	SuccessRate24h *float64         `json:"success_rate_24h"`
+	P50Ms          *float64         `json:"p50_ms"`
+	P95Ms          *float64         `json:"p95_ms"`
+	LastProbeAt    *string          `json:"last_probe_at"`
+	Family         string           `json:"family"`
+	Capability     string           `json:"capability"`
+	Score          *int             `json:"score"`
+	ScoreReasons   []string         `json:"score_reasons"`
+	Dots24h        []overviewDotDTO `json:"dots_24h"`
+}
+
+// overviewDotDTO is one hourly bucket of the 24h stability dots: how many
+// probes ran in that hour and how many of them failed.
+type overviewDotDTO struct {
+	BucketStart string `json:"bucket_start"`
+	Total       int    `json:"total"`
+	Failures    int    `json:"failures"`
 }
 
 // overviewGroupDTO is the health aggregate of one classification group
@@ -144,6 +156,7 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	entries := []overviewEntryDTO{}
 	families := newGroupAccumulator()
 	capabilities := newGroupAccumulator()
+	protocols := newGroupAccumulator()
 	for _, model := range models {
 		endpoints, err := s.db.ListEndpointsByModelID(model.ID)
 		if err != nil {
@@ -156,10 +169,11 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "failed to build overview")
 				return
 			}
-			entry := buildOverviewEntryFromStats(ep, model, stats)
+			entry := buildOverviewEntryFromStats(ep, model, stats, now)
 			entries = append(entries, entry)
 			families.add(model.Family, entry, stats.samples24h)
 			capabilities.add(model.Capability, entry, stats.samples24h)
+			protocols.add(ep.Protocol, entry, stats.samples24h)
 		}
 	}
 
@@ -168,6 +182,7 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 		Endpoints:    entries,
 		ByFamily:     families.groups(),
 		ByCapability: capabilities.groups(),
+		ByProtocol:   protocols.groups(),
 	})
 }
 
@@ -218,20 +233,25 @@ func (ws windowStats) statusSamples() []status.Sample {
 	return toStatusSamples(ws.samples24h)
 }
 
-// evaluate runs the status machine over the gathered window stats.
-func (ws windowStats) evaluate() status.Result {
+// statusInput assembles the status-machine input from the gathered stats.
+func (ws windowStats) statusInput() status.Input {
 	lastError := ""
 	if ws.latest != nil && !ws.latest.OK && ws.latest.ErrorSummary != nil {
 		lastError = *ws.latest.ErrorSummary
 	}
-	return status.Evaluate(status.Input{
+	return status.Input{
 		TotalProbes:         ws.total,
 		ConsecutiveFailures: ws.consecutive,
 		LastError:           lastError,
 		Samples24h:          ws.statusSamples(),
 		BaselineP50Ms:       ws.baselineP50,
 		HasBaseline:         ws.hasBaseline,
-	})
+	}
+}
+
+// evaluate runs the status machine over the gathered window stats.
+func (ws windowStats) evaluate() status.Result {
+	return status.Evaluate(ws.statusInput())
 }
 
 // toStatusSamples converts store samples into status-machine samples.
@@ -245,14 +265,16 @@ func toStatusSamples(in []store.ProbeSample) []status.Sample {
 
 // buildOverviewEntryFromStats assembles the status and 24h statistics of a
 // single endpoint from already-gathered window stats.
-func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats windowStats) overviewEntryDTO {
+func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats windowStats, now time.Time) overviewEntryDTO {
 	entry := overviewEntryDTO{
-		EndpointID: ep.ID,
-		ModelID:    model.ModelID,
-		Protocol:   ep.Protocol,
-		Enabled:    ep.Enabled,
-		Family:     model.Family,
-		Capability: model.Capability,
+		EndpointID:   ep.ID,
+		ModelID:      model.ModelID,
+		Protocol:     ep.Protocol,
+		Enabled:      ep.Enabled,
+		Family:       model.Family,
+		Capability:   model.Capability,
+		ScoreReasons: []string{},
+		Dots24h:      buildDots24h(stats.samples24h, now),
 	}
 
 	if stats.latest != nil {
@@ -278,5 +300,40 @@ func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats win
 	entry.Status = string(result.Kind)
 	entry.StatusReason = result.Reason
 
+	// Deterministic score over the same inputs; null when never probed.
+	score := status.Score(stats.statusInput())
+	if score.HasScore {
+		entry.Score = &score.Value
+	}
+	entry.ScoreReasons = score.Reasons
+
 	return entry
+}
+
+// buildDots24h buckets the 24h probe samples into exactly 24 hour-aligned
+// buckets ending at the current hour. Empty buckets stay present with zero
+// counts; samples older than the first bucket are dropped.
+func buildDots24h(samples []store.ProbeSample, now time.Time) []overviewDotDTO {
+	last := now.UTC().Truncate(time.Hour)
+	first := last.Add(-23 * time.Hour)
+
+	dots := make([]overviewDotDTO, 24)
+	index := make(map[time.Time]int, 24)
+	for i := range dots {
+		start := first.Add(time.Duration(i) * time.Hour)
+		dots[i] = overviewDotDTO{BucketStart: start.Format(time.RFC3339)}
+		index[start] = i
+	}
+	for _, s := range samples {
+		bucket := s.CreatedAt.UTC().Truncate(time.Hour)
+		i, ok := index[bucket]
+		if !ok {
+			continue
+		}
+		dots[i].Total++
+		if !s.OK {
+			dots[i].Failures++
+		}
+	}
+	return dots
 }

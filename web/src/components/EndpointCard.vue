@@ -13,6 +13,12 @@
           <StatusBadge :status="entry.status" />
         </span>
       </el-tooltip>
+      <el-tooltip placement="top" :show-after="200">
+        <template #content>
+          <div class="score-reasons">{{ scoreTooltip }}</div>
+        </template>
+        <span class="score-badge" :class="scoreClass">{{ scoreText }}</span>
+      </el-tooltip>
       <el-tag v-if="!entry.enabled" type="info" size="small">已停用</el-tag>
     </div>
 
@@ -31,15 +37,31 @@
       </div>
     </div>
 
+    <div class="card-dots">
+      <span class="dots-label">24h</span>
+      <span class="dots-strip">
+        <el-tooltip
+          v-for="dot in entry.dots_24h"
+          :key="dot.bucket_start"
+          :content="dotTooltip(dot)"
+          placement="top"
+          :show-after="100"
+        >
+          <span class="dot" :class="dotClass(dot)" />
+        </el-tooltip>
+      </span>
+    </div>
+
     <div class="card-foot">最近探测:{{ formatTime(entry.last_probe_at) }}</div>
   </el-card>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import type { OverviewEntry } from '@/api/types'
+import type { OverviewEntry, OverviewDot } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
-import { formatPercent, formatMs, formatTime } from '@/utils/format'
+import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
 // Clicking navigates to the endpoint detail page.
@@ -48,6 +70,35 @@ const router = useRouter()
 
 function goDetail() {
   router.push(`/endpoints/${props.entry.endpoint_id}`)
+}
+
+// Stability score badge: colored by score band, gray when there is no data.
+const scoreText = computed(() => (props.entry.score === null ? '暂无评分' : String(props.entry.score)))
+const scoreClass = computed(() => {
+  const score = props.entry.score
+  if (score === null) return 'score-none'
+  if (score >= 90) return 'score-good'
+  if (score >= 70) return 'score-warn'
+  return 'score-bad'
+})
+const scoreTooltip = computed(() => {
+  if (props.entry.score === null) return '暂无探测数据,无法评分'
+  const reasons = props.entry.score_reasons
+  return reasons.length > 0 ? reasons.join('\n') : '无扣分项'
+})
+
+// 24h stability dot coloring: gray = no probes, green = success rate ≥95%,
+// red = all failed, yellow = below 95%.
+function dotClass(dot: OverviewDot): string {
+  if (dot.total === 0) return 'dot-none'
+  if (dot.failures === dot.total) return 'dot-fail'
+  return (dot.total - dot.failures) / dot.total >= 0.95 ? 'dot-ok' : 'dot-partial'
+}
+
+function dotTooltip(dot: OverviewDot): string {
+  const label = `${formatBucketTime(dot.bucket_start)} 时段`
+  if (dot.total === 0) return `${label} · 无数据`
+  return `${label} · 成功 ${dot.total - dot.failures}/${dot.total}`
 }
 </script>
 
@@ -91,6 +142,67 @@ function goDetail() {
 }
 .status-wrap {
   cursor: help;
+}
+.score-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: help;
+  white-space: nowrap;
+}
+.score-good {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.score-warn {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+.score-bad {
+  color: #f56c6c;
+  background: #fef0f0;
+}
+.score-none {
+  color: #909399;
+  background: #f4f4f5;
+  font-weight: 400;
+}
+.score-reasons {
+  white-space: pre-line;
+}
+.card-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dots-label {
+  font-size: 12px;
+  color: #909399;
+}
+.dots-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.dot-none {
+  background: #dcdfe6;
+}
+.dot-ok {
+  background: #67c23a;
+}
+.dot-partial {
+  background: #e6a23c;
+}
+.dot-fail {
+  background: #f56c6c;
 }
 .card-metrics {
   display: flex;

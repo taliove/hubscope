@@ -13,6 +13,7 @@ export function useOverview() {
   const entries: Ref<OverviewEntry[]> = ref([])
   const byFamily: Ref<OverviewGroup[]> = ref([])
   const byCapability: Ref<OverviewGroup[]> = ref([])
+  const byProtocol: Ref<OverviewGroup[]> = ref([])
   const generatedAt = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -26,6 +27,7 @@ export function useOverview() {
       entries.value = overview.endpoints
       byFamily.value = overview.by_family ?? []
       byCapability.value = overview.by_capability ?? []
+      byProtocol.value = overview.by_protocol ?? []
       generatedAt.value = overview.generated_at
       error.value = null
     } catch (err) {
@@ -65,5 +67,5 @@ export function useOverview() {
     return counts
   })
 
-  return { entries, byFamily, byCapability, generatedAt, loading, error, statusCounts, STATUS_ORDER, reload, start, stop }
+  return { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, STATUS_ORDER, reload, start, stop }
 }

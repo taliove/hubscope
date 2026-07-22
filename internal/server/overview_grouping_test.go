@@ -28,6 +28,7 @@ type groupedOverview struct {
 	Endpoints    []overviewEntry `json:"endpoints"`
 	ByFamily     []groupPayload  `json:"by_family"`
 	ByCapability []groupPayload  `json:"by_capability"`
+	ByProtocol   []groupPayload  `json:"by_protocol"`
 }
 
 // fetchGroupedOverview decodes GET /api/overview including group aggregates.

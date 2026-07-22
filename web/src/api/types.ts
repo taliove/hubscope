@@ -86,6 +86,13 @@ export interface ProbeRunResult {
 // Endpoint health states produced by the status machine.
 export type EndpointStatus = 'healthy' | 'degraded' | 'down' | 'failing'
 
+// One hour-aligned bucket of probe counts for the 24h stability dots.
+export interface OverviewDot {
+  bucket_start: string // RFC3339, hour-aligned
+  total: number
+  failures: number
+}
+
 export interface OverviewEntry {
   endpoint_id: number
   model_id: string // the model identifier string, not the database id
@@ -99,6 +106,9 @@ export interface OverviewEntry {
   last_probe_at: string | null // RFC3339
   family: string // vendor series classification
   capability: string // capability classification
+  score: number | null // 0-100 stability score, null when no probe data
+  score_reasons: string[] // Chinese deduction explanations, empty when none
+  dots_24h: OverviewDot[] // always 24 elements, oldest hour first
 }
 
 // Health aggregate of one classification group: status distribution
@@ -117,6 +127,7 @@ export interface Overview {
   endpoints: OverviewEntry[]
   by_family: OverviewGroup[]
   by_capability: OverviewGroup[]
+  by_protocol: OverviewGroup[]
 }
 
 // Endpoint detail page types (ticket 04).

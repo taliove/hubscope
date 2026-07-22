@@ -9,6 +9,7 @@ import (
 type ProbeSample struct {
 	OK        bool
 	LatencyMs int
+	CreatedAt time.Time
 }
 
 // CountConsecutiveFailures returns how many probes have failed in a row
@@ -69,11 +70,11 @@ func (db *DB) CountProbes(endpointID int64) (int, error) {
 	return count, nil
 }
 
-// ListProbeSamplesSince returns ok/latency pairs for all probes created at
-// or after the given time, oldest first.
+// ListProbeSamplesSince returns ok/latency/timestamp triples for all probes
+// created at or after the given time, oldest first.
 func (db *DB) ListProbeSamplesSince(endpointID int64, since time.Time) ([]ProbeSample, error) {
 	rows, err := db.conn.Query(`
-		SELECT ok, latency_ms FROM probes
+		SELECT ok, latency_ms, created_at FROM probes
 		WHERE endpoint_id = ? AND created_at >= ?
 		ORDER BY created_at
 	`, endpointID, since.UTC().Format(time.RFC3339))
@@ -86,10 +87,12 @@ func (db *DB) ListProbeSamplesSince(endpointID int64, since time.Time) ([]ProbeS
 	for rows.Next() {
 		var s ProbeSample
 		var ok int
-		if err := rows.Scan(&ok, &s.LatencyMs); err != nil {
+		var createdAt string
+		if err := rows.Scan(&ok, &s.LatencyMs, &createdAt); err != nil {
 			return nil, err
 		}
 		s.OK = ok == 1
+		s.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		samples = append(samples, s)
 	}
 	return samples, rows.Err()
