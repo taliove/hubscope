@@ -173,6 +173,7 @@ func (db *DB) migrate() error {
 			answer_text TEXT,
 			score REAL,
 			verdict_detail TEXT,
+			verdict_profile TEXT NOT NULL DEFAULT 'v1',
 			latency_ms INTEGER NOT NULL,
 			input_tokens INTEGER,
 			output_tokens INTEGER,
@@ -293,6 +294,30 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.ensureColumn("eval_runs", "suite_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	// Ticket 49 (ADR 0008): every result records the verdict profile it was
+	// scored with; the DEFAULT backfills pre-existing rows to the legacy v1
+	// caliber without rewriting them.
+	if err := db.ensureColumn("eval_results", "verdict_profile", "TEXT NOT NULL DEFAULT 'v1'"); err != nil {
+		return err
+	}
+	// Ticket 50 (ADR 0010): question-bank v3 organizes suites by capability,
+	// stores a per-suite nadir constant for normalized scoring (backfilled 0,
+	// which degenerates to the legacy raw-mean caliber), and adds an enabled
+	// flag so retired suites stay readable but leave the evaluation rotation.
+	// eval_runs snapshots the suite's nadir next to suite_version, keeping
+	// historical runs on the nadir they were actually scored with.
+	if err := db.ensureColumn("suites", "capability", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("suites", "nadir", "REAL NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("suites", "enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_runs", "nadir", "REAL NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	// Ticket 29: every run belongs to a campaign. The column arrives as

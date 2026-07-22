@@ -210,10 +210,11 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 	}
 
 	result := store.EvalResult{
-		EvalRunID: run.ID,
-		ModelDBID: model.ID,
-		ModelID:   model.ModelID,
-		CaseID:    c.ID,
+		EvalRunID:      run.ID,
+		ModelDBID:      model.ID,
+		ModelID:        model.ModelID,
+		CaseID:         c.ID,
+		VerdictProfile: VerdictProfileCurrent,
 	}
 
 	var scoreSum float64
@@ -296,23 +297,27 @@ func addIntPtr(a, b *int) *int {
 	return &sum
 }
 
-// verdict scores an answer according to the case's verdict type.
+// verdict scores an answer according to the case's verdict type. Rule
+// verdicts run under the current verdict profile (ADR 0008).
 func (e *Evaluator) verdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string) {
 	if c.VerdictType == "rule" {
-		return ruleVerdict(c, answer)
+		return ruleVerdict(c, answer, VerdictProfileCurrent)
 	}
 	return e.judgeVerdict(ctx, hub, protocol, judgeModel, c, answer)
 }
 
 // failAllCases records a failed result (no answer, no score) for every case.
+// Failed results carry the current profile too, so a run's caliber can always
+// be derived from any of its rows.
 func (e *Evaluator) failAllCases(run *store.EvalRun, modelDBID int64, modelID string, cases []store.Case, reason string) {
 	for _, c := range cases {
 		e.storeResult(store.EvalResult{
-			EvalRunID:     run.ID,
-			ModelDBID:     modelDBID,
-			ModelID:       modelID,
-			CaseID:        c.ID,
-			VerdictDetail: &reason,
+			EvalRunID:      run.ID,
+			ModelDBID:      modelDBID,
+			ModelID:        modelID,
+			CaseID:         c.ID,
+			VerdictDetail:  &reason,
+			VerdictProfile: VerdictProfileCurrent,
 		})
 	}
 }

@@ -11,7 +11,10 @@ import (
 )
 
 // ruleVerdict scores an answer by the case's rule mode: hit is 1, miss is 0.
-func ruleVerdict(c store.Case, answer string) (*float64, string) {
+// exact/contains normalize both sides through the verdict profile pipeline
+// (ADR 0008) so the comparison stays symmetric; regex is never normalized —
+// the pattern itself is the caliber.
+func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 	mode := ""
 	expected := ""
 	if c.RuleMode != nil {
@@ -24,9 +27,9 @@ func ruleVerdict(c store.Case, answer string) (*float64, string) {
 	hit := false
 	switch mode {
 	case "exact":
-		hit = strings.TrimSpace(answer) == expected
+		hit = normalizeForVerdict(profile, answer) == normalizeForVerdict(profile, expected)
 	case "contains":
-		hit = strings.Contains(answer, expected)
+		hit = strings.Contains(normalizeForVerdict(profile, answer), normalizeForVerdict(profile, expected))
 	case "regex":
 		re, err := regexp.Compile(expected)
 		if err != nil {

@@ -38,6 +38,16 @@ type evalStubHub struct {
 	// gate, when non-nil, blocks every response until released; tests use it
 	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
 	gate chan struct{}
+	// totalCalls records how many completion calls each model made (any
+	// prompt), the counter blockModelAfter thresholds compare against.
+	totalCalls map[string]int
+	// gateAfter, when set for a model, blocks the model's responses once its
+	// recorded completion-call count passes the threshold, so a test can
+	// freeze a model after exactly n calls completed (ticket 52 progress-grid
+	// scenarios). The gate channel lives in modelGates.
+	gateAfter map[string]int
+	// modelGates holds the block/release channels of gated models.
+	modelGates map[string]chan struct{}
 	// answerSeq scripts cycled answer responses by prompt marker.
 	answerSeq map[string][]string
 	// judgeSeq scripts cycled judge responses by prompt marker.
@@ -52,6 +62,9 @@ func newEvalStubHub() *evalStubHub {
 		broken:     map[string]bool{},
 		answerSeq:  map[string][]string{},
 		judgeSeq:   map[string][]string{},
+		totalCalls: map[string]int{},
+		gateAfter:  map[string]int{},
+		modelGates: map[string]chan struct{}{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
@@ -89,16 +102,25 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	h.calls[req.Model][protocol] = true
 	h.callCounts[req.Model+"\x00"+prompt]++
+	h.totalCalls[req.Model]++
+	calls := h.totalCalls[req.Model]
 	h.mu.Unlock()
 
 	h.mu.Lock()
 	broken := h.broken[req.Model]
 	gate := h.gate
+	modelGate := h.modelGates[req.Model]
+	if limit, gated := h.gateAfter[req.Model]; gated && calls <= limit {
+		modelGate = nil // still within the allowed-call budget
+	}
 	h.mu.Unlock()
 	// A closed gate holds the response until the test releases it; the call
 	// above is already recorded, so waiters observe the call while blocked.
 	if gate != nil {
 		<-gate
+	}
+	if modelGate != nil {
+		<-modelGate
 	}
 	if broken {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -180,6 +202,107 @@ func (h *evalStubHub) answerFor(model, prompt string) string {
 	}
 	// Smart models answer every seed case correctly.
 	switch {
+	// Question-bank v3 (gen 3) seed answers. Markers are unique substrings of
+	// the v3 prompts; none of the v3 prompts contain a legacy marker, so the
+	// two banks never cross-match.
+	// cap_instruction
+	case strings.Contains(prompt, "张伟去年从上海"):
+		return `{"name": "张伟", "city": "杭州"}`
+	case strings.Contains(prompt, "桌子上放着苹果"):
+		return "3"
+	case strings.Contains(prompt, "the hub is healthy"):
+		return "THE HUB IS HEALTHY"
+	case strings.Contains(prompt, "客户订购了 2 台笔记本电脑"):
+		return "笔记本电脑x2,无线鼠标x5"
+	case strings.Contains(prompt, "离太阳最近的两颗行星"):
+		return "| 排名 | 行星 |\n| --- | --- |\n| 1 | 水星 |\n| 2 | 金星 |"
+	case strings.Contains(prompt, "年份：2100"):
+		return "平年"
+	case strings.Contains(prompt, "季度预算评审会定于"):
+		return `{"month": 3, "day": 15, "room": 301}`
+	case strings.Contains(prompt, "banana apple cherry"):
+		return "apple|banana|cherry"
+	case strings.Contains(prompt, "字母表中的后一个字母"):
+		return "bcd"
+	case strings.Contains(prompt, "人工智能正在改变世界"):
+		return "10"
+	// cap_reasoning
+	case strings.Contains(prompt, "3 盒铅笔"):
+		return "31"
+	case strings.Contains(prompt, "长 8 厘米"):
+		return "26"
+	case strings.Contains(prompt, "100 小时后"):
+		return "19"
+	case strings.Contains(prompt, "火车以每秒 20 米"):
+		return "30"
+	case strings.Contains(prompt, "男生比女生多 6 人"):
+		return "24"
+	case strings.Contains(prompt, "三个连续偶数"):
+		return "18"
+	case strings.Contains(prompt, "相距 60 千米"):
+		return "4"
+	case strings.Contains(prompt, "单开进水管 6 小时"):
+		return "15"
+	case strings.Contains(prompt, "3 倍等于另一部分"):
+		return "40"
+	case strings.Contains(prompt, "咪咪是猫"):
+		return "是"
+	// cap_coding
+	case strings.Contains(prompt, `len("hubscope")`):
+		return "8"
+	case strings.Contains(prompt, "7 // 2"):
+		return "3"
+	case strings.Contains(prompt, "typeof null"):
+		return "object"
+	case strings.Contains(prompt, "x * 2 for x in range(3)"):
+		return "[0, 2, 4]"
+	case strings.Contains(prompt, `"abc".upper()`):
+		return "BC"
+	case strings.Contains(prompt, `"5" + 3`):
+		return "53"
+	case strings.Contains(prompt, "print(f(3, 3))"):
+		return "27"
+	case strings.Contains(prompt, `int("abc")`):
+		return "ValueError"
+	case strings.Contains(prompt, "[]int{1, 2, 3, 4}"):
+		return "2"
+	case strings.Contains(prompt, "sum(d.values())"):
+		return "3"
+	// cap_knowledge (each returns the correct option letter)
+	case strings.Contains(prompt, "水的化学式"):
+		return "B"
+	case strings.Contains(prompt, "首都是哪座城市"):
+		return "C"
+	case strings.Contains(prompt, "三角形内角和"):
+		return "B"
+	case strings.Contains(prompt, "光在真空中"):
+		return "B"
+	case strings.Contains(prompt, "红楼梦"):
+		return "C"
+	case strings.Contains(prompt, "表面积最大的器官"):
+		return "B"
+	case strings.Contains(prompt, "TCP 协议"):
+		return "C"
+	case strings.Contains(prompt, "床前明月光"):
+		return "A"
+	case strings.Contains(prompt, "面积最大的海洋"):
+		return "C"
+	case strings.Contains(prompt, "多少个节气"):
+		return "B"
+	// cap_language (rule cases; judge cases fall through to the default answer
+	// and are scored by the stub judge)
+	case strings.Contains(prompt, "差一点没摔倒"):
+		return "没有摔倒"
+	case strings.Contains(prompt, "难以下咽"):
+		return "不满"
+	case strings.Contains(prompt, "大败美国队"):
+		return "中国队"
+	case strings.Contains(prompt, "我、昨天、公园"):
+		return "我昨天去了公园"
+	case strings.Contains(prompt, "不得不离开"):
+		return "B"
+	case strings.Contains(prompt, "咬死了猎人的狗"):
+		return "2"
 	case strings.Contains(prompt, "pong"):
 		return "pong"
 	case strings.Contains(prompt, "严格的 JSON"):
@@ -347,6 +470,7 @@ func (h *evalStubHub) resetCalls() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.calls = map[string]map[string]bool{}
+	h.totalCalls = map[string]int{}
 }
 
 func (h *evalStubHub) markBad(model string, bad bool) {
@@ -371,6 +495,40 @@ func (h *evalStubHub) release() {
 		close(h.gate)
 		h.gate = nil
 	}
+}
+
+// blockModelAfter freezes the given model's responses once its recorded
+// completion-call count passes n — the first n calls answer normally, every
+// later call waits until releaseModel. blockModel freezes from the first
+// call on (n = 0).
+func (h *evalStubHub) blockModelAfter(model string, n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.gateAfter[model] = n
+	h.modelGates[model] = make(chan struct{})
+}
+
+func (h *evalStubHub) blockModel(model string) {
+	h.blockModelAfter(model, 0)
+}
+
+// releaseModel unblocks the given model's gated responses.
+func (h *evalStubHub) releaseModel(model string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if gate, ok := h.modelGates[model]; ok {
+		close(gate)
+		delete(h.modelGates, model)
+		delete(h.gateAfter, model)
+	}
+}
+
+// callTotal reports how many completion calls the model made in total (any
+// prompt), including calls currently blocked on a gate.
+func (h *evalStubHub) callTotal(model string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.totalCalls[model]
 }
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.
