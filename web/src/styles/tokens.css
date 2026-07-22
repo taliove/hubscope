@@ -68,6 +68,8 @@
      semantics, never decoration. */
   --hs-radius: 6px;
   --hs-radius-sm: 4px;
+  /* Filled segment/time-bar elements only (e.g. the 24h uptime strip). */
+  --hs-radius-xs: 2px;
   --hs-shadow-card:
     0 1px 2px rgba(31, 35, 41, 0.04),
     0 1px 6px rgba(31, 35, 41, 0.06);

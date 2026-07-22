@@ -29,7 +29,7 @@ HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-ch
 
 - Element Plus 派生阶(`--el-color-primary-light-5/7/8`、`--el-color-primary-dark-2`)从 `#3B5BFD` 按 Element Plus 同款 mix 算法预生成在 tokens.css 中,保证 hover/禁用/浅底阶调一致;新代码不直接引用派生阶,用 `--hs-*` 语义变量。
 - **字阶六档,不新增:** `--hs-text-xs` 12px(辅助/标签/时间戳)、`--hs-text-sm` 13px(次要正文、StatusBadge)、`--hs-text-md` 14px(正文基准、表单、表格主列)、`--hs-text-lg` 16px(卡片/分组标题)、`--hs-text-xl` 20px(页面标题、关键数字)、`--hs-text-2xl` 24px(健康横幅大字结论,横幅专用)。字重只用 400/600;行高默认 1.5,数字类 1.2。
-- **圆角:** 全局统一 `--hs-radius` 6px(覆盖 `--el-border-radius-base`,卡片/按钮/输入框/弹窗一律 6px);小元素(tag、评分徽标、24h 小点)用 `--hs-radius-sm` 4px。
+- **圆角:** 全局统一 `--hs-radius` 6px(覆盖 `--el-border-radius-base`,卡片/按钮/输入框/弹窗一律 6px);小元素(tag、评分徽标)用 `--hs-radius-sm` 4px;分段条/时间条类填充元素(如 24h 可用率条)用 `--hs-radius-xs` 2px,仅限此类元素。24h 可用率条为分段填满式(每格填满弹性槽位,读作连续时间条),不得退回离散圆点样式。
 - **阴影语义:** 只表达「可点/浮层」,不用于装饰——卡片静态 `--hs-shadow-card`,可点卡片 hover `--hs-shadow-hover`;不可点的信息卡用 `shadow="never"` + 边框。
 - **间距:** 4px 基准网格,常用 4/8/12/16/24/32;卡片内边距统一走 `--el-card-padding` 变量(管理台紧凑档 12px、公开面 16px),禁止 `:deep(.el-card__body)` 覆写;区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。
 

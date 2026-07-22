@@ -224,10 +224,11 @@ function dotTooltip(dot: OverviewDot): string {
   display: inline-flex;
 }
 .dot {
+  /* Segmented uptime bar: each slot fills its flex cell so the strip reads
+     as one continuous 24h timeline (status-page convention), not loose dots. */
   width: 100%;
-  max-width: 8px;
-  height: 8px;
-  border-radius: var(--hs-radius-sm);
+  height: 10px;
+  border-radius: var(--hs-radius-xs);
   display: inline-block;
 }
 .dot-none {
