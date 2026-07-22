@@ -1,63 +1,75 @@
 <template>
   <el-card shadow="never" class="library-card">
-    <div class="card-title">
-      题库
-      <span v-if="!authed" class="auth-hint">登录后可新增 / 修改 Case</span>
-    </div>
+    <div class="card-title">题库</div>
 
-    <el-collapse>
-      <el-collapse-item v-for="suite in suites" :key="suite.id" :name="suite.id">
-        <template #title>
-          <span class="suite-title">{{ suite.name }}({{ suite.key }},{{ suite.cases.length }} 题,v{{ suite.version }})</span>
-        </template>
-        <div v-if="authed" class="suite-actions">
-          <el-button size="small" type="primary" plain @click="openCreate(suite)">新增 Case</el-button>
-        </div>
-        <el-table :data="suite.cases">
-          <el-table-column label="ID" prop="id" width="60" />
-          <el-table-column label="题目" min-width="260" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.prompt }}</template>
-          </el-table-column>
-          <el-table-column label="难度" width="80" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="difficultyTagType(row.difficulty)">
-                {{ difficultyLabel(row.difficulty) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="采样" width="70" align="center">
-            <template #default="{ row }">{{ row.sample_count ?? '默认' }}</template>
-          </el-table-column>
-          <el-table-column label="判定方式" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.verdict_type === 'rule' ? 'success' : 'warning'">
-                {{ row.verdict_type === 'rule' ? '规则' : '裁判' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="判定配置" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">{{ verdictConfig(row) }}</template>
-          </el-table-column>
-          <el-table-column label="启用" width="70" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.enabled ? 'success' : 'info'">
-                {{ row.enabled ? '启用' : '停用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column v-if="authed" label="操作" width="80" align="center">
-            <template #default="{ row }">
-              <el-button size="small" text type="primary" @click="openEdit(suite.id, row)">编辑</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-collapse-item>
-    </el-collapse>
+    <el-alert
+      v-if="error"
+      class="load-alert"
+      type="error"
+      :closable="false"
+      :title="`加载失败:${error}`"
+    >
+      <el-button size="small" @click="loadSuites">重试</el-button>
+    </el-alert>
+
+    <div v-loading="loading">
+      <el-collapse v-if="suites.length > 0">
+        <el-collapse-item v-for="suite in suites" :key="suite.id" :name="suite.id">
+          <template #title>
+            <span class="suite-title" :title="`${suite.name}(${suite.key},${suite.cases.length} 题,v${suite.version})`">
+              {{ suite.name }}({{ suite.key }},{{ suite.cases.length }} 题,v{{ suite.version }})
+            </span>
+          </template>
+          <div class="suite-actions">
+            <el-button size="small" type="primary" plain @click="openCreate(suite)">新增 Case</el-button>
+          </div>
+          <el-table :data="suite.cases">
+            <el-table-column label="ID" prop="id" width="60" />
+            <el-table-column label="题目" min-width="260" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.prompt }}</template>
+            </el-table-column>
+            <el-table-column label="难度" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="difficultyTagType(row.difficulty)">
+                  {{ difficultyLabel(row.difficulty) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="采样" width="70" align="center">
+              <template #default="{ row }">{{ row.sample_count ?? '默认' }}</template>
+            </el-table-column>
+            <el-table-column label="判定方式" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.verdict_type === 'rule' ? 'success' : 'warning'">
+                  {{ row.verdict_type === 'rule' ? '规则' : '裁判' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="判定配置" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ verdictConfig(row) }}</template>
+            </el-table-column>
+            <el-table-column label="启用" width="70" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.enabled ? 'success' : 'info'">
+                  {{ row.enabled ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="80" align="center">
+              <template #default="{ row }">
+                <el-button size="small" text type="primary" @click="openEdit(suite.id, row)">编辑</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-collapse-item>
+      </el-collapse>
+      <el-empty v-else-if="!loading && !error" description="暂无评估集" />
+    </div>
 
     <!-- Create/edit dialog: fields follow the verdict type. -->
     <el-dialog v-model="dialogVisible" :title="editingId === null ? '新增 Case' : `编辑 Case #${editingId}`" width="560px">
-      <el-form label-width="90px">
-        <el-form-item label="题目">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
+        <el-form-item label="题目" prop="prompt">
           <el-input v-model="form.prompt" type="textarea" :rows="3" placeholder="给模型的完整提问" />
         </el-form-item>
         <el-form-item label="判定方式">
@@ -74,11 +86,11 @@
               <el-option label="包含子串 (contains)" value="contains" />
             </el-select>
           </el-form-item>
-          <el-form-item label="期望值">
+          <el-form-item label="期望值" prop="ruleExpected">
             <el-input v-model="form.ruleExpected" placeholder="命中得 1 分,否则 0 分" />
           </el-form-item>
         </template>
-        <el-form-item v-else label="评分标准">
+        <el-form-item v-else label="评分标准" prop="rubric">
           <el-input v-model="form.rubric" type="textarea" :rows="4" placeholder="裁判模型据以打 0~1 分的 rubric" />
         </el-form-item>
         <el-form-item label="难度">
@@ -105,26 +117,40 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createCase, patchCase } from '@/api/evals'
+import type { FormInstance, FormRules } from 'element-plus'
+import { createCase, listSuites, patchCase } from '@/api/evals'
 import type { Difficulty, EvalCase, Suite, VerdictType } from '@/api/types'
 
-// Case library: read-only browsing for everyone; create/edit forms appear
-// only for authenticated admins (the server still enforces the session).
-// Cases are immutable server-side: a content edit returns a new case id and
-// retires the old row, which stays visible as disabled after the refresh.
-defineProps<{
-  suites: Suite[]
-  authed: boolean
-}>()
-
-const emit = defineEmits<{ refresh: [] }>()
+// Case library (admin console): browses suites and creates/edits cases. The
+// /admin route already gates the session, so write forms are always shown;
+// the server still re-validates. Cases are immutable server-side: a content
+// edit returns a new case id and retires the old row, which stays visible as
+// disabled after the refresh. The panel loads its own suite data.
+const suites = ref<Suite[]>([])
+const loading = ref(false)
+const error = ref('')
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const editingSuiteId = ref<number>(0)
+const formRef = ref<FormInstance>()
+
+async function loadSuites() {
+  loading.value = true
+  error.value = ''
+  try {
+    suites.value = await listSuites()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadSuites)
 
 interface CaseForm {
   prompt: string
@@ -149,6 +175,20 @@ const form = reactive<CaseForm>({
   sampleCountCustom: false,
   enabled: true,
 })
+
+// Inline validation (ui-guidelines §5): required fields follow the verdict
+// type — rule cases need an expected value, judge cases need a rubric.
+const rules = computed<FormRules>(() => ({
+  prompt: [{ required: true, message: '题目不能为空', trigger: 'blur' }],
+  ruleExpected:
+    form.verdict_type === 'rule'
+      ? [{ required: true, message: '期望值不能为空', trigger: 'blur' }]
+      : [],
+  rubric:
+    form.verdict_type === 'judge'
+      ? [{ required: true, message: '评分标准不能为空', trigger: 'blur' }]
+      : [],
+}))
 
 const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   basic: '基础',
@@ -208,10 +248,12 @@ function openEdit(suiteId: number, c: EvalCase) {
   dialogVisible.value = true
 }
 
-// Persist the form; the server validates the whole merged case. A content
-// edit comes back with a new id (the old case is retired) — the refresh
-// makes both rows visible.
+// Persist the form after inline validation; the server validates the whole
+// merged case. A content edit comes back with a new id (the old case is
+// retired) — the refresh makes both rows visible.
 async function onSave() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   saving.value = true
   try {
     const payload = {
@@ -234,7 +276,7 @@ async function onSave() {
       ElMessage.success('Case 已更新')
     }
     dialogVisible.value = false
-    emit('refresh')
+    await loadSuites()
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -244,11 +286,9 @@ async function onSave() {
 </script>
 
 <style scoped>
-.library-card {
-  margin-bottom: 16px;
-}
 /* Admin console compact density: 12px card padding (ui-guidelines §2). */
 .library-card {
+  margin-bottom: 16px;
   --el-card-padding: 12px;
 }
 .card-title {
@@ -256,19 +296,18 @@ async function onSave() {
   font-weight: 600;
   color: var(--hs-text-primary);
   margin-bottom: 8px;
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
 }
-.auth-hint {
-  font-size: var(--hs-text-xs);
-  font-weight: 400;
-  color: var(--hs-text-secondary);
+.load-alert {
+  margin-bottom: 12px;
 }
 .suite-title {
   font-size: var(--hs-text-sm);
   font-weight: 600;
   color: var(--hs-text-primary);
+  max-width: 720px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .suite-actions {
   margin-bottom: 8px;

@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately(29 已 done)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] /admin tabs 顺序:资源 | 分类规则 | 评估运营 | 题库 | 操作日志 | 设置,不加 lazy
 - [ ] 触发评估对话框:评估集单选 + 模型多选(可搜索,非对话模型禁选)+ 一键全量入口;触发后轮询批次进度直到落定并刷新列表
