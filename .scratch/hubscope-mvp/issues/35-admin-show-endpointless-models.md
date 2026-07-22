@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 零 Endpoint 模型出现在管理后台模型/端点列表中,有明确的「无端点」标识
 - [ ] 零 Endpoint 模型可删除(沿用 manual 才可删的口径,discovered 模型给禁用入口)

@@ -4,7 +4,7 @@
 
 **Blocked by:** 44 — 评估运营与题库挪入管理台(先腾空 /eval 再重写)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] report API:总分加权(自定义权重生效)、family 过滤、排序切换;已删除模型不上榜
 - [ ] /eval 榜单页:批次切换器 + Leaderboard 条形排行(DesignArena 式),废弃 ScoreMatrix/EvalTrendChart
