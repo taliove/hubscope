@@ -1,9 +1,9 @@
 <template>
   <header class="app-header">
     <div class="header-inner">
-      <!-- Brand block: pure-CSS logo tile + wordmark, click goes home. -->
+      <!-- Brand block: app icon (same master as favicon) + wordmark, click goes home. -->
       <router-link to="/" class="brand">
-        <span class="brand-logo">HS</span>
+        <img src="/logo.png" alt="HubScope" class="brand-logo" />
         <span class="brand-name">HubScope</span>
       </router-link>
 
@@ -119,14 +119,9 @@ watch(() => route.fullPath, refreshAuth)
 .brand-logo {
   width: 24px;
   height: 24px;
-  border-radius: var(--hs-radius);
-  background: var(--hs-brand);
-  color: var(--hs-bg-card);
-  font-size: var(--hs-text-xs);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  /* Apple squircle crop: master is a full-bleed square, corners rounded here */
+  border-radius: 22.4%;
 }
 .brand-name {
   font-size: var(--hs-text-lg);

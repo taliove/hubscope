@@ -4,7 +4,7 @@
       <!-- Brand block above the card (spec §4.2): 40px logo tile, wordmark
            and platform subtitle; the page renders no AppHeader. -->
       <div class="login-brand">
-        <span class="login-logo">HS</span>
+        <img src="/logo.png" alt="HubScope" class="login-logo" />
         <span class="login-wordmark">HubScope</span>
         <span class="login-subtitle">LLM Hub 监控与评估平台</span>
       </div>
@@ -85,14 +85,9 @@ async function onSubmit() {
 .login-logo {
   width: 40px;
   height: 40px;
-  border-radius: var(--hs-radius);
-  background: var(--hs-brand);
-  color: var(--hs-bg-card);
-  font-size: var(--hs-text-md);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  /* Apple squircle crop: master is a full-bleed square, corners rounded here */
+  border-radius: 22.4%;
 }
 .login-wordmark {
   font-size: var(--hs-text-xl);
