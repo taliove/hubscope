@@ -32,9 +32,19 @@ type overviewEntry struct {
 	SuccessRate24h *float64 `json:"success_rate_24h"`
 	P50Ms          *float64 `json:"p50_ms"`
 	P95Ms          *float64 `json:"p95_ms"`
-	LastProbeAt    *string  `json:"last_probe_at"`
-	Family         string   `json:"family"`
-	Capability     string   `json:"capability"`
+	LastProbeAt    *string       `json:"last_probe_at"`
+	Family         string        `json:"family"`
+	Capability     string        `json:"capability"`
+	Score          *int          `json:"score"`
+	ScoreReasons   []string      `json:"score_reasons"`
+	Dots24h        []overviewDot `json:"dots_24h"`
+}
+
+// overviewDot mirrors one hourly bucket of the dots_24h array.
+type overviewDot struct {
+	BucketStart string `json:"bucket_start"`
+	Total       int    `json:"total"`
+	Failures    int    `json:"failures"`
 }
 
 // switchStubHub is a stub Hub whose success/failure behavior can be flipped

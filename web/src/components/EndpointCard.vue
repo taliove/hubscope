@@ -185,9 +185,20 @@ function dotTooltip(dot: OverviewDot): string {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+/* Flexible slots: 24 dots always fit the card, never overflow into a
+   horizontal scrollbar. Flex goes on the direct children (el-tooltip
+   trigger wrappers), the dot fills its slot. */
+.dots-strip > * {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
 }
 .dot {
-  width: 8px;
+  width: 100%;
+  max-width: 8px;
   height: 8px;
   border-radius: 2px;
   display: inline-block;

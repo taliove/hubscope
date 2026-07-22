@@ -7,9 +7,16 @@
       <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
     </header>
 
-    <!-- Summary row: total endpoint count plus per-status counts. -->
+    <!-- Summary row: total endpoint count plus per-status counts. Each card
+         is a filter toggle: click a status to show only those endpoints,
+         click again (or the total card) to clear. -->
     <div class="summary-row">
-      <el-card shadow="never" class="summary-card">
+      <el-card
+        shadow="never"
+        class="summary-card summary-clickable"
+        :class="{ 'summary-active': statusFilter === '' }"
+        @click="statusFilter = ''"
+      >
         <div class="summary-value">{{ entries.length }}</div>
         <div class="summary-label">总端点数</div>
       </el-card>
@@ -17,7 +24,9 @@
         v-for="status in STATUS_ORDER"
         :key="status"
         shadow="never"
-        class="summary-card"
+        class="summary-card summary-clickable"
+        :class="{ 'summary-active': statusFilter === status }"
+        @click="toggleStatusFilter(status)"
       >
         <div class="summary-value">
           <StatusBadge :status="status" />
@@ -97,6 +106,12 @@ const statusFilter = ref<EndpointStatus | ''>('')
 // Grouping dimension of the status matrix; vendor family by default.
 const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
 
+// Clicking a summary card filters the matrix to that status; clicking the
+// active one clears the filter.
+function toggleStatusFilter(status: EndpointStatus) {
+  statusFilter.value = statusFilter.value === status ? '' : status
+}
+
 // Apply the three filters; an empty filter matches everything.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -166,6 +181,16 @@ onMounted(start)
 }
 .summary-card {
   min-width: 120px;
+}
+.summary-clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.summary-clickable:hover {
+  box-shadow: 0 0 0 1px #c6e2ff inset;
+}
+.summary-active {
+  box-shadow: 0 0 0 2px #409eff inset;
 }
 .summary-value {
   display: flex;
