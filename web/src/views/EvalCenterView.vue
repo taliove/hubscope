@@ -21,6 +21,7 @@
       :suites="suites"
       :models="models"
       :runs="runs"
+      :campaigns="campaigns"
       :loading="loading"
       @show-detail="detailRunId = $event"
       @run-settled="reload"
@@ -40,13 +41,14 @@
 import { onMounted, ref } from 'vue'
 import { fetchAuthStatus } from '@/api/auth'
 import { listEvalRuns, listLatestScores, listSuites } from '@/api/evals'
+import { listCampaigns } from '@/api/campaigns'
 import { listModels } from '@/api/models'
 import ScoreMatrix from '@/components/ScoreMatrix.vue'
 import EvalTrendChart from '@/components/EvalTrendChart.vue'
 import EvalRunList from '@/components/EvalRunList.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
-import type { EvalRun, LatestScore, Model, Suite } from '@/api/types'
+import type { Campaign, EvalRun, LatestScore, Model, Suite } from '@/api/types'
 
 // Evaluation center page (public): score matrix + trend, run history with
 // manual triggering, and the case library. Write calls redirect to /login
@@ -54,6 +56,7 @@ import type { EvalRun, LatestScore, Model, Suite } from '@/api/types'
 const suites = ref<Suite[]>([])
 const models = ref<Model[]>([])
 const runs = ref<EvalRun[]>([])
+const campaigns = ref<Campaign[]>([])
 const latest = ref<LatestScore[]>([])
 const authed = ref(false)
 const loading = ref(false)
@@ -71,15 +74,17 @@ async function reload() {
   loading.value = true
   error.value = ''
   try {
-    const [s, m, r, l] = await Promise.all([
+    const [s, m, r, c, l] = await Promise.all([
       listSuites(),
       listModels(),
       listEvalRuns(),
+      listCampaigns(),
       listLatestScores(),
     ])
     suites.value = s
     models.value = m
     runs.value = r
+    campaigns.value = c
     latest.value = l
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)

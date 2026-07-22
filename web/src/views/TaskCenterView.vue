@@ -2,6 +2,50 @@
   <div class="task-center">
     <el-alert v-if="error" :title="`加载失败:${error}`" type="error" :closable="false" class="error-alert" />
 
+    <!-- Eval campaigns are first-class batches with their own state machine;
+         the task center surfaces their aggregate progress here instead of
+         duplicating them as tasks (ADR 0004). -->
+    <el-card shadow="never" class="campaign-card">
+      <template #header>
+        <div class="card-header">
+          <span>考核批次</span>
+          <el-button size="small" @click="reloadCampaigns">刷新</el-button>
+        </div>
+      </template>
+      <el-table :data="campaigns" v-loading="campaignsLoading" size="small" empty-text="暂无考核批次">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="来源" width="80">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.trigger === 'manual' ? 'primary' : 'info'" plain>
+              {{ row.trigger === 'manual' ? '手动' : '定时' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="campaignTagType(row.status)">{{ campaignStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="进度" min-width="160">
+          <template #default="{ row }">
+            <el-progress
+              :percentage="campaignPercent(row)"
+              :status="row.status === 'failed' ? 'exception' : row.status === 'done' ? 'success' : undefined"
+            />
+            <span class="progress-text">
+              {{ row.progress.done + row.progress.failed }}/{{ row.progress.total }} 个运行
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="开始时间" width="165">
+          <template #default="{ row }">{{ formatTime(row.started_at) }}</template>
+        </el-table-column>
+        <el-table-column label="结束时间" width="165">
+          <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
@@ -113,7 +157,8 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getTask, listTasks } from '@/api/tasks'
-import type { TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'
+import { listCampaigns } from '@/api/campaigns'
+import type { Campaign, CampaignStatus, TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'
 import { formatMs, formatTime } from '@/utils/format'
 
 // Task center page (tickets 18, 28): filterable, paginated task list with a
@@ -129,6 +174,10 @@ const pageSize = ref(20)
 const total = ref(0)
 const typeFilter = ref<TaskType | ''>('')
 const statusFilter = ref<TaskStatus | ''>('')
+
+// Eval campaigns (ticket 29): aggregate progress of every assessment batch.
+const campaigns = ref<Campaign[]>([])
+const campaignsLoading = ref(false)
 
 const drawerOpen = ref(false)
 const detail = ref<TaskDetail | null>(null)
@@ -203,6 +252,50 @@ async function reload() {
   }
 }
 
+// Campaign helpers: overall progress is the settled-run share of the batch.
+function campaignStatusLabel(status: CampaignStatus): string {
+  switch (status) {
+    case 'done':
+      return '已完成'
+    case 'failed':
+      return '失败'
+    case 'pending':
+      return '等待中'
+    default:
+      return '运行中'
+  }
+}
+
+function campaignTagType(status: CampaignStatus): 'success' | 'warning' | 'danger' | 'info' {
+  switch (status) {
+    case 'done':
+      return 'success'
+    case 'failed':
+      return 'danger'
+    case 'running':
+      return 'warning'
+    default:
+      return 'info'
+  }
+}
+
+function campaignPercent(campaign: Campaign): number {
+  if (campaign.progress.total === 0) return 0
+  const settled = campaign.progress.done + campaign.progress.failed
+  return Math.round((settled / campaign.progress.total) * 100)
+}
+
+async function reloadCampaigns() {
+  campaignsLoading.value = true
+  try {
+    campaigns.value = await listCampaigns()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    campaignsLoading.value = false
+  }
+}
+
 function onPageChange(p: number) {
   page.value = p
   reload()
@@ -245,7 +338,10 @@ async function reloadLogs() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  reloadCampaigns()
+})
 </script>
 
 <style scoped>
@@ -256,6 +352,13 @@ onMounted(reload)
 }
 .error-alert {
   margin-bottom: 16px;
+}
+.campaign-card {
+  margin-bottom: 16px;
+}
+.progress-text {
+  font-size: 12px;
+  color: #909399;
 }
 .card-header {
   display: flex;

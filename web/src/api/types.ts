@@ -196,6 +196,7 @@ export type EvalRunStatus = 'running' | 'done' | 'failed'
 
 export interface EvalRun {
   id: number
+  campaign_id: number // the evaluation batch this run belongs to
   suite_id: number
   suite_version: number // suite version this run scored against
   trigger: EvalTrigger
@@ -204,6 +205,31 @@ export interface EvalRun {
   started_at: string // RFC3339
   finished_at: string | null
   score: number | null // aggregate over non-null result scores
+}
+
+// Eval Campaign types (ticket 29): one assessment batch grouping one run per
+// suite. "pending" is reserved; campaigns are created running.
+export type CampaignStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface CampaignProgress {
+  total: number
+  done: number
+  failed: number
+  running: number
+}
+
+export interface Campaign {
+  id: number
+  trigger: EvalTrigger
+  status: CampaignStatus
+  started_at: string | null // RFC3339, null only for the reserved pending state
+  finished_at: string | null
+  created_at: string // RFC3339
+  progress: CampaignProgress
+}
+
+export interface CampaignDetail extends Campaign {
+  runs: EvalRun[]
 }
 
 export interface EvalResult {

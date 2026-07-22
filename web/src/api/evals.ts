@@ -1,6 +1,6 @@
 // Evaluation center API calls (tickets 08/09).
 import { http } from './client'
-import type { EvalCase, EvalRun, EvalRunDetail, LatestScore, Suite, VerdictType, RuleConfig, Difficulty } from './types'
+import type { CampaignDetail, EvalCase, EvalRun, EvalRunDetail, LatestScore, Suite, VerdictType, RuleConfig, Difficulty } from './types'
 
 export async function listSuites(): Promise<Suite[]> {
   return http.get<Suite[]>('/suites')
@@ -33,8 +33,14 @@ export async function getEvalRun(id: number): Promise<EvalRunDetail> {
   return http.get<EvalRunDetail>(`/evals/${id}`)
 }
 
-export async function createEvalRun(suiteId: number, modelIds: number[]): Promise<EvalRun> {
-  return http.post<EvalRun>('/evals', { suite_id: suiteId, model_ids: modelIds })
+// Triggering an eval — single-suite or full sweep — creates a campaign; the
+// response is the created campaign (its runs may still be pending creation).
+export async function createEvalRun(suiteId: number, modelIds: number[]): Promise<CampaignDetail> {
+  return http.post<CampaignDetail>('/evals', { suite_id: suiteId, model_ids: modelIds })
+}
+
+export async function createFullSweep(): Promise<CampaignDetail> {
+  return http.post<CampaignDetail>('/evals', {})
 }
 
 export async function listLatestScores(): Promise<LatestScore[]> {
