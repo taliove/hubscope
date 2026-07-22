@@ -26,3 +26,7 @@ web/dist/
 !.claude/rules/
 !.claude/agents/
 !.claude/skills/
+.claude/skills/deploy/
+.gstack/
+.scratch/design/
+.scratch/web
