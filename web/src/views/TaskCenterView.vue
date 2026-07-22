@@ -23,7 +23,7 @@
               style="width: 140px"
               @change="onFilterChange"
             >
-              <el-option label="评估运行" value="eval_run" />
+              <el-option v-for="t in TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
             </el-select>
             <el-select
               v-model="statusFilter"
@@ -62,7 +62,11 @@
             <router-link v-if="row.entity_type === 'eval_run'" to="/eval" class="entity-link">
               eval_run #{{ row.entity_id }}
             </router-link>
-            <span v-else>{{ row.entity_type }} #{{ row.entity_id }}</span>
+            <router-link v-else-if="row.entity_type === 'hub'" to="/admin" class="entity-link">
+              hub #{{ row.entity_id }}
+            </router-link>
+            <span v-else-if="row.entity_type">{{ row.entity_type }} #{{ row.entity_id }}</span>
+            <span v-else>—</span>
           </template>
         </el-table-column>
         <el-table-column label="开始时间" width="165">
@@ -120,9 +124,11 @@ import { getTask, listTasks } from '@/api/tasks'
 import type { TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'
 import { formatMs, formatTime } from '@/utils/format'
 
-// Task center page (ticket 18): filterable, paginated task list with a
-// per-task log drawer. Reads require a session like the other monitoring
-// APIs; the router guard bounces anonymous visitors to /login.
+// Task center page (tickets 18, 28): filterable, paginated task list with a
+// per-task log drawer. Covers eval runs, discovery syncs, rollup and
+// retention cleanup; probe rounds are not tasks and never appear here.
+// Reads require a session like the other monitoring APIs; the router guard
+// bounces anonymous visitors to /login.
 const tasks = ref<TaskItem[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -143,8 +149,15 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'failed', label: '失败' },
 ]
 
+const TYPE_OPTIONS: { value: TaskType; label: string }[] = [
+  { value: 'eval_run', label: '评估运行' },
+  { value: 'discovery_sync', label: '发现同步' },
+  { value: 'rollup', label: '聚合汇总' },
+  { value: 'retention_cleanup', label: '数据清理' },
+]
+
 function typeLabel(type: string): string {
-  return type === 'eval_run' ? '评估运行' : type
+  return TYPE_OPTIONS.find((t) => t.value === type)?.label ?? type
 }
 
 function sourceLabel(source: string): string {

@@ -228,9 +228,9 @@ export interface LatestScore {
   finished_at: string
 }
 
-// Task center types (ticket 18).
+// Task center types (tickets 18, 28).
 
-export type TaskType = 'eval_run'
+export type TaskType = 'eval_run' | 'discovery_sync' | 'rollup' | 'retention_cleanup'
 export type TaskSource = 'manual' | 'scheduled'
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failed'
 export type TaskLogLevel = 'info' | 'warn' | 'error'
