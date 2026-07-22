@@ -99,43 +99,49 @@ function onCellClick(row: MatrixRow, suite: Suite) {
 .matrix-card {
   margin-bottom: 16px;
 }
+/* Admin console compact density: 12px card padding (ui-guidelines §2). */
+.matrix-card {
+  --el-card-padding: 12px;
+}
 .card-title {
-  font-size: 14px;
+  font-size: var(--hs-text-md);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
   margin-bottom: 8px;
 }
 .model-name {
   font-family: monospace;
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
 }
 .score-cell {
   display: inline-block;
   min-width: 56px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--hs-radius-sm);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
+/* Score bands: light-9 fills with dark-2 text (ui-guidelines §3). The
+   thresholds live in scoreClass above and mirror the backend scale. */
 .score-high {
-  background: #f0f9eb;
-  color: #529b2e;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success-dark-2);
 }
 .score-mid {
-  background: #fdf6ec;
-  color: #b88230;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
 }
 .score-low {
-  background: #fef0f0;
-  color: #c45656;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger-dark-2);
 }
 .score-none {
-  color: #c0c4cc;
+  color: var(--hs-text-placeholder);
   cursor: default;
 }
 .matrix-hint {
   margin-top: 8px;
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 </style>

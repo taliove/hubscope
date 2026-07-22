@@ -46,7 +46,7 @@
       </el-table>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card shadow="never" class="task-card">
       <template #header>
         <div class="card-header">
           <span>任务列表</span>
@@ -353,12 +353,17 @@ onMounted(() => {
 .error-alert {
   margin-bottom: 16px;
 }
+/* Admin console compact density: 12px card padding (ui-guidelines §2). */
+.task-card,
+.campaign-card {
+  --el-card-padding: 12px;
+}
 .campaign-card {
   margin-bottom: 16px;
 }
 .progress-text {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .card-header {
   display: flex;
@@ -386,18 +391,18 @@ onMounted(() => {
 }
 .log-meta {
   color: var(--hs-text-secondary);
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   flex: 1;
 }
 .log-list {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--hs-text-xs);
 }
 .log-line {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 3px 0;
+  padding: 4px 0;
   border-bottom: 1px solid var(--hs-border);
 }
 .log-time {

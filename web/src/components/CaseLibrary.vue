@@ -247,24 +247,28 @@ async function onSave() {
 .library-card {
   margin-bottom: 16px;
 }
+/* Admin console compact density: 12px card padding (ui-guidelines §2). */
+.library-card {
+  --el-card-padding: 12px;
+}
 .card-title {
-  font-size: 14px;
+  font-size: var(--hs-text-md);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
   margin-bottom: 8px;
   display: flex;
   align-items: baseline;
   gap: 12px;
 }
 .auth-hint {
-  font-size: 12px;
+  font-size: var(--hs-text-xs);
   font-weight: 400;
-  color: #909399;
+  color: var(--hs-text-secondary);
 }
 .suite-title {
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
 }
 .suite-actions {
   margin-bottom: 8px;

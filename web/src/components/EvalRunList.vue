@@ -253,10 +253,14 @@ onBeforeUnmount(stopPolling)
 .runs-card {
   margin-bottom: 16px;
 }
+/* Admin console compact density: 12px card padding (ui-guidelines §2). */
+.runs-card {
+  --el-card-padding: 12px;
+}
 .card-title {
-  font-size: 14px;
+  font-size: var(--hs-text-md);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
   margin-bottom: 8px;
 }
 .trigger-form {
@@ -279,20 +283,20 @@ onBeforeUnmount(stopPolling)
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 .campaign-title {
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
 }
 .campaign-progress {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .campaign-time {
   margin-left: auto;
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 </style>

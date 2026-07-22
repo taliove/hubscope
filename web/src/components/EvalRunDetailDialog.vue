@@ -123,8 +123,8 @@ function scoreClass(score: number | null): string {
   display: flex;
   align-items: center;
   gap: 16px;
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -135,33 +135,34 @@ function scoreClass(score: number | null): string {
   padding: 8px 16px;
 }
 .expand-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
   margin-bottom: 2px;
 }
 .expand-text {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
-  color: #303133;
-  background: #f5f7fa;
-  border-radius: 4px;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-primary);
+  background: var(--hs-bg-page);
+  border-radius: var(--hs-radius-sm);
   padding: 8px;
 }
+/* Score band text colors match ScoreMatrix (ui-guidelines §3). */
 .score-high {
-  color: #529b2e;
+  color: var(--el-color-success-dark-2);
 }
 .score-mid {
-  color: #b88230;
+  color: var(--el-color-warning-dark-2);
 }
 .score-low {
-  color: #c45656;
+  color: var(--el-color-danger-dark-2);
 }
 .score-none {
-  color: #c0c4cc;
+  color: var(--hs-text-placeholder);
 }
 .deleted-tag {
-  margin-left: 6px;
+  margin-left: 4px;
 }
 </style>
