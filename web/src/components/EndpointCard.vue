@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="hover" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
+  <el-card shadow="never" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
     <div class="card-head">
       <span class="model-id" :title="entry.model_id">{{ entry.model_id }}</span>
       <el-tag :type="entry.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
@@ -104,21 +104,26 @@ function dotTooltip(dot: OverviewDot): string {
 
 <style scoped>
 .endpoint-card {
-  border-top: 3px solid transparent;
+  /* Status indicator: a 3px vertical bar on the leading edge (eyes scan
+     left to right, status comes first). Color mapping unchanged (§3). */
+  border-left: 3px solid transparent;
   cursor: pointer;
+  transition: box-shadow 0.15s ease;
 }
-/* A thin colored edge mirrors the status light for quick scanning. */
+.endpoint-card:hover {
+  box-shadow: var(--hs-shadow-hover);
+}
 .card-healthy {
-  border-top-color: #67c23a;
+  border-left-color: var(--el-color-success);
 }
 .card-degraded {
-  border-top-color: #e6a23c;
+  border-left-color: var(--el-color-warning);
 }
 .card-down {
-  border-top-color: #f56c6c;
+  border-left-color: var(--el-color-danger);
 }
 .card-failing {
-  border-top-color: #ff4500;
+  border-left-color: var(--hs-status-failing);
 }
 .card-head {
   display: flex;
@@ -128,8 +133,9 @@ function dotTooltip(dot: OverviewDot): string {
   margin-bottom: 10px;
 }
 .model-id {
+  font-size: var(--hs-text-lg);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -144,32 +150,53 @@ function dotTooltip(dot: OverviewDot): string {
   cursor: help;
 }
 .score-badge {
-  font-size: 12px;
+  font-size: var(--hs-text-xs);
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--hs-radius-sm);
   cursor: help;
   white-space: nowrap;
 }
 .score-good {
-  color: #67c23a;
-  background: #f0f9eb;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 .score-warn {
-  color: #e6a23c;
-  background: #fdf6ec;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
 }
 .score-bad {
-  color: #f56c6c;
-  background: #fef0f0;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
 .score-none {
-  color: #909399;
-  background: #f4f4f5;
+  color: var(--hs-text-placeholder);
+  background: var(--el-color-info-light-9);
   font-weight: 400;
 }
 .score-reasons {
   white-space: pre-line;
+}
+.card-metrics {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.metric-label {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.metric-value {
+  font-size: var(--hs-text-md);
+  line-height: 1.2;
+  color: var(--hs-text-primary);
+  margin-top: 2px;
 }
 .card-dots {
   display: flex;
@@ -178,8 +205,8 @@ function dotTooltip(dot: OverviewDot): string {
   margin-bottom: 10px;
 }
 .dots-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .dots-strip {
   display: flex;
@@ -200,40 +227,23 @@ function dotTooltip(dot: OverviewDot): string {
   width: 100%;
   max-width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--hs-radius-sm);
   display: inline-block;
 }
 .dot-none {
-  background: #dcdfe6;
+  background: var(--hs-border);
 }
 .dot-ok {
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 .dot-partial {
-  background: #e6a23c;
+  background: var(--el-color-warning);
 }
 .dot-fail {
-  background: #f56c6c;
-}
-.card-metrics {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.metric {
-  display: flex;
-  flex-direction: column;
-}
-.metric-label {
-  font-size: 12px;
-  color: #909399;
-}
-.metric-value {
-  font-size: 15px;
-  color: #303133;
+  background: var(--el-color-danger);
 }
 .card-foot {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 </style>

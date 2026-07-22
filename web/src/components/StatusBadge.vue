@@ -28,7 +28,7 @@ const reason = computed(() => props.reason ?? '')
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--hs-text-sm);
   color: var(--hs-text-regular);
 }
 .dot {
@@ -38,26 +38,16 @@ const reason = computed(() => props.reason ?? '')
   flex: none;
 }
 .status-healthy .dot {
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 .status-degraded .dot {
-  background: #e6a23c;
+  background: var(--el-color-warning);
 }
 .status-down .dot {
-  background: #f56c6c;
+  background: var(--el-color-danger);
 }
 .status-failing .dot {
   background: var(--hs-status-failing);
-  animation: blink 0.8s ease-in-out infinite;
-}
-/* Failing pulses to draw attention without changing layout. */
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.2;
-  }
+  animation: hs-blink 0.8s ease-in-out infinite;
 }
 </style>

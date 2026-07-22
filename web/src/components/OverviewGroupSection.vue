@@ -60,17 +60,17 @@ const presentStatuses = computed(() =>
   flex-wrap: wrap;
 }
 .group-arrow {
-  color: #909399;
+  color: var(--hs-text-placeholder);
   width: 14px;
 }
 .group-key {
-  font-size: 16px;
+  font-size: var(--hs-text-lg);
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
 }
 .group-count {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .group-stats {
   display: flex;
@@ -78,16 +78,16 @@ const presentStatuses = computed(() =>
   gap: 6px;
 }
 .stat-num {
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
   margin-right: 4px;
 }
 .group-metrics {
   margin-left: auto;
   display: flex;
   gap: 14px;
-  font-size: 12px;
-  color: #606266;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .card-grid {
   display: grid;

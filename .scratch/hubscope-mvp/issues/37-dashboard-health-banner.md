@@ -4,7 +4,7 @@
 
 **Blocked by:** 35 — 全局壳;36 — overview API 全局健康聚合
 
-**Status:** blocked
+**Status:** done
 
 - [ ] 四种横幅状态逐一造数自验(全好/降级/异常含告警/加载中)
 - [ ] 首屏不滚动即可读出全局结论(3 秒原则)
