@@ -6,7 +6,11 @@
     @update:model-value="(v: boolean) => { if (!v) $emit('close') }"
   >
     <div v-loading="loading">
-      <template v-if="detail">
+      <div v-if="error" class="load-error">
+        <p class="load-error-text">加载失败:{{ error }}</p>
+        <el-button size="small" @click="runId !== null && loadRun(runId)">重试</el-button>
+      </div>
+      <template v-else-if="detail">
         <div class="run-meta">
           <el-tag size="small" :type="detail.trigger === 'scheduled' ? 'info' : 'primary'">
             {{ detail.trigger === 'scheduled' ? '定时' : '手动' }}
@@ -78,6 +82,7 @@ defineEmits<{ close: [] }>()
 
 const detail = ref<EvalRunDetail | null>(null)
 const loading = ref(false)
+const error = ref<string | null>(null)
 
 const dialogTitle = computed(() => {
   if (!detail.value) return '评估运行详情'
@@ -85,18 +90,28 @@ const dialogTitle = computed(() => {
   return `评估运行 #${detail.value.id} · ${suite?.name ?? ''}`
 })
 
+// Load one run's detail; failures surface as an in-dialog error with retry
+// instead of an unhandled rejection and a blank dialog.
+async function loadRun(id: number) {
+  detail.value = null
+  error.value = null
+  loading.value = true
+  try {
+    detail.value = await getEvalRun(id)
+  } catch (err) {
+    error.value = (err as Error).message
+  } finally {
+    loading.value = false
+  }
+}
+
 // Load the run whenever a new one is opened; clear on close.
 watch(
   () => props.runId,
-  async id => {
+  id => {
     detail.value = null
-    if (id === null) return
-    loading.value = true
-    try {
-      detail.value = await getEvalRun(id)
-    } finally {
-      loading.value = false
-    }
+    error.value = null
+    if (id !== null) loadRun(id)
   },
   { immediate: true }
 )
@@ -119,6 +134,16 @@ function scoreClass(score: number | null): string {
 </script>
 
 <style scoped>
+.load-error {
+  padding: 24px 0;
+  text-align: center;
+}
+.load-error-text {
+  font-size: var(--hs-text-md);
+  color: var(--el-color-danger);
+  margin: 0 0 12px;
+  word-break: break-all;
+}
 .run-meta {
   display: flex;
   align-items: center;

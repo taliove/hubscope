@@ -12,7 +12,7 @@
       </template>
     </el-table-column>
     <el-table-column label="HTTP" prop="http_status" width="70" />
-    <el-table-column label="错误摘要" min-width="200">
+    <el-table-column label="错误摘要" min-width="200" show-overflow-tooltip>
       <template #default="{ row }">
         <span v-if="row.error_summary" class="fail-text">{{ row.error_summary }}</span>
         <span v-else class="muted">-</span>
