@@ -18,7 +18,7 @@
           <span>裁判模型:{{ detail.judge_model }}</span>
           <span>开始:{{ formatTime(detail.started_at) }}</span>
           <span>结束:{{ formatTime(detail.finished_at) }}</span>
-          <span>聚合分:{{ detail.score === null ? '-' : detail.score.toFixed(2) }}</span>
+          <span>聚合分:{{ formatScore(detail.score === null ? null : detail.score * 100) }}</span>
         </div>
         <el-table :data="detail.results" row-key="id" max-height="480">
           <el-table-column type="expand">
@@ -50,7 +50,7 @@
           </el-table-column>
           <el-table-column label="得分" width="80" align="center">
             <template #default="{ row }">
-              <span :class="scoreClass(row.score)">{{ row.score === null ? '-' : row.score.toFixed(2) }}</span>
+              <span :class="scoreClass(row.score)">{{ formatScore(row.score === null ? null : row.score * 100) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="判定理由" min-width="200" show-overflow-tooltip>
@@ -68,7 +68,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getEvalRun } from '@/api/evals'
-import { formatMs, formatTime } from '@/utils/format'
+import { formatMs, formatScore, formatTime } from '@/utils/format'
 import type { EvalRunDetail, Suite } from '@/api/types'
 
 // Run detail dialog: per-case prompt, model answer, score, and the judge's

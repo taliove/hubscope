@@ -20,7 +20,7 @@
             :class="scoreClass(row.scores[suite.id])"
             @click="onCellClick(row, suite)"
           >
-            {{ formatScore(row.scores[suite.id]) }}
+            {{ cellScore(row.scores[suite.id]) }}
           </span>
         </template>
       </el-table-column>
@@ -31,6 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatScore } from '@/utils/format'
 import type { LatestScore, Model, Suite } from '@/api/types'
 
 // Score matrix: rows are chat-capable models, columns are suites, cells hold
@@ -69,11 +70,12 @@ const rows = computed<MatrixRow[]>(() => {
   return [...byModel.values()].sort((a, b) => a.modelId.localeCompare(b.modelId))
 })
 
-// Render a 0~1 score with two decimals; a dash covers both "unscored" (null)
-// and "never ran" (undefined).
-function formatScore(score: number | null | undefined): string {
+// Scores arrive on a 0~1 scale; display converts to 0-100 and renders via
+// the shared formatScore (components must not self-format with toFixed).
+// A dash covers both "unscored" (null) and "never ran" (undefined).
+function cellScore(score: number | null | undefined): string {
   if (score === null || score === undefined) return '-'
-  return score.toFixed(2)
+  return formatScore(score * 100)
 }
 
 // Color scale: green >= 0.8, yellow >= 0.5, red below.

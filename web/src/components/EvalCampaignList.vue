@@ -17,6 +17,11 @@
               进度 {{ group.campaign.progress.done + group.campaign.progress.failed }}/{{ group.campaign.progress.total }}
             </span>
             <span class="campaign-time">{{ formatTime(group.campaign.started_at) }}</span>
+            <router-link
+              class="report-link"
+              :to="`/campaigns/${group.campaign.id}/report`"
+              @click.stop
+            >查看报告</router-link>
           </div>
         </template>
         <el-table :data="group.runs" size="small" @row-click="(row: EvalRun) => $emit('show-detail', row.id)">
@@ -31,7 +36,7 @@
             </template>
           </el-table-column>
           <el-table-column label="聚合分" width="90" align="center">
-            <template #default="{ row }">{{ row.score === null ? '-' : row.score.toFixed(2) }}</template>
+            <template #default="{ row }">{{ formatScore(row.score === null ? null : row.score * 100) }}</template>
           </el-table-column>
           <el-table-column label="开始时间" width="170">
             <template #default="{ row }">{{ formatTime(row.started_at) }}</template>
@@ -48,7 +53,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { formatTime } from '@/utils/format'
+import { formatScore, formatTime } from '@/utils/format'
 import type { Campaign, CampaignStatus, EvalRun, EvalRunStatus, Suite } from '@/api/types'
 
 // Eval run history grouped by campaign. Purely presentational: data comes
@@ -170,5 +175,14 @@ function campaignTagType(status: CampaignStatus): 'info' | 'success' | 'danger' 
   padding-right: 8px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+}
+.report-link {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-brand);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.report-link:hover {
+  color: var(--hs-brand-hover);
 }
 </style>
