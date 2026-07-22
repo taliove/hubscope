@@ -53,7 +53,7 @@ func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
 	// Kick off the first model sync in the background so the new hub's
 	// models appear without waiting for the periodic full sync. The response
 	// must not block on it: a large hub takes minutes to probe.
-	if err := s.discovery.StartSync(hub.ID); err != nil {
+	if err := s.discovery.StartSync(hub.ID, store.TaskSourceManual); err != nil {
 		// Only ErrSyncInProgress is possible, and a fresh hub cannot be
 		// syncing — log defensively rather than failing the creation.
 		slog.Error("create hub: start sync failed", "hub_id", hub.ID, "error", err)
@@ -154,7 +154,7 @@ func (s *Server) handleSyncHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.discovery.StartSync(id); err != nil {
+	if err := s.discovery.StartSync(id, store.TaskSourceManual); err != nil {
 		if errors.Is(err, discovery.ErrSyncInProgress) {
 			writeError(w, http.StatusConflict, "sync already in progress for this hub")
 			return

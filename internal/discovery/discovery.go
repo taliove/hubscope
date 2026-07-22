@@ -8,6 +8,7 @@ package discovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -22,6 +23,7 @@ var protocols = []string{"anthropic", "openai"}
 // Stats summarizes one sync run across all hubs.
 type Stats struct {
 	Added            int `json:"added"`
+	Updated          int `json:"updated"`
 	Retired          int `json:"retired"`
 	EndpointsCreated int `json:"endpoints_created"`
 }
@@ -66,6 +68,8 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 		}
 		if created {
 			stats.Added++
+		} else {
+			stats.Updated++
 		}
 		// New models trial both protocols; existing ones only trial the
 		// protocols they still lack, so a protocol that becomes available
@@ -88,8 +92,10 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 // Sync runs one full discovery pass over all hubs and returns aggregated
 // stats. A hub that fails to list models is logged and skipped so one bad
 // hub never blocks the others; a hub already syncing (e.g. triggered via the
-// API) is skipped too.
-func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
+// API) is skipped too. Each synced hub registers a task in the task center
+// with the given source (manual for API triggers, scheduled for the
+// periodic loop).
+func (s *Syncer) Sync(ctx context.Context, source string) (Stats, error) {
 	var total Stats
 	hubs, err := s.db.ListHubs()
 	if err != nil {
@@ -100,12 +106,13 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 			slog.Debug("discovery: sync already in progress, skipping", "hub_id", hub.ID, "hub", hub.Name)
 			continue
 		}
-		stats, err := s.syncOne(ctx, hub)
+		stats, err := s.syncOne(ctx, hub, source)
 		if err != nil {
 			slog.Error("discovery: sync hub failed", "hub_id", hub.ID, "hub", hub.Name, "error", err)
 			continue
 		}
 		total.Added += stats.Added
+		total.Updated += stats.Updated
 		total.Retired += stats.Retired
 		total.EndpointsCreated += stats.EndpointsCreated
 	}
@@ -115,20 +122,20 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 // syncOne runs one guarded hub sync inside the full-sync loop, always
 // releasing the guard — unlike SyncHub/StartSync the loop has no defer, so
 // this wrapper keeps a panicking sync from wedging the hub's guard.
-func (s *Syncer) syncOne(ctx context.Context, hub store.Hub) (stats Stats, err error) {
+func (s *Syncer) syncOne(ctx context.Context, hub store.Hub, source string) (stats Stats, err error) {
 	defer s.release(hub.ID)
 	if err := s.db.SetHubSyncing(hub.ID); err != nil {
 		return Stats{}, err
 	}
-	return s.syncMarked(ctx, hub)
+	return s.syncMarked(ctx, hub, source)
 }
 
 // StartSync launches an asynchronous sync for one hub and returns immediately.
 // The in-flight guard and the persisted 'syncing' mark are both taken before
 // returning, so a concurrent trigger sees ErrSyncInProgress and any read sees
 // the syncing state deterministically. Failures afterwards surface only
-// through the hub's persisted sync status and the log.
-func (s *Syncer) StartSync(hubID int64) error {
+// through the hub's persisted sync status, the task center and the log.
+func (s *Syncer) StartSync(hubID int64, source string) error {
 	if !s.acquire(hubID) {
 		return ErrSyncInProgress
 	}
@@ -143,7 +150,7 @@ func (s *Syncer) StartSync(hubID int64) error {
 			slog.Error("discovery: async sync: load hub", "hub_id", hubID, "error", err)
 			return
 		}
-		if _, err := s.syncMarked(context.Background(), *hub); err != nil {
+		if _, err := s.syncMarked(context.Background(), *hub, source); err != nil {
 			slog.Error("discovery: async sync failed", "hub_id", hubID, "error", err)
 		}
 	}()
@@ -169,22 +176,32 @@ func (s *Syncer) release(hubID int64) {
 }
 
 // syncMarked syncs one hub whose 'syncing' mark is already persisted, then
-// records the outcome. The caller must hold the hub's in-flight guard.
-func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub) (Stats, error) {
+// records the outcome. The caller must hold the hub's in-flight guard. Every
+// sync registers a discovery_sync task so the task center shows what changed;
+// tracking failures never break the sync itself.
+func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub, source string) (Stats, error) {
+	tracker := s.db.BeginTask(store.TaskTypeDiscoverySync, source, store.TaskEntityHub, hub.ID,
+		fmt.Sprintf("discovery sync started: hub=%q", hub.Name))
+
 	stats, syncErr := s.syncHub(ctx, hub)
 	if syncErr != nil {
 		msg := syncErr.Error()
 		if err := s.db.SetHubSyncResult(hub.ID, &msg); err != nil {
 			slog.Error("discovery: persist sync failure", "hub_id", hub.ID, "error", err)
 		}
+		tracker.Fail(fmt.Sprintf("discovery sync failed: hub=%q error=%s", hub.Name, msg))
 		return stats, syncErr
 	}
 	if err := s.db.SetHubSyncResult(hub.ID, nil); err != nil {
+		tracker.Fail(fmt.Sprintf("discovery sync failed: hub=%q error=%s", hub.Name, err.Error()))
 		return stats, err
 	}
+	tracker.Succeed(fmt.Sprintf(
+		"discovery sync finished: hub=%q added=%d updated=%d retired=%d endpoints_created=%d",
+		hub.Name, stats.Added, stats.Updated, stats.Retired, stats.EndpointsCreated))
 	slog.Info("discovery: hub synced",
 		"hub_id", hub.ID, "hub", hub.Name,
-		"added", stats.Added, "retired", stats.Retired, "endpoints_created", stats.EndpointsCreated)
+		"added", stats.Added, "updated", stats.Updated, "retired", stats.Retired, "endpoints_created", stats.EndpointsCreated)
 	return stats, nil
 }
 

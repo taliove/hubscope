@@ -104,7 +104,7 @@ func run() error {
 			case <-schedCtx.Done():
 				return
 			case <-timer.C:
-				if _, err := srv.Discovery().Sync(schedCtx); err != nil {
+				if _, err := srv.Discovery().Sync(schedCtx, store.TaskSourceScheduled); err != nil {
 					slog.Error("discovery sync failed", "error", err)
 				}
 				timer.Reset(discoveryInterval)

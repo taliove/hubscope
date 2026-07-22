@@ -306,7 +306,10 @@ func TestFailedEvalRunTaskMarkedFailed(t *testing.T) {
 
 	var failedTask map[string]interface{}
 	waitFor(t, "failed task to appear", func() bool {
-		items := taskItems(t, listTasks(t, ts.URL, "status=failed"))
+		// The hub auto-sync triggered by the model setup may have failed
+		// against the eval stub and registered its own failed task; this test
+		// cares only about the eval run's task.
+		items := taskItems(t, listTasks(t, ts.URL, "status=failed&type=eval_run"))
 		if len(items) != 1 {
 			return false
 		}
@@ -386,7 +389,8 @@ func TestTaskListPaginationAndFilters(t *testing.T) {
 }
 
 // TestProbeRoundsAreNotTasks pins the boundary that probe rounds never
-// register tasks: after probing an endpoint the task list stays empty.
+// register tasks: probing an endpoint adds nothing to the task list (the
+// hub/model setup may legitimately have registered discovery sync tasks).
 func TestProbeRoundsAreNotTasks(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "smart-model")
@@ -400,14 +404,16 @@ func TestProbeRoundsAreNotTasks(t *testing.T) {
 	endpoints := models[0]["endpoints"].([]interface{})
 	endpointID := int64(endpoints[0].(map[string]interface{})["id"].(float64))
 
+	before := taskTotal(t, listTasks(t, ts.URL, ""))
+
 	probeResp := doPost(t, fmt.Sprintf("%s/api/endpoints/%d/probe", ts.URL, endpointID), nil)
 	probeResp.Body.Close()
 	if probeResp.StatusCode != http.StatusOK {
 		t.Fatalf("probe: expected 200, got %d", probeResp.StatusCode)
 	}
 
-	if got := taskTotal(t, listTasks(t, ts.URL, "")); got != 0 {
-		t.Errorf("after a probe round: task total = %d, want 0 (probe rounds are not tasks)", got)
+	if got := taskTotal(t, listTasks(t, ts.URL, "")); got != before {
+		t.Errorf("probe round changed task total from %d to %d (probe rounds are not tasks)", before, got)
 	}
 }
 
