@@ -4,7 +4,7 @@
 
 **Blocked by:** 29 — Eval Campaign + 一键全量评估;30 — 题库专业化:扩题 + Suite 版本化 + 采样
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 大跌告警以 Campaign 为单位对比,阈值设置沿用
 - [ ] 告警附 Suite 跌幅与变动 Case 明细
