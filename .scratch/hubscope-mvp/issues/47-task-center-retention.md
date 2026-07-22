@@ -4,8 +4,8 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 每日清理一并删除 90 天前的 tasks 及其 task_logs(级联或两步删除)
-- [ ] 保留期可配(settings 键,默认 90 天)
+- [ ] 保留期可配(worker 选项,默认 90 天,与 auditRetention 同模式)
 - [ ] 黑盒测试:假时钟推进,断言过期 Task 被清理、近期 Task 保留
