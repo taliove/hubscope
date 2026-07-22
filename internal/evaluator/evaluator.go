@@ -23,14 +23,15 @@ const RequestTimeout = 120 * time.Second
 
 // Evaluator executes eval runs and persists per-case results.
 //
-// AfterRun, when set, is invoked once after a run reaches "done" (never for
-// failed runs). The score-drop alerter hooks in here; hook errors must be
-// handled by the hook itself (the alerter logs instead of failing).
+// AfterCampaign, when set, is invoked once after a campaign settles to
+// "done" (never for failed campaigns). The score-drop alerter hooks in here;
+// hook errors must be handled by the hook itself (the alerter logs instead
+// of failing).
 type Evaluator struct {
 	db     *store.DB
 	client *hubclient.Client
 
-	AfterRun func(ctx context.Context, runID int64)
+	AfterCampaign func(ctx context.Context, campaignID int64)
 }
 
 // New creates an Evaluator backed by the given store and hub client.
@@ -80,20 +81,43 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 		return err
 	}
 	task.succeed()
-	if e.AfterRun != nil {
-		// Detach cancellation so a graceful shutdown cannot abort the alert
-		// send mid-flight (mirrors the prober's WithoutCancel rounds). A
-		// misbehaving hook must never take down the evaluator.
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("evaluator: AfterRun hook panicked", "run_id", runID, "panic", r)
-				}
-			}()
-			e.AfterRun(context.WithoutCancel(ctx), runID)
-		}()
-	}
 	return nil
+}
+
+// SettleCampaign settles a campaign from its member runs and, when the
+// campaign reached "done", invokes the AfterCampaign hook. It is the single
+// settle entry point shared by the sweep loop and the single-run trigger, so
+// every done campaign produces exactly one hook invocation: terminal campaign
+// states are sticky (the first settle wins) and each campaign is settled by
+// exactly one goroutine.
+//
+// The hook runs detached from cancellation so a graceful shutdown cannot
+// abort an alert send mid-flight, and a panicking hook is logged rather than
+// allowed to take down the caller.
+func (e *Evaluator) SettleCampaign(ctx context.Context, campaignID int64) {
+	if err := e.db.SettleCampaign(campaignID, time.Now().UTC()); err != nil {
+		slog.Error("evaluator: settle campaign", "campaign_id", campaignID, "error", err)
+		return
+	}
+	if e.AfterCampaign == nil {
+		return
+	}
+	campaign, err := e.db.GetCampaign(campaignID)
+	if err != nil {
+		slog.Error("evaluator: reload settled campaign", "campaign_id", campaignID, "error", err)
+		return
+	}
+	if campaign.Status != store.CampaignStatusDone {
+		return
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("evaluator: AfterCampaign hook panicked", "campaign_id", campaignID, "panic", r)
+			}
+		}()
+		e.AfterCampaign(context.WithoutCancel(ctx), campaignID)
+	}()
 }
 
 // resolveJudgeModel reads the configured judge model from settings and, when

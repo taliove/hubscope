@@ -5,12 +5,15 @@ import (
 	"time"
 )
 
-// Alert kinds emitted by the alert evaluator. "score_drop" is reserved for
-// ticket 09 and never produced by probe alerting.
+// Alert kinds emitted by the alert evaluator. "score_drop" fires when a
+// model's aggregate falls beyond the threshold between two campaigns;
+// "score_drop_skipped" records that a comparison was skipped because the two
+// runs ran different suite versions (nothing is sent for a skip).
 const (
-	AlertKindDown      = "down"
-	AlertKindRecovered = "recovered"
-	AlertKindScoreDrop = "score_drop"
+	AlertKindDown             = "down"
+	AlertKindRecovered        = "recovered"
+	AlertKindScoreDrop        = "score_drop"
+	AlertKindScoreDropSkipped = "score_drop_skipped"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.

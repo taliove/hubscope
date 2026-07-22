@@ -105,6 +105,23 @@ func (db *DB) CreateTask(t Task) (*Task, error) {
 	}, nil
 }
 
+// GetTaskByEntity returns the newest task linked to the given domain object,
+// or nil when none exists. Callers use it to annotate an entity's task after
+// the fact (e.g. the score-drop alerter marking a skipped comparison on the
+// run's finished task).
+func (db *DB) GetTaskByEntity(entityType string, entityID int64) (*Task, error) {
+	t, err := scanTask(db.conn.QueryRow(
+		"SELECT "+taskColumns+" FROM tasks WHERE entity_type = ? AND entity_id = ? ORDER BY id DESC LIMIT 1",
+		entityType, entityID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // GetTask retrieves a task by ID.
 func (db *DB) GetTask(id int64) (*Task, error) {
 	t, err := scanTask(db.conn.QueryRow("SELECT "+taskColumns+" FROM tasks WHERE id = ?", id))

@@ -171,6 +171,29 @@ func (db *DB) SettleCampaign(id int64, now time.Time) error {
 	return err
 }
 
+// PreviousDoneCampaignRun returns the run covering the given suite inside the
+// most recent done campaign strictly before the given campaign, or nil when
+// no earlier done campaign covered the suite. It is the baseline the
+// campaign-level score-drop alert compares against: only settled ("done")
+// campaigns serve as baselines, matching the reporting unit semantics.
+func (db *DB) PreviousDoneCampaignRun(campaignID, suiteID int64) (*EvalRun, error) {
+	r, err := scanEvalRun(db.conn.QueryRow(`
+		SELECT r.id, r.campaign_id, r.suite_id, r.suite_version, r."trigger", r.judge_model, r.status, r.started_at, r.finished_at
+		FROM eval_runs r
+		JOIN campaigns c ON c.id = r.campaign_id
+		WHERE c.status = ? AND r.status = 'done' AND r.suite_id = ? AND r.campaign_id < ?
+		ORDER BY r.campaign_id DESC, r.id DESC
+		LIMIT 1
+	`, CampaignStatusDone, suiteID, campaignID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
 // ListEvalRunsByCampaign returns a campaign's member runs, oldest first (the
 // execution order of a sequential sweep).
 func (db *DB) ListEvalRunsByCampaign(campaignID int64) ([]EvalRun, error) {

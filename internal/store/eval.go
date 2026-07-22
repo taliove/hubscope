@@ -407,31 +407,6 @@ func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
 	return out, rows.Err()
 }
 
-// PreviousDoneScore returns the aggregate score of the latest done run for a
-// (suite, model) pair strictly before the given run, or (nil, 0, nil) when no
-// earlier done run covered the pair. The score-drop alert compares against
-// this baseline.
-func (db *DB) PreviousDoneScore(suiteID, modelDBID, beforeRunID int64) (*float64, int64, error) {
-	var runID int64
-	var score *float64
-	err := db.conn.QueryRow(`
-		SELECT r.id, AVG(res.score)
-		FROM eval_runs r
-		JOIN eval_results res ON res.eval_run_id = r.id
-		WHERE r.status = 'done' AND r.suite_id = ? AND res.model_db_id = ? AND r.id < ?
-		GROUP BY r.id
-		ORDER BY r.id DESC
-		LIMIT 1
-	`, suiteID, modelDBID, beforeRunID).Scan(&runID, &score)
-	if err == sql.ErrNoRows {
-		return nil, 0, nil
-	}
-	if err != nil {
-		return nil, 0, err
-	}
-	return score, runID, nil
-}
-
 // FinishEvalRun marks a run done/failed with its finish time.
 func (db *DB) FinishEvalRun(id int64, status string, finishedAt time.Time) error {
 	_, err := db.conn.Exec(
