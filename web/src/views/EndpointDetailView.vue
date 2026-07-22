@@ -1,7 +1,6 @@
 <template>
   <div class="detail-page">
     <header class="detail-header">
-      <router-link to="/" class="back-link">← 返回总览</router-link>
       <template v-if="detail">
         <h1 class="model-title" :title="detail.model_id_str">{{ detail.model_id_str }}</h1>
         <el-tag :type="detail.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
@@ -141,27 +140,22 @@ onMounted(async () => {
   gap: 12px;
   flex-wrap: wrap;
 }
-.back-link {
-  font-size: 14px;
-  color: #409eff;
-  text-decoration: none;
-}
 .model-title {
   margin: 0;
   font-size: 20px;
-  color: #303133;
+  color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .hub-name {
   font-size: 13px;
-  color: #909399;
+  color: var(--hs-text-secondary);
 }
 .status-reason {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #606266;
+  color: var(--hs-text-regular);
 }
 .controls {
   display: flex;
@@ -178,7 +172,7 @@ onMounted(async () => {
 .failures-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
   margin-bottom: 8px;
 }
 </style>

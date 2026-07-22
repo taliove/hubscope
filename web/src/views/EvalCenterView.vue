@@ -1,13 +1,5 @@
 <template>
   <div class="eval-center">
-    <header class="page-header">
-      <h1>HubScope</h1>
-      <span class="subtitle">评估中心</span>
-      <router-link to="/" class="nav-link">状态总览</router-link>
-      <router-link to="/tasks" class="nav-link admin-link">任务中心</router-link>
-      <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
-    </header>
-
     <el-alert v-if="error" :title="`加载失败:${error}`" type="error" :closable="false" class="error-alert" />
 
     <ScoreMatrix
@@ -112,30 +104,6 @@ onMounted(async () => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px 16px 48px;
-}
-.page-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.page-header h1 {
-  margin: 0;
-  font-size: 22px;
-  color: #303133;
-}
-.subtitle {
-  color: #909399;
-  font-size: 14px;
-}
-.nav-link {
-  margin-left: auto;
-  font-size: 14px;
-  color: #409eff;
-  text-decoration: none;
-}
-.admin-link {
-  margin-left: 12px;
 }
 .error-alert {
   margin-bottom: 16px;

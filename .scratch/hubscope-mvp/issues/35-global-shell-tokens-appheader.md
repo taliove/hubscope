@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] tokens.css 全量 token 落地,全站无 `#409EFF` 等旧默认色残留
 - [ ] 五个页面共享 AppHeader,当前页高亮正确,sticky 置顶

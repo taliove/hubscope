@@ -1,13 +1,5 @@
 <template>
   <div class="task-center">
-    <header class="page-header">
-      <h1>AI Hub Checker</h1>
-      <span class="subtitle">任务中心</span>
-      <router-link to="/" class="nav-link">状态总览</router-link>
-      <router-link to="/eval" class="nav-link sub-link">评估中心</router-link>
-      <router-link to="/admin" class="nav-link sub-link">管理视图</router-link>
-    </header>
-
     <el-alert v-if="error" :title="`加载失败:${error}`" type="error" :closable="false" class="error-alert" />
 
     <el-card shadow="never">
@@ -262,30 +254,6 @@ onMounted(reload)
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
-.page-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.page-header h1 {
-  margin: 0;
-  font-size: 22px;
-  color: #303133;
-}
-.subtitle {
-  color: #909399;
-  font-size: 14px;
-}
-.nav-link {
-  margin-left: auto;
-  font-size: 14px;
-  color: #409eff;
-  text-decoration: none;
-}
-.sub-link {
-  margin-left: 12px;
-}
 .error-alert {
   margin-bottom: 16px;
 }
@@ -304,7 +272,7 @@ onMounted(reload)
   margin-top: 12px;
 }
 .entity-link {
-  color: #409eff;
+  color: var(--hs-brand);
   text-decoration: none;
 }
 .log-header {
@@ -314,7 +282,7 @@ onMounted(reload)
   margin-bottom: 12px;
 }
 .log-meta {
-  color: #909399;
+  color: var(--hs-text-secondary);
   font-size: 13px;
   flex: 1;
 }
@@ -327,10 +295,10 @@ onMounted(reload)
   align-items: baseline;
   gap: 8px;
   padding: 3px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--hs-border);
 }
 .log-time {
-  color: #909399;
+  color: var(--hs-text-secondary);
   white-space: nowrap;
 }
 .log-level {

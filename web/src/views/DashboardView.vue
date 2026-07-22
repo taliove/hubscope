@@ -1,13 +1,5 @@
 <template>
   <div class="dashboard">
-    <header class="dashboard-header">
-      <h1>HubScope</h1>
-      <span class="subtitle">状态总览</span>
-      <router-link to="/eval" class="nav-link">评估中心</router-link>
-      <router-link to="/tasks" class="nav-link admin-link">任务中心</router-link>
-      <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
-    </header>
-
     <!-- Summary row: total endpoint count plus per-status counts. Each card
          is a filter toggle: click a status to show only those endpoints,
          click again (or the total card) to clear. -->
@@ -150,30 +142,6 @@ onMounted(start)
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
-.dashboard-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.dashboard-header h1 {
-  margin: 0;
-  font-size: 22px;
-  color: #303133;
-}
-.subtitle {
-  color: #909399;
-  font-size: 14px;
-}
-.nav-link {
-  margin-left: auto;
-  font-size: 14px;
-  color: #409eff;
-  text-decoration: none;
-}
-.admin-link {
-  margin-left: 12px;
-}
 .summary-row {
   display: flex;
   gap: 12px;
@@ -188,10 +156,10 @@ onMounted(start)
   transition: box-shadow 0.15s ease;
 }
 .summary-clickable:hover {
-  box-shadow: 0 0 0 1px #c6e2ff inset;
+  box-shadow: 0 0 0 1px var(--hs-brand-hover) inset;
 }
 .summary-active {
-  box-shadow: 0 0 0 2px #409eff inset;
+  box-shadow: 0 0 0 2px var(--hs-brand) inset;
 }
 .summary-value {
   display: flex;
@@ -199,11 +167,11 @@ onMounted(start)
   gap: 8px;
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--hs-text-primary);
 }
 .summary-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--hs-text-secondary);
   margin-top: 4px;
 }
 .filter-row {
@@ -222,7 +190,7 @@ onMounted(start)
 .refresh-info {
   margin-left: auto;
   font-size: 12px;
-  color: #909399;
+  color: var(--hs-text-secondary);
 }
 .error-alert {
   margin-bottom: 16px;
