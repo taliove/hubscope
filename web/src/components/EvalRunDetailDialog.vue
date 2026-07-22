@@ -35,7 +35,12 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="model_id" label="模型" min-width="170" show-overflow-tooltip />
+          <el-table-column label="模型" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span>{{ row.model_id }}</span>
+              <el-tag v-if="row.model_deleted" size="small" type="info" class="deleted-tag">已删除</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="题目" min-width="240" show-overflow-tooltip>
             <template #default="{ row }">{{ casePrompt(row.case_id) }}</template>
           </el-table-column>
@@ -155,5 +160,8 @@ function scoreClass(score: number | null): string {
 }
 .score-none {
   color: #c0c4cc;
+}
+.deleted-tag {
+  margin-left: 6px;
 }
 </style>

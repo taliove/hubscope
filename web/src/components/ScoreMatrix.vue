@@ -52,8 +52,9 @@ interface MatrixRow {
   scores: Record<number, number | null | undefined> // suite id -> score (undefined = no run yet)
 }
 
-// Build one row per chat model that either exists in the model list or has
-// scored before (retired models keep their history visible).
+// Build one row per live chat model. Deleted models are hidden from the
+// comparison (the API also omits them from latest scores); their history
+// stays visible in run details.
 const rows = computed<MatrixRow[]>(() => {
   const byModel = new Map<number, MatrixRow>()
   for (const m of props.models) {
@@ -61,11 +62,8 @@ const rows = computed<MatrixRow[]>(() => {
     byModel.set(m.id, { modelDbId: m.id, modelId: m.model_id, scores: {} })
   }
   for (const ls of props.latest) {
-    let row = byModel.get(ls.model_db_id)
-    if (!row) {
-      row = { modelDbId: ls.model_db_id, modelId: ls.model_id, scores: {} }
-      byModel.set(ls.model_db_id, row)
-    }
+    const row = byModel.get(ls.model_db_id)
+    if (!row) continue
     row.scores[ls.suite_id] = ls.score
   }
   return [...byModel.values()].sort((a, b) => a.modelId.localeCompare(b.modelId))

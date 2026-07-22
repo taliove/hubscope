@@ -202,6 +202,7 @@ export interface EvalResult {
   latency_ms: number
   input_tokens: number | null
   output_tokens: number | null
+  model_deleted: boolean // model no longer exists; history views badge it
 }
 
 export interface EvalRunDetail extends EvalRun {
@@ -217,4 +218,43 @@ export interface LatestScore {
   score: number | null
   eval_run_id: number
   finished_at: string
+}
+
+// Task center types (ticket 18).
+
+export type TaskType = 'eval_run'
+export type TaskSource = 'manual' | 'scheduled'
+export type TaskStatus = 'pending' | 'running' | 'success' | 'failed'
+export type TaskLogLevel = 'info' | 'warn' | 'error'
+
+// One background job. duration_ms is null until the task finishes.
+export interface TaskItem {
+  id: number
+  type: TaskType
+  source: TaskSource
+  status: TaskStatus
+  entity_type: string
+  entity_id: number
+  started_at: string | null // RFC3339
+  finished_at: string | null // RFC3339
+  duration_ms: number | null
+  created_at: string // RFC3339
+}
+
+export interface TaskLogEntry {
+  id: number
+  at: string // RFC3339
+  level: TaskLogLevel
+  message: string
+}
+
+export interface TaskPage {
+  items: TaskItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface TaskDetail extends TaskItem {
+  logs: TaskLogEntry[]
 }

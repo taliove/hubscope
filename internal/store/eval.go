@@ -52,6 +52,8 @@ type LatestEvalScore struct {
 
 // EvalResult is the outcome of one (model, case) pair inside a run. Score is
 // nil when the case could not be judged (answer call failed, judge failed).
+// ModelDeleted reports whether the model has since been removed from the
+// models table; the run history keeps the row so the UI can badge it.
 type EvalResult struct {
 	ID            int64
 	EvalRunID     int64
@@ -65,6 +67,7 @@ type EvalResult struct {
 	InputTokens   *int
 	OutputTokens  *int
 	CreatedAt     time.Time
+	ModelDeleted  bool
 }
 
 // evalRunColumns is the canonical eval_runs column list. "trigger" is a
@@ -274,6 +277,9 @@ func (db *DB) SetEvalRunJudgeModel(id int64, judgeModel string) error {
 // least one done run, the aggregate score of the most recent such run. The
 // aggregate is the average of the pair's non-null scores inside that run
 // (null when nothing was scored), matching the read-time run aggregation.
+// Pairs whose model no longer exists in the models table are excluded: the
+// comparison view only shows live models, while run history keeps the
+// deleted model's rows.
 func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
 	rows, err := db.conn.Query(`
 		SELECT suite_id, suite_key, model_db_id, model_id, eval_run_id, finished_at, score
@@ -288,6 +294,7 @@ func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
 			FROM eval_runs r
 			JOIN eval_results res ON res.eval_run_id = r.id
 			JOIN suites s ON s.id = r.suite_id
+			JOIN models m ON m.id = res.model_db_id
 			WHERE r.status = 'done'
 			GROUP BY r.id, res.model_db_id
 		)
@@ -366,11 +373,17 @@ func (db *DB) CreateEvalResult(r EvalResult) (*EvalResult, error) {
 	return &r, nil
 }
 
-// ListEvalResults returns all results of a run ordered by id.
+// ListEvalResults returns all results of a run ordered by id. Each row is
+// flagged with whether its model still exists in the models table.
 func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, eval_run_id, model_db_id, model_id, case_id, answer_text, score, verdict_detail, latency_ms, input_tokens, output_tokens, created_at
-		FROM eval_results WHERE eval_run_id = ? ORDER BY id
+		SELECT res.id, res.eval_run_id, res.model_db_id, res.model_id, res.case_id,
+			res.answer_text, res.score, res.verdict_detail, res.latency_ms,
+			res.input_tokens, res.output_tokens, res.created_at,
+			CASE WHEN m.id IS NULL THEN 1 ELSE 0 END AS model_deleted
+		FROM eval_results res
+		LEFT JOIN models m ON m.id = res.model_db_id
+		WHERE res.eval_run_id = ? ORDER BY res.id
 	`, runID)
 	if err != nil {
 		return nil, err
@@ -381,12 +394,14 @@ func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 	for rows.Next() {
 		var r EvalResult
 		var createdAt string
+		var deleted int
 		if err := rows.Scan(&r.ID, &r.EvalRunID, &r.ModelDBID, &r.ModelID, &r.CaseID,
 			&r.AnswerText, &r.Score, &r.VerdictDetail, &r.LatencyMs,
-			&r.InputTokens, &r.OutputTokens, &createdAt); err != nil {
+			&r.InputTokens, &r.OutputTokens, &createdAt, &deleted); err != nil {
 			return nil, err
 		}
 		r.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		r.ModelDeleted = deleted == 1
 		results = append(results, r)
 	}
 	return results, rows.Err()

@@ -4,6 +4,7 @@
       <h1>HubScope</h1>
       <span class="subtitle">评估中心</span>
       <router-link to="/" class="nav-link">状态总览</router-link>
+      <router-link to="/tasks" class="nav-link admin-link">任务中心</router-link>
       <router-link to="/admin" class="nav-link admin-link">管理视图</router-link>
     </header>
 
@@ -20,6 +21,7 @@
     <EvalTrendChart
       :selection="trendSelection"
       :runs="runs"
+      :models="models"
       @close="trendSelection = null"
     />
 

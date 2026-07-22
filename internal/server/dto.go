@@ -168,7 +168,8 @@ type evalRunDTO struct {
 	Score      *float64 `json:"score"`
 }
 
-// evalResultDTO is the API representation of an EvalResult.
+// evalResultDTO is the API representation of an EvalResult. ModelDeleted
+// flags rows whose model has been removed, so history views can badge them.
 type evalResultDTO struct {
 	ID            int64    `json:"id"`
 	ModelID       string   `json:"model_id"`
@@ -179,6 +180,7 @@ type evalResultDTO struct {
 	LatencyMs     int      `json:"latency_ms"`
 	InputTokens   *int     `json:"input_tokens"`
 	OutputTokens  *int     `json:"output_tokens"`
+	ModelDeleted  bool     `json:"model_deleted"`
 }
 
 // latestScoreDTO is the API representation of a (suite, model) pair's most
@@ -274,6 +276,7 @@ func toEvalResultDTO(r store.EvalResult) evalResultDTO {
 		LatencyMs:     r.LatencyMs,
 		InputTokens:   r.InputTokens,
 		OutputTokens:  r.OutputTokens,
+		ModelDeleted:  r.ModelDeleted,
 	}
 }
 
