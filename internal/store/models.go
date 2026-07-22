@@ -191,11 +191,16 @@ func (db *DB) ListModels() ([]Model, error) {
 }
 
 // ListActiveChatModelIDs returns the database IDs of all active,
-// chat-capable models — the population a full evaluation sweep covers
-// (non_chat and retired models are excluded).
+// chat-capable models that have at least one enabled endpoint — the
+// population a full evaluation sweep covers. Models without an enabled
+// endpoint are excluded: they cannot be called at all, so sweeping them
+// would only record "no enabled endpoint" failures for every case.
 func (db *DB) ListActiveChatModelIDs() ([]int64, error) {
-	rows, err := db.conn.Query(
-		"SELECT id FROM models WHERE status = 'active' AND capability = 'chat' ORDER BY id")
+	rows, err := db.conn.Query(`
+		SELECT id FROM models
+		WHERE status = 'active' AND capability = 'chat'
+			AND EXISTS (SELECT 1 FROM endpoints e WHERE e.model_id = models.id AND e.enabled = 1)
+		ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
