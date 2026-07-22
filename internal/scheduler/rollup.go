@@ -26,6 +26,9 @@ const (
 	defaultRollupPollInterval = time.Minute
 	// defaultAuditRetention is how long audit log entries are kept.
 	defaultAuditRetention = 90 * 24 * time.Hour
+	// defaultTaskRetention is how long finished tasks and their logs are
+	// kept before the daily cleanup prunes them.
+	defaultTaskRetention = 90 * 24 * time.Hour
 )
 
 // RollupWorker periodically aggregates old probes into hourly rollups and
@@ -43,6 +46,7 @@ type RollupWorker struct {
 	cleanupInterval time.Duration
 	retention       time.Duration
 	auditRetention  time.Duration
+	taskRetention   time.Duration
 	rollupLag       time.Duration
 	pollInterval    time.Duration
 
@@ -74,6 +78,12 @@ func WithAuditRetention(d time.Duration) RollupOption {
 	return func(w *RollupWorker) { w.auditRetention = d }
 }
 
+// WithTaskRetention overrides how long finished tasks and their logs are
+// kept.
+func WithTaskRetention(d time.Duration) RollupOption {
+	return func(w *RollupWorker) { w.taskRetention = d }
+}
+
 // WithRollupLag overrides how old a probe must be before it is rolled up.
 func WithRollupLag(d time.Duration) RollupOption {
 	return func(w *RollupWorker) { w.rollupLag = d }
@@ -93,6 +103,7 @@ func NewRollupWorker(db *store.DB, clock Clock, opts ...RollupOption) *RollupWor
 		cleanupInterval: defaultCleanupInterval,
 		retention:       defaultRetention,
 		auditRetention:  defaultAuditRetention,
+		taskRetention:   defaultTaskRetention,
 		rollupLag:       defaultRollupLag,
 		pollInterval:    defaultRollupPollInterval,
 	}
@@ -173,11 +184,19 @@ func (w *RollupWorker) tick() {
 		} else {
 			tracker.Log(store.TaskLogInfo, fmt.Sprintf("pruned audit logs: audit_logs_pruned=%d", auditPruned))
 		}
+		tasksPruned, err := w.db.PruneTasksBefore(now.Add(-w.taskRetention))
+		if err != nil {
+			slog.Error("rollup worker: prune tasks", "error", err)
+			tracker.Log(store.TaskLogError, "prune tasks failed: "+err.Error())
+			failed = true
+		} else {
+			tracker.Log(store.TaskLogInfo, fmt.Sprintf("pruned tasks: tasks_pruned=%d", tasksPruned))
+		}
 
 		if failed {
 			tracker.Fail("retention cleanup finished with errors")
 		} else {
-			tracker.Succeed(fmt.Sprintf("retention cleanup finished: probes_deleted=%d audit_logs_pruned=%d", probesDeleted, auditPruned))
+			tracker.Succeed(fmt.Sprintf("retention cleanup finished: probes_deleted=%d audit_logs_pruned=%d tasks_pruned=%d", probesDeleted, auditPruned, tasksPruned))
 		}
 	}
 }

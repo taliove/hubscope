@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 快速切换两条 run 时弹窗内容始终对应当前 runId
 - [ ] 过期响应不覆盖新状态(detail 与 error 两条路径)

@@ -221,3 +221,26 @@ func (db *DB) ListTasks(page, pageSize int, taskType, status string) ([]Task, in
 	}
 	return tasks, total, rows.Err()
 }
+
+// SetTaskCreatedAt backdates a task's creation timestamp. It exists for
+// retention tests that need tasks of a known age.
+func (db *DB) SetTaskCreatedAt(id int64, at time.Time) error {
+	_, err := db.conn.Exec("UPDATE tasks SET created_at = ? WHERE id = ?", at.UTC().Format(time.RFC3339Nano), id)
+	return err
+}
+
+// PruneTasksBefore deletes tasks created before cutoff together with their
+// logs, returning how many tasks were removed.
+func (db *DB) PruneTasksBefore(cutoff time.Time) (int64, error) {
+	if _, err := db.conn.Exec(
+		"DELETE FROM task_logs WHERE task_id IN (SELECT id FROM tasks WHERE created_at < ?)",
+		cutoff.UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		return 0, err
+	}
+	result, err := db.conn.Exec("DELETE FROM tasks WHERE created_at < ?", cutoff.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
