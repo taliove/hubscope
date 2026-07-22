@@ -392,10 +392,10 @@ func TestCaseCreatePatch(t *testing.T) {
 			{"bad_difficulty", map[string]interface{}{
 				"suite_id": suiteID, "prompt": "x", "verdict_type": "rule",
 				"rule_config": map[string]string{"mode": "exact", "expected": "x"},
-				"difficulty": "nightmare"}, http.StatusBadRequest},
+				"difficulty":  "nightmare"}, http.StatusBadRequest},
 			{"bad_sample_count", map[string]interface{}{
 				"suite_id": suiteID, "prompt": "x", "verdict_type": "rule",
-				"rule_config": map[string]string{"mode": "exact", "expected": "x"},
+				"rule_config":  map[string]string{"mode": "exact", "expected": "x"},
 				"sample_count": 0}, http.StatusBadRequest},
 			{"unknown_suite", map[string]interface{}{
 				"suite_id": 99999, "prompt": "x", "verdict_type": "judge", "rubric": "r"}, http.StatusNotFound},

@@ -239,7 +239,7 @@ func TestRateLimitWrites(t *testing.T) {
 	stub := newStubHubServer()
 	defer stub.Close()
 
-	createHubViaAPI(t, ts.URL, stub.URL) // write 1
+	createHubViaAPI(t, ts.URL, stub.URL)                // write 1
 	resp := doPost(t, ts.URL+"/api/discovery/run", nil) // write 2
 	resp.Body.Close()
 	resp = doPost(t, ts.URL+"/api/discovery/run", nil) // write 3 → limited

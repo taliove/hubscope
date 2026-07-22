@@ -23,15 +23,15 @@ type overviewPayload struct {
 
 // overviewEntry mirrors one entry of the overview response.
 type overviewEntry struct {
-	EndpointID     int64    `json:"endpoint_id"`
-	ModelID        string   `json:"model_id"`
-	Protocol       string   `json:"protocol"`
-	Enabled        bool     `json:"enabled"`
-	Status         string   `json:"status"`
-	StatusReason   string   `json:"status_reason"`
-	SuccessRate24h *float64 `json:"success_rate_24h"`
-	P50Ms          *float64 `json:"p50_ms"`
-	P95Ms          *float64 `json:"p95_ms"`
+	EndpointID     int64         `json:"endpoint_id"`
+	ModelID        string        `json:"model_id"`
+	Protocol       string        `json:"protocol"`
+	Enabled        bool          `json:"enabled"`
+	Status         string        `json:"status"`
+	StatusReason   string        `json:"status_reason"`
+	SuccessRate24h *float64      `json:"success_rate_24h"`
+	P50Ms          *float64      `json:"p50_ms"`
+	P95Ms          *float64      `json:"p95_ms"`
 	LastProbeAt    *string       `json:"last_probe_at"`
 	Family         string        `json:"family"`
 	Capability     string        `json:"capability"`

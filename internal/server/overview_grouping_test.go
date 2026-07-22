@@ -15,11 +15,11 @@ import (
 
 // groupPayload mirrors one group aggregate of the overview response.
 type groupPayload struct {
-	Key             string          `json:"key"`
-	EndpointCount   int             `json:"endpoint_count"`
-	StatusCounts    map[string]int  `json:"status_counts"`
-	Availability24h *float64        `json:"availability_24h"`
-	AvgLatencyMs    *float64        `json:"avg_latency_ms"`
+	Key             string         `json:"key"`
+	EndpointCount   int            `json:"endpoint_count"`
+	StatusCounts    map[string]int `json:"status_counts"`
+	Availability24h *float64       `json:"availability_24h"`
+	AvgLatencyMs    *float64       `json:"avg_latency_ms"`
 }
 
 // groupedOverview mirrors the overview response with group aggregates.
