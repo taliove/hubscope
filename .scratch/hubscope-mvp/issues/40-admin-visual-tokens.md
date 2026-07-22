@@ -4,7 +4,7 @@
 
 **Blocked by:** 35 — 全局壳
 
-**Status:** blocked
+**Status:** done
 
 - [ ] 表单/弹窗无自造控件,全部 Element Plus + token
 - [ ] 凭证脱敏展示不弱化(W6)

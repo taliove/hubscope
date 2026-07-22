@@ -70,7 +70,8 @@ onMounted(async () => {
 .admin {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  /* Page vertical rhythm per ui-guidelines §2 (24px top/bottom). */
+  padding: 24px 16px;
 }
 .admin-body {
   display: flex;

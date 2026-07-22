@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="never">
+  <el-card shadow="never" class="admin-card">
     <template #header>
       <span>添加模型</span>
     </template>
@@ -71,9 +71,13 @@ async function onSubmit() {
 </script>
 
 <style scoped>
+/* Admin density tier: compact 12px card padding (ui-guidelines §2). */
+.admin-card {
+  --el-card-padding: 12px;
+}
 .hint {
   margin: 0;
-  color: #909399;
-  font-size: 13px;
+  color: var(--hs-text-secondary);
+  font-size: var(--hs-text-sm);
 }
 </style>

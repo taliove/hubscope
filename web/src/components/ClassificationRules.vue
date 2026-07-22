@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="never">
+  <el-card shadow="never" class="admin-card">
     <template #header>
       <div class="card-header">
         <span>分类规则</span>
@@ -167,14 +167,18 @@ onMounted(reload)
 </script>
 
 <style scoped>
+/* Admin density tier: compact 12px card padding (ui-guidelines §2). */
+.admin-card {
+  --el-card-padding: 12px;
+}
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 .hint {
-  color: #909399;
-  font-size: 12px;
-  margin-bottom: 10px;
+  color: var(--hs-text-secondary);
+  font-size: var(--hs-text-xs);
+  margin-bottom: 8px;
 }
 </style>

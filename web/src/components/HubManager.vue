@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="never">
+  <el-card shadow="never" class="admin-card">
     <template #header>
       <div class="card-header">
         <span>Hub 管理</span>
@@ -228,6 +228,10 @@ async function onDelete(row: Hub) {
 </script>
 
 <style scoped>
+/* Admin density tier: compact 12px card padding (ui-guidelines §2). */
+.admin-card {
+  --el-card-padding: 12px;
+}
 .card-header {
   display: flex;
   align-items: center;
@@ -235,6 +239,7 @@ async function onDelete(row: Hub) {
 }
 .token-hint {
   font-family: monospace;
-  color: #909399;
+  /* Masked token stays legible (W6): regular text color, never faint gray. */
+  color: var(--hs-text-regular);
 }
 </style>

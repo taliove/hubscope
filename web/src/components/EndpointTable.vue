@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="never">
+  <el-card shadow="never" class="admin-card">
     <template #header>
       <div class="card-header">
         <span>Endpoint 列表</span>
@@ -204,6 +204,10 @@ async function onDeleteModel(row: EndpointRow) {
 </script>
 
 <style scoped>
+/* Admin density tier: compact 12px card padding (ui-guidelines §2). */
+.admin-card {
+  --el-card-padding: 12px;
+}
 .card-header {
   display: flex;
   align-items: center;

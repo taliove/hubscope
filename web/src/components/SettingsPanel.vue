@@ -1,5 +1,5 @@
 <template>
-  <el-card class="settings-panel">
+  <el-card shadow="never" class="settings-panel admin-card">
     <template #header>
       <span>告警与评估设置</span>
     </template>
@@ -115,15 +115,20 @@ onMounted(async () => {
 .settings-panel {
   width: 100%;
 }
+/* Admin density tier: compact 12px card padding (ui-guidelines §2). */
+.admin-card {
+  --el-card-padding: 12px;
+}
+/* Delivery outcome maps to the semantic status palette (§3). */
 .sent-ok {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 .sent-fail {
-  color: #f56c6c;
+  color: var(--el-color-danger);
 }
 .field-hint {
   margin-left: 12px;
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 </style>
