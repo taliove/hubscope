@@ -4,7 +4,7 @@
 
 ## 铁律(不可违反)
 
-1. **测试不绿,不许 commit。** 任何 `git commit` 之前必须跑通 `make test`(后端全部测试 + 前端类型检查 + 前端构建)。没有例外。
+1. **测试不绿,不许 commit。** 任何 `git commit` 之前必须跑通 `make test`(后端全部测试 + 前端类型检查 + 前端构建)。没有例外。本规则由 git 硬门禁强制执行(clone 后跑一次 `make hooks` 启用):`pre-commit`(凭证扫描 + `make test`)、`commit-msg`(Conventional Commits 校验)、`pre-push`(保护 main 禁止删除/非快进 + `make test`);`--no-verify` 绕过会被 `.claude/hooks/block-no-verify.sh` 拦截。
 2. **Commit message 一律英文**,遵循 Conventional Commits:`feat|fix|refactor|docs|test|chore|perf|ci: <description>`。代码注释也用英文。
 3. **不主动 push、不主动发布。** `git push`、打 tag、部署等动作只在用户明确指令后执行。
 4. **凭证不进 git。** Hub token、管理员口令等秘密只允许经环境变量或数据库注入;代码、配置样例、测试中一律使用假值。

@@ -20,4 +20,6 @@ web/dist/
 .env
 .env.*
 !.env.example
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/

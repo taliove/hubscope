@@ -1,0 +1,39 @@
+#!/bin/sh
+# pre-push gate — protects published history:
+#   1. main/master: no deletion, no non-fast-forward updates
+#   2. make test must pass before history leaves this machine
+# Installed via `core.hooksPath=.githooks` (run `make hooks` after clone).
+
+set -u
+
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+fail() {
+  echo "${RED}pre-push gate: BLOCKED${RESET} — $1" >&2
+  exit 1
+}
+
+z40=0000000000000000000000000000000000000000
+
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  branch=${remote_ref#refs/heads/}
+  [ "$branch" = "$remote_ref" ] && continue  # not a branch push (tag etc.)
+
+  case "$branch" in
+    main|master)
+      [ "$local_sha" = "$z40" ] && fail "deleting protected branch '$branch' is not allowed"
+      if [ "$remote_sha" != "$z40" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+        fail "non-fast-forward update to '$branch'. Pull/rebase first; force-pushing main is forbidden."
+      fi
+      ;;
+  esac
+done
+
+echo "pre-push gate: running make test ..."
+if ! make test; then
+  fail "make test did not pass. Fix before pushing."
+fi
+
+echo "pre-push gate: OK"

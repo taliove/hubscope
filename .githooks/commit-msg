@@ -1,0 +1,23 @@
+#!/bin/sh
+# commit-msg gate — enforces CLAUDE.md rule 2:
+# commit messages must follow Conventional Commits:
+#   feat|fix|refactor|docs|test|chore|perf|ci: <description>
+
+set -u
+
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+subject=$(head -1 "$1")
+
+# Exempt machinery commits
+case "$subject" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+if ! printf '%s\n' "$subject" | grep -E -e '^(feat|fix|refactor|docs|test|chore|perf|ci)(\([a-zA-Z0-9_/.-]+\))?: [^ ].*$' >/dev/null 2>&1; then
+  echo "${RED}commit-msg gate: BLOCKED${RESET} — subject does not follow Conventional Commits:" >&2
+  echo "  $subject" >&2
+  echo "Expected: feat|fix|refactor|docs|test|chore|perf|ci: <description>" >&2
+  exit 1
+fi

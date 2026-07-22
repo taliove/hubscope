@@ -1,0 +1,59 @@
+#!/bin/sh
+# pre-commit gate — enforces CLAUDE.md constitution:
+#   1. tests must be green before any commit (make test)
+#   2. credentials must never enter git
+# Installed via `core.hooksPath=.githooks` (run `make hooks` after clone).
+
+set -u
+
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+fail() {
+  echo "${RED}pre-commit gate: BLOCKED${RESET} — $1" >&2
+  exit 1
+}
+
+# --- Gate 1: forbidden files (env files, key material) -----------------------
+forbidden=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -Ei -e '(^|/)\.env($|\.)|\.(pem|key|p12|pfx)$' || true)
+if [ -n "$forbidden" ]; then
+  fail "forbidden files staged (credentials/keys must not enter git):
+$forbidden"
+fi
+
+# --- Gate 2: secret scan on added lines --------------------------------------
+# Note: grep treats a leading '-' in the pattern as options, so always use -e.
+# rc > 1 means grep itself failed; the gate must fail CLOSED in that case.
+added=$(git diff --cached -U0 --no-color | grep -E -e '^[+]' | grep -v -e '^[+][+][+]' || true)
+
+if [ -n "$added" ]; then
+  # Well-known secret formats
+  hits=$(printf '%s\n' "$added" | grep -E -e '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}' 2>/dev/null)
+  rc=$?
+  [ "$rc" -gt 1 ] && fail "secret scanner error (grep exit $rc)"
+  if [ -n "$hits" ]; then
+    fail "staged changes contain what looks like a private key or access token:
+$hits
+Use environment variables or the database for secrets (see CLAUDE.md)."
+  fi
+
+  # Generic key=value secrets (quoted, 16+ chars), excluding obvious fakes
+  hits=$(printf '%s\n' "$added" | grep -Ei -e '(api[_-]?key|secret|access[_-]?token|auth[_-]?token|password|passwd)[A-Za-z0-9_"'"'"' -]*[:=][[:space:]]*["'"'"'][^"'"'"']{16,}["'"'"']' 2>/dev/null)
+  rc=$?
+  [ "$rc" -gt 1 ] && fail "secret scanner error (grep exit $rc)"
+  hits=$(printf '%s\n' "$hits" | grep -Eiv -e 'test|fake|dummy|example|sample|placeholder|changeme|your[-_]|xxx' || true)
+  if [ -n "$hits" ]; then
+    fail "staged changes contain possible hardcoded secrets:
+$hits
+If these are intentional fake values, include 'test'/'fake'/'example' in the value."
+  fi
+fi
+
+# --- Gate 3: full test suite --------------------------------------------------
+echo "pre-commit gate: running make test ..."
+if ! make test; then
+  fail "make test did not pass. Constitution rule: tests not green, no commit."
+fi
+
+echo "pre-commit gate: OK"

@@ -1,7 +1,7 @@
 BINARY := bin/ai-hub-checker
 GO := go
 
-.PHONY: build test dev clean frontend-build frontend-test backend-build backend-test ensure-dist
+.PHONY: build test dev clean frontend-build frontend-test backend-build backend-test ensure-dist hooks
 
 ## build: frontend (vite) + backend single binary with embedded assets
 build: frontend-build backend-build
@@ -41,3 +41,8 @@ ensure-dist:
 
 clean:
 	rm -rf bin web/dist
+
+## hooks: enable the pre-commit gate (.githooks/) for this clone — run once after clone
+hooks:
+	git config core.hooksPath .githooks
+	@echo "pre-commit gate enabled: make test + secret scan run before every commit"
