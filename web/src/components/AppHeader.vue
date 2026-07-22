@@ -9,7 +9,7 @@
 
       <nav class="main-nav">
         <router-link
-          v-for="item in NAV_ITEMS"
+          v-for="item in visibleNavItems"
           :key="item.to"
           :to="item.to"
           class="nav-item"
@@ -20,7 +20,7 @@
       </nav>
 
       <div class="header-right">
-        <el-button @click="router.push('/admin')">管理视图</el-button>
+        <el-button v-if="authed" @click="router.push('/admin')">管理视图</el-button>
         <el-button v-if="!authed" type="primary" @click="router.push('/login')">登录</el-button>
         <el-button v-else link type="primary" :loading="loggingOut" @click="onLogout">
           退出
@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchAuthStatus, logout } from '@/api/auth'
@@ -45,16 +45,25 @@ const router = useRouter()
 interface NavItem {
   label: string
   to: string
+  // Public items render for anonymous visitors; the rest would only be
+  // bounced to /login by the route guard, so they are hidden instead.
+  public?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: '状态总览', to: '/' },
+  { label: '状态总览', to: '/', public: true },
   { label: '评估中心', to: '/eval' },
   { label: '任务中心', to: '/tasks' },
 ]
 
 const authed = ref(false)
 const loggingOut = ref(false)
+
+// Anonymous visitors only get the public nav entries; logout flips authed
+// to false and this computed collapses the nav back immediately.
+const visibleNavItems = computed(() =>
+  authed.value ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.public),
+)
 
 // The dashboard owns both '/' and the endpoint detail pages.
 function isActive(item: NavItem): boolean {

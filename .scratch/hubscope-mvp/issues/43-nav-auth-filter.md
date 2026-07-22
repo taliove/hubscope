@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 未登录:导航只显示「状态总览」,右侧只显示登录按钮(「管理视图」按钮也不渲染)
 - [ ] 登录后:导航显示全部项(状态总览 / 评估中心 / 任务中心 / 管理视图)
