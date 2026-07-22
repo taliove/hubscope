@@ -52,7 +52,9 @@
           </template>
         </el-alert>
 
-        <Leaderboard :report="report" :family-options="familyOptions" @query="onQuery" />
+        <Leaderboard :report="report" :family-options="familyOptions" @query="onQuery" @select="openTrend" />
+
+        <ModelTrendDialog :campaign-id="campaignId" :model="trendModel" @close="trendModel = null" />
       </template>
     </template>
   </div>
@@ -63,8 +65,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCampaignReport } from '@/api/campaigns'
 import Leaderboard from '@/components/Leaderboard.vue'
+import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
-import type { CampaignReport, CampaignStatus } from '@/api/types'
+import type { CampaignReport, CampaignStatus, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done
 // runs, reusing the shared Leaderboard component (ticket 45). Deleted models
@@ -100,6 +103,12 @@ function armPolling() {
   }
 }
 onBeforeUnmount(() => clearInterval(pollTimer))
+
+// Trend drill-down (ticket 32): the row under inspection; null = dialog closed.
+const trendModel = ref<ReportRow | null>(null)
+function openTrend(row: ReportRow) {
+  trendModel.value = row
+}
 
 function statusLabel(status: CampaignStatus): string {
   switch (status) {

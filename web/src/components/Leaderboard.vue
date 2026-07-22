@@ -30,10 +30,20 @@
     <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
     <el-empty v-if="report.rows.length === 0" :description="emptyDescription" />
 
-    <!-- DesignArena-style horizontal bar leaderboard (ui-guidelines §5). Rows
-         are not clickable yet; drill-down lands with the trends ticket. -->
+    <!-- DesignArena-style horizontal bar leaderboard (ui-guidelines §5).
+         Rows are clickable: a click emits select for the trend drill-down
+         dialog (ticket 32, no inline row expansion per §4). -->
     <div v-else class="rows">
-      <div v-for="(row, index) in report.rows" :key="row.model_db_id" class="row">
+      <div
+        v-for="(row, index) in report.rows"
+        :key="row.model_db_id"
+        class="row clickable"
+        role="button"
+        tabindex="0"
+        @click="emit('select', row)"
+        @keydown.enter="emit('select', row)"
+        @keydown.space.prevent="emit('select', row)"
+      >
         <span class="rank">{{ index + 1 }}</span>
         <span class="model" :title="row.model_id">{{ row.model_id }}</span>
         <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
@@ -70,6 +80,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'query', query: { family?: string; sort: string }): void
+  (e: 'select', row: ReportRow): void
 }>()
 
 const viewSuite = ref('total')
@@ -186,6 +197,19 @@ function deltaTitle(row: ReportRow): string {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.row.clickable {
+  cursor: pointer;
+  border-radius: var(--hs-radius);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.row.clickable:hover {
+  background: var(--hs-brand-soft);
+}
+.row.clickable:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
 }
 .rank {
   width: 24px;
