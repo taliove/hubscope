@@ -14,7 +14,7 @@ fmt:
 	$(GO)fmt -w cmd internal
 
 ## lint: static checks — unformatted Go and vet findings are hard failures
-lint:
+lint: ensure-dist
 	@test -z "$$($(GO)fmt -l cmd internal)" || { $(GO)fmt -l cmd internal; echo "gofmt: run 'make fmt'"; exit 1; }
 	$(GO) vet ./...
 
