@@ -276,6 +276,36 @@ export interface CampaignReport extends Campaign {
   baseline: ReportBaseline | null // null when no earlier done campaign exists
 }
 
+// Campaign trend types (ticket 32): the per-model drill-down of a report —
+// cross-campaign score trend with suite-version break markers, plus the
+// probe-side hourly aggregate over the same timeline.
+export interface TrendModel {
+  model_db_id: number
+  model_id: string
+  family: string
+  deleted: boolean // manually deleted or hub-retired; the trend stays visible
+}
+
+export interface TrendPoint {
+  campaign_id: number
+  score: number | null // 0-100, null when the batch judged nothing
+  suite_version: number
+  version_changed: boolean // question bank changed vs the previous point
+}
+
+export interface TrendSuite {
+  suite_id: number
+  key: string
+  name: string
+  points: TrendPoint[]
+}
+
+export interface CampaignTrends {
+  model: TrendModel
+  suites: TrendSuite[]
+  probe: SeriesBucket[] // hourly aggregate over the model's enabled endpoints
+}
+
 export interface EvalResult {
   id: number
   model_id: string // the model identifier string

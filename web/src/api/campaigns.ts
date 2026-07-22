@@ -1,6 +1,6 @@
 // Eval Campaign API calls (ticket 29).
 import { http } from './client'
-import type { Campaign, CampaignDetail, CampaignReport } from './types'
+import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends } from './types'
 
 export async function listCampaigns(): Promise<Campaign[]> {
   return http.get<Campaign[]>('/campaigns')
@@ -23,4 +23,10 @@ export async function getCampaignReport(id: number, query: ReportQuery = {}): Pr
   if (query.sort) params.set('sort', query.sort)
   const suffix = params.size > 0 ? `?${params.toString()}` : ''
   return http.get<CampaignReport>(`/campaigns/${id}/report${suffix}`)
+}
+
+// Trend drill-down (ticket 32): one model's cross-campaign score trend plus
+// the probe-side hourly aggregate, fetched on demand when a row is clicked.
+export async function getCampaignTrends(id: number, modelDbId: number): Promise<CampaignTrends> {
+  return http.get<CampaignTrends>(`/campaigns/${id}/trends?model=${modelDbId}`)
 }

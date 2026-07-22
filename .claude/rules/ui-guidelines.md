@@ -63,6 +63,8 @@ HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-ch
 - **StatusBadge 是唯一的状态展示组件**,需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
 - **HealthBanner 是 Dashboard 的全局健康横幅组件**(批 2 登记):四态(全部正常/N 个端点降级/N 个端点异常含告警闪烁/加载 skeleton),数据只反映全局、永不受页面过滤器影响;仅异常态可点(应用状态过滤并滚动定位)。其他页面不得复刻其结论文案模式。
 - **Leaderboard 是评估榜单的唯一排行展示组件**(/eval 与 /report/{token} 复用):每模型一行(排名/模型名/条形/总分/涨跌箭头),模型名截断 + `title` hover 全显;Suite 切换、family 过滤、排序切换走榜单上方工具条,不进单元格;行下钻不内嵌行内展开,走 `el-dialog`(§4 既有约定,EvalRunDetailDialog 模式)。
+- **TrendChart 是趋势类折线图的唯一通用组件**(批 32 登记):裸图表(不带卡片,布局由父级负责),默认在 null 点断线(未判分批次不得连成假分),支持竖向断点标注线(占位灰虚线,如「v2 起题目变更」);ECharts 色板 JS 镜像与 TimeSeriesChart 同一份映射。
+- **ModelTrendDialog 是报告页行下钻的唯一趋势弹窗**(批 32 登记):按模型按需拉取 `/api/campaigns/{id}/trends`,分数线(版本断点标注)+ 探测成功率/延迟并列;已删除模型带「已删除」tag;加载/空/错误三态齐全。
 - **AppHeader 导航按登录态过滤:** 未登录只渲染公开页导航项(状态总览)+ 登录按钮,不渲染会被路由门禁弹走的项(评估、任务、管理入口);登录态随路由切换重检(沿用 refreshAuth watch 先例),不写死 mount 时一次性判断。
 - 反馈三件套:
   - 操作结果 → `ElMessage`(成功/失败/警告,见 HubManager 用法);

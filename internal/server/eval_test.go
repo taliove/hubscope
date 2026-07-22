@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -71,6 +72,7 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	var req struct {
 		Model    string `json:"model"`
+		Stream   bool   `json:"stream"`
 		Messages []struct {
 			Content string `json:"content"`
 		} `json:"messages"`
@@ -106,7 +108,49 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeCompletion(w, isAnthropic, h.answerFor(req.Model, prompt))
+	answer := h.answerFor(req.Model, prompt)
+	if req.Stream {
+		h.writeStream(w, isAnthropic, answer)
+		return
+	}
+	h.writeCompletion(w, isAnthropic, answer)
+}
+
+// writeStream answers a streaming request with a well-formed SSE reply
+// carrying the given text, so probe rounds against this stub exercise both
+// probe modes. The evaluator itself never streams.
+func (h *evalStubHub) writeStream(w http.ResponseWriter, isAnthropic bool, text string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	flusher, _ := w.(http.Flusher)
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	if isAnthropic {
+		for _, event := range []string{
+			`{"type":"message_start","message":{"id":"msg_eval","type":"message","role":"assistant","content":[],"usage":{"input_tokens":12,"output_tokens":0}}}`,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+			fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%s}}`, strconv.Quote(text)),
+			`{"type":"content_block_stop","index":0}`,
+			`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}`,
+			`{"type":"message_stop"}`,
+		} {
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", event)
+			flush()
+		}
+		return
+	}
+	for _, chunk := range []string{
+		`{"id":"chatcmpl_eval","object":"chat.completion.chunk","choices":[{"delta":{"role":"assistant"},"index":0}]}`,
+		fmt.Sprintf(`{"id":"chatcmpl_eval","object":"chat.completion.chunk","choices":[{"delta":{"content":%s},"index":0}]}`, strconv.Quote(text)),
+		`{"id":"chatcmpl_eval","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8}}`,
+	} {
+		fmt.Fprintf(w, "data: %s\n\n", chunk)
+		flush()
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	flush()
 }
 
 // answerFor decides the response text by model and prompt content.
