@@ -90,18 +90,27 @@ const dialogTitle = computed(() => {
   return `评估运行 #${detail.value.id} · ${suite?.name ?? ''}`
 })
 
+// Monotonic token invalidating stale responses: when runId switches quickly,
+// a slow earlier request must not overwrite the newer load's detail/error,
+// and its finally must not clear the newer load's loading state.
+let loadSeq = 0
+
 // Load one run's detail; failures surface as an in-dialog error with retry
 // instead of an unhandled rejection and a blank dialog.
 async function loadRun(id: number) {
+  const seq = ++loadSeq
   detail.value = null
   error.value = null
   loading.value = true
   try {
-    detail.value = await getEvalRun(id)
+    const result = await getEvalRun(id)
+    if (seq !== loadSeq) return
+    detail.value = result
   } catch (err) {
+    if (seq !== loadSeq) return
     error.value = (err as Error).message
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -111,7 +120,13 @@ watch(
   id => {
     detail.value = null
     error.value = null
-    if (id !== null) loadRun(id)
+    if (id !== null) {
+      loadRun(id)
+    } else {
+      // Invalidate any in-flight load so a late response cannot repopulate
+      // a closed dialog.
+      loadSeq++
+    }
   },
   { immediate: true }
 )
