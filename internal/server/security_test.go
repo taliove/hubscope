@@ -49,6 +49,7 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/suites",
 		"/api/evals",
 		"/api/campaigns",
+		"/api/share-links",
 		"/api/settings",
 		"/api/alerts",
 		"/api/audit-logs",

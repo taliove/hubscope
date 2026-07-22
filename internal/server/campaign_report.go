@@ -69,6 +69,15 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	s.writeCampaignReport(w, r, campaign)
+}
+
+// writeCampaignReport builds and writes the report payload for one campaign.
+// It is shared by the session-gated report endpoint and the token-gated
+// shared-report endpoint (ADR 0006), so both views render the same board.
+func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign) {
+	id := campaign.ID
+
 	runs, err := s.db.ListEvalRunsByCampaign(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load campaign runs")

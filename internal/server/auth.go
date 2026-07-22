@@ -128,10 +128,12 @@ func (s *Server) hasValidSession(r *http.Request) bool {
 	return verifySession(s.sessionKey, cookie.Value, time.Now())
 }
 
-// publicReadPattern matches the status-board read paths that stay public:
-// the overview matrix and the endpoint detail/series/probes reads. Every
-// other GET requires a session, like all writes.
-var publicReadPattern = regexp.MustCompile(`^/api/(overview|endpoints/\d+(/series|/probes)?)$`)
+// publicReadPattern matches the read paths that stay public: the status
+// board (overview matrix and endpoint detail/series/probes) plus the
+// token-gated shared report (ADR 0006 — the token in the path is the
+// credential, and the handler answers unknown/revoked tokens with a uniform
+// 404). Every other GET requires a session, like all writes.
+var publicReadPattern = regexp.MustCompile(`^/api/(overview|endpoints/\d+(/series|/probes)?|shared-reports/[^/]+)$`)
 
 // requireSession rejects requests without a valid session cookie, except
 // status-board GETs, which stay public by design.

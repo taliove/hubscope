@@ -195,6 +195,15 @@ func (s *Server) routes() chi.Router {
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
 			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 			r.Get("/campaigns/{id}/trends", s.handleGetCampaignTrends)
+			r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
+
+			r.Get("/share-links", s.handleListShareLinks)
+			r.Delete("/share-links/{id}", s.handleRevokeShareLink)
+			// Public by token (ADR 0006): the requireSession middleware lets
+			// this one GET path through without a session; the token itself
+			// is the credential, and unknown/revoked tokens answer a uniform
+			// 404. No other API is exposed by a share token.
+			r.Get("/shared-reports/{token}", s.handleGetSharedReport)
 
 			r.Get("/settings", s.handleGetSettings)
 			r.Put("/settings", s.handlePutSettings)

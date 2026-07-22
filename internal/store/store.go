@@ -248,6 +248,18 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id, id);
+
+		CREATE TABLE IF NOT EXISTS share_links (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			token TEXT NOT NULL UNIQUE,
+			campaign_id INTEGER NOT NULL,
+			created_by TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			revoked_at TEXT,
+			FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_share_links_campaign ON share_links(campaign_id);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {
