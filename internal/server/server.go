@@ -165,6 +165,8 @@ func (s *Server) routes() chi.Router {
 
 			r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
 			r.Delete("/endpoints/{id}", s.handleDeleteEndpoint)
+			// Static segment wins over {id} in chi; registered first for clarity.
+			r.Post("/endpoints/prune-dead", s.handlePruneDeadEndpoints)
 			r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 			r.Get("/endpoints/{id}", s.handleGetEndpointDetail)
 			r.Get("/endpoints/{id}/series", s.handleGetEndpointSeries)

@@ -167,8 +167,8 @@ func TestLarkAlertingLifecycle(t *testing.T) {
 		t.Fatalf("put settings: expected 200, got %d", putResp.StatusCode)
 	}
 
-	stubHub.SetMode("error_503")
 	endpointID := createProbedEndpoint(t, ts, "Alert Hub", stubHub.URL, "alert-model")
+	stubHub.SetMode("error_503")
 
 	// Round 1: two failed probes (non-streaming + streaming), below the
 	// threshold of 3 consecutive failures, so no alert yet.
@@ -249,8 +249,8 @@ func TestAlertSkippedWithoutWebhook(t *testing.T) {
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
 
-	stubHub.SetMode("error_503")
 	endpointID := createProbedEndpoint(t, ts, "Silent Hub", stubHub.URL, "silent-model")
+	stubHub.SetMode("error_503")
 
 	// Webhook never configured: failing rounds produce no events, no errors.
 	runProbeRound(t, ts, endpointID)
@@ -295,8 +295,8 @@ func TestAlertSendFailureRecorded(t *testing.T) {
 	})
 	putResp.Body.Close()
 
-	stubHub.SetMode("error_503")
 	endpointID := createProbedEndpoint(t, ts, "Fail Hub", stubHub.URL, "fail-model")
+	stubHub.SetMode("error_503")
 
 	runProbeRound(t, ts, endpointID)
 	runProbeRound(t, ts, endpointID)
@@ -333,7 +333,6 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 	lark := newStubLarkServer(t)
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
-	stubHub.SetMode("error_503")
 
 	// First process: configure the webhook and drive the endpoint down.
 	ts1 := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
@@ -343,6 +342,7 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 	})
 	putResp.Body.Close()
 	endpointID := createProbedEndpoint(t, ts1, "Restart Hub", stubHub.URL, "restart-model")
+	stubHub.SetMode("error_503")
 	runProbeRound(t, ts1, endpointID)
 	runProbeRound(t, ts1, endpointID)
 	if got := len(lark.messages()); got != 1 {

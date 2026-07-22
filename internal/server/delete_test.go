@@ -26,8 +26,8 @@ func TestDeleteEndpointCascadesHistory(t *testing.T) {
 		t.Fatalf("put settings: expected 200, got %d", putResp.StatusCode)
 	}
 
-	stubHub.SetMode("error_503")
 	endpointID := createProbedEndpoint(t, ts, "Del Hub", stubHub.URL, "del-model")
+	stubHub.SetMode("error_503")
 
 	// Two rounds = four consecutive failures: probe history plus one down
 	// alert event for this endpoint.
@@ -97,7 +97,7 @@ func TestDeleteManualModelCascades(t *testing.T) {
 	if putResp.StatusCode != http.StatusOK {
 		t.Fatalf("put settings: expected 200, got %d", putResp.StatusCode)
 	}
-	stubHub.SetMode("error_503")
+	stubHub.SetMode("success")
 
 	hubID := createHubViaAPI(t, ts.URL, stubHub.URL)
 	resp := doPost(t, ts.URL+"/api/models", map[string]interface{}{
@@ -108,6 +108,7 @@ func TestDeleteManualModelCascades(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create model: expected 201, got %d", resp.StatusCode)
 	}
+	stubHub.SetMode("error_503")
 
 	models := listModelsViaAPI(t, ts.URL)
 	modelID := int64(models["manual-model"]["id"].(float64))

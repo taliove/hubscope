@@ -86,7 +86,10 @@ func TestEvalJudge(t *testing.T) {
 // no answer and no score, the run still completes, and the aggregate is null.
 func TestEvalModelFailure(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
+	// Register while the hub is healthy (creation trial-probes), then break
+	// the model: every eval call 503s from here on.
+	modelID := createEvalModel(t, ts.URL, stub.URL, "flaky-model")
+	stub.markBroken("flaky-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "basic")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
@@ -96,7 +99,7 @@ func TestEvalModelFailure(t *testing.T) {
 		t.Fatalf("run status = %v, want done even when the model fails", run["status"])
 	}
 
-	results := resultsByModel(run, "broken-model")
+	results := resultsByModel(run, "flaky-model")
 	if len(results) != 3 {
 		t.Fatalf("got %d results, want 3", len(results))
 	}
@@ -209,6 +212,7 @@ func TestEvalProtocolFallback(t *testing.T) {
 		t.Fatalf("disable anthropic endpoint: got %d", patchResp.StatusCode)
 	}
 	patchResp.Body.Close()
+	stub.resetCalls()
 
 	suiteID := suiteIDByKey(t, ts.URL, "basic")
 	runID := triggerEval(t, ts.URL, suiteID, modelID)

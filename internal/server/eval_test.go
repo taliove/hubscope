@@ -28,10 +28,12 @@ type evalStubHub struct {
 	calls map[string]map[string]bool
 	// bad marks models that currently answer everything wrong.
 	bad map[string]bool
+	// broken marks models whose calls fail with HTTP 503.
+	broken map[string]bool
 }
 
 func newEvalStubHub() *evalStubHub {
-	stub := &evalStubHub{calls: map[string]map[string]bool{}, bad: map[string]bool{}}
+	stub := &evalStubHub{calls: map[string]map[string]bool{}, bad: map[string]bool{}, broken: map[string]bool{}}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
 }
@@ -68,7 +70,10 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	h.calls[req.Model][protocol] = true
 	h.mu.Unlock()
 
-	if req.Model == "broken-model" {
+	h.mu.Lock()
+	broken := h.broken[req.Model]
+	h.mu.Unlock()
+	if broken {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{"message": "No available providers for this model"},
@@ -160,6 +165,21 @@ func (h *evalStubHub) sawModel(model string) bool {
 
 // markBad flips a model between correct (false) and always-wrong (true)
 // answers, so tests can move its eval scores between rounds.
+// markBroken makes the model's calls fail with HTTP 503 (or recover).
+func (h *evalStubHub) markBroken(model string, broken bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.broken[model] = broken
+}
+
+// resetCalls clears the protocol call log, so assertions only see calls
+// made after this point (creation trial probes pollute it otherwise).
+func (h *evalStubHub) resetCalls() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.calls = map[string]map[string]bool{}
+}
+
 func (h *evalStubHub) markBad(model string, bad bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

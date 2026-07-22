@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
 
@@ -17,7 +19,12 @@ type createModelRequest struct {
 	ModelID string `json:"model_id"`
 }
 
-// handleCreateModel handles POST /api/models. Auto-creates two endpoints.
+// modelProtocols lists both hub API protocols in canonical endpoint order.
+var modelProtocols = []string{"anthropic", "openai"}
+
+// handleCreateModel handles POST /api/models. The model is trial-probed on
+// both protocols first: an endpoint is created per protocol that answered.
+// A model unreachable on both is rejected with 400 and nothing is stored.
 func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	var req createModelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -31,12 +38,21 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.db.GetHub(req.HubID); err != nil {
+	hub, err := s.db.GetHub(req.HubID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "hub not found")
 		return
 	}
 
-	model, err := s.db.CreateModel(req.HubID, req.ModelID)
+	working, failures := s.trialProtocols(r.Context(), *hub, req.ModelID)
+	if len(working) == 0 {
+		s.audit(r, "model.create", "model", req.ModelID, failures, "failed: unreachable on both protocols")
+		writeError(w, http.StatusBadRequest,
+			"model is unreachable on both anthropic and openai protocols: "+failures)
+		return
+	}
+
+	model, err := s.db.CreateModel(req.HubID, req.ModelID, working)
 	if err != nil {
 		if isUniqueViolation(err) {
 			s.audit(r, "model.create", "model", req.ModelID, "", "failed: duplicate model_id")
@@ -54,8 +70,30 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "model.create", "model", strconv.FormatInt(model.ID, 10),
-		fmt.Sprintf("model_id=%q hub_id=%d capability=%s family=%s", model.ModelID, model.HubID, model.Capability, model.Family), "success")
+		fmt.Sprintf("model_id=%q hub_id=%d protocols=%v capability=%s family=%s",
+			model.ModelID, model.HubID, working, model.Capability, model.Family), "success")
 	writeData(w, http.StatusCreated, toModelDTO(*model, endpoints))
+}
+
+// trialProtocols probes the model on both hub protocols and returns the
+// protocols that answered plus a human-readable summary of the failures.
+func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string) ([]string, string) {
+	client := hubclient.New()
+	working := []string{}
+	failures := []string{}
+	for _, protocol := range modelProtocols {
+		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false)
+		if result.OK {
+			working = append(working, protocol)
+			continue
+		}
+		reason := fmt.Sprintf("%s: HTTP %d", protocol, result.HTTPStatus)
+		if result.ErrorSummary != nil {
+			reason = fmt.Sprintf("%s: %s", protocol, *result.ErrorSummary)
+		}
+		failures = append(failures, reason)
+	}
+	return working, strings.Join(failures, "; ")
 }
 
 // handleListModels handles GET /api/models. Includes endpoints per model.

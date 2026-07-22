@@ -20,3 +20,9 @@ export async function getEndpointSeries(
 export async function deleteEndpoint(endpointId: number): Promise<void> {
   await http.del<void>(`/endpoints/${endpointId}`)
 }
+
+// Prune every disabled endpoint that never had a successful probe (legacy
+// failed-trial placeholders), with their history. Returns the count removed.
+export async function pruneDeadEndpoints(): Promise<{ pruned: number }> {
+  return http.post<{ pruned: number }>('/endpoints/prune-dead')
+}

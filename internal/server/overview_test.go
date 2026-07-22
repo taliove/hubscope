@@ -147,7 +147,9 @@ func TestOverviewStatusTransitions(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-transition")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-transition")
 	ep := int64(ids[0])
 	failErr := "HTTP 503: No available providers"
 
@@ -265,7 +267,9 @@ func TestOverviewWindowStats(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-stats")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-stats")
 	rateEp := int64(ids[0])
 	latEp := int64(ids[1])
 
@@ -309,7 +313,9 @@ func TestOverviewWindowStats(t *testing.T) {
 
 	// Endpoint C would fail the latency check but has too few probes for a
 	// baseline, so the check is skipped and it stays healthy.
-	ids2 := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-no-baseline")
+	stub2 := newStubHubServer()
+	defer stub2.Close()
+	ids2 := createModelEndpoints(t, ts.URL, stub2.URL, "model-no-baseline")
 	thinEp := int64(ids2[0])
 	for i := 1; i <= 3; i++ {
 		seedProbe(t, db, thinEp, true, 9000, nil, fakeNow.Add(-time.Duration(i)*time.Minute))

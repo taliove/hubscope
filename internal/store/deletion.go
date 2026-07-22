@@ -91,3 +91,36 @@ func (db *DB) DeleteModel(id int64) error {
 
 	return tx.Commit()
 }
+
+// PruneDeadEndpoints removes every disabled endpoint that never had a
+// successful probe, together with everything keyed by it (probes, rollups,
+// watermarks, alert events). "Never succeeded" is judged on BOTH raw probes
+// and hourly rollups: retention deletes raw rows past 90 days but keeps
+// rollups, so an endpoint that worked months ago still has success evidence
+// in probe_rollups and must survive. Endpoints with no success anywhere are
+// the legacy "protocol trial failed" placeholders — dead weight.
+func (db *DB) PruneDeadEndpoints() (int64, error) {
+	dead := `SELECT id FROM endpoints WHERE enabled = 0
+		AND id NOT IN (SELECT endpoint_id FROM probes WHERE ok = 1)
+		AND id NOT IN (SELECT endpoint_id FROM probe_rollups WHERE total > failures)`
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	for _, table := range []string{"alert_events", "probes", "probe_rollups", "rollup_watermarks"} {
+		if _, err := tx.Exec("DELETE FROM " + table + " WHERE endpoint_id IN (" + dead + ")"); err != nil {
+			return 0, err
+		}
+	}
+	result, err := tx.Exec("DELETE FROM endpoints WHERE id IN (" + dead + ")")
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

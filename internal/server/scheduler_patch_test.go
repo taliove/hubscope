@@ -115,18 +115,21 @@ func TestSchedulerConcurrencyLimit(t *testing.T) {
 	stub := newDelayStubHub(t, 100*time.Millisecond)
 	ts := newTestAPIServer(t, db)
 
-	// Five models yield ten enabled endpoints.
+	// Five models yield ten enabled endpoints. Manual creation trial-probes
+	// each protocol (2 requests per model), so the round assertions count
+	// from this baseline.
 	endpointIDs := []int{}
 	for i := 0; i < 5; i++ {
 		endpointIDs = append(endpointIDs, createModelEndpoints(t, ts.URL, stub.URL, fmt.Sprintf("conc-model-%d", i))...)
 	}
+	baseline := stub.totalRequests()
 
 	clock := scheduler.NewFakeClock(time.Now())
 	startScheduler(t, db, hubclient.New(), clock)
 
 	// Every endpoint runs exactly one round (2 requests) at startup.
-	waitFor(t, "20 stub requests", func() bool {
-		return stub.totalRequests() >= 20
+	waitFor(t, "20 stub requests past baseline", func() bool {
+		return stub.totalRequests() >= baseline+20
 	})
 	for _, id := range endpointIDs {
 		waitForProbeCount(t, ts.URL, id, 2)
@@ -138,8 +141,8 @@ func TestSchedulerConcurrencyLimit(t *testing.T) {
 
 	// No clock advance means no further rounds.
 	assertProbeCountStable(t, ts.URL, endpointIDs[0], 2, 300*time.Millisecond)
-	if total := stub.totalRequests(); total != 20 {
-		t.Fatalf("expected exactly 20 stub requests, got %d", total)
+	if total := stub.totalRequests(); total != baseline+20 {
+		t.Fatalf("expected exactly %d stub requests, got %d", baseline+20, total)
 	}
 }
 

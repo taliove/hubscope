@@ -1,7 +1,10 @@
 <template>
   <el-card shadow="never">
     <template #header>
-      <span>Endpoint 列表</span>
+      <div class="card-header">
+        <span>Endpoint 列表</span>
+        <el-button size="small" :loading="pruning" @click="onPruneDead">清理无效端点</el-button>
+      </div>
     </template>
 
     <el-table :data="rows" v-loading="loading" size="small" empty-text="暂无 Endpoint">
@@ -77,7 +80,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
-import { deleteEndpoint } from '@/api/endpoints'
+import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
 import { deleteModel } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
 import type { EndpointRow } from '@/composables/useAdminData'
@@ -90,6 +93,7 @@ const emit = defineEmits<{ (e: 'changed'): void }>()
 const probingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingModelId = ref<number | null>(null)
+const pruning = ref(false)
 const probeVisible = ref(false)
 const probeResults = ref<ProbeRecord[]>([])
 
@@ -132,10 +136,32 @@ async function onViewHistory(row: EndpointRow) {
   }
 }
 
+async function onPruneDead() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除所有"从未探测成功且当前停用"的端点及其全部历史(协议试探失败留下的无效端点)。继续?',
+      '清理无效端点',
+      { type: 'warning', confirmButtonText: '清理', cancelButtonText: '取消' }
+    )
+  } catch {
+    return // user cancelled
+  }
+  pruning.value = true
+  try {
+    const { pruned } = await pruneDeadEndpoints()
+    ElMessage.success(pruned > 0 ? `已清理 ${pruned} 个无效端点` : '没有需要清理的端点')
+    if (pruned > 0) emit('changed')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    pruning.value = false
+  }
+}
+
 async function onDeleteEndpoint(row: EndpointRow) {
   try {
     await ElMessageBox.confirm(
-      `确认删除端点「${row.modelName} / ${row.endpoint.protocol}」?其全部探测历史与告警记录将一并删除。`,
+      `确认删除端点「${row.modelName} / ${row.endpoint.protocol}」?其全部探测历史与告警记录将一并删除。注意:若该协议在 Hub 上实际可用,下次同步会重新试通并补建;只想停止探测请改用"停用"(编辑端点)。`,
       '删除端点',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
@@ -176,3 +202,11 @@ async function onDeleteModel(row: EndpointRow) {
   }
 }
 </script>
+
+<style scoped>
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+</style>

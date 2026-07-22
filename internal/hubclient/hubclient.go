@@ -3,6 +3,7 @@ package hubclient
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -48,8 +49,27 @@ func New() *Client {
 func NewWithTimeout(d time.Duration) *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: d,
+			Timeout:   d,
+			Transport: probeTransport(),
 		},
+	}
+}
+
+// probeTransport mirrors http.DefaultTransport with explicit proxy handling:
+// HTTP_PROXY/HTTPS_PROXY/NO_PROXY are honored, which matters on machines
+// running fake-ip local proxies (direct DNS answers are unroutable there).
+func probeTransport() *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 }
 

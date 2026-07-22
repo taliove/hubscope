@@ -280,8 +280,9 @@ func TestWalkingSkeleton(t *testing.T) {
 	})
 
 	t.Run("probe_endpoint_handles_hub_503_error", func(t *testing.T) {
-		// Create a new hub pointing to error endpoint
-		stubHub.SetMode("error_503")
+		// Create the hub and model while the stub is healthy (manual
+		// creation trial-probes the protocols), then flip it to failing.
+		stubHub.SetMode("success")
 		createHubReq := map[string]interface{}{
 			"name":     "Error Hub",
 			"base_url": stubHub.URL,
@@ -332,10 +333,12 @@ func TestWalkingSkeleton(t *testing.T) {
 	})
 
 	t.Run("probe_endpoint_handles_network_failure", func(t *testing.T) {
-		// Create hub with invalid URL
+		// Create the hub and model while the stub is healthy, then break
+		// the hub's address so probes hit a network error.
+		stubHub.SetMode("success")
 		createHubReq := map[string]interface{}{
 			"name":     "Broken Hub",
-			"base_url": "http://localhost:1", // Unreachable
+			"base_url": stubHub.URL,
 			"token":    "test-token",
 		}
 		hubResp := doPost(t, ts.URL+"/api/hubs", createHubReq)
@@ -356,6 +359,16 @@ func TestWalkingSkeleton(t *testing.T) {
 		json.Unmarshal(env.Data, &model)
 		endpoints := model["endpoints"].([]interface{})
 		endpointID := int(endpoints[0].(map[string]interface{})["id"].(float64))
+
+		// Break the hub: its base_url now points at an unreachable address.
+		deadURL := "http://localhost:1"
+		putResp := doPut(t, fmt.Sprintf("%s/api/hubs/%d", ts.URL, brokenHubID), map[string]interface{}{
+			"base_url": deadURL,
+		})
+		putResp.Body.Close()
+		if putResp.StatusCode != http.StatusOK {
+			t.Fatalf("break hub: expected 200, got %d", putResp.StatusCode)
+		}
 
 		// Probe should handle network error
 		resp := doPost(t, fmt.Sprintf("%s/api/endpoints/%d/probe", ts.URL, endpointID), nil)

@@ -83,9 +83,11 @@ func scanModel(s rowScanner) (Model, error) {
 	return m, nil
 }
 
-// CreateModel creates a model and its two endpoints (anthropic + openai).
+// CreateModel creates a model with one endpoint per given protocol.
 // Classification (capability + family) is derived from the current rule set.
-func (db *DB) CreateModel(hubID int64, modelID string) (*Model, error) {
+// The caller picks the protocols: since ticket 17 only protocols that
+// answered a trial probe get an endpoint.
+func (db *DB) CreateModel(hubID int64, modelID string, protocols []string) (*Model, error) {
 	now := time.Now().UTC()
 
 	rules, err := db.ListClassificationRules()
@@ -115,8 +117,8 @@ func (db *DB) CreateModel(hubID int64, modelID string) (*Model, error) {
 		return nil, err
 	}
 
-	// Create two endpoints
-	for _, protocol := range []string{"anthropic", "openai"} {
+	// Create one endpoint per working protocol
+	for _, protocol := range protocols {
 		_, err = tx.Exec(
 			"INSERT INTO endpoints (model_id, protocol, enabled, created_at) VALUES (?, ?, 1, ?)",
 			modelDBID, protocol, now.Format(time.RFC3339),

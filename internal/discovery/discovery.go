@@ -64,14 +64,17 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 		if err != nil {
 			return stats, err
 		}
-		if !created {
-			continue
+		if created {
+			stats.Added++
 		}
-		stats.Added++
-		if err := s.probeAndCreateEndpoints(ctx, hub, model); err != nil {
+		// New models trial both protocols; existing ones only trial the
+		// protocols they still lack, so a protocol that becomes available
+		// later gets backfilled on the next sync.
+		endpoints, err := s.trialAndCreateEndpoints(ctx, hub, model)
+		if err != nil {
 			return stats, err
 		}
-		stats.EndpointsCreated += len(protocols)
+		stats.EndpointsCreated += endpoints
 	}
 
 	retired, err := s.db.MarkRetiredMissing(hub.ID, ids)
@@ -185,33 +188,44 @@ func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub) (Stats, error) {
 	return stats, nil
 }
 
-// probeAndCreateEndpoints fires one minimal non-streaming request per
-// protocol at a newly discovered model and creates one endpoint per
-// protocol: enabled where the probe succeeded, disabled where it failed —
-// both are created so the UI shows which protocol is unreachable. The trial
-// probes are persisted as probe records so the failure reason (HTTP status,
-// upstream error) stays visible through the probes API and detail pages.
-func (s *Syncer) probeAndCreateEndpoints(ctx context.Context, hub store.Hub, model *store.Model) error {
-	for _, protocol := range protocols {
-		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false)
-		endpoint, err := s.db.CreateEndpoint(model.ID, protocol, result.OK)
-		if err != nil {
-			return err
-		}
-		_, err = s.db.CreateProbe(store.Probe{
-			EndpointID:   endpoint.ID,
-			Streaming:    false,
-			OK:           result.OK,
-			HTTPStatus:   result.HTTPStatus,
-			ErrorSummary: result.ErrorSummary,
-			LatencyMs:    result.LatencyMs,
-			TTFTMs:       result.TTFTMs,
-			InputTokens:  result.InputTokens,
-			OutputTokens: result.OutputTokens,
-		})
-		if err != nil {
-			return err
-		}
+// trialAndCreateEndpoints trial-probes the model on every protocol it does
+// not yet have an endpoint for and creates an enabled endpoint per protocol
+// that answered. Failed trials create nothing — they are logged, so no
+// permanently-disabled placeholder endpoints accumulate (ticket 17).
+func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, model *store.Model) (int, error) {
+	existing, err := s.db.ListEndpointsByModelID(model.ID)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	have := make(map[string]bool, len(existing))
+	for _, ep := range existing {
+		have[ep.Protocol] = true
+	}
+
+	created := 0
+	for _, protocol := range protocols {
+		if have[protocol] {
+			continue
+		}
+		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false)
+		if !result.OK {
+			slog.Debug("discovery: protocol trial failed",
+				"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol,
+				"http_status", result.HTTPStatus, "error", errSummary(result.ErrorSummary))
+			continue
+		}
+		if _, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+			return created, err
+		}
+		created++
+	}
+	return created, nil
+}
+
+// errSummary dereferences a probe error summary for logging.
+func errSummary(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

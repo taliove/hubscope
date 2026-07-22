@@ -26,6 +26,9 @@ ADR-0001).
 | `ADDR`           | `:8080`          | Listen address                            |
 | `DATA_PATH`      | `./data/app.db`  | SQLite file location                      |
 | `ADMIN_PASSWORD` | *(required)*     | Admin login password; the service refuses to start without it |
+| `LOG_LEVEL`      | `info`           | Log verbosity: `debug` / `info` / `warn` / `error` |
+| `TRUST_PROXY`    | `false`          | Set `true` only behind a reverse proxy that **replaces** `X-Forwarded-For` |
+| `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` | *(empty)* | Outbound proxy for hub traffic (standard Go behavior). **Required on machines running fake-ip local proxies** (e.g. Clash enhanced mode): direct DNS answers like `198.18.x.x` are unroutable and probes fail with `can't assign requested address`. Example: `HTTPS_PROXY=http://127.0.0.1:7890`. The effective proxy is logged at startup (credentials masked). |
 
 ### 3. systemd unit
 

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -48,6 +49,7 @@ func main() {
 // termination signal triggers graceful shutdown.
 func run() error {
 	configureLogging()
+	logEffectiveProxy()
 
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
@@ -183,4 +185,30 @@ func configureLogging() {
 		level = slog.LevelError
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
+// logEffectiveProxy reports which proxy (if any) outbound hub traffic uses.
+// On machines running fake-ip local proxies, direct DNS answers are
+// unroutable — seeing the effective proxy at startup makes that class of
+// dial failures trivial to diagnose. Credentials in the URL are masked.
+func logEffectiveProxy() {
+	raw := ""
+	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		if v := os.Getenv(key); v != "" {
+			raw = v
+			break
+		}
+	}
+	if raw == "" {
+		slog.Info("outbound proxy: none (direct)")
+		return
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		// Never log the raw value here: it may carry credentials.
+		slog.Info("outbound proxy: set (unparseable URL, not logged)")
+		return
+	}
+	u.User = nil
+	slog.Info("outbound proxy", "url", u.String())
 }

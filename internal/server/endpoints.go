@@ -83,6 +83,21 @@ func (s *Server) handleDeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 	writeNoContent(w)
 }
 
+// handlePruneDeadEndpoints handles POST /api/endpoints/prune-dead. It removes
+// every disabled endpoint that never had a successful probe, with its
+// history, and returns how many were pruned.
+func (s *Server) handlePruneDeadEndpoints(w http.ResponseWriter, r *http.Request) {
+	pruned, err := s.db.PruneDeadEndpoints()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to prune dead endpoints")
+		return
+	}
+
+	s.audit(r, "endpoint.prune_dead", "endpoint", "",
+		fmt.Sprintf("pruned=%d", pruned), "success")
+	writeData(w, http.StatusOK, map[string]int64{"pruned": pruned})
+}
+
 // parseIntervalPatch converts the raw interval_seconds JSON value into a
 // tri-state store.IntervalPatch: absent leaves the override unchanged, an
 // explicit null clears it, and a number sets it.

@@ -150,7 +150,9 @@ func TestEndpointDetail(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-detail")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-detail")
 	ep := int64(ids[0])
 
 	// Never probed: healthy with the no-data reason.
@@ -198,7 +200,9 @@ func TestEndpointSeriesAggregation(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-series")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-series")
 	ep := int64(ids[0])
 
 	ttft50, ttft150, ttft100 := 50, 150, 100
@@ -255,7 +259,9 @@ func TestEndpointSeriesAggregation(t *testing.T) {
 func TestEndpointSeriesValidation(t *testing.T) {
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-series-validation")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-series-validation")
 	ep := ids[0]
 
 	badQueries := []string{
@@ -296,7 +302,9 @@ func TestProbesOkFilter(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-ok-filter")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-ok-filter")
 	ep := ids[0]
 
 	failErr := "HTTP 500: boom"

@@ -52,6 +52,13 @@ func (s *discoveryStubHub) setFailing(modelID, protocol string) {
 	s.failing[modelID][protocol] = true
 }
 
+// clearFailing makes probes for the given model+protocol succeed again.
+func (s *discoveryStubHub) clearFailing(modelID, protocol string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.failing[modelID], protocol)
+}
+
 // listAuth returns the Authorization header seen on the last /v1/models call.
 func (s *discoveryStubHub) listAuth() string {
 	s.mu.Lock()
@@ -212,6 +219,16 @@ func listModelsViaAPI(t *testing.T, baseURL string) map[string]map[string]interf
 	return byID
 }
 
+// hasEndpoint reports whether the model has an endpoint for the protocol.
+func hasEndpoint(model map[string]interface{}, protocol string) bool {
+	for _, e := range model["endpoints"].([]interface{}) {
+		if e.(map[string]interface{})["protocol"].(string) == protocol {
+			return true
+		}
+	}
+	return false
+}
+
 // endpointEnabled returns the enabled flag of the model's endpoint for the
 // given protocol.
 func endpointEnabled(t *testing.T, model map[string]interface{}, protocol string) bool {
@@ -268,19 +285,24 @@ func TestDiscoveryFirstSync(t *testing.T) {
 	if gpt5["capability"] != "chat" {
 		t.Errorf("gpt-5 capability: expected chat, got %v", gpt5["capability"])
 	}
-	if endpointEnabled(t, gpt5, "openai") != true {
-		t.Error("gpt-5 openai endpoint should be enabled (probe succeeded)")
+	// Only the working protocol gets an endpoint; the failed trial leaves
+	// none at all (ticket 17).
+	if !hasEndpoint(gpt5, "openai") {
+		t.Error("gpt-5 should have an openai endpoint (probe succeeded)")
 	}
-	if endpointEnabled(t, gpt5, "anthropic") != false {
-		t.Error("gpt-5 anthropic endpoint should be disabled (probe failed)")
+	if hasEndpoint(gpt5, "anthropic") {
+		t.Error("gpt-5 should have NO anthropic endpoint (trial failed)")
+	}
+	if endpointEnabled(t, gpt5, "openai") != true {
+		t.Error("gpt-5 openai endpoint should be enabled")
 	}
 
 	img := models["gpt-image-2"]
 	if img["capability"] != "image" {
 		t.Errorf("gpt-image-2 capability: expected image, got %v", img["capability"])
 	}
-	if endpointEnabled(t, img, "openai") != true || endpointEnabled(t, img, "anthropic") != true {
-		t.Error("gpt-image-2 endpoints should both be enabled (probes succeeded)")
+	if !hasEndpoint(img, "openai") || !hasEndpoint(img, "anthropic") {
+		t.Error("gpt-image-2 should have both endpoints (both trials succeeded)")
 	}
 
 	// A full sync over the unchanged list must be a no-op.

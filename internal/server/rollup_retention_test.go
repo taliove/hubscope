@@ -76,7 +76,9 @@ func TestRollupAndRetention(t *testing.T) {
 	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(clock.Now)))
 	t.Cleanup(ts.Close)
 
-	ids := createModelEndpoints(t, ts.URL, "http://hub.invalid", "model-rollup")
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-rollup")
 	ep := int64(ids[0])
 
 	// Old probes: 3 days ago, beyond the test retention of 48h. They must be
