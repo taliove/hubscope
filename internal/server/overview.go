@@ -22,6 +22,13 @@ type overviewDTO struct {
 	ByFamily     []overviewGroupDTO `json:"by_family"`
 	ByCapability []overviewGroupDTO `json:"by_capability"`
 	ByProtocol   []overviewGroupDTO `json:"by_protocol"`
+	// Global aggregates (ticket 36): EnabledEndpoints counts only enabled
+	// endpoints; Availability24h is the probe-weighted 24h availability
+	// across all enabled endpoints (total successful probes over total
+	// probes, the same weighting as the per-group availability), null when
+	// no enabled endpoint has probes in the window.
+	EnabledEndpoints int      `json:"enabled_endpoints"`
+	Availability24h  *float64 `json:"availability_24h"`
 }
 
 // overviewEntryDTO is the per-endpoint status summary. Field names follow
@@ -157,6 +164,10 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	families := newGroupAccumulator()
 	capabilities := newGroupAccumulator()
 	protocols := newGroupAccumulator()
+	// Global aggregate reuses the same accumulator semantics (disabled
+	// endpoints excluded from the probe metrics) with a single key.
+	global := newGroupAccumulator()
+	enabledEndpoints := 0
 	for _, model := range models {
 		endpoints, err := s.db.ListEndpointsByModelID(model.ID)
 		if err != nil {
@@ -174,16 +185,26 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 			families.add(model.Family, entry, stats.samples24h)
 			capabilities.add(model.Capability, entry, stats.samples24h)
 			protocols.add(ep.Protocol, entry, stats.samples24h)
+			global.add("all", entry, stats.samples24h)
+			if ep.Enabled {
+				enabledEndpoints++
+			}
 		}
 	}
 
-	writeData(w, http.StatusOK, overviewDTO{
-		GeneratedAt:  now.Format(time.RFC3339),
-		Endpoints:    entries,
-		ByFamily:     families.groups(),
-		ByCapability: capabilities.groups(),
-		ByProtocol:   protocols.groups(),
-	})
+	dto := overviewDTO{
+		GeneratedAt:      now.Format(time.RFC3339),
+		Endpoints:        entries,
+		ByFamily:         families.groups(),
+		ByCapability:     capabilities.groups(),
+		ByProtocol:       protocols.groups(),
+		EnabledEndpoints: enabledEndpoints,
+	}
+	if groups := global.groups(); len(groups) > 0 {
+		dto.Availability24h = groups[0].Availability24h
+	}
+
+	writeData(w, http.StatusOK, dto)
 }
 
 // windowStats bundles the probe history the status machine needs for one

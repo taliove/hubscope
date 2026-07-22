@@ -128,6 +128,12 @@ export interface Overview {
   by_family: OverviewGroup[]
   by_capability: OverviewGroup[]
   by_protocol: OverviewGroup[]
+  // Global aggregates (ticket 36): enabled_endpoints counts only enabled
+  // endpoints; availability_24h is the probe-weighted 24h availability
+  // across all enabled endpoints (same weighting as the per-group metric),
+  // null when no enabled endpoint has probes in the window.
+  enabled_endpoints: number
+  availability_24h: number | null
 }
 
 // Endpoint detail page types (ticket 04).
