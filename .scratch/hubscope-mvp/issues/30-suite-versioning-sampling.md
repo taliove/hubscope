@@ -4,10 +4,10 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Case 不可变:PATCH = 新 Case + 停用旧 Case;历史 Run 结果仍渲染旧题原文
-- [ ] Suite 版本随 Case 增删/停用递增;eval_runs 记录 suite_version,经 API 可读
-- [ ] 每 Suite 10~20 道种子题、难度分层;已有题目的 Suite 不被种子覆盖
-- [ ] 采样次数可配(默认 1),N 次作答取平均;裁判失败该次记未判分,与现有口径一致
-- [ ] 黑盒测试:版本递增与 Run 版本记录、采样平均、旧题结果可追溯
+- [x] Case 不可变:PATCH = 新 Case + 停用旧 Case;历史 Run 结果仍渲染旧题原文
+- [x] Suite 版本随 Case 增删/停用递增;eval_runs 记录 suite_version,经 API 可读
+- [x] 每 Suite 10~20 道种子题、难度分层;已有题目的 Suite 不被种子覆盖
+- [x] 采样次数可配(默认 1),N 次作答取平均;裁判失败该次记未判分,与现有口径一致
+- [x] 黑盒测试:版本递增与 Run 版本记录、采样平均、旧题结果可追溯

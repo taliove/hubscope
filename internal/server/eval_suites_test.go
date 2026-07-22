@@ -8,7 +8,7 @@ import (
 )
 
 // TestSuitesSeeded verifies the migration ships the 4 built-in suites with
-// their seed cases and verdict configurations.
+// their seed cases, difficulty tiers and verdict configurations.
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
@@ -37,10 +37,14 @@ func TestSuitesSeeded(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing built-in suite %q", key)
 		}
-		cases := s["cases"].([]interface{})
-		if len(cases) < 3 {
-			t.Errorf("suite %q has %d cases, want at least 3", key, len(cases))
+		if s["version"] != 1.0 {
+			t.Errorf("fresh suite %q version = %v, want 1", key, s["version"])
 		}
+		cases := s["cases"].([]interface{})
+		if len(cases) < 10 || len(cases) > 20 {
+			t.Errorf("suite %q has %d cases, want 10~20", key, len(cases))
+		}
+		tiers := map[string]int{}
 		for _, c := range cases {
 			cm := c.(map[string]interface{})
 			if cm["prompt"] == "" {
@@ -48,6 +52,18 @@ func TestSuitesSeeded(t *testing.T) {
 			}
 			if cm["enabled"] != true {
 				t.Errorf("seed case in suite %q should be enabled", key)
+			}
+			d, _ := cm["difficulty"].(string)
+			switch d {
+			case "basic", "intermediate", "hard":
+				tiers[d]++
+			default:
+				t.Errorf("suite %q has a case with invalid difficulty %q", key, d)
+			}
+		}
+		for _, tier := range []string{"basic", "intermediate", "hard"} {
+			if tiers[tier] == 0 {
+				t.Errorf("suite %q has no %s-tier seed case", key, tier)
 			}
 		}
 	}

@@ -6,15 +6,19 @@ import (
 )
 
 // Suite is an evaluation suite: a named group of cases along one capability
-// dimension (basic / reasoning / coding / chinese).
+// dimension (basic / reasoning / coding / chinese). Version starts at 1 and
+// increments on every case create/replace/enable-toggle (Suite Version).
 type Suite struct {
-	ID   int64
-	Key  string
-	Name string
+	ID      int64
+	Key     string
+	Name    string
+	Version int
 }
 
 // Case is a single evaluation question with its verdict configuration.
 // RuleMode/RuleExpected are set for verdict_type="rule"; Rubric for "judge".
+// Difficulty is one of basic/intermediate/hard. SampleCount is nil when the
+// case inherits the global default sample count.
 type Case struct {
 	ID           int64
 	SuiteID      int64
@@ -23,19 +27,24 @@ type Case struct {
 	RuleMode     *string
 	RuleExpected *string
 	Rubric       *string
+	Difficulty   string
+	SampleCount  *int
 	Enabled      bool
 	CreatedAt    time.Time
 }
 
-// EvalRun is one execution of a suite against a set of models.
+// EvalRun is one execution of a suite against a set of models. SuiteVersion
+// snapshots the suite's version at creation, so a run is always attributable
+// to the question-bank version it scored.
 type EvalRun struct {
-	ID         int64
-	SuiteID    int64
-	Trigger    string
-	JudgeModel string
-	Status     string
-	StartedAt  time.Time
-	FinishedAt *time.Time
+	ID           int64
+	SuiteID      int64
+	SuiteVersion int
+	Trigger      string
+	JudgeModel   string
+	Status       string
+	StartedAt    time.Time
+	FinishedAt   *time.Time
 }
 
 // LatestEvalScore is the aggregate score of the most recent done run for one
@@ -72,7 +81,10 @@ type EvalResult struct {
 
 // evalRunColumns is the canonical eval_runs column list. "trigger" is a
 // reserved SQLite keyword and must stay quoted.
-const evalRunColumns = `id, suite_id, "trigger", judge_model, status, started_at, finished_at`
+const evalRunColumns = `id, suite_id, suite_version, "trigger", judge_model, status, started_at, finished_at`
+
+// caseColumns is the canonical cases column list.
+const caseColumns = `id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at`
 
 // scanCase scans one cases row.
 func scanCase(s rowScanner) (Case, error) {
@@ -80,7 +92,7 @@ func scanCase(s rowScanner) (Case, error) {
 	var enabled int
 	var createdAt string
 	if err := s.Scan(&c.ID, &c.SuiteID, &c.Prompt, &c.VerdictType,
-		&c.RuleMode, &c.RuleExpected, &c.Rubric, &enabled, &createdAt); err != nil {
+		&c.RuleMode, &c.RuleExpected, &c.Rubric, &c.Difficulty, &c.SampleCount, &enabled, &createdAt); err != nil {
 		return Case{}, err
 	}
 	c.Enabled = enabled == 1
@@ -93,7 +105,7 @@ func scanEvalRun(s rowScanner) (EvalRun, error) {
 	var r EvalRun
 	var startedAt string
 	var finishedAt sql.NullString
-	if err := s.Scan(&r.ID, &r.SuiteID, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
+	if err := s.Scan(&r.ID, &r.SuiteID, &r.SuiteVersion, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
 		return EvalRun{}, err
 	}
 	r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
@@ -106,7 +118,7 @@ func scanEvalRun(s rowScanner) (EvalRun, error) {
 
 // ListSuites returns all suites ordered by id.
 func (db *DB) ListSuites() ([]Suite, error) {
-	rows, err := db.conn.Query("SELECT id, key, name FROM suites ORDER BY id")
+	rows, err := db.conn.Query("SELECT id, key, name, version FROM suites ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +127,7 @@ func (db *DB) ListSuites() ([]Suite, error) {
 	var suites []Suite
 	for rows.Next() {
 		var s Suite
-		if err := rows.Scan(&s.ID, &s.Key, &s.Name); err != nil {
+		if err := rows.Scan(&s.ID, &s.Key, &s.Name, &s.Version); err != nil {
 			return nil, err
 		}
 		suites = append(suites, s)
@@ -126,8 +138,8 @@ func (db *DB) ListSuites() ([]Suite, error) {
 // GetSuite retrieves a suite by ID.
 func (db *DB) GetSuite(id int64) (*Suite, error) {
 	var s Suite
-	err := db.conn.QueryRow("SELECT id, key, name FROM suites WHERE id = ?", id).
-		Scan(&s.ID, &s.Key, &s.Name)
+	err := db.conn.QueryRow("SELECT id, key, name, version FROM suites WHERE id = ?", id).
+		Scan(&s.ID, &s.Key, &s.Name, &s.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -136,12 +148,12 @@ func (db *DB) GetSuite(id int64) (*Suite, error) {
 
 // ListCases returns all cases of a suite (enabled and disabled), by id.
 func (db *DB) ListCases(suiteID int64) ([]Case, error) {
-	return db.listCases("SELECT id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, enabled, created_at FROM cases WHERE suite_id = ? ORDER BY id", suiteID)
+	return db.listCases("SELECT "+caseColumns+" FROM cases WHERE suite_id = ? ORDER BY id", suiteID)
 }
 
 // ListEnabledCases returns only the enabled cases of a suite, for execution.
 func (db *DB) ListEnabledCases(suiteID int64) ([]Case, error) {
-	return db.listCases("SELECT id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, enabled, created_at FROM cases WHERE suite_id = ? AND enabled = 1 ORDER BY id", suiteID)
+	return db.listCases("SELECT "+caseColumns+" FROM cases WHERE suite_id = ? AND enabled = 1 ORDER BY id", suiteID)
 }
 
 // listCases runs a case query against one suite.
@@ -166,59 +178,139 @@ func (db *DB) listCases(query string, suiteID int64) ([]Case, error) {
 // GetCase retrieves a case by ID.
 func (db *DB) GetCase(id int64) (*Case, error) {
 	c, err := scanCase(db.conn.QueryRow(
-		"SELECT id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, enabled, created_at FROM cases WHERE id = ?", id))
+		"SELECT "+caseColumns+" FROM cases WHERE id = ?", id))
 	if err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
-// CreateCase inserts a case and returns the stored copy.
+// bumpSuiteVersion increments a suite's version inside tx. Every case
+// mutation (create/replace/enable-toggle) goes through it.
+func bumpSuiteVersion(tx *sql.Tx, suiteID int64) error {
+	_, err := tx.Exec("UPDATE suites SET version = version + 1 WHERE id = ?", suiteID)
+	return err
+}
+
+// insertCase inserts one case row inside tx and returns its ID.
+func insertCase(tx *sql.Tx, c Case, now time.Time) (int64, error) {
+	enabled := 0
+	if c.Enabled {
+		enabled = 1
+	}
+	difficulty := c.Difficulty
+	if difficulty == "" {
+		difficulty = "basic"
+	}
+	result, err := tx.Exec(`
+		INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.SuiteID, c.Prompt, c.VerdictType, c.RuleMode, c.RuleExpected, c.Rubric, difficulty, c.SampleCount, enabled, now.Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// CreateCase inserts a case, bumps the parent suite's version, and returns
+// the stored copy.
 func (db *DB) CreateCase(c Case) (*Case, error) {
 	now := time.Now().UTC()
-	enabled := 0
-	if c.Enabled {
-		enabled = 1
-	}
-	result, err := db.conn.Exec(`
-		INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.SuiteID, c.Prompt, c.VerdictType, c.RuleMode, c.RuleExpected, c.Rubric, enabled, now.Format(time.RFC3339))
+	tx, err := db.conn.Begin()
 	if err != nil {
 		return nil, err
 	}
-	id, err := result.LastInsertId()
+	defer tx.Rollback()
+
+	id, err := insertCase(tx, c, now)
 	if err != nil {
 		return nil, err
 	}
-	c.ID = id
-	c.CreatedAt = now
-	return &c, nil
-}
-
-// UpdateCase replaces a case's editable fields (matched by c.ID) and returns
-// the stored copy. SuiteID and CreatedAt are preserved from the input.
-func (db *DB) UpdateCase(c Case) (*Case, error) {
-	enabled := 0
-	if c.Enabled {
-		enabled = 1
-	}
-	if _, err := db.conn.Exec(`
-		UPDATE cases SET prompt = ?, verdict_type = ?, rule_mode = ?, rule_expected = ?, rubric = ?, enabled = ?
-		WHERE id = ?
-	`, c.Prompt, c.VerdictType, c.RuleMode, c.RuleExpected, c.Rubric, enabled, c.ID); err != nil {
+	if err := bumpSuiteVersion(tx, c.SuiteID); err != nil {
 		return nil, err
 	}
-	return db.GetCase(c.ID)
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	created, err := db.GetCase(id)
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
-// CreateEvalRun inserts a run in "running" status and returns it.
+// ReplaceCase is the immutable "edit": it disables the old case, inserts the
+// merged fields as a brand-new case, and bumps the parent suite's version —
+// all in one transaction. Historical run results keep pointing at the old
+// case row, so past runs still render the old prompt.
+func (db *DB) ReplaceCase(oldID int64, c Case) (*Case, error) {
+	now := time.Now().UTC()
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("UPDATE cases SET enabled = 0 WHERE id = ?", oldID); err != nil {
+		return nil, err
+	}
+	id, err := insertCase(tx, c, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := bumpSuiteVersion(tx, c.SuiteID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	created, err := db.GetCase(id)
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// SetCaseEnabled toggles a case in place (no content change) and bumps the
+// parent suite's version.
+func (db *DB) SetCaseEnabled(id int64, enabled bool) (*Case, error) {
+	existing, err := db.GetCase(id)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	flag := 0
+	if enabled {
+		flag = 1
+	}
+	if _, err := tx.Exec("UPDATE cases SET enabled = ? WHERE id = ?", flag, id); err != nil {
+		return nil, err
+	}
+	if err := bumpSuiteVersion(tx, existing.SuiteID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return db.GetCase(id)
+}
+
+// CreateEvalRun inserts a run in "running" status and returns it. The suite's
+// current version is snapshotted onto the run.
 func (db *DB) CreateEvalRun(suiteID int64, trigger, judgeModel string) (*EvalRun, error) {
 	now := time.Now().UTC()
 	result, err := db.conn.Exec(`
-		INSERT INTO eval_runs (suite_id, "trigger", judge_model, status, started_at)
-		VALUES (?, ?, ?, 'running', ?)
-	`, suiteID, trigger, judgeModel, now.Format(time.RFC3339))
+		INSERT INTO eval_runs (suite_id, suite_version, "trigger", judge_model, status, started_at)
+		VALUES (?, (SELECT version FROM suites WHERE id = ?), ?, ?, 'running', ?)
+	`, suiteID, suiteID, trigger, judgeModel, now.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
@@ -226,14 +318,7 @@ func (db *DB) CreateEvalRun(suiteID int64, trigger, judgeModel string) (*EvalRun
 	if err != nil {
 		return nil, err
 	}
-	return &EvalRun{
-		ID:         id,
-		SuiteID:    suiteID,
-		Trigger:    trigger,
-		JudgeModel: judgeModel,
-		Status:     "running",
-		StartedAt:  now,
-	}, nil
+	return db.GetEvalRun(id)
 }
 
 // GetEvalRun retrieves a run by ID.

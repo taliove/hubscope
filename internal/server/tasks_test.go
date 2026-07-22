@@ -115,6 +115,33 @@ func countLogLines(logs []map[string]interface{}, level, substr string) int {
 	return n
 }
 
+// enabledCaseCount returns the number of enabled cases in a suite, read
+// through the API so expectations track seed-bank growth instead of
+// hardcoding a case count.
+func enabledCaseCount(t *testing.T, base string, suiteID int64) int {
+	t.Helper()
+	resp := doGet(t, base+"/api/suites")
+	var env envelope
+	_ = json.NewDecoder(resp.Body).Decode(&env)
+	resp.Body.Close()
+	var suites []map[string]interface{}
+	_ = json.Unmarshal(env.Data, &suites)
+	for _, s := range suites {
+		if int64(s["id"].(float64)) != suiteID {
+			continue
+		}
+		n := 0
+		for _, c := range s["cases"].([]interface{}) {
+			if enabled, _ := c.(map[string]interface{})["enabled"].(bool); enabled {
+				n++
+			}
+		}
+		return n
+	}
+	t.Fatalf("suite %d not found", suiteID)
+	return 0
+}
+
 // waitTaskStatus polls the task list until the task linked to the given eval
 // run reaches one of the wanted statuses, then returns it.
 func waitTaskStatus(t *testing.T, base string, runID int64, want ...string) map[string]interface{} {
@@ -172,8 +199,10 @@ func TestEvalRunRegistersTask(t *testing.T) {
 	}
 
 	// Detail carries the line-by-line execution log: one completion line per
-	// (model, case) pair — 2 models x 3 basic cases — bracketed by start and
-	// terminal lines.
+	// (model, case) pair — 2 models x N basic cases — bracketed by start and
+	// terminal lines. N is read back through the API so the expectation
+	// tracks seed-bank growth.
+	caseCount := enabledCaseCount(t, ts.URL, suiteID)
 	detail := getTaskDetail(t, ts.URL, int64(task["id"].(float64)))
 	logs := taskLogs(t, detail)
 	if got := countLogLines(logs, "info", "eval run started"); got != 1 {
@@ -182,14 +211,14 @@ func TestEvalRunRegistersTask(t *testing.T) {
 	if got := countLogLines(logs, "info", "status=success"); got != 1 {
 		t.Errorf("expected 1 terminal success line, got %d (logs: %v)", got, logs)
 	}
-	if got := countLogLines(logs, "info", "done: model="); got != 6 {
-		t.Errorf("expected 6 case completion lines, got %d (logs: %v)", got, logs)
+	if got := countLogLines(logs, "info", "done: model="); got != 2*caseCount {
+		t.Errorf("expected %d case completion lines, got %d (logs: %v)", 2*caseCount, got, logs)
 	}
-	if got := countLogLines(logs, "info", "model=smart-model score=1.00"); got != 3 {
-		t.Errorf("expected 3 smart-model score=1.00 lines, got %d (logs: %v)", got, logs)
+	if got := countLogLines(logs, "info", "model=smart-model score=1.00"); got != caseCount {
+		t.Errorf("expected %d smart-model score=1.00 lines, got %d (logs: %v)", caseCount, got, logs)
 	}
-	if got := countLogLines(logs, "info", "model=dumb-model score=0.00"); got != 3 {
-		t.Errorf("expected 3 dumb-model score=0.00 lines, got %d (logs: %v)", got, logs)
+	if got := countLogLines(logs, "info", "model=dumb-model score=0.00"); got != caseCount {
+		t.Errorf("expected %d dumb-model score=0.00 lines, got %d (logs: %v)", caseCount, got, logs)
 	}
 	for _, l := range logs {
 		if l["at"] == nil || l["at"] == "" {
@@ -212,11 +241,12 @@ func TestEvalRunTaskLogsJudgeFailure(t *testing.T) {
 	detail := getTaskDetail(t, ts.URL, int64(task["id"].(float64)))
 	logs := taskLogs(t, detail)
 
-	// The chinese suite has 3 judge cases; the stub judges two of them
-	// (score 0.75) and replies garbage for the formal-rewrite case, which
-	// must surface as a warn-level judge failure line, never as score 0.
-	if got := countLogLines(logs, "info", "score=0.75"); got != 2 {
-		t.Errorf("expected 2 judged score=0.75 lines, got %d (logs: %v)", got, logs)
+	// The chinese suite's judge cases are all scored 0.75 by the stub except
+	// the formal-rewrite case, which gets a garbage judge reply and must
+	// surface as a warn-level judge failure line, never as score 0.
+	caseCount := enabledCaseCount(t, ts.URL, suiteID)
+	if got := countLogLines(logs, "info", "score=0.75"); got != caseCount-1 {
+		t.Errorf("expected %d judged score=0.75 lines, got %d (logs: %v)", caseCount-1, got, logs)
 	}
 	if got := countLogLines(logs, "warn", "judge failed"); got != 1 {
 		t.Errorf("expected 1 judge failure warn line, got %d (logs: %v)", got, logs)

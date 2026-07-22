@@ -21,6 +21,10 @@
       <el-form-item label="裁判模型">
         <el-input v-model="form.judge_model" placeholder="claude-opus-4-8" />
       </el-form-item>
+      <el-form-item label="默认采样次数">
+        <el-input-number v-model="form.default_sample_count" :min="1" :max="10" />
+        <span class="field-hint">每题作答次数,多次取平均;题目可单独覆盖</span>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="saving" @click="onSave">保存设置</el-button>
       </el-form-item>
@@ -63,6 +67,7 @@ const form = reactive<AppSettings>({
   alert_enabled: true,
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
+  default_sample_count: 1,
 })
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
@@ -115,5 +120,10 @@ onMounted(async () => {
 }
 .sent-fail {
   color: #f56c6c;
+}
+.field-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

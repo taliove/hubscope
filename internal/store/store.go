@@ -120,7 +120,8 @@ func (db *DB) migrate() error {
 		CREATE TABLE IF NOT EXISTS suites (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
-			name TEXT NOT NULL
+			name TEXT NOT NULL,
+			version INTEGER NOT NULL DEFAULT 1
 		);
 
 		CREATE TABLE IF NOT EXISTS cases (
@@ -131,6 +132,8 @@ func (db *DB) migrate() error {
 			rule_mode TEXT,
 			rule_expected TEXT,
 			rubric TEXT,
+			difficulty TEXT NOT NULL DEFAULT 'basic',
+			sample_count INTEGER,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (suite_id) REFERENCES suites(id)
@@ -141,6 +144,7 @@ func (db *DB) migrate() error {
 		CREATE TABLE IF NOT EXISTS eval_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			suite_id INTEGER NOT NULL,
+			suite_version INTEGER NOT NULL DEFAULT 1,
 			"trigger" TEXT NOT NULL,
 			judge_model TEXT NOT NULL,
 			status TEXT NOT NULL,
@@ -253,6 +257,19 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.ensureColumn("models", "family", "TEXT NOT NULL DEFAULT 'other'"); err != nil {
+		return err
+	}
+	// Ticket 21: suite versioning + per-case sampling.
+	if err := db.ensureColumn("suites", "version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("cases", "difficulty", "TEXT NOT NULL DEFAULT 'basic'"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("cases", "sample_count", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_runs", "suite_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
 

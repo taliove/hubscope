@@ -155,12 +155,16 @@ export interface SeriesBucket {
 
 export type VerdictType = 'rule' | 'judge'
 
+export type Difficulty = 'basic' | 'intermediate' | 'hard'
+
 export interface RuleConfig {
   mode: 'exact' | 'regex' | 'contains'
   expected: string
 }
 
 // Named EvalCase to avoid clashing with the JS reserved-word flavor of "Case".
+// Cases are immutable server-side: a content edit returns a new id and the
+// old row stays in the listing as disabled.
 export interface EvalCase {
   id: number
   suite_id: number
@@ -168,6 +172,8 @@ export interface EvalCase {
   verdict_type: VerdictType
   rule_config: RuleConfig | null // only for verdict_type "rule"
   rubric: string | null // only for verdict_type "judge"
+  difficulty: Difficulty
+  sample_count: number | null // null = inherit the global default
   enabled: boolean
 }
 
@@ -175,6 +181,7 @@ export interface Suite {
   id: number
   key: string
   name: string
+  version: number // question-bank version, bumps on every case mutation
   cases: EvalCase[]
 }
 
@@ -184,6 +191,7 @@ export type EvalRunStatus = 'running' | 'done' | 'failed'
 export interface EvalRun {
   id: number
   suite_id: number
+  suite_version: number // suite version this run scored against
   trigger: EvalTrigger
   judge_model: string
   status: EvalRunStatus

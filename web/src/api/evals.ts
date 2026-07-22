@@ -1,6 +1,6 @@
 // Evaluation center API calls (tickets 08/09).
 import { http } from './client'
-import type { EvalCase, EvalRun, EvalRunDetail, LatestScore, Suite, VerdictType, RuleConfig } from './types'
+import type { EvalCase, EvalRun, EvalRunDetail, LatestScore, Suite, VerdictType, RuleConfig, Difficulty } from './types'
 
 export async function listSuites(): Promise<Suite[]> {
   return http.get<Suite[]>('/suites')
@@ -12,6 +12,8 @@ export interface CasePayload {
   verdict_type: VerdictType
   rule_config?: RuleConfig | null
   rubric?: string | null
+  difficulty?: Difficulty
+  sample_count?: number | null
   enabled?: boolean
 }
 

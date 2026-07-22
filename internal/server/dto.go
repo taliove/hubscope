@@ -136,6 +136,7 @@ type ruleConfigDTO struct {
 
 // caseDTO is the API representation of a Case. rule_config is only populated
 // for verdict_type="rule" and rubric only for "judge"; the other is null.
+// sample_count is null when the case inherits the global default.
 type caseDTO struct {
 	ID          int64          `json:"id"`
 	SuiteID     int64          `json:"suite_id"`
@@ -143,29 +144,35 @@ type caseDTO struct {
 	VerdictType string         `json:"verdict_type"`
 	RuleConfig  *ruleConfigDTO `json:"rule_config"`
 	Rubric      *string        `json:"rubric"`
+	Difficulty  string         `json:"difficulty"`
+	SampleCount *int           `json:"sample_count"`
 	Enabled     bool           `json:"enabled"`
 }
 
-// suiteDTO is the API representation of a Suite with its cases.
+// suiteDTO is the API representation of a Suite with its cases. Version is
+// the suite's question-bank version (Suite Version).
 type suiteDTO struct {
-	ID    int64     `json:"id"`
-	Key   string    `json:"key"`
-	Name  string    `json:"name"`
-	Cases []caseDTO `json:"cases"`
+	ID      int64     `json:"id"`
+	Key     string    `json:"key"`
+	Name    string    `json:"name"`
+	Version int       `json:"version"`
+	Cases   []caseDTO `json:"cases"`
 }
 
 // evalRunDTO is the API representation of an EvalRun. Score is the average
 // of all non-null result scores, computed on read (never persisted); it is
-// null when no result has been scored yet.
+// null when no result has been scored yet. SuiteVersion snapshots the suite
+// version the run scored against.
 type evalRunDTO struct {
-	ID         int64    `json:"id"`
-	SuiteID    int64    `json:"suite_id"`
-	Trigger    string   `json:"trigger"`
-	JudgeModel string   `json:"judge_model"`
-	Status     string   `json:"status"`
-	StartedAt  string   `json:"started_at"`
-	FinishedAt *string  `json:"finished_at"`
-	Score      *float64 `json:"score"`
+	ID           int64    `json:"id"`
+	SuiteID      int64    `json:"suite_id"`
+	SuiteVersion int      `json:"suite_version"`
+	Trigger      string   `json:"trigger"`
+	JudgeModel   string   `json:"judge_model"`
+	Status       string   `json:"status"`
+	StartedAt    string   `json:"started_at"`
+	FinishedAt   *string  `json:"finished_at"`
+	Score        *float64 `json:"score"`
 }
 
 // evalResultDTO is the API representation of an EvalResult. ModelDeleted
@@ -221,6 +228,8 @@ func toCaseDTO(c store.Case) caseDTO {
 		SuiteID:     c.SuiteID,
 		Prompt:      c.Prompt,
 		VerdictType: c.VerdictType,
+		Difficulty:  c.Difficulty,
+		SampleCount: c.SampleCount,
 		Enabled:     c.Enabled,
 	}
 	if c.VerdictType == "rule" {
@@ -241,7 +250,7 @@ func toSuiteDTO(s store.Suite, cases []store.Case) suiteDTO {
 	for _, c := range cases {
 		caseDTOs = append(caseDTOs, toCaseDTO(c))
 	}
-	return suiteDTO{ID: s.ID, Key: s.Key, Name: s.Name, Cases: caseDTOs}
+	return suiteDTO{ID: s.ID, Key: s.Key, Name: s.Name, Version: s.Version, Cases: caseDTOs}
 }
 
 // toEvalRunDTO maps a store.EvalRun to the API representation, attaching the
@@ -253,14 +262,15 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 		finishedAt = &s
 	}
 	return evalRunDTO{
-		ID:         r.ID,
-		SuiteID:    r.SuiteID,
-		Trigger:    r.Trigger,
-		JudgeModel: r.JudgeModel,
-		Status:     r.Status,
-		StartedAt:  r.StartedAt.Format(time.RFC3339),
-		FinishedAt: finishedAt,
-		Score:      score,
+		ID:           r.ID,
+		SuiteID:      r.SuiteID,
+		SuiteVersion: r.SuiteVersion,
+		Trigger:      r.Trigger,
+		JudgeModel:   r.JudgeModel,
+		Status:       r.Status,
+		StartedAt:    r.StartedAt.Format(time.RFC3339),
+		FinishedAt:   finishedAt,
+		Score:        score,
 	}
 }
 
