@@ -150,25 +150,35 @@ type caseDTO struct {
 }
 
 // suiteDTO is the API representation of a Suite with its cases. Version is
-// the suite's question-bank version (Suite Version).
+// the suite's question-bank version (Suite Version). Capability names the
+// ADR 0010 capability dimension ("" for pre-v3 legacy suites); nadir is the
+// suite's normalization constant (ADR 0009); enabled is false for retired
+// suites, which stay listed for history and curation but leave the
+// evaluation rotation.
 type suiteDTO struct {
-	ID      int64     `json:"id"`
-	Key     string    `json:"key"`
-	Name    string    `json:"name"`
-	Version int       `json:"version"`
-	Cases   []caseDTO `json:"cases"`
+	ID         int64     `json:"id"`
+	Key        string    `json:"key"`
+	Name       string    `json:"name"`
+	Version    int       `json:"version"`
+	Capability string    `json:"capability"`
+	Nadir      float64   `json:"nadir"`
+	Enabled    bool      `json:"enabled"`
+	Cases      []caseDTO `json:"cases"`
 }
 
-// evalRunDTO is the API representation of an EvalRun. Score is the average
-// of all non-null result scores, computed on read (never persisted); it is
-// null when no result has been scored yet. SuiteVersion snapshots the suite
-// version the run scored against. CampaignID groups the run into its
-// evaluation batch (added by ticket 29; additive, never changed in place).
+// evalRunDTO is the API representation of an EvalRun. Score is the mean of
+// all non-null result scores scaled through the ADR-0009 nadir normalization
+// (kept on the 0~1 wire scale), computed on read (never persisted); it is
+// null when no result has been scored yet. SuiteVersion and Nadir snapshot
+// the question-bank version and normalization constant the run scored
+// against. CampaignID groups the run into its evaluation batch (added by
+// ticket 29; additive, never changed in place).
 type evalRunDTO struct {
 	ID           int64    `json:"id"`
 	CampaignID   int64    `json:"campaign_id"`
 	SuiteID      int64    `json:"suite_id"`
 	SuiteVersion int      `json:"suite_version"`
+	Nadir        float64  `json:"nadir"`
 	Trigger      string   `json:"trigger"`
 	JudgeModel   string   `json:"judge_model"`
 	Status       string   `json:"status"`
@@ -179,17 +189,19 @@ type evalRunDTO struct {
 
 // evalResultDTO is the API representation of an EvalResult. ModelDeleted
 // flags rows whose model has been removed, so history views can badge them.
+// VerdictProfile names the scoring caliber the row was judged with (ADR 0008).
 type evalResultDTO struct {
-	ID            int64    `json:"id"`
-	ModelID       string   `json:"model_id"`
-	CaseID        int64    `json:"case_id"`
-	AnswerText    *string  `json:"answer_text"`
-	Score         *float64 `json:"score"`
-	VerdictDetail *string  `json:"verdict_detail"`
-	LatencyMs     int      `json:"latency_ms"`
-	InputTokens   *int     `json:"input_tokens"`
-	OutputTokens  *int     `json:"output_tokens"`
-	ModelDeleted  bool     `json:"model_deleted"`
+	ID             int64    `json:"id"`
+	ModelID        string   `json:"model_id"`
+	CaseID         int64    `json:"case_id"`
+	AnswerText     *string  `json:"answer_text"`
+	Score          *float64 `json:"score"`
+	VerdictDetail  *string  `json:"verdict_detail"`
+	VerdictProfile string   `json:"verdict_profile"`
+	LatencyMs      int      `json:"latency_ms"`
+	InputTokens    *int     `json:"input_tokens"`
+	OutputTokens   *int     `json:"output_tokens"`
+	ModelDeleted   bool     `json:"model_deleted"`
 }
 
 // latestScoreDTO is the API representation of a (suite, model) pair's most
@@ -252,7 +264,11 @@ func toSuiteDTO(s store.Suite, cases []store.Case) suiteDTO {
 	for _, c := range cases {
 		caseDTOs = append(caseDTOs, toCaseDTO(c))
 	}
-	return suiteDTO{ID: s.ID, Key: s.Key, Name: s.Name, Version: s.Version, Cases: caseDTOs}
+	return suiteDTO{
+		ID: s.ID, Key: s.Key, Name: s.Name, Version: s.Version,
+		Capability: s.Capability, Nadir: s.Nadir, Enabled: s.Enabled,
+		Cases: caseDTOs,
+	}
 }
 
 // toEvalRunDTO maps a store.EvalRun to the API representation, attaching the
@@ -268,6 +284,7 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 		CampaignID:   r.CampaignID,
 		SuiteID:      r.SuiteID,
 		SuiteVersion: r.SuiteVersion,
+		Nadir:        r.Nadir,
 		Trigger:      r.Trigger,
 		JudgeModel:   r.JudgeModel,
 		Status:       r.Status,
@@ -280,16 +297,17 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 // toEvalResultDTO maps a store.EvalResult to the API representation.
 func toEvalResultDTO(r store.EvalResult) evalResultDTO {
 	return evalResultDTO{
-		ID:            r.ID,
-		ModelID:       r.ModelID,
-		CaseID:        r.CaseID,
-		AnswerText:    r.AnswerText,
-		Score:         r.Score,
-		VerdictDetail: r.VerdictDetail,
-		LatencyMs:     r.LatencyMs,
-		InputTokens:   r.InputTokens,
-		OutputTokens:  r.OutputTokens,
-		ModelDeleted:  r.ModelDeleted,
+		ID:             r.ID,
+		ModelID:        r.ModelID,
+		CaseID:         r.CaseID,
+		AnswerText:     r.AnswerText,
+		Score:          r.Score,
+		VerdictDetail:  r.VerdictDetail,
+		VerdictProfile: r.VerdictProfile,
+		LatencyMs:      r.LatencyMs,
+		InputTokens:    r.InputTokens,
+		OutputTokens:   r.OutputTokens,
+		ModelDeleted:   r.ModelDeleted,
 	}
 }
 

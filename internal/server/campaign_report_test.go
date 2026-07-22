@@ -166,30 +166,30 @@ func TestCampaignReportWeightingAndSorting(t *testing.T) {
 	}
 	assertRowTotals(t, report)
 
-	// Custom weights via settings: "basic" counts triple.
+	// Custom weights via settings: cap_instruction counts triple.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"suite_weights": map[string]interface{}{"basic": 3},
+		"suite_weights": map[string]interface{}{"cap_instruction": 3},
 	})
 	putResp.Body.Close()
 	if putResp.StatusCode != http.StatusOK {
 		t.Fatalf("PUT suite_weights: expected 200, got %d", putResp.StatusCode)
 	}
 	weighted := getCampaignReport(t, ts.URL, campaignID, "")
-	if got := reportWeights(t, weighted)["basic"]; got != 3 {
-		t.Errorf("effective weight for basic = %v, want 3", got)
+	if got := reportWeights(t, weighted)["cap_instruction"]; got != 3 {
+		t.Errorf("effective weight for cap_instruction = %v, want 3", got)
 	}
 	assertRowTotals(t, weighted)
 
 	// Sorting by a suite column keeps the same descending contract.
-	byBasic := getCampaignReport(t, ts.URL, campaignID, "sort=basic")
-	basicRows := reportRows(t, byBasic)
-	if basicRows[0]["model_id"] != "smart-model" || basicRows[2]["model_id"] != "broken-model" {
-		t.Errorf("sort=basic order = [%v %v %v], want smart first, broken last",
-			basicRows[0]["model_id"], basicRows[1]["model_id"], basicRows[2]["model_id"])
+	byInstruction := getCampaignReport(t, ts.URL, campaignID, "sort=cap_instruction")
+	instructionRows := reportRows(t, byInstruction)
+	if instructionRows[0]["model_id"] != "smart-model" || instructionRows[2]["model_id"] != "broken-model" {
+		t.Errorf("sort=cap_instruction order = [%v %v %v], want smart first, broken last",
+			instructionRows[0]["model_id"], instructionRows[1]["model_id"], instructionRows[2]["model_id"])
 	}
-	basicScores, _ := basicRows[0]["suite_scores"].(map[string]interface{})
-	if basicScores["basic"] != 100.0 {
-		t.Errorf("smart basic suite score = %v, want 100", basicScores["basic"])
+	instructionScores, _ := instructionRows[0]["suite_scores"].(map[string]interface{})
+	if instructionScores["cap_instruction"] != 100.0 {
+		t.Errorf("smart cap_instruction suite score = %v, want 100", instructionScores["cap_instruction"])
 	}
 
 	// Unknown sort column is rejected.
@@ -339,10 +339,13 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	}
 }
 
-// TestCampaignReportRunningBatchReturnsNoRows pins the spec 0002 review
-// condition: while a campaign is still running, the report answers progress
-// only — half-scored leaderboard rows must not leak to readers (or future
-// share links).
+// TestCampaignReportRunningBatchReturnsNoRows pins the zero-result edge of
+// the spec 0004 live board: a running campaign whose only run has not
+// recorded any result yet serves an empty row list (runs carry no model
+// membership, so untouched models have no cells) — progress comes from the
+// campaign counters alone. Once results exist the rows appear (covered by
+// TestCampaignReportProgressGrid), and once the batch settles the ranked
+// board replaces the live one.
 func TestCampaignReportRunningBatchReturnsNoRows(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")

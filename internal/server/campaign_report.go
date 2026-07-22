@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"sort"
 
 	"github.com/taliove2009/hubscope/internal/store"
 )
@@ -18,8 +17,10 @@ type reportSuiteDTO struct {
 
 // reportBaselineDTO names the previous done campaign the leaderboard's
 // deltas compare against, and whether that comparison is same-caliber
-// (ADR 0007): a question-bank version change — or a suite the baseline
-// never covered — breaks comparability, and reason says which.
+// (ADR 0007/0008): a question-bank version change, a scoring-caliber
+// (verdict profile) change, or a suite the baseline never covered breaks
+// comparability, and reason says which ("suite_changed", "profile_changed"
+// or "suite_missing").
 type reportBaselineDTO struct {
 	CampaignID int64  `json:"campaign_id"`
 	Comparable bool   `json:"comparable"`
@@ -27,9 +28,13 @@ type reportBaselineDTO struct {
 }
 
 // reportRowDTO is one leaderboard row: a live model with its per-suite
-// scores (0-100, null when unscored), the weighted total (ADR 0005), and
-// the total's delta against the baseline campaign (null when there is no
-// comparable baseline or no score on either side).
+// scores (0-100, nadir-normalized per ADR 0009, null when unscored), the
+// weighted total (ADR 0005), and the total's delta against the baseline
+// campaign (null when there is no comparable baseline or no score on either
+// side). Cells carry the per-suite progress detail (ticket 52) plus the
+// coverage/sample confidence markers (ticket 51); on an unfinished campaign
+// the row list is the live half-scored board — model-id lexicographic
+// order, no ranking information (spec 0004).
 type reportRowDTO struct {
 	ModelDBID   int64               `json:"model_db_id"`
 	ModelID     string              `json:"model_id"`
@@ -37,6 +42,7 @@ type reportRowDTO struct {
 	TotalScore  *float64            `json:"total_score"`
 	TotalDelta  *float64            `json:"total_delta"`
 	SuiteScores map[string]*float64 `json:"suite_scores"`
+	Cells       []reportCellDTO     `json:"cells"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -52,10 +58,13 @@ type campaignReportDTO struct {
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
-// runs contribute; deleted models (ticket 26 semantics) never rank. Query
-// params: family filters rows to one model family; sort picks the ranking
-// column ("total" by default, or a covered suite key), always descending
-// with unscored models last.
+// runs contribute scores; deleted models (ticket 26 semantics) never rank.
+// Settled campaigns serve the ranked board; unfinished campaigns serve the
+// live half-scored board (lexicographic, no ranking) plus the per-(model,
+// suite) progress cells (ticket 52). Query params: family filters rows to
+// one model family; sort picks the ranking column of a settled board
+// ("total" by default, or a covered suite key), always descending with
+// unscored models last.
 func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -69,13 +78,18 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.writeCampaignReport(w, r, campaign)
+	s.writeCampaignReport(w, r, campaign, false)
 }
 
 // writeCampaignReport builds and writes the report payload for one campaign.
 // It is shared by the session-gated report endpoint and the token-gated
-// shared-report endpoint (ADR 0006), so both views render the same board.
-func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign) {
+// shared-report endpoint (ADR 0006), so both views render the same settled
+// board. The views diverge on an unfinished campaign: the session view
+// serves the live half-scored board (ticket 52) while the public shared
+// view keeps the older public behavior — no half-baked ranking leaves the
+// session boundary, so shared reports answer empty rows until the batch
+// settles.
+func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign, shared bool) {
 	id := campaign.ID
 
 	runs, err := s.db.ListEvalRunsByCampaign(id)
@@ -112,23 +126,35 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		return
 	}
 
-	rows := buildReportRows(scores, weights)
-	if family := r.URL.Query().Get("family"); family != "" {
-		rows = filterReportRowsByFamily(rows, family)
-	}
-	sortReportRows(rows, sortKey)
-	// Non-terminal campaigns show progress only (spec 0002 review
-	// condition): half-scored rows must not leak to readers or future
-	// share links. An empty slice keeps the contract as [] rather than null.
-	if campaign.Status != "done" && campaign.Status != "failed" {
-		rows = make([]reportRowDTO, 0)
+	// Nadir constants come from the runs' snapshots (ADR 0009), so every
+	// score on this board is normalized with the constant its run locked in.
+	nadirs := nadirBySuiteKey(suites, runs)
+
+	cellProgress, err := s.db.ListCampaignCellProgress(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load campaign progress")
+		return
 	}
 
-	// The previous-batch baseline only matters once rows are visible. Rows
-	// are re-created with deltas applied rather than mutated in place
-	// (immutable data rule).
+	expectedBySuite, err := s.enabledCaseCounts(suites)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count suite cases")
+		return
+	}
+
+	family := r.URL.Query().Get("family")
+	var rows []reportRowDTO
 	var baseline *reportBaselineDTO
 	if campaign.Status == "done" || campaign.Status == "failed" {
+		rows = buildReportRows(scores, weights, nadirs)
+		if family != "" {
+			rows = filterReportRowsByFamily(rows, family)
+		}
+		sortReportRows(rows, sortKey)
+
+		// The previous-batch baseline only matters once rows are ranked.
+		// Rows are re-created with deltas applied rather than mutated in
+		// place (immutable data rule).
 		var deltas map[int64]*float64
 		baseline, deltas, err = s.reportBaseline(campaign.ID, suites, weights, rows)
 		if err != nil {
@@ -145,7 +171,23 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 			}
 			rows = withDeltas
 		}
+	} else if shared {
+		// Public shared reports never expose the live half-scored board:
+		// rows (and with them the per-suite cells) stay empty until the
+		// batch settles; the campaign progress counters still render.
+		rows = []reportRowDTO{}
+	} else {
+		// Spec 0004 (revising spec 0002 review condition 3): an unfinished
+		// campaign serves a live half-scored board — every model with
+		// recorded results, model-id lexicographic order, no ranking, no
+		// baseline deltas. Unscored suites stay out of the totals (they
+		// drop from numerator and denominator alike, ADR 0005).
+		rows = liveReportRows(cellProgress, scores, weights, nadirs)
+		if family != "" {
+			rows = filterReportRowsByFamily(rows, family)
+		}
 	}
+	rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
 
 	progress := store.CampaignWithProgress{Campaign: *campaign}
 	for _, run := range runs {
@@ -170,11 +212,12 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 }
 
 // reportBaseline resolves the previous done campaign and, when it covered
-// the same suites at the same question-bank versions, computes per-row
-// total deltas against it (same weights, same suite set — the same
-// caliber). Any version or coverage mismatch marks the baseline
-// incomparable and yields no deltas, so a question-bank change never reads
-// as a model change (ADR 0007). Deltas come back as a map keyed by model
+// the same suites at the same question-bank versions scored under the same
+// verdict profile, computes per-row total deltas against it (same weights,
+// same suite set — the same caliber). Any version, profile or coverage
+// mismatch marks the baseline incomparable and yields no deltas, so neither
+// a question-bank change (ADR 0007) nor a scoring-caliber change (ADR 0008)
+// ever reads as a model change. Deltas come back as a map keyed by model
 // database id; the caller applies them to fresh rows.
 func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weights map[string]float64, rows []reportRowDTO) (*reportBaselineDTO, map[int64]*float64, error) {
 	prev, err := s.db.PreviousDoneCampaign(campaignID)
@@ -204,6 +247,16 @@ func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weigh
 			break
 		}
 	}
+	if baseline.Comparable {
+		reason, err := s.profileBreakReason(campaignID, prev.ID, suites)
+		if err != nil {
+			return nil, nil, err
+		}
+		if reason != "" {
+			baseline.Comparable = false
+			baseline.Reason = reason
+		}
+	}
 	if !baseline.Comparable {
 		return baseline, nil, nil
 	}
@@ -212,8 +265,12 @@ func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weigh
 	if err != nil {
 		return nil, nil, err
 	}
+	// The baseline's totals normalize with the baseline runs' own nadir
+	// snapshots — comparable caliber does not imply identical constants, and
+	// each side must be scaled by the constant it was scored under.
+	prevNadirs := nadirBySuiteKey(suites, prevRuns)
 	prevTotals := map[int64]*float64{}
-	for _, row := range buildReportRows(prevScores, weights) {
+	for _, row := range buildReportRows(prevScores, weights, prevNadirs) {
 		prevTotals[row.ModelDBID] = row.TotalScore
 	}
 	deltas := map[int64]*float64{}
@@ -226,6 +283,30 @@ func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weigh
 		deltas[row.ModelDBID] = &delta
 	}
 	return baseline, deltas, nil
+}
+
+// profileBreakReason reports "profile_changed" when the two campaigns scored
+// any shared suite under different verdict profiles (ADR 0008), the empty
+// string otherwise. A suite with no results on either side cannot prove a
+// break and is skipped — the version check upstream already guarantees the
+// same question bank.
+func (s *Server) profileBreakReason(campaignID, prevID int64, suites []reportSuiteDTO) (string, error) {
+	curProfiles, err := s.db.CampaignVerdictProfiles(campaignID)
+	if err != nil {
+		return "", err
+	}
+	prevProfiles, err := s.db.CampaignVerdictProfiles(prevID)
+	if err != nil {
+		return "", err
+	}
+	for _, suite := range suites {
+		cur, okCur := curProfiles[suite.ID]
+		prevProfile, okPrev := prevProfiles[suite.ID]
+		if okCur && okPrev && cur != prevProfile {
+			return "profile_changed", nil
+		}
+	}
+	return "", nil
 }
 
 // campaignSuites returns the suites covered by the campaign's runs, deduped
@@ -286,91 +367,4 @@ func effectiveWeights(suites []reportSuiteDTO, configured map[string]float64) ma
 		weights[suite.Key] = w
 	}
 	return weights
-}
-
-// buildReportRows groups per-(model, suite) aggregates into leaderboard rows,
-// scaling scores to 0-100 and attaching the ADR-0005 weighted total.
-func buildReportRows(scores []store.CampaignSuiteScore, weights map[string]float64) []reportRowDTO {
-	rows := []reportRowDTO{}
-	indexByModel := map[int64]int{}
-	for _, sc := range scores {
-		idx, ok := indexByModel[sc.ModelDBID]
-		if !ok {
-			idx = len(rows)
-			indexByModel[sc.ModelDBID] = idx
-			rows = append(rows, reportRowDTO{
-				ModelDBID:   sc.ModelDBID,
-				ModelID:     sc.ModelID,
-				Family:      sc.Family,
-				SuiteScores: map[string]*float64{},
-			})
-		}
-		var scaled *float64
-		if sc.Score != nil {
-			v := *sc.Score * 100
-			scaled = &v
-		}
-		rows[idx].SuiteScores[sc.SuiteKey] = scaled
-	}
-	for i := range rows {
-		rows[i].TotalScore = totalScore(rows[i].SuiteScores, weights)
-	}
-	return rows
-}
-
-// totalScore is the ADR-0005 total: the weighted mean of the model's scored
-// suites on the 0-100 scale. Unscored suites drop out of both numerator and
-// denominator; nil when the model scored nothing at all.
-func totalScore(suiteScores map[string]*float64, weights map[string]float64) *float64 {
-	var sum, wsum float64
-	for key, score := range suiteScores {
-		if score == nil {
-			continue
-		}
-		w := weights[key]
-		if w <= 0 {
-			w = 1
-		}
-		sum += w * *score
-		wsum += w
-	}
-	if wsum == 0 {
-		return nil
-	}
-	total := sum / wsum
-	return &total
-}
-
-// filterReportRowsByFamily returns a new slice with only the rows of the
-// given model family; the input slice is left untouched.
-func filterReportRowsByFamily(rows []reportRowDTO, family string) []reportRowDTO {
-	filtered := make([]reportRowDTO, 0, len(rows))
-	for _, row := range rows {
-		if row.Family == family {
-			filtered = append(filtered, row)
-		}
-	}
-	return filtered
-}
-
-// sortReportRows ranks rows descending by the chosen column ("total" or a
-// suite key). Models without a score in that column rank last; ties break by
-// model id for a stable, deterministic board.
-func sortReportRows(rows []reportRowDTO, sortKey string) {
-	scoreOf := func(row reportRowDTO) *float64 {
-		if sortKey == "total" {
-			return row.TotalScore
-		}
-		return row.SuiteScores[sortKey]
-	}
-	sort.SliceStable(rows, func(i, j int) bool {
-		a, b := scoreOf(rows[i]), scoreOf(rows[j])
-		if a == nil || b == nil {
-			return a != nil
-		}
-		if *a != *b {
-			return *a > *b
-		}
-		return rows[i].ModelID < rows[j].ModelID
-	})
 }

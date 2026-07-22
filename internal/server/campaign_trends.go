@@ -22,12 +22,17 @@ type trendModelDTO struct {
 // trendPointDTO is one campaign on a model's score trend: the 0-100 score
 // (null when the batch judged nothing), the suite version it scored against,
 // and whether the question bank changed vs the previous point (ADR 0007 —
-// the two sides of a break are not comparable).
+// the two sides of a break are not comparable). VerdictProfile names the
+// scoring caliber of the point and ProfileChanged flags a caliber break vs
+// the previous point (ADR 0008) — the same break semantics as a suite
+// version change: scores across it are not comparable.
 type trendPointDTO struct {
 	CampaignID     int64    `json:"campaign_id"`
 	Score          *float64 `json:"score"`
 	SuiteVersion   int      `json:"suite_version"`
 	VersionChanged bool     `json:"version_changed"`
+	VerdictProfile string   `json:"verdict_profile"`
+	ProfileChanged bool     `json:"profile_changed"`
 }
 
 // trendSuiteDTO is one suite's cross-campaign score series, ordered by
@@ -132,9 +137,11 @@ func parseTrendModelParam(raw string) (int64, error) {
 }
 
 // buildTrendSuites groups flat (campaign, suite) points into per-suite
-// series, scaling scores to 0-100 and flagging the point where the suite
-// version changes. Points arrive ordered by campaign, so a simple
-// consecutive comparison detects breaks.
+// series, scaling raw means through the ADR-0009 nadir normalization (each
+// point with its own run's snapshot constant) and flagging the point where
+// the suite version or the verdict profile changes. Points arrive ordered
+// by campaign, so a simple consecutive comparison detects both kinds of
+// break.
 func buildTrendSuites(points []store.TrendPoint) []trendSuiteDTO {
 	suites := []trendSuiteDTO{}
 	indexBySuite := map[int64]int{}
@@ -152,16 +159,19 @@ func buildTrendSuites(points []store.TrendPoint) []trendSuiteDTO {
 		}
 		var scaled *float64
 		if p.Score != nil {
-			v := *p.Score * 100
+			v := normalizeScore(*p.Score, p.Nadir)
 			scaled = &v
 		}
 		prev := suites[idx].Points
 		changed := len(prev) > 0 && prev[len(prev)-1].SuiteVersion != p.SuiteVersion
+		profileChanged := len(prev) > 0 && prev[len(prev)-1].VerdictProfile != p.VerdictProfile
 		suites[idx].Points = append(suites[idx].Points, trendPointDTO{
 			CampaignID:     p.CampaignID,
 			Score:          scaled,
 			SuiteVersion:   p.SuiteVersion,
 			VersionChanged: changed,
+			VerdictProfile: p.VerdictProfile,
+			ProfileChanged: profileChanged,
 		})
 	}
 	return suites

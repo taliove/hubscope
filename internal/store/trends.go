@@ -9,14 +9,20 @@ import (
 // TrendPoint is one (campaign, suite) score point of a model's cross-campaign
 // trend. Score is nil when the campaign's done runs judged nothing for the
 // model (every answer or judge call failed) — the point stays visible so an
-// unjudged batch never reads as a real zero.
+// unjudged batch never reads as a real zero. VerdictProfile is the newest
+// scoring caliber found among the point's results (ADR 0008), so the reader
+// can mark a break where the caliber changes between adjacent points. Nadir
+// is the run's normalization-constant snapshot (ADR 0009), so each point is
+// scaled with the constant it was actually scored under.
 type TrendPoint struct {
-	CampaignID   int64
-	SuiteID      int64
-	SuiteKey     string
-	SuiteName    string
-	SuiteVersion int
-	Score        *float64
+	CampaignID     int64
+	SuiteID        int64
+	SuiteKey       string
+	SuiteName      string
+	SuiteVersion   int
+	VerdictProfile string
+	Nadir          float64
+	Score          *float64
 }
 
 // ListModelTrend returns the model's per-(campaign, suite) aggregate scores
@@ -27,7 +33,8 @@ type TrendPoint struct {
 // average — SQLite AVG skips NULLs, the same convention as the leaderboard.
 func (db *DB) ListModelTrend(modelDBID, campaignID int64) ([]TrendPoint, error) {
 	rows, err := db.conn.Query(`
-		SELECT r.campaign_id, r.suite_id, s.key, s.name, r.suite_version, AVG(res.score)
+		SELECT r.campaign_id, r.suite_id, s.key, s.name, r.suite_version,
+			MAX(res.verdict_profile), r.nadir, AVG(res.score)
 		FROM eval_runs r
 		JOIN eval_results res ON res.eval_run_id = r.id
 		JOIN campaigns c ON c.id = r.campaign_id
@@ -45,7 +52,8 @@ func (db *DB) ListModelTrend(modelDBID, campaignID int64) ([]TrendPoint, error) 
 	points := []TrendPoint{}
 	for rows.Next() {
 		var p TrendPoint
-		if err := rows.Scan(&p.CampaignID, &p.SuiteID, &p.SuiteKey, &p.SuiteName, &p.SuiteVersion, &p.Score); err != nil {
+		if err := rows.Scan(&p.CampaignID, &p.SuiteID, &p.SuiteKey, &p.SuiteName,
+			&p.SuiteVersion, &p.VerdictProfile, &p.Nadir, &p.Score); err != nil {
 			return nil, err
 		}
 		points = append(points, p)

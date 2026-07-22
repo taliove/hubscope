@@ -11,10 +11,11 @@ import (
 )
 
 // handleFullSweep is the "one-click full evaluation" (POST /api/evals
-// without a suite_id): one campaign covering every suite, one run per
-// suite, over all active chat-capable models (non_chat and retired models
-// are excluded by construction). Runs execute sequentially inside
-// RunCampaign, keeping hub load predictable.
+// without a suite_id): one campaign covering every suite in the evaluation
+// rotation (retired suites are excluded, ADR 0010), one run per suite, over
+// all active chat-capable models (non_chat and retired models are excluded
+// by construction). Runs execute sequentially inside RunCampaign, keeping
+// hub load predictable.
 func (s *Server) handleFullSweep(w http.ResponseWriter, r *http.Request, judgeModel string) {
 	modelIDs, err := s.db.ListActiveChatModelIDs()
 	if err != nil {
@@ -26,7 +27,7 @@ func (s *Server) handleFullSweep(w http.ResponseWriter, r *http.Request, judgeMo
 		return
 	}
 
-	suites, err := s.db.ListSuites()
+	suites, err := s.db.ListEnabledSuites()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list suites")
 		return
@@ -131,7 +132,7 @@ func (s *Server) buildCampaignDetail(campaign store.Campaign, runs []store.EvalR
 		default:
 			withProgress.Progress.Running++
 		}
-		runDTOs = append(runDTOs, toEvalRunDTO(run, averageScore(results)))
+		runDTOs = append(runDTOs, toEvalRunDTO(run, averageScore(results, run.Nadir)))
 	}
 	return campaignDetailDTO{
 		campaignDTO: toCampaignDTO(withProgress),
