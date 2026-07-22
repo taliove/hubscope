@@ -1,0 +1,247 @@
+<template>
+  <el-card shadow="never" class="leaderboard-card">
+    <!-- Toolbar: suite view switch, family filter, ranking column. Suite
+         switching also re-ranks by that suite so bar lengths stay monotonic
+         top to bottom (the board is a ranking). -->
+    <div class="toolbar">
+      <el-radio-group v-model="viewSuite" size="small" @change="onViewSuiteChange">
+        <el-radio-button value="total">总分</el-radio-button>
+        <el-radio-button v-for="s in report.suites" :key="s.key" :value="s.key">
+          {{ s.name }}
+        </el-radio-button>
+      </el-radio-group>
+      <el-select
+        v-model="family"
+        size="small"
+        clearable
+        placeholder="全部系列"
+        class="family-select"
+        @change="emitQuery"
+      >
+        <el-option v-for="f in familyOptions" :key="f" :label="f" :value="f" />
+      </el-select>
+      <el-select v-model="sortKey" size="small" class="sort-select" @change="emitQuery">
+        <el-option label="按总分排序" value="total" />
+        <el-option v-for="s in report.suites" :key="s.key" :label="`按${s.name}排序`" :value="s.key" />
+      </el-select>
+      <span v-if="viewSuite === 'total' && baselineNote" class="baseline-note">{{ baselineNote }}</span>
+    </div>
+
+    <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
+    <el-empty v-if="report.rows.length === 0" :description="emptyDescription" />
+
+    <!-- DesignArena-style horizontal bar leaderboard (ui-guidelines §5). Rows
+         are not clickable yet; drill-down lands with the trends ticket. -->
+    <div v-else class="rows">
+      <div v-for="(row, index) in report.rows" :key="row.model_db_id" class="row">
+        <span class="rank">{{ index + 1 }}</span>
+        <span class="model" :title="row.model_id">{{ row.model_id }}</span>
+        <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
+        <div class="bar-track">
+          <div class="bar-fill" :style="{ width: barWidth(scoreOf(row)), background: barColor(scoreOf(row)) }" />
+        </div>
+        <span class="score">{{ formatScore(scoreOf(row)) }}</span>
+        <span v-if="viewSuite === 'total'" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
+          <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
+          <template v-else>–</template>
+        </span>
+      </div>
+    </div>
+  </el-card>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { formatScore, formatScoreDelta } from '@/utils/format'
+import type { CampaignReport, ReportRow } from '@/api/types'
+
+// Leaderboard is the single ranking display of the eval board (registered in
+// ui-guidelines §5): one row per model — rank, truncated name, band-colored
+// bar, 0-100 score, and the total-score delta arrow versus the previous
+// done campaign. Suite switching, family filtering and ranking column live
+// in the toolbar, never inside cells. The parent fetches data; this
+// component only re-emits query changes.
+const props = defineProps<{
+  report: CampaignReport
+  // Options come from the unfiltered board, so filtering never collapses the
+  // option list itself.
+  familyOptions: string[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'query', query: { family?: string; sort: string }): void
+}>()
+
+const viewSuite = ref('total')
+const family = ref('')
+const sortKey = ref('total')
+
+function onViewSuiteChange(value: string | number | boolean) {
+  sortKey.value = String(value)
+  emitQuery()
+}
+
+function emitQuery() {
+  emit('query', { family: family.value || undefined, sort: sortKey.value })
+}
+
+function scoreOf(row: ReportRow): number | null {
+  if (viewSuite.value === 'total') return row.total_score
+  return row.suite_scores[viewSuite.value] ?? null
+}
+
+function barWidth(score: number | null): string {
+  if (score === null) return '0%'
+  return `${Math.min(100, Math.max(0, score))}%`
+}
+
+// Bar fill follows the score-band color mapping (ui-guidelines §3): green at
+// 80+, yellow at 50+, red below — the same bands as the score badge.
+function barColor(score: number | null): string {
+  if (score === null) return 'transparent'
+  if (score >= 80) return 'var(--el-color-success)'
+  if (score >= 50) return 'var(--el-color-warning)'
+  return 'var(--el-color-danger)'
+}
+
+// Empty-state copy distinguishes "nothing scored" from "filtered out" so a
+// fully-failed batch never reads as "deleted models don't rank".
+const emptyDescription = computed(() => {
+  if (family.value) return `系列 ${family.value} 下暂无上榜模型`
+  if (props.report.status === 'failed') return '暂无上榜模型:评估运行全部失败'
+  return '暂无上榜模型:已删除模型不上榜'
+})
+
+// Baseline note next to the toolbar: names the comparison batch, or why the
+// comparison is impossible (ADR 0007 caliber break).
+const baselineNote = computed(() => {
+  const baseline = props.report.baseline
+  if (!baseline) return ''
+  if (baseline.comparable) return `涨跌较批次 #${baseline.campaign_id}`
+  if (baseline.reason === 'suite_changed') return `较批次 #${baseline.campaign_id}:题目已变更,分数不可比`
+  return `较批次 #${baseline.campaign_id}:考核口径不同,分数不可比`
+})
+
+// Delta arrows (ui-guidelines §3): up is green, down is red, and ties,
+// missing baselines and caliber breaks never show an arrow — a grey
+// placeholder dash instead.
+function hasArrow(row: ReportRow): boolean {
+  return row.total_delta !== null && row.total_delta !== 0
+}
+
+function arrowOf(row: ReportRow): string {
+  return (row.total_delta ?? 0) > 0 ? '▲' : '▼'
+}
+
+function deltaTone(row: ReportRow): string {
+  if (!hasArrow(row)) return 'delta-flat'
+  return (row.total_delta ?? 0) > 0 ? 'delta-up' : 'delta-down'
+}
+
+function deltaTitle(row: ReportRow): string {
+  const baseline = props.report.baseline
+  if (!baseline) return '首个已完成批次,无涨跌对比'
+  if (!baseline.comparable) {
+    return baseline.reason === 'suite_changed'
+      ? `题目已变更,与批次 #${baseline.campaign_id} 分数不可比`
+      : `与批次 #${baseline.campaign_id} 考核口径不同,分数不可比`
+  }
+  if (row.total_delta === null) return `批次 #${baseline.campaign_id} 无该模型分数`
+  if (row.total_delta === 0) return `与批次 #${baseline.campaign_id} 持平`
+  return `较批次 #${baseline.campaign_id} 总分变化`
+}
+</script>
+
+<style scoped>
+/* Consumption-page density: 16px card padding via the variable, never a
+   :deep(.el-card__body) override (ui-guidelines §2). */
+.leaderboard-card {
+  --el-card-padding: 16px;
+  margin-bottom: 16px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.family-select {
+  width: 140px;
+}
+.sort-select {
+  width: 160px;
+}
+.baseline-note {
+  margin-left: auto;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rank {
+  width: 24px;
+  text-align: right;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  flex-shrink: 0;
+}
+.model {
+  width: 220px;
+  flex-shrink: 0;
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.family-tag {
+  flex-shrink: 0;
+}
+.bar-track {
+  flex: 1;
+  height: 20px;
+  background: var(--hs-brand-soft);
+  border-radius: var(--hs-radius-sm);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: var(--hs-radius-sm);
+  transition: width 0.3s ease;
+}
+.score {
+  width: 56px;
+  text-align: right;
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--hs-text-primary);
+  flex-shrink: 0;
+}
+.delta {
+  width: 72px;
+  text-align: right;
+  font-size: var(--hs-text-sm);
+  line-height: 1.2;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.delta-up {
+  color: var(--el-color-success);
+}
+.delta-down {
+  color: var(--el-color-danger);
+}
+.delta-flat {
+  color: var(--hs-text-placeholder);
+}
+</style>

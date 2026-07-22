@@ -18,8 +18,8 @@ const router = createRouter({
     },
     {
       path: '/eval',
-      name: 'eval-center',
-      component: () => import('@/views/EvalCenterView.vue'),
+      name: 'eval-leaderboard',
+      component: () => import('@/views/EvalLeaderboardView.vue'),
       // Eval APIs require a session since ticket 16; the guard bounces
       // anonymous visitors to /login.
     },

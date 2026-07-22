@@ -34,6 +34,15 @@ export function formatScore(value: number | null): string {
   return value.toFixed(1)
 }
 
+// Render a score delta against a previous batch with an explicit sign
+// (+3.5 / -2.1), dash when null. Zero is a real value but callers render
+// it as a flat placeholder (ui-guidelines §3: no arrow on ties).
+export function formatScoreDelta(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(1)}`
+}
+
 // Render a millisecond latency: raw ms below 1s, seconds above; dash when null.
 export function formatMs(value: number | null): string {
   if (value === null || value === undefined) return '-'

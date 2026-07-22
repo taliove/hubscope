@@ -52,7 +52,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: '状态总览', to: '/', public: true },
-  { label: '评估中心', to: '/eval' },
+  { label: '评估榜单', to: '/eval' },
   { label: '任务中心', to: '/tasks' },
 ]
 

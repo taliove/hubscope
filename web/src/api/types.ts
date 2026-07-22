@@ -255,13 +255,25 @@ export interface ReportRow {
   model_id: string
   family: string
   total_score: number | null // weighted total, null when nothing scored
+  total_delta: number | null // total vs the baseline campaign, null when not comparable
   suite_scores: Record<string, number | null> // per suite key
+}
+
+// The previous done campaign a report's deltas compare against (ticket 45).
+// comparable=false means the caliber broke between batches; reason is
+// "suite_changed" (question-bank version bump, ADR 0007) or "suite_missing"
+// (the baseline never covered a suite this batch covers).
+export interface ReportBaseline {
+  campaign_id: number
+  comparable: boolean
+  reason?: string
 }
 
 export interface CampaignReport extends Campaign {
   suites: ReportSuite[]
   weights: Record<string, number> // effective weight per suite key
   rows: ReportRow[]
+  baseline: ReportBaseline | null // null when no earlier done campaign exists
 }
 
 export interface EvalResult {
@@ -282,15 +294,6 @@ export interface EvalRunDetail extends EvalRun {
 }
 
 // Latest aggregate score of one (suite, model) pair (GET /api/evals/latest).
-export interface LatestScore {
-  suite_id: number
-  suite_key: string
-  model_id: string
-  model_db_id: number
-  score: number | null
-  eval_run_id: number
-  finished_at: string
-}
 
 // Task center types (tickets 18, 28).
 

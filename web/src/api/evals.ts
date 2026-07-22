@@ -1,6 +1,6 @@
 // Evaluation center API calls (tickets 08/09).
 import { http } from './client'
-import type { CampaignDetail, EvalCase, EvalRun, EvalRunDetail, LatestScore, Suite, VerdictType, RuleConfig, Difficulty } from './types'
+import type { CampaignDetail, EvalCase, EvalRun, EvalRunDetail, Suite, VerdictType, RuleConfig, Difficulty } from './types'
 
 export async function listSuites(): Promise<Suite[]> {
   return http.get<Suite[]>('/suites')
@@ -41,8 +41,4 @@ export async function createEvalRun(suiteId: number, modelIds: number[]): Promis
 
 export async function createFullSweep(): Promise<CampaignDetail> {
   return http.post<CampaignDetail>('/evals', {})
-}
-
-export async function listLatestScores(): Promise<LatestScore[]> {
-  return http.get<LatestScore[]>('/evals/latest')
 }

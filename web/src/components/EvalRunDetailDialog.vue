@@ -189,7 +189,7 @@ function scoreClass(score: number | null): string {
   border-radius: var(--hs-radius-sm);
   padding: 8px;
 }
-/* Score band text colors match ScoreMatrix (ui-guidelines §3). */
+/* Score band text colors follow the ui-guidelines §3 band mapping. */
 .score-high {
   color: var(--el-color-success-dark-2);
 }
