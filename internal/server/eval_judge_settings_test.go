@@ -56,7 +56,8 @@ func TestJudgeModelFromSettings(t *testing.T) {
 	}
 }
 
-// triggerEvalExpectJudge is triggerEval plus a judge_model assertion.
+// triggerEvalExpectJudge is triggerEval plus a judge_model assertion on the
+// campaign's single run.
 func triggerEvalExpectJudge(t *testing.T, base string, suiteID int64, judge string, modelIDs ...int64) int64 {
 	t.Helper()
 	resp := doPost(t, base+"/api/evals", map[string]interface{}{
@@ -68,8 +69,13 @@ func triggerEvalExpectJudge(t *testing.T, base string, suiteID int64, judge stri
 	var env envelope
 	_ = json.NewDecoder(resp.Body).Decode(&env)
 	resp.Body.Close()
-	var run map[string]interface{}
-	_ = json.Unmarshal(env.Data, &run)
+	var campaign map[string]interface{}
+	_ = json.Unmarshal(env.Data, &campaign)
+	runs, ok := campaign["runs"].([]interface{})
+	if !ok || len(runs) != 1 {
+		t.Fatalf("manual single-suite trigger: campaign runs = %v, want exactly 1", campaign["runs"])
+	}
+	run := runs[0].(map[string]interface{})
 	if run["judge_model"] != judge {
 		t.Fatalf("new run judge_model = %v, want %s", run["judge_model"], judge)
 	}

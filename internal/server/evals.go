@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/taliove2009/hubscope/internal/store"
 )
@@ -284,14 +286,19 @@ func validateCase(c store.Case) error {
 }
 
 // createEvalRequest is the body for POST /api/evals. model_ids holds model
-// database IDs (not model ID strings).
+// database IDs (not model ID strings). suite_id omitted (zero) means a full
+// sweep: every suite against every active chat-capable model, and model_ids
+// is ignored.
 type createEvalRequest struct {
 	SuiteID  int64   `json:"suite_id"`
 	ModelIDs []int64 `json:"model_ids"`
 }
 
-// handleCreateEval handles POST /api/evals. The run executes asynchronously
-// in a goroutine; status and results are persisted and polled via GET.
+// handleCreateEval handles POST /api/evals. Every trigger produces a
+// campaign: a full sweep (suite_id omitted) attaches one run per suite, a
+// single-suite trigger attaches exactly one run. Runs execute asynchronously
+// and sequentially; status and results are persisted and polled via GET.
+// The response is the created campaign (runs may still be pending creation).
 func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 	var req createEvalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -299,16 +306,26 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.SuiteID == 0 {
-		writeError(w, http.StatusBadRequest, "suite_id is required")
+	// Snapshot the configured judge model at creation; the evaluator re-reads
+	// settings at run start and updates the record if it changed in between.
+	judgeModel, err := s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read judge model setting")
 		return
 	}
+
+	if req.SuiteID == 0 {
+		s.handleFullSweep(w, r, judgeModel)
+		return
+	}
+
 	if len(req.ModelIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "model_ids must be a non-empty array")
 		return
 	}
 
-	if _, err := s.db.GetSuite(req.SuiteID); err != nil {
+	suite, err := s.db.GetSuite(req.SuiteID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "suite not found")
 		return
 	}
@@ -326,16 +343,18 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Snapshot the configured judge model at creation; the evaluator re-reads
-	// settings at run start and updates the record if it changed in between.
-	judgeModel, err := s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
+	campaign, err := s.db.CreateCampaign("manual", time.Now().UTC())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read judge model setting")
+		writeError(w, http.StatusInternalServerError, "failed to create campaign")
 		return
 	}
-
-	run, err := s.db.CreateEvalRun(req.SuiteID, "manual", judgeModel)
+	run, err := s.db.CreateEvalRun(campaign.ID, suite.ID, "manual", judgeModel)
 	if err != nil {
+		// The campaign would otherwise linger as a running orphan until the
+		// next restart's cleanup; close it out now.
+		if serr := s.db.SettleCampaign(campaign.ID, time.Now().UTC()); serr != nil {
+			slog.Error("settle orphan campaign after run creation failure", "campaign_id", campaign.ID, "error", serr)
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create eval run")
 		return
 	}
@@ -344,11 +363,14 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 	// the request; state is persisted in the store for polling.
 	go func() {
 		_ = s.evaluator.RunEval(context.Background(), run.ID, req.ModelIDs)
+		if err := s.db.SettleCampaign(campaign.ID, time.Now().UTC()); err != nil {
+			slog.Error("settle campaign after manual run", "campaign_id", campaign.ID, "error", err)
+		}
 	}()
 
-	s.audit(r, "eval.create", "eval_run", strconv.FormatInt(run.ID, 10),
+	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("suite_id=%d models=%d judge=%q", req.SuiteID, len(req.ModelIDs), judgeModel), "accepted")
-	writeData(w, http.StatusAccepted, toEvalRunDTO(*run, nil))
+	s.writeCampaignCreated(w, campaign.ID)
 }
 
 // handleListEvals handles GET /api/evals, newest first.

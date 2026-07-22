@@ -162,9 +162,11 @@ type suiteDTO struct {
 // evalRunDTO is the API representation of an EvalRun. Score is the average
 // of all non-null result scores, computed on read (never persisted); it is
 // null when no result has been scored yet. SuiteVersion snapshots the suite
-// version the run scored against.
+// version the run scored against. CampaignID groups the run into its
+// evaluation batch (added by ticket 29; additive, never changed in place).
 type evalRunDTO struct {
 	ID           int64    `json:"id"`
+	CampaignID   int64    `json:"campaign_id"`
 	SuiteID      int64    `json:"suite_id"`
 	SuiteVersion int      `json:"suite_version"`
 	Trigger      string   `json:"trigger"`
@@ -263,6 +265,7 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 	}
 	return evalRunDTO{
 		ID:           r.ID,
+		CampaignID:   r.CampaignID,
 		SuiteID:      r.SuiteID,
 		SuiteVersion: r.SuiteVersion,
 		Trigger:      r.Trigger,
@@ -296,4 +299,58 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// campaignProgressDTO is the per-status run-count aggregate of a campaign.
+type campaignProgressDTO struct {
+	Total   int `json:"total"`
+	Done    int `json:"done"`
+	Failed  int `json:"failed"`
+	Running int `json:"running"`
+}
+
+// campaignDTO is the API representation of a Campaign with its run-count
+// progress. StartedAt is null only for the reserved pending status.
+type campaignDTO struct {
+	ID         int64               `json:"id"`
+	Trigger    string              `json:"trigger"`
+	Status     string              `json:"status"`
+	StartedAt  *string             `json:"started_at"`
+	FinishedAt *string             `json:"finished_at"`
+	CreatedAt  string              `json:"created_at"`
+	Progress   campaignProgressDTO `json:"progress"`
+}
+
+// campaignDetailDTO is a campaign plus its member runs (each with its
+// aggregate score), oldest first.
+type campaignDetailDTO struct {
+	campaignDTO
+	Runs []evalRunDTO `json:"runs"`
+}
+
+// toCampaignDTO maps a store.CampaignWithProgress to its API representation.
+func toCampaignDTO(c store.CampaignWithProgress) campaignDTO {
+	return campaignDTO{
+		ID:         c.ID,
+		Trigger:    c.Trigger,
+		Status:     c.Status,
+		StartedAt:  formatTimePtr(c.StartedAt),
+		FinishedAt: formatTimePtr(c.FinishedAt),
+		CreatedAt:  c.CreatedAt.Format(time.RFC3339),
+		Progress: campaignProgressDTO{
+			Total:   c.Progress.Total,
+			Done:    c.Progress.Done,
+			Failed:  c.Progress.Failed,
+			Running: c.Progress.Running,
+		},
+	}
+}
+
+// formatTimePtr formats an optional timestamp as RFC3339, nil staying nil.
+func formatTimePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(time.RFC3339)
+	return &s
 }

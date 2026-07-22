@@ -393,7 +393,8 @@ func suiteIDByKey(t *testing.T, base, key string) int64 {
 	return 0
 }
 
-// triggerEval starts an eval run and returns its ID; expects HTTP 202.
+// triggerEval starts a manual single-suite eval and returns its run ID;
+// expects HTTP 202 with the created campaign wrapping exactly one run.
 func triggerEval(t *testing.T, base string, suiteID int64, modelIDs ...int64) int64 {
 	t.Helper()
 	resp := doPost(t, base+"/api/evals", map[string]interface{}{
@@ -407,8 +408,16 @@ func triggerEval(t *testing.T, base string, suiteID int64, modelIDs ...int64) in
 	var env envelope
 	_ = json.NewDecoder(resp.Body).Decode(&env)
 	resp.Body.Close()
-	var run map[string]interface{}
-	_ = json.Unmarshal(env.Data, &run)
+	var campaign map[string]interface{}
+	_ = json.Unmarshal(env.Data, &campaign)
+	if campaign["trigger"] != "manual" {
+		t.Errorf("new campaign trigger = %v, want manual", campaign["trigger"])
+	}
+	runs, ok := campaign["runs"].([]interface{})
+	if !ok || len(runs) != 1 {
+		t.Fatalf("manual single-suite trigger: campaign runs = %v, want exactly 1", campaign["runs"])
+	}
+	run := runs[0].(map[string]interface{})
 	if run["status"] != "running" {
 		t.Errorf("new run status = %v, want running", run["status"])
 	}
@@ -417,6 +426,9 @@ func triggerEval(t *testing.T, base string, suiteID int64, modelIDs ...int64) in
 	}
 	if run["judge_model"] != store.DefaultJudgeModel {
 		t.Errorf("judge_model = %v, want %s", run["judge_model"], store.DefaultJudgeModel)
+	}
+	if int64(run["campaign_id"].(float64)) != int64(campaign["id"].(float64)) {
+		t.Errorf("run campaign_id = %v, want its campaign %v", run["campaign_id"], campaign["id"])
 	}
 	return int64(run["id"].(float64))
 }
