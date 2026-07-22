@@ -15,11 +15,34 @@
           <span class="token-hint">{{ row.token_hint }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="创建时间" width="180">
+      <el-table-column label="同步状态" width="110">
+        <template #default="{ row }">
+          <el-tooltip
+            :content="row.sync_status === 'failed' ? row.last_sync_error || '同步失败' : ''"
+            :disabled="row.sync_status !== 'failed'"
+            placement="top"
+          >
+            <el-tag :type="syncStatusTagType(row.sync_status)" size="small" disable-transitions>
+              {{ syncStatusLabel(row.sync_status) }}
+            </el-tag>
+          </el-tooltip>
+        </template>
+      </el-table-column>
+      <el-table-column label="最近同步" width="165">
+        <template #default="{ row }">{{ formatTime(row.last_synced_at) }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="165">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            size="small"
+            :disabled="row.sync_status === 'syncing'"
+            @click="onSync(row)"
+          >同步</el-button>
           <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
           <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
         </template>
@@ -52,15 +75,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createHub, updateHub, deleteHub } from '@/api/hubs'
+import { createHub, updateHub, deleteHub, syncHub } from '@/api/hubs'
 import type { Hub } from '@/api/types'
 import { formatTime } from '@/utils/format'
 
 // Props: hub list and loading flag are owned by the parent view.
-defineProps<{ hubs: Hub[]; loading: boolean }>()
-const emit = defineEmits<{ (e: 'changed'): void }>()
+const props = defineProps<{ hubs: Hub[]; loading: boolean }>()
+const emit = defineEmits<{
+  (e: 'changed'): void
+  // Fired when the last in-flight sync settles; the parent reloads models so
+  // freshly discovered ones show up without a manual refresh.
+  (e: 'sync-settled'): void
+}>()
 
 const dialogVisible = ref(false)
 const submitting = ref(false)
@@ -68,6 +96,66 @@ const editingId = ref<number | null>(null)
 const form = reactive({ name: '', base_url: '', token: '' })
 
 const dialogTitle = computed(() => (editingId.value === null ? '新建 Hub' : '编辑 Hub'))
+
+function syncStatusLabel(status: Hub['sync_status']): string {
+  switch (status) {
+    case 'syncing': return '同步中'
+    case 'succeeded': return '成功'
+    case 'failed': return '失败'
+    default: return '未同步'
+  }
+}
+
+function syncStatusTagType(status: Hub['sync_status']): 'warning' | 'success' | 'danger' | 'info' {
+  switch (status) {
+    case 'syncing': return 'warning'
+    case 'succeeded': return 'success'
+    case 'failed': return 'danger'
+    default: return 'info'
+  }
+}
+
+// Poll the parent for fresh hub data while any sync is in flight; when the
+// last one settles, ask the parent to reload models as well.
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => props.hubs.some(h => h.sync_status === 'syncing'),
+  (anySyncing, wasSyncing) => {
+    if (anySyncing && pollTimer === null) {
+      const tick = () => {
+        emit('changed')
+        pollTimer = setTimeout(tick, 2000)
+      }
+      pollTimer = setTimeout(tick, 2000)
+    } else if (!anySyncing && pollTimer !== null) {
+      clearTimeout(pollTimer)
+      pollTimer = null
+      if (wasSyncing) emit('sync-settled')
+    }
+  },
+  // A sync may already be in flight when the page mounts (triggered from
+  // another session, or the hourly full sync) — start polling immediately.
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  if (pollTimer !== null) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+})
+
+async function onSync(row: Hub) {
+  try {
+    await syncHub(row.id)
+    ElMessage.success(`已触发「${row.name}」同步`)
+    emit('changed')
+  } catch (err) {
+    // 409 surfaces here when a sync is already running for this hub.
+    ElMessage.error((err as Error).message)
+  }
+}
 
 function resetForm() {
   form.name = ''

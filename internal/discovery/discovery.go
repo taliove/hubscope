@@ -6,8 +6,10 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
+	"sync"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -38,15 +40,21 @@ type Stats struct {
 	EndpointsCreated int `json:"endpoints_created"`
 }
 
+// ErrSyncInProgress is returned when a sync is already running for the hub.
+var ErrSyncInProgress = errors.New("discovery: sync already in progress for hub")
+
 // Syncer reconciles the store with hub model listings.
 type Syncer struct {
 	db     *store.DB
 	client *hubclient.Client
+
+	mu       sync.Mutex
+	inflight map[int64]bool
 }
 
 // New creates a Syncer over the given store and hub client.
 func New(db *store.DB, client *hubclient.Client) *Syncer {
-	return &Syncer{db: db, client: client}
+	return &Syncer{db: db, client: client, inflight: make(map[int64]bool)}
 }
 
 // ClassifyCapability returns 'non_chat' when the model ID contains a known
@@ -63,7 +71,8 @@ func ClassifyCapability(modelID string) string {
 
 // Sync runs one full discovery pass over all hubs and returns aggregated
 // stats. A hub that fails to list models is logged and skipped so one bad
-// hub never blocks the others.
+// hub never blocks the others; a hub already syncing (e.g. triggered via the
+// API) is skipped too.
 func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 	var total Stats
 	hubs, err := s.db.ListHubs()
@@ -71,7 +80,11 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 		return total, err
 	}
 	for _, hub := range hubs {
-		stats, err := s.syncHub(ctx, hub)
+		if !s.acquire(hub.ID) {
+			log.Printf("discovery: hub %d (%s) sync already in progress, skipping", hub.ID, hub.Name)
+			continue
+		}
+		stats, err := s.syncOne(ctx, hub)
 		if err != nil {
 			log.Printf("discovery: sync hub %d (%s): %v", hub.ID, hub.Name, err)
 			continue
@@ -81,6 +94,81 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 		total.EndpointsCreated += stats.EndpointsCreated
 	}
 	return total, nil
+}
+
+// syncOne runs one guarded hub sync inside the full-sync loop, always
+// releasing the guard — unlike SyncHub/StartSync the loop has no defer, so
+// this wrapper keeps a panicking sync from wedging the hub's guard.
+func (s *Syncer) syncOne(ctx context.Context, hub store.Hub) (stats Stats, err error) {
+	defer s.release(hub.ID)
+	if err := s.db.SetHubSyncing(hub.ID); err != nil {
+		return Stats{}, err
+	}
+	return s.syncMarked(ctx, hub)
+}
+
+// StartSync launches an asynchronous sync for one hub and returns immediately.
+// The in-flight guard and the persisted 'syncing' mark are both taken before
+// returning, so a concurrent trigger sees ErrSyncInProgress and any read sees
+// the syncing state deterministically. Failures afterwards surface only
+// through the hub's persisted sync status and the log.
+func (s *Syncer) StartSync(hubID int64) error {
+	if !s.acquire(hubID) {
+		return ErrSyncInProgress
+	}
+	if err := s.db.SetHubSyncing(hubID); err != nil {
+		s.release(hubID)
+		return err
+	}
+	go func() {
+		defer s.release(hubID)
+		hub, err := s.db.GetHub(hubID)
+		if err != nil {
+			log.Printf("discovery: async sync hub %d: load hub: %v", hubID, err)
+			return
+		}
+		if _, err := s.syncMarked(context.Background(), *hub); err != nil {
+			log.Printf("discovery: async sync hub %d: %v", hubID, err)
+		}
+	}()
+	return nil
+}
+
+// acquire takes the per-hub in-flight guard; false means it was already held.
+func (s *Syncer) acquire(hubID int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inflight[hubID] {
+		return false
+	}
+	s.inflight[hubID] = true
+	return true
+}
+
+// release drops the per-hub in-flight guard.
+func (s *Syncer) release(hubID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.inflight, hubID)
+}
+
+// syncMarked syncs one hub whose 'syncing' mark is already persisted, then
+// records the outcome. The caller must hold the hub's in-flight guard.
+func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub) (Stats, error) {
+	stats, syncErr := s.syncHub(ctx, hub)
+	if syncErr != nil {
+		msg := syncErr.Error()
+		if err := s.db.SetHubSyncResult(hub.ID, &msg); err != nil {
+			log.Printf("discovery: persist sync failure for hub %d: %v", hub.ID, err)
+		}
+		return stats, syncErr
+	}
+	if err := s.db.SetHubSyncResult(hub.ID, nil); err != nil {
+		return stats, err
+	}
+	log.Printf("discovery: hub %d (%s) synced: added=%d retired=%d endpoints_created=%d",
+		hub.ID, hub.Name, stats.Added, stats.Retired, stats.EndpointsCreated)
+	return stats, nil
 }
 
 // syncHub reconciles a single hub: register new models, reactivate returning

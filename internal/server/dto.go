@@ -8,11 +8,14 @@ import (
 
 // hubDTO is the API representation of a Hub. It never carries the raw token.
 type hubDTO struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url"`
-	TokenHint string `json:"token_hint"`
-	CreatedAt string `json:"created_at"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	BaseURL       string  `json:"base_url"`
+	TokenHint     string  `json:"token_hint"`
+	SyncStatus    string  `json:"sync_status"`
+	LastSyncedAt  *string `json:"last_synced_at"`
+	LastSyncError *string `json:"last_sync_error"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // endpointDTO is the API representation of an Endpoint.
@@ -62,13 +65,20 @@ func maskToken(token string) string {
 
 // toHubDTO maps a store.Hub to its API representation.
 func toHubDTO(h store.Hub) hubDTO {
-	return hubDTO{
-		ID:        h.ID,
-		Name:      h.Name,
-		BaseURL:   h.BaseURL,
-		TokenHint: maskToken(h.Token),
-		CreatedAt: h.CreatedAt.Format(time.RFC3339),
+	d := hubDTO{
+		ID:            h.ID,
+		Name:          h.Name,
+		BaseURL:       h.BaseURL,
+		TokenHint:     maskToken(h.Token),
+		SyncStatus:    h.SyncStatus,
+		LastSyncError: h.LastSyncError,
+		CreatedAt:     h.CreatedAt.Format(time.RFC3339),
 	}
+	if h.LastSyncedAt != nil {
+		s := h.LastSyncedAt.Format(time.RFC3339)
+		d.LastSyncedAt = &s
+	}
+	return d
 }
 
 // toEndpointDTO maps a store.Endpoint to its API representation.

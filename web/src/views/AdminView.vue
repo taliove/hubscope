@@ -8,7 +8,7 @@
     </header>
 
     <main class="admin-body">
-      <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" />
+      <HubManager :hubs="hubs" :loading="loading" @changed="onHubsChanged" @sync-settled="onSyncSettled" />
       <ModelAdder :hubs="hubs" @added="reloadModels" />
       <EndpointTable :rows="endpointRows" :loading="loading" />
       <SettingsPanel />
@@ -33,6 +33,12 @@ const { hubs, endpointRows, loading, reloadModels, reloadAll, reloadHubs } = use
 // Deleting a hub can cascade nothing but changing hubs may affect model hub names.
 async function onHubsChanged() {
   await reloadHubs()
+}
+
+// A hub sync just settled: freshly discovered models and endpoints only show
+// up after a full reload.
+async function onSyncSettled() {
+  await reloadAll()
 }
 
 // Clear the server session, then land on the login page regardless of outcome.

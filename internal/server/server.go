@@ -124,6 +124,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/hubs", s.handleListHubs)
 			r.Put("/hubs/{id}", s.handleUpdateHub)
 			r.Delete("/hubs/{id}", s.handleDeleteHub)
+			r.Post("/hubs/{id}/sync", s.handleSyncHub)
 
 			r.Post("/models", s.handleCreateModel)
 			r.Get("/models", s.handleListModels)

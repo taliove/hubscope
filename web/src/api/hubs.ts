@@ -29,3 +29,9 @@ export async function updateHub(id: number, payload: UpdateHubPayload): Promise<
 export async function deleteHub(id: number): Promise<void> {
   await http.del<void>(`/hubs/${id}`)
 }
+
+// Trigger an asynchronous model sync for one hub. The backend answers 409
+// when a sync is already in flight for it.
+export async function syncHub(id: number): Promise<void> {
+  await http.post<void>(`/hubs/${id}/sync`)
+}

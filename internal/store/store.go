@@ -54,6 +54,9 @@ func (db *DB) migrate() error {
 			name TEXT NOT NULL,
 			base_url TEXT NOT NULL,
 			token TEXT NOT NULL,
+			sync_status TEXT NOT NULL DEFAULT 'idle',
+			last_synced_at TEXT NULL,
+			last_sync_error TEXT NULL,
 			created_at TEXT NOT NULL
 		);
 
@@ -186,6 +189,24 @@ func (db *DB) migrate() error {
 
 	// Idempotent column migrations for databases created by older versions.
 	if err := db.ensureColumn("endpoints", "interval_seconds", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("hubs", "sync_status", "TEXT NOT NULL DEFAULT 'idle'"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("hubs", "last_synced_at", "TEXT NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("hubs", "last_sync_error", "TEXT NULL"); err != nil {
+		return err
+	}
+
+	// A hub left 'syncing' means the process died mid-sync (the in-flight
+	// guard is in-memory only); mark it failed so the UI does not show a
+	// phantom running sync.
+	if _, err := db.conn.Exec(
+		"UPDATE hubs SET sync_status = 'failed', last_sync_error = 'sync interrupted by restart' WHERE sync_status = 'syncing'",
+	); err != nil {
 		return err
 	}
 

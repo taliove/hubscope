@@ -42,6 +42,15 @@ func newDelayStubHub(t *testing.T, delay time.Duration) *delayStubHub {
 }
 
 func (s *delayStubHub) handle(w http.ResponseWriter, r *http.Request) {
+	// Model-listing calls come from the auto-sync triggered by hub creation.
+	// Answer them with an empty list, without delay and outside the in-flight
+	// accounting, so they stay invisible to scheduler concurrency assertions.
+	if strings.HasSuffix(r.URL.Path, "/v1/models") {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[]}`)
+		return
+	}
+
 	s.mu.Lock()
 	s.inFlight++
 	if s.inFlight > s.maxInFlight {

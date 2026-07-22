@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,13 +11,47 @@ import (
 // ErrHubHasModels is returned when deleting a hub that still has models.
 var ErrHubHasModels = errors.New("hub has models")
 
+// Hub sync statuses recorded on the hub row after each discovery sync.
+const (
+	HubSyncIdle      = "idle"
+	HubSyncRunning   = "syncing"
+	HubSyncSucceeded = "succeeded"
+	HubSyncFailed    = "failed"
+)
+
+// hubColumns is the canonical column list for scanning a Hub.
+const hubColumns = "id, name, base_url, token, sync_status, last_synced_at, last_sync_error, created_at"
+
 // Hub represents a hub instance
 type Hub struct {
-	ID        int64
-	Name      string
-	BaseURL   string
-	Token     string
-	CreatedAt time.Time
+	ID            int64
+	Name          string
+	BaseURL       string
+	Token         string
+	SyncStatus    string
+	LastSyncedAt  *time.Time
+	LastSyncError *string
+	CreatedAt     time.Time
+}
+
+// scanHub scans a row containing hubColumns into a Hub.
+func scanHub(s rowScanner) (Hub, error) {
+	var h Hub
+	var syncedAt, syncErr sql.NullString
+	var createdAt string
+	if err := s.Scan(&h.ID, &h.Name, &h.BaseURL, &h.Token, &h.SyncStatus, &syncedAt, &syncErr, &createdAt); err != nil {
+		return Hub{}, err
+	}
+	if syncedAt.Valid {
+		if t, err := time.Parse(time.RFC3339, syncedAt.String); err == nil {
+			h.LastSyncedAt = &t
+		}
+	}
+	if syncErr.Valid {
+		h.LastSyncError = &syncErr.String
+	}
+	h.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return h, nil
 }
 
 // CreateHub inserts a new hub
@@ -36,17 +71,18 @@ func (db *DB) CreateHub(name, baseURL, token string) (*Hub, error) {
 	}
 
 	return &Hub{
-		ID:        id,
-		Name:      name,
-		BaseURL:   baseURL,
-		Token:     token,
-		CreatedAt: now,
+		ID:         id,
+		Name:       name,
+		BaseURL:    baseURL,
+		Token:      token,
+		SyncStatus: HubSyncIdle,
+		CreatedAt:  now,
 	}, nil
 }
 
 // ListHubs returns all hubs
 func (db *DB) ListHubs() ([]Hub, error) {
-	rows, err := db.conn.Query("SELECT id, name, base_url, token, created_at FROM hubs ORDER BY id")
+	rows, err := db.conn.Query("SELECT " + hubColumns + " FROM hubs ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +90,10 @@ func (db *DB) ListHubs() ([]Hub, error) {
 
 	var hubs []Hub
 	for rows.Next() {
-		var h Hub
-		var createdAt string
-		if err := rows.Scan(&h.ID, &h.Name, &h.BaseURL, &h.Token, &createdAt); err != nil {
+		h, err := scanHub(rows)
+		if err != nil {
 			return nil, err
 		}
-		h.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		hubs = append(hubs, h)
 	}
 
@@ -68,16 +102,13 @@ func (db *DB) ListHubs() ([]Hub, error) {
 
 // GetHub retrieves a hub by ID
 func (db *DB) GetHub(id int64) (*Hub, error) {
-	var h Hub
-	var createdAt string
-	err := db.conn.QueryRow(
-		"SELECT id, name, base_url, token, created_at FROM hubs WHERE id = ?",
+	h, err := scanHub(db.conn.QueryRow(
+		"SELECT "+hubColumns+" FROM hubs WHERE id = ?",
 		id,
-	).Scan(&h.ID, &h.Name, &h.BaseURL, &h.Token, &createdAt)
+	))
 	if err != nil {
 		return nil, err
 	}
-	h.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return &h, nil
 }
 
@@ -112,6 +143,30 @@ func (db *DB) UpdateHub(id int64, name, baseURL *string, token *string) (*Hub, e
 	}
 
 	return db.GetHub(id)
+}
+
+// SetHubSyncing marks a hub's sync as in flight.
+func (db *DB) SetHubSyncing(id int64) error {
+	_, err := db.conn.Exec("UPDATE hubs SET sync_status = ? WHERE id = ?", HubSyncRunning, id)
+	return err
+}
+
+// SetHubSyncResult records the outcome of a finished sync: succeeded with the
+// error cleared when syncErr is nil, failed with the message otherwise.
+// last_synced_at always advances — it marks the last completed attempt.
+func (db *DB) SetHubSyncResult(id int64, syncErr *string) error {
+	status := HubSyncSucceeded
+	var errVal interface{}
+	if syncErr != nil {
+		status = HubSyncFailed
+		errVal = *syncErr
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.conn.Exec(
+		"UPDATE hubs SET sync_status = ?, last_synced_at = ?, last_sync_error = ? WHERE id = ?",
+		status, now, errVal, id,
+	)
+	return err
 }
 
 // DeleteHub deletes a hub if it has no models

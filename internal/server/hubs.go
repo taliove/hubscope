@@ -3,12 +3,14 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"git.github.net/taliove2009/ai-hub-checker/internal/discovery"
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
 
@@ -45,6 +47,18 @@ func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create hub")
 		return
+	}
+
+	// Kick off the first model sync in the background so the new hub's
+	// models appear without waiting for the periodic full sync. The response
+	// must not block on it: a large hub takes minutes to probe.
+	if err := s.discovery.StartSync(hub.ID); err != nil {
+		// Only ErrSyncInProgress is possible, and a fresh hub cannot be
+		// syncing — log defensively rather than failing the creation.
+		log.Printf("create hub %d: start sync: %v", hub.ID, err)
+	} else {
+		// StartSync already persisted the syncing mark; reflect it.
+		hub.SyncStatus = store.HubSyncRunning
 	}
 
 	writeData(w, http.StatusCreated, toHubDTO(*hub))
@@ -117,6 +131,39 @@ func (s *Server) handleDeleteHub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeNoContent(w)
+}
+
+// handleSyncHub handles POST /api/hubs/{id}/sync. It starts an asynchronous
+// sync for the hub and answers 202; a sync already in flight yields 409.
+func (s *Server) handleSyncHub(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid hub id")
+		return
+	}
+
+	hub, err := s.db.GetHub(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "hub not found")
+		return
+	}
+
+	if err := s.discovery.StartSync(id); err != nil {
+		if errors.Is(err, discovery.ErrSyncInProgress) {
+			writeError(w, http.StatusConflict, "sync already in progress for this hub")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to start sync")
+		return
+	}
+
+	// Re-read so the response carries the syncing mark StartSync persisted.
+	hub, err = s.db.GetHub(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reload hub")
+		return
+	}
+	writeData(w, http.StatusAccepted, toHubDTO(*hub))
 }
 
 // parseIDParam extracts an int64 URL parameter.

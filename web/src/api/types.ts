@@ -8,6 +8,10 @@ export interface Hub {
   base_url: string
   // Response never carries the plaintext token; only the last-4 hint.
   token_hint: string
+  // Model-discovery sync state: idle | syncing | succeeded | failed.
+  sync_status: 'idle' | 'syncing' | 'succeeded' | 'failed'
+  last_synced_at: string | null // RFC3339, null when never synced
+  last_sync_error: string | null
   created_at: string // RFC3339
 }
 

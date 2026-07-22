@@ -20,6 +20,8 @@ type discoveryStubHub struct {
 	modelIDs     []string
 	failing      map[string]map[string]bool // modelID -> protocol -> should fail
 	lastListAuth string                     // Authorization header of the last /v1/models call
+	listFails    bool                       // /v1/models answers HTTP 500
+	hold         chan struct{}              // non-nil: /v1/models blocks until released
 }
 
 func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
@@ -57,12 +59,48 @@ func (s *discoveryStubHub) listAuth() string {
 	return s.lastListAuth
 }
 
+// setListFailing makes /v1/models answer HTTP 500 (or heal again).
+func (s *discoveryStubHub) setListFailing(fail bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.listFails = fail
+}
+
+// holdList makes the next /v1/models call block until releaseList.
+func (s *discoveryStubHub) holdList() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hold = make(chan struct{})
+}
+
+// releaseList unblocks a /v1/models call parked by holdList.
+func (s *discoveryStubHub) releaseList() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hold != nil {
+		close(s.hold)
+		s.hold = nil
+	}
+}
+
 func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/v1/models") {
 		s.mu.Lock()
 		ids := append([]string(nil), s.modelIDs...)
 		s.lastListAuth = r.Header.Get("Authorization")
+		hold := s.hold
+		fail := s.listFails
 		s.mu.Unlock()
+
+		if hold != nil {
+			<-hold
+		}
+		if fail {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":{"message":"listing unavailable"}}`)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		var sb strings.Builder
@@ -205,18 +243,10 @@ func TestDiscoveryFirstSync(t *testing.T) {
 	stub := newDiscoveryStubHub(t, []string{"gpt-5", "gpt-image-2"})
 	// gpt-5 speaks openai only: anthropic probes must fail.
 	stub.setFailing("gpt-5", "anthropic")
-	createHubViaAPI(t, ts.URL, stub.URL)
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
 
-	stats := runDiscovery(t, ts.URL)
-	if got := statNumber(t, stats, "added"); got != 2 {
-		t.Errorf("added: expected 2, got %d", got)
-	}
-	if got := statNumber(t, stats, "retired"); got != 0 {
-		t.Errorf("retired: expected 0, got %d", got)
-	}
-	if got := statNumber(t, stats, "endpoints_created"); got != 4 {
-		t.Errorf("endpoints_created: expected 4, got %d", got)
-	}
+	// Hub creation triggers an asynchronous first sync; wait for it to finish.
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
 
 	// The model list call must authenticate like an openai-protocol request.
 	if auth := stub.listAuth(); auth != "Bearer test-token-0000" {
@@ -253,8 +283,8 @@ func TestDiscoveryFirstSync(t *testing.T) {
 		t.Error("gpt-image-2 endpoints should both be enabled (probes succeeded)")
 	}
 
-	// A second sync over an unchanged list must be a no-op.
-	stats = runDiscovery(t, ts.URL)
+	// A full sync over the unchanged list must be a no-op.
+	stats := runDiscovery(t, ts.URL)
 	if got := statNumber(t, stats, "added"); got != 0 {
 		t.Errorf("second sync added: expected 0, got %d", got)
 	}
@@ -268,8 +298,8 @@ func TestDiscoveryRetireAndRestore(t *testing.T) {
 	ts := newTestAPIServer(t, db)
 
 	stub := newDiscoveryStubHub(t, []string{"model-a", "model-b"})
-	createHubViaAPI(t, ts.URL, stub.URL)
-	runDiscovery(t, ts.URL)
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
 
 	// model-b vanishes from the hub listing.
 	stub.setModels([]string{"model-a"})
@@ -312,6 +342,9 @@ func TestDiscoveryNeverRetiresManualModels(t *testing.T) {
 	stub := newDiscoveryStubHub(t, []string{"auto-model"})
 	hubID := createHubViaAPI(t, ts.URL, stub.URL)
 
+	// The auto-sync triggered by creation registers auto-model already.
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
 	// A manually registered model outside the hub listing (e.g. a [1M] variant).
 	resp := doPost(t, ts.URL+"/api/models", map[string]interface{}{
 		"hub_id":   hubID,
@@ -322,11 +355,11 @@ func TestDiscoveryNeverRetiresManualModels(t *testing.T) {
 		t.Fatalf("create manual model: expected 201, got %d", resp.StatusCode)
 	}
 
-	// First sync discovers auto-model; the manual model is untouched even
-	// though it is absent from the hub listing.
+	// A full sync over the unchanged listing is a no-op; the manual model is
+	// untouched even though it is absent from the hub listing.
 	stats := runDiscovery(t, ts.URL)
-	if got := statNumber(t, stats, "added"); got != 1 {
-		t.Errorf("added: expected 1, got %d", got)
+	if got := statNumber(t, stats, "added"); got != 0 {
+		t.Errorf("added: expected 0 (auto-model already registered), got %d", got)
 	}
 	if got := statNumber(t, stats, "retired"); got != 0 {
 		t.Errorf("retired: expected 0 (manual models never retire), got %d", got)
@@ -359,15 +392,11 @@ func TestDiscoveryEmptyListRetiresNothing(t *testing.T) {
 	ts := newTestAPIServer(t, db)
 
 	stub := newDiscoveryStubHub(t, []string{"auto-model"})
-	createHubViaAPI(t, ts.URL, stub.URL)
-
-	stats := runDiscovery(t, ts.URL)
-	if got := statNumber(t, stats, "added"); got != 1 {
-		t.Fatalf("added: expected 1, got %d", got)
-	}
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
 
 	stub.setModels(nil)
-	stats = runDiscovery(t, ts.URL)
+	stats := runDiscovery(t, ts.URL)
 	if got := statNumber(t, stats, "retired"); got != 0 {
 		t.Errorf("retired: expected 0 (empty list anomaly guard), got %d", got)
 	}
