@@ -4,10 +4,9 @@ import { ref, computed, onBeforeUnmount, type Ref } from 'vue'
 import { fetchOverview } from '@/api/overview'
 import type { OverviewEntry, OverviewGroup, EndpointStatus } from '@/api/types'
 
-// How often the dashboard refreshes, in milliseconds.
-const POLL_INTERVAL_MS = 10_000
-
-const STATUS_ORDER: EndpointStatus[] = ['down', 'failing', 'degraded', 'healthy']
+// How often the dashboard refreshes, in milliseconds. Exported so the health
+// banner can state the interval in its subtext without duplicating the value.
+export const POLL_INTERVAL_MS = 10_000
 
 export function useOverview() {
   const entries: Ref<OverviewEntry[]> = ref([])
@@ -15,6 +14,11 @@ export function useOverview() {
   const byCapability: Ref<OverviewGroup[]> = ref([])
   const byProtocol: Ref<OverviewGroup[]> = ref([])
   const generatedAt = ref<string | null>(null)
+  // Global aggregates for the health banner (ticket 36/37): enabled-only
+  // endpoint count and probe-weighted 24h availability; null until the first
+  // successful load or when the window has no data.
+  const enabledEndpoints = ref<number | null>(null)
+  const availability24h = ref<number | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -29,6 +33,8 @@ export function useOverview() {
       byCapability.value = overview.by_capability ?? []
       byProtocol.value = overview.by_protocol ?? []
       generatedAt.value = overview.generated_at
+      enabledEndpoints.value = overview.enabled_endpoints ?? null
+      availability24h.value = overview.availability_24h ?? null
       error.value = null
     } catch (err) {
       // Keep the last good data on screen; just surface the failure.
@@ -67,5 +73,5 @@ export function useOverview() {
     return counts
   })
 
-  return { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, STATUS_ORDER, reload, start, stop }
+  return { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, reload, start, stop }
 }

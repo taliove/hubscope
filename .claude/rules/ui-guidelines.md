@@ -31,7 +31,7 @@ HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-ch
 - **字阶六档,不新增:** `--hs-text-xs` 12px(辅助/标签/时间戳)、`--hs-text-sm` 13px(次要正文、StatusBadge)、`--hs-text-md` 14px(正文基准、表单、表格主列)、`--hs-text-lg` 16px(卡片/分组标题)、`--hs-text-xl` 20px(页面标题、关键数字)、`--hs-text-2xl` 24px(健康横幅大字结论,横幅专用)。字重只用 400/600;行高默认 1.5,数字类 1.2。
 - **圆角:** 全局统一 `--hs-radius` 6px(覆盖 `--el-border-radius-base`,卡片/按钮/输入框/弹窗一律 6px);小元素(tag、评分徽标、24h 小点)用 `--hs-radius-sm` 4px。
 - **阴影语义:** 只表达「可点/浮层」,不用于装饰——卡片静态 `--hs-shadow-card`,可点卡片 hover `--hs-shadow-hover`;不可点的信息卡用 `shadow="never"` + 边框。
-- **间距:** 4px 基准网格,常用 4/8/12/16/24/32;卡片内边距 16px(管理台可 12px 紧凑档),区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。
+- **间距:** 4px 基准网格,常用 4/8/12/16/24/32;卡片内边距统一走 `--el-card-padding` 变量(管理台紧凑档 12px、公开面 16px),禁止 `:deep(.el-card__body)` 覆写;区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。
 
 ## 3. 语义色映射(核心约定)
 
@@ -45,7 +45,7 @@ HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-ch
 | failing 告警 | 橙红 `#FF4500` + 闪烁 | 比 down 更紧急,唯一允许动画的状态(见 StatusBadge) |
 | 评分/百分比档位 | 绿/黄/红阈值 | 阈值以后端口径为准,前端不自定分界线 |
 
-- ECharts 系列色从上述调色板取,正文/轴文字 `#303133`,不引入调色板外的新色相。
+- ECharts 系列色从上述调色板取,正文/轴文字用 `--hs-text-primary`/`--hs-text-secondary` 等值(图表内走 JS 镜像 const,与 tokens.css 同步),不引入调色板外的新色相。
 - 同一语义在状态板与管理台必须同色同词。
 
 ## 4. 布局规范
@@ -59,6 +59,7 @@ HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-ch
 
 - **Element Plus 组件优先**,不引入新 UI 库,不自造表单、弹窗、表格、分页。
 - **StatusBadge 是唯一的状态展示组件**,需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
+- **HealthBanner 是 Dashboard 的全局健康横幅组件**(批 2 登记):四态(全部正常/N 个端点降级/N 个端点异常含告警闪烁/加载 skeleton),数据只反映全局、永不受页面过滤器影响;仅异常态可点(应用状态过滤并滚动定位)。其他页面不得复刻其结论文案模式。
 - 反馈三件套:
   - 操作结果 → `ElMessage`(成功/失败/警告,见 HubManager 用法);
   - 破坏性操作(删除、禁用)→ `ElMessageBox.confirm` 二次确认;

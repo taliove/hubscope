@@ -1,31 +1,41 @@
 <template>
   <div class="dashboard">
-    <!-- Summary row: total endpoint count plus per-status counts. Each card
-         is a filter toggle: click a status to show only those endpoints,
-         click again (or the total card) to clear. -->
-    <div class="summary-row">
-      <el-card
-        shadow="never"
-        class="summary-card summary-clickable"
-        :class="{ 'summary-active': statusFilter === '' }"
+    <!-- First screen: one-sentence global health conclusion. The banner
+         always reflects the unfiltered global picture. -->
+    <HealthBanner
+      :entries="entries"
+      :enabled-endpoints="enabledEndpoints"
+      :availability24h="availability24h"
+      :generated-at="generatedAt"
+      :loading="loading"
+      :stale="error !== null"
+      @inspect="onBannerInspect"
+    />
+
+    <!-- Stats strip (replaces the old summary cards): one slim row of counts.
+         Status items keep the click-to-filter / click-again-to-clear toggle;
+         the active item gets a brand underline instead of a card frame. -->
+    <div class="stats-strip">
+      <span
+        class="stat-item stat-clickable"
+        :class="{ 'stat-active': statusFilter === '' }"
         @click="statusFilter = ''"
       >
-        <div class="summary-value">{{ entries.length }}</div>
-        <div class="summary-label">总端点数</div>
-      </el-card>
-      <el-card
-        v-for="status in STATUS_ORDER"
+        总数 <span class="stat-num">{{ entries.length }}</span>
+      </span>
+      <span
+        v-for="status in STRIP_ORDER"
         :key="status"
-        shadow="never"
-        class="summary-card summary-clickable"
-        :class="{ 'summary-active': statusFilter === status }"
+        class="stat-item stat-clickable"
+        :class="{ 'stat-active': statusFilter === status }"
         @click="toggleStatusFilter(status)"
       >
-        <div class="summary-value">
-          <StatusBadge :status="status" />
-          <span>{{ statusCounts[status] }}</span>
-        </div>
-      </el-card>
+        <StatusBadge :status="status" />
+        <span class="stat-num">{{ statusCounts[status] }}</span>
+      </span>
+      <span v-if="disabledCount > 0" class="stat-item stat-disabled">
+        已停用 <span class="stat-num">{{ disabledCount }}</span>
+      </span>
     </div>
 
     <!-- Filters: model keyword, protocol, status. -->
@@ -52,7 +62,6 @@
         <el-option label="按协议" value="protocol" />
         <el-option label="不分组" value="none" />
       </el-select>
-      <span class="refresh-info">每 10 秒自动刷新<template v-if="generatedAt"> · 更新于 {{ formatTime(generatedAt) }}</template></span>
     </div>
 
     <el-alert
@@ -63,21 +72,23 @@
       class="error-alert"
     />
 
-    <!-- Grouped status matrix: one collapsible section per group. -->
-    <template v-if="grouping !== 'none'">
-      <OverviewGroupSection
-        v-for="section in groupSections"
-        :key="section.group.key"
-        :group="section.group"
-        :entries="section.entries"
-      />
-      <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
-    </template>
+    <div ref="matrixRef">
+      <!-- Grouped status matrix: one collapsible section per group. -->
+      <template v-if="grouping !== 'none'">
+        <OverviewGroupSection
+          v-for="section in groupSections"
+          :key="section.group.key"
+          :group="section.group"
+          :entries="section.entries"
+        />
+        <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
+      </template>
 
-    <!-- Flat status matrix: one card per endpoint. -->
-    <div v-else class="card-grid" v-loading="loading && entries.length === 0">
-      <EndpointCard v-for="entry in filteredEntries" :key="entry.endpoint_id" :entry="entry" />
-      <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
+      <!-- Flat status matrix: one card per endpoint. -->
+      <div v-else class="card-grid" v-loading="loading && entries.length === 0">
+        <EndpointCard v-for="entry in filteredEntries" :key="entry.endpoint_id" :entry="entry" />
+        <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
+      </div>
     </div>
   </div>
 </template>
@@ -85,24 +96,37 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useOverview } from '@/composables/useOverview'
+import HealthBanner from '@/components/HealthBanner.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
-import { formatTime } from '@/utils/format'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
-const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, STATUS_ORDER, start } = useOverview()
+const { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, start } = useOverview()
+
+// Display order of the stats strip: mildest to most severe.
+const STRIP_ORDER: EndpointStatus[] = ['healthy', 'degraded', 'down', 'failing']
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
 const statusFilter = ref<EndpointStatus | ''>('')
 // Grouping dimension of the status matrix; vendor family by default.
 const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
+const matrixRef = ref<HTMLElement | null>(null)
 
-// Clicking a summary card filters the matrix to that status; clicking the
+// Disabled endpoints show up in the strip as a non-clickable count.
+const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
+
+// Clicking a stats item filters the matrix to that status; clicking the
 // active one clears the filter.
 function toggleStatusFilter(status: EndpointStatus) {
   statusFilter.value = statusFilter.value === status ? '' : status
+}
+
+// Abnormal-banner click: apply the status filter and scroll to the matrix.
+function onBannerInspect(status: EndpointStatus) {
+  statusFilter.value = status
+  matrixRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // Apply the three filters; an empty filter matches everything.
@@ -142,37 +166,39 @@ onMounted(start)
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
-.summary-row {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.summary-card {
-  min-width: 120px;
-}
-.summary-clickable {
-  cursor: pointer;
-  transition: box-shadow 0.15s ease;
-}
-.summary-clickable:hover {
-  box-shadow: 0 0 0 1px var(--hs-brand-hover) inset;
-}
-.summary-active {
-  box-shadow: 0 0 0 2px var(--hs-brand) inset;
-}
-.summary-value {
+.stats-strip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
+  margin-bottom: 16px;
+}
+.stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.stat-clickable {
+  cursor: pointer;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.stat-clickable:hover {
+  color: var(--hs-brand-hover);
+}
+.stat-active {
+  color: var(--hs-brand);
+  border-bottom-color: var(--hs-brand);
+}
+.stat-num {
   font-weight: 600;
   color: var(--hs-text-primary);
 }
-.summary-label {
-  font-size: 12px;
+.stat-disabled {
   color: var(--hs-text-secondary);
-  margin-top: 4px;
 }
 .filter-row {
   display: flex;
@@ -186,11 +212,6 @@ onMounted(start)
 }
 .filter-select {
   width: 140px;
-}
-.refresh-info {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--hs-text-secondary);
 }
 .error-alert {
   margin-bottom: 16px;
