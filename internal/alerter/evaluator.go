@@ -3,7 +3,7 @@ package alerter
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/status"
@@ -53,12 +53,12 @@ func (e *Evaluator) HandleRound(ctx context.Context, endpointID int64, _ []store
 
 	consecutive, err := e.db.CountConsecutiveFailures(endpointID)
 	if err != nil {
-		log.Printf("alerter: count consecutive failures for endpoint %d: %v", endpointID, err)
+		slog.Error("alerter: count consecutive failures", "endpoint_id", endpointID, "error", err)
 		return
 	}
 	alerted, err := e.isAlerted(endpointID)
 	if err != nil {
-		log.Printf("alerter: rebuild alert state for endpoint %d: %v", endpointID, err)
+		slog.Error("alerter: rebuild alert state", "endpoint_id", endpointID, "error", err)
 		return
 	}
 
@@ -97,31 +97,33 @@ func (e *Evaluator) isAlerted(endpointID int64) (bool, error) {
 func (e *Evaluator) transition(ctx context.Context, endpointID int64, kind string, alerted bool) {
 	message, err := e.buildMessage(endpointID, kind)
 	if err != nil {
-		log.Printf("alerter: build %s message for endpoint %d: %v", kind, endpointID, err)
+		slog.Error("alerter: build alert message", "kind", kind, "endpoint_id", endpointID, "error", err)
 		return
 	}
 	e.alerted[endpointID] = alerted
 
 	webhook, err := e.db.GetSetting(store.SettingLarkWebhookURL, "")
 	if err != nil {
-		log.Printf("alerter: read webhook setting: %v", err)
+		slog.Error("alerter: read webhook setting", "error", err)
 		return
 	}
 	enabled, err := e.db.GetSettingBool(store.SettingAlertEnabled, store.DefaultAlertEnabled)
 	if err != nil {
-		log.Printf("alerter: read alert_enabled setting: %v", err)
+		slog.Error("alerter: read alert_enabled setting", "error", err)
 		return
 	}
 	if webhook == "" || !enabled {
 		// Not configured: the transition happened but no event is recorded.
-		log.Printf("alerter: %s alert for endpoint %d skipped (webhook not configured or alerts disabled)", kind, endpointID)
+		slog.Debug("alerter: alert skipped (webhook not configured or alerts disabled)", "kind", kind, "endpoint_id", endpointID)
 		return
 	}
 
 	sentOK := true
 	if err := e.sender.Send(ctx, webhook, message); err != nil {
-		log.Printf("alerter: send %s alert for endpoint %d: %v", kind, endpointID, err)
+		slog.Error("alerter: send alert", "kind", kind, "endpoint_id", endpointID, "error", err)
 		sentOK = false
+	} else {
+		slog.Info("alerter: alert sent", "kind", kind, "endpoint_id", endpointID)
 	}
 
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
@@ -130,7 +132,7 @@ func (e *Evaluator) transition(ctx context.Context, endpointID int64, kind strin
 		Message:    message,
 		SentOK:     sentOK,
 	}); err != nil {
-		log.Printf("alerter: record %s event for endpoint %d: %v", kind, endpointID, err)
+		slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
 	}
 }
 

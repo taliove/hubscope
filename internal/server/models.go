@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -37,6 +39,7 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	model, err := s.db.CreateModel(req.HubID, req.ModelID)
 	if err != nil {
 		if isUniqueViolation(err) {
+			s.audit(r, "model.create", "model", req.ModelID, "", "failed: duplicate model_id")
 			writeError(w, http.StatusConflict, "model_id already exists for this hub")
 			return
 		}
@@ -50,6 +53,8 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "model.create", "model", strconv.FormatInt(model.ID, 10),
+		fmt.Sprintf("model_id=%q hub_id=%d capability=%s family=%s", model.ModelID, model.HubID, model.Capability, model.Family), "success")
 	writeData(w, http.StatusCreated, toModelDTO(*model, endpoints))
 }
 
@@ -91,6 +96,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.db.DeleteModel(id); err != nil {
 		if errors.Is(err, store.ErrModelNotManual) {
+			s.audit(r, "model.delete", "model", strconv.FormatInt(id, 10), "", "failed: discovered model")
 			writeError(w, http.StatusConflict, "discovered models cannot be deleted; disable their endpoints instead")
 			return
 		}
@@ -98,6 +104,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "model.delete", "model", strconv.FormatInt(id, 10), "", "success")
 	writeNoContent(w)
 }
 

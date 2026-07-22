@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,6 +47,8 @@ func main() {
 // run assembles dependencies, starts the HTTP server, and blocks until a
 // termination signal triggers graceful shutdown.
 func run() error {
+	configureLogging()
+
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
 
@@ -96,7 +99,7 @@ func run() error {
 				return
 			case <-timer.C:
 				if _, err := srv.Discovery().Sync(schedCtx); err != nil {
-					log.Printf("discovery sync: %v", err)
+					slog.Error("discovery sync failed", "error", err)
 				}
 				timer.Reset(discoveryInterval)
 			}
@@ -125,7 +128,7 @@ func run() error {
 	// Start listening in the background.
 	errCh := make(chan error, 1)
 	go func() {
-		fmt.Println("ai-hub-checker listening on", addr)
+		slog.Info("listening", "addr", addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -140,7 +143,7 @@ func run() error {
 		schedCancel()
 		return fmt.Errorf("listen: %w", err)
 	case <-stop:
-		fmt.Println("shutting down...")
+		slog.Info("shutting down")
 	}
 
 	// Stop dispatching new probe rounds and wait for in-flight workers.
@@ -161,4 +164,19 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// configureLogging installs the process-wide slog default handler. LOG_LEVEL
+// (debug|info|warn|error, default info) controls verbosity.
+func configureLogging() {
+	level := slog.LevelInfo
+	switch strings.ToLower(envOr("LOG_LEVEL", "info")) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }

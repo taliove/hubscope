@@ -3,7 +3,8 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,12 +56,14 @@ func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
 	if err := s.discovery.StartSync(hub.ID); err != nil {
 		// Only ErrSyncInProgress is possible, and a fresh hub cannot be
 		// syncing — log defensively rather than failing the creation.
-		log.Printf("create hub %d: start sync: %v", hub.ID, err)
+		slog.Error("create hub: start sync failed", "hub_id", hub.ID, "error", err)
 	} else {
 		// StartSync already persisted the syncing mark; reflect it.
 		hub.SyncStatus = store.HubSyncRunning
 	}
 
+	s.audit(r, "hub.create", "hub", strconv.FormatInt(hub.ID, 10),
+		fmt.Sprintf("name=%q base_url=%q", hub.Name, hub.BaseURL), "success")
 	writeData(w, http.StatusCreated, toHubDTO(*hub))
 }
 
@@ -105,6 +108,7 @@ func (s *Server) handleUpdateHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "hub.update", "hub", strconv.FormatInt(id, 10), hubUpdateDetail(req), "success")
 	writeData(w, http.StatusOK, toHubDTO(*hub))
 }
 
@@ -123,6 +127,7 @@ func (s *Server) handleDeleteHub(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.db.DeleteHub(id); err != nil {
 		if errors.Is(err, store.ErrHubHasModels) {
+			s.audit(r, "hub.delete", "hub", strconv.FormatInt(id, 10), "", "failed: hub has models")
 			writeError(w, http.StatusConflict, "hub has associated models and cannot be deleted")
 			return
 		}
@@ -130,6 +135,7 @@ func (s *Server) handleDeleteHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "hub.delete", "hub", strconv.FormatInt(id, 10), "", "success")
 	writeNoContent(w)
 }
 
@@ -157,6 +163,8 @@ func (s *Server) handleSyncHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "hub.sync", "hub", strconv.FormatInt(id, 10), "", "accepted")
+
 	// Re-read so the response carries the syncing mark StartSync persisted.
 	hub, err = s.db.GetHub(id)
 	if err != nil {
@@ -170,4 +178,20 @@ func (s *Server) handleSyncHub(w http.ResponseWriter, r *http.Request) {
 func parseIDParam(r *http.Request, name string) (int64, error) {
 	raw := chi.URLParam(r, name)
 	return strconv.ParseInt(raw, 10, 64)
+}
+
+// hubUpdateDetail summarizes which fields a hub update touched. The token is
+// never written to the audit log — only that it was rotated.
+func hubUpdateDetail(req updateHubRequest) string {
+	fields := []string{}
+	if req.Name != nil {
+		fields = append(fields, "name")
+	}
+	if req.BaseURL != nil {
+		fields = append(fields, "base_url")
+	}
+	if req.Token != nil {
+		fields = append(fields, "token(rotated)")
+	}
+	return "fields=" + strings.Join(fields, ",")
 }

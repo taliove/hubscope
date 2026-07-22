@@ -501,8 +501,8 @@ func (s *stubHubServer) handleNonStreaming(w http.ResponseWriter, isAnthropic bo
 		json.NewEncoder(w).Encode(resp)
 	} else {
 		resp := map[string]interface{}{
-			"id":      "chatcmpl_test",
-			"object":  "chat.completion",
+			"id":     "chatcmpl_test",
+			"object": "chat.completion",
 			"choices": []map[string]interface{}{
 				{"message": map[string]string{"role": "assistant", "content": "pong"}},
 			},

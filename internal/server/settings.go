@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
@@ -103,5 +104,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to read settings")
 		return
 	}
+
+	// Audit key names only — setting values (webhook URLs, judge model) stay
+	// out of the log.
+	keys := []string{}
+	for i, u := range updates {
+		if present[i] {
+			keys = append(keys, u.key)
+		}
+	}
+	s.audit(r, "settings.update", "settings", "", "keys="+strings.Join(keys, ","), "success")
 	writeData(w, http.StatusOK, dto)
 }

@@ -12,6 +12,7 @@
       <ModelAdder :hubs="hubs" @added="reloadModels" />
       <EndpointTable :rows="endpointRows" :loading="loading" @changed="reloadModels" />
       <ClassificationRules @changed="reloadModels" />
+      <AuditLogs />
       <SettingsPanel />
     </main>
   </div>
@@ -27,6 +28,7 @@ import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
 import ClassificationRules from '@/components/ClassificationRules.vue'
+import AuditLogs from '@/components/AuditLogs.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 
 const router = useRouter()

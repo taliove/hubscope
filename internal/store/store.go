@@ -181,6 +181,21 @@ func (db *DB) migrate() error {
 			UNIQUE(dimension, keyword)
 		);
 
+		CREATE TABLE IF NOT EXISTS audit_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			at TEXT NOT NULL,
+			actor TEXT NOT NULL,
+			ip TEXT NOT NULL,
+			action TEXT NOT NULL,
+			object_type TEXT NOT NULL,
+			object_id TEXT NOT NULL DEFAULT '',
+			detail TEXT NOT NULL DEFAULT '',
+			result TEXT NOT NULL
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_audit_logs_at ON audit_logs(at DESC);
+		CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action, at DESC);
+
 		CREATE TABLE IF NOT EXISTS alert_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			endpoint_id INTEGER,

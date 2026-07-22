@@ -1,9 +1,9 @@
 package server_test
 
 import (
-	"io"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"

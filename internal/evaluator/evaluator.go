@@ -6,7 +6,7 @@ package evaluator
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/hubclient"
@@ -76,7 +76,7 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("evaluator: AfterRun hook panicked for run %d: %v", runID, r)
+					slog.Error("evaluator: AfterRun hook panicked", "run_id", runID, "panic", r)
 				}
 			}()
 			e.AfterRun(context.WithoutCancel(ctx), runID)
@@ -92,14 +92,14 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 func (e *Evaluator) resolveJudgeModel(run *store.EvalRun) *store.EvalRun {
 	judgeModel, err := e.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
 	if err != nil {
-		log.Printf("evaluator: read judge_model setting, keeping run snapshot: %v", err)
+		slog.Error("evaluator: read judge_model setting, keeping run snapshot", "error", err)
 		return run
 	}
 	if judgeModel == "" || judgeModel == run.JudgeModel {
 		return run
 	}
 	if err := e.db.SetEvalRunJudgeModel(run.ID, judgeModel); err != nil {
-		log.Printf("evaluator: record judge_model on run %d: %v", run.ID, err)
+		slog.Error("evaluator: record judge_model on run", "run_id", run.ID, "error", err)
 		return run
 	}
 	updated := *run
@@ -196,7 +196,7 @@ func (e *Evaluator) failAllCases(run *store.EvalRun, modelDBID int64, modelID st
 // abort the whole run.
 func (e *Evaluator) storeResult(r store.EvalResult) {
 	if _, err := e.db.CreateEvalResult(r); err != nil {
-		log.Printf("evaluator: persist result for case %d: %v", r.CaseID, err)
+		slog.Error("evaluator: persist result for case", "case_id", r.CaseID, "error", err)
 	}
 }
 

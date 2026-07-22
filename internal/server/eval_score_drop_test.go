@@ -28,7 +28,7 @@ func TestScoreDropAlert(t *testing.T) {
 	lark := newStubLarkServer(t)
 
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"lark_webhook_url":          lark.URL,
+		"lark_webhook_url":         lark.URL,
 		"score_drop_alert_enabled": true,
 	})
 	putResp.Body.Close()

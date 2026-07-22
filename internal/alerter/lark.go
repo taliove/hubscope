@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -58,6 +60,12 @@ func (s *LarkSender) Send(ctx context.Context, webhookURL, text string) error {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		// url.Error embeds the full webhook URL, which carries the bot
+		// token. Log and return only the underlying cause.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return fmt.Errorf("post lark webhook: %w", urlErr.Err)
+		}
 		return fmt.Errorf("post lark webhook: %w", err)
 	}
 	defer resp.Body.Close()

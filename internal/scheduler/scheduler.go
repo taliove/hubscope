@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -37,9 +37,9 @@ type endpointState struct {
 //   - The store is re-read on every tick, so PATCH changes (enable/disable,
 //     interval override) apply to the next round.
 type Scheduler struct {
-	db             *store.DB
-	prober         *prober.Prober
-	clock          Clock
+	db              *store.DB
+	prober          *prober.Prober
+	clock           Clock
 	defaultInterval time.Duration
 	pollInterval    time.Duration
 
@@ -125,7 +125,7 @@ func (s *Scheduler) dispatch(ctx context.Context) time.Time {
 
 	endpoints, err := s.db.ListEnabledEndpoints()
 	if err != nil {
-		log.Printf("scheduler: list enabled endpoints: %v", err)
+		slog.Error("scheduler: list enabled endpoints", "error", err)
 		return next
 	}
 	if ctx.Err() != nil {

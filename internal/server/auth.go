@@ -97,16 +97,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(s.adminPassword)) != 1 {
+		s.audit(r, "auth.login", "auth", "", "", "failed")
 		writeError(w, http.StatusUnauthorized, "invalid password")
 		return
 	}
 	setSessionCookie(w, r, signSession(s.sessionKey, time.Now()))
+	s.audit(r, "auth.login", "auth", "", "", "success")
 	writeData(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
 // handleLogout clears the session cookie.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	clearSessionCookie(w, r)
+	s.audit(r, "auth.logout", "auth", "", "", "success")
 	writeNoContent(w)
 }
 

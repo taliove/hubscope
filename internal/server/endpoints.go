@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
 )
@@ -53,6 +55,8 @@ func (s *Server) handlePatchEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "endpoint.patch", "endpoint", strconv.FormatInt(id, 10),
+		endpointPatchDetail(req, interval), "success")
 	writeData(w, http.StatusOK, toEndpointDTO(*endpoint))
 }
 
@@ -75,6 +79,7 @@ func (s *Server) handleDeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "endpoint.delete", "endpoint", strconv.FormatInt(id, 10), "", "success")
 	writeNoContent(w)
 }
 
@@ -97,4 +102,23 @@ func parseIntervalPatch(raw json.RawMessage) (store.IntervalPatch, error) {
 		return store.IntervalPatch{}, fmt.Errorf("interval_seconds must be at least %d", minIntervalSeconds)
 	}
 	return store.IntervalPatch{Set: true, Value: &v}, nil
+}
+
+// endpointPatchDetail summarizes which fields an endpoint patch changed.
+func endpointPatchDetail(req patchEndpointRequest, interval store.IntervalPatch) string {
+	fields := []string{}
+	if req.Enabled != nil {
+		fields = append(fields, fmt.Sprintf("enabled=%v", *req.Enabled))
+	}
+	if interval.Set {
+		if interval.Value == nil {
+			fields = append(fields, "interval_seconds cleared")
+		} else {
+			fields = append(fields, fmt.Sprintf("interval_seconds=%d", *interval.Value))
+		}
+	}
+	if len(fields) == 0 {
+		return "no changes"
+	}
+	return strings.Join(fields, " ")
 }

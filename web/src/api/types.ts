@@ -44,6 +44,26 @@ export interface ClassificationRule {
   priority: number
 }
 
+// One administrative action record.
+export interface AuditLog {
+  id: number
+  at: string // RFC3339
+  actor: string
+  ip: string
+  action: string // e.g. "hub.create"
+  object_type: string
+  object_id: string
+  detail: string
+  result: string // "success" | "failed: ..." | "accepted"
+}
+
+export interface AuditLogPage {
+  items: AuditLog[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface ProbeRecord {
   id: number
   endpoint_id: number

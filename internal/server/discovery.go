@@ -1,7 +1,8 @@
 package server
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -11,9 +12,11 @@ import (
 func (s *Server) handleRunDiscovery(w http.ResponseWriter, r *http.Request) {
 	stats, err := s.discovery.Sync(r.Context())
 	if err != nil {
-		log.Printf("discovery run: %v", err)
+		slog.Error("discovery run failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "discovery sync failed")
 		return
 	}
+	s.audit(r, "discovery.run", "discovery", "",
+		fmt.Sprintf("added=%d retired=%d endpoints_created=%d", stats.Added, stats.Retired, stats.EndpointsCreated), "success")
 	writeData(w, http.StatusOK, stats)
 }

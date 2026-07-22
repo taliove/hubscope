@@ -218,7 +218,7 @@ func (db *DB) ListEndpointsByModelID(modelID int64) ([]Endpoint, error) {
 // next round.
 func (db *DB) ListEnabledEndpoints() ([]Endpoint, error) {
 	rows, err := db.conn.Query(`
-		SELECT `+endpointColumnsAliased+`
+		SELECT ` + endpointColumnsAliased + `
 		FROM endpoints e
 		JOIN models m ON m.id = e.model_id
 		WHERE e.enabled = 1 AND m.status = 'active'

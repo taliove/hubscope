@@ -149,17 +149,17 @@ var builtinSuites = []seedSuite{
 			{
 				prompt:      "用一句中文总结'亡羊补牢'的寓意",
 				verdictType: "judge",
-				rubric: strptr("评估作答是否用一句中文准确总结了'亡羊补牢'的寓意（出了问题之后及时补救，仍然可以避免更大的损失）。完全准确 1 分，部分准确 0.5 分，错误或偏离 0 分。" + judgeRubricSuffix),
+				rubric:      strptr("评估作答是否用一句中文准确总结了'亡羊补牢'的寓意（出了问题之后及时补救，仍然可以避免更大的损失）。完全准确 1 分，部分准确 0.5 分，错误或偏离 0 分。" + judgeRubricSuffix),
 			},
 			{
 				prompt:      "把「他今天没来上班，因为生病了」改写成更正式的表达，只回复改写后的句子",
 				verdictType: "judge",
-				rubric: strptr("评估改写是否满足两点：1) 表达更正式（书面语，如「因身体不适今日未能到岗」）；2) 保留原意。两点都满足 1 分，只满足一点 0.5 分，都不满足 0 分。" + judgeRubricSuffix),
+				rubric:      strptr("评估改写是否满足两点：1) 表达更正式（书面语，如「因身体不适今日未能到岗」）；2) 保留原意。两点都满足 1 分，只满足一点 0.5 分，都不满足 0 分。" + judgeRubricSuffix),
 			},
 			{
 				prompt:      "「画蛇添足」这个成语是什么意思？用一句中文回答",
 				verdictType: "judge",
-				rubric: strptr("评估作答是否用一句中文准确解释了'画蛇添足'（做了多余的事，反而坏了事）。完全准确 1 分，部分准确 0.5 分，错误或偏离 0 分。" + judgeRubricSuffix),
+				rubric:      strptr("评估作答是否用一句中文准确解释了'画蛇添足'（做了多余的事，反而坏了事）。完全准确 1 分，部分准确 0.5 分，错误或偏离 0 分。" + judgeRubricSuffix),
 			},
 		},
 	},

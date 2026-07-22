@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -23,6 +23,8 @@ const (
 	// defaultRollupPollInterval bounds how often the worker wakes to check
 	// whether rollup or cleanup is due.
 	defaultRollupPollInterval = time.Minute
+	// defaultAuditRetention is how long audit log entries are kept.
+	defaultAuditRetention = 90 * 24 * time.Hour
 )
 
 // RollupWorker periodically aggregates old probes into hourly rollups and
@@ -39,6 +41,7 @@ type RollupWorker struct {
 	rollupInterval  time.Duration
 	cleanupInterval time.Duration
 	retention       time.Duration
+	auditRetention  time.Duration
 	rollupLag       time.Duration
 	pollInterval    time.Duration
 
@@ -65,6 +68,11 @@ func WithRetention(d time.Duration) RollupOption {
 	return func(w *RollupWorker) { w.retention = d }
 }
 
+// WithAuditRetention overrides how long audit log entries are kept.
+func WithAuditRetention(d time.Duration) RollupOption {
+	return func(w *RollupWorker) { w.auditRetention = d }
+}
+
 // WithRollupLag overrides how old a probe must be before it is rolled up.
 func WithRollupLag(d time.Duration) RollupOption {
 	return func(w *RollupWorker) { w.rollupLag = d }
@@ -83,6 +91,7 @@ func NewRollupWorker(db *store.DB, clock Clock, opts ...RollupOption) *RollupWor
 		rollupInterval:  defaultRollupInterval,
 		cleanupInterval: defaultCleanupInterval,
 		retention:       defaultRetention,
+		auditRetention:  defaultAuditRetention,
 		rollupLag:       defaultRollupLag,
 		pollInterval:    defaultRollupPollInterval,
 	}
@@ -128,12 +137,15 @@ func (w *RollupWorker) tick() {
 
 	if dueRollup {
 		if err := w.db.RollupProbesBefore(now.Add(-w.rollupLag)); err != nil {
-			log.Printf("rollup worker: rollup probes: %v", err)
+			slog.Error("rollup worker: rollup probes", "error", err)
 		}
 	}
 	if dueCleanup {
 		if _, err := w.db.DeleteProbesBefore(now.Add(-w.retention)); err != nil {
-			log.Printf("rollup worker: cleanup probes: %v", err)
+			slog.Error("rollup worker: cleanup probes", "error", err)
+		}
+		if _, err := w.db.PruneAuditLogsBefore(now.Add(-w.auditRetention)); err != nil {
+			slog.Error("rollup worker: prune audit logs", "error", err)
 		}
 	}
 }

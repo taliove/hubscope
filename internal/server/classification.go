@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/classifier"
@@ -97,6 +99,8 @@ func (s *Server) handleCreateClassificationRule(w http.ResponseWriter, r *http.R
 	rule, err := s.db.CreateClassificationRule(req.Dimension, strings.ToLower(req.Keyword), req.Category, priority)
 	if err != nil {
 		if isUniqueViolation(err) {
+			s.audit(r, "rule.create", "classification_rule", "",
+				fmt.Sprintf("%s/%q", req.Dimension, req.Keyword), "failed: duplicate rule")
 			writeError(w, http.StatusConflict, "a rule with this dimension and keyword already exists")
 			return
 		}
@@ -108,6 +112,8 @@ func (s *Server) handleCreateClassificationRule(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "rule saved but reclassification failed")
 		return
 	}
+	s.audit(r, "rule.create", "classification_rule", strconv.FormatInt(rule.ID, 10),
+		fmt.Sprintf("%s/%q -> %q (priority %d)", rule.Dimension, rule.Keyword, rule.Category, rule.Priority), "success")
 	writeData(w, http.StatusCreated, toRuleDTO(*rule))
 }
 
@@ -171,6 +177,8 @@ func (s *Server) handlePatchClassificationRule(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "rule saved but reclassification failed")
 		return
 	}
+	s.audit(r, "rule.update", "classification_rule", strconv.FormatInt(rule.ID, 10),
+		fmt.Sprintf("%s/%q -> %q (priority %d)", rule.Dimension, rule.Keyword, rule.Category, rule.Priority), "success")
 	writeData(w, http.StatusOK, toRuleDTO(*rule))
 }
 
@@ -192,6 +200,7 @@ func (s *Server) handleDeleteClassificationRule(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "failed to delete rule")
 		return
 	}
+	s.audit(r, "rule.delete", "classification_rule", strconv.FormatInt(id, 10), "", "success")
 
 	if err := s.db.ReclassifyAll(); err != nil {
 		writeError(w, http.StatusInternalServerError, "rule saved but reclassification failed")

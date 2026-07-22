@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -101,6 +102,8 @@ func (s *Server) handleCreateCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "case.create", "case", strconv.FormatInt(created.ID, 10),
+		fmt.Sprintf("suite_id=%d verdict=%s", created.SuiteID, created.VerdictType), "success")
 	writeData(w, http.StatusCreated, toCaseDTO(*created))
 }
 
@@ -154,6 +157,7 @@ func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.audit(r, "case.update", "case", strconv.FormatInt(updated.ID, 10), "", "success")
 	writeData(w, http.StatusOK, toCaseDTO(*updated))
 }
 
@@ -247,6 +251,8 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		_ = s.evaluator.RunEval(context.Background(), run.ID, req.ModelIDs)
 	}()
 
+	s.audit(r, "eval.create", "eval_run", strconv.FormatInt(run.ID, 10),
+		fmt.Sprintf("suite_id=%d models=%d judge=%q", req.SuiteID, len(req.ModelIDs), judgeModel), "accepted")
 	writeData(w, http.StatusAccepted, toEvalRunDTO(*run, nil))
 }
 

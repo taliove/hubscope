@@ -3,7 +3,7 @@ package alerter
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/store"
@@ -36,7 +36,7 @@ func (e *Evaluator) HandleEvalRun(ctx context.Context, runID int64) {
 
 	run, err := e.db.GetEvalRun(runID)
 	if err != nil {
-		log.Printf("alerter: load eval run %d for score-drop check: %v", runID, err)
+		slog.Error("alerter: load eval run for score-drop check", "run_id", runID, "error", err)
 		return
 	}
 	if run.Status != "done" {
@@ -45,7 +45,7 @@ func (e *Evaluator) HandleEvalRun(ctx context.Context, runID int64) {
 
 	enabled, err := e.db.GetSettingBool(store.SettingScoreDropAlertEnabled, store.DefaultScoreDropAlertEnabled)
 	if err != nil {
-		log.Printf("alerter: read score_drop_alert_enabled setting: %v", err)
+		slog.Error("alerter: read score_drop_alert_enabled setting", "error", err)
 		return
 	}
 	if !enabled {
@@ -53,23 +53,23 @@ func (e *Evaluator) HandleEvalRun(ctx context.Context, runID int64) {
 	}
 	webhook, err := e.db.GetSetting(store.SettingLarkWebhookURL, "")
 	if err != nil {
-		log.Printf("alerter: read webhook setting: %v", err)
+		slog.Error("alerter: read webhook setting", "error", err)
 		return
 	}
 	if webhook == "" {
-		log.Printf("alerter: score-drop check for run %d skipped (webhook not configured)", runID)
+		slog.Debug("alerter: score-drop check skipped (webhook not configured)", "run_id", runID)
 		return
 	}
 
 	suite, err := e.db.GetSuite(run.SuiteID)
 	if err != nil {
-		log.Printf("alerter: load suite %d for score-drop check: %v", run.SuiteID, err)
+		slog.Error("alerter: load suite for score-drop check", "suite_id", run.SuiteID, "error", err)
 		return
 	}
 
 	results, err := e.db.ListEvalResults(runID)
 	if err != nil {
-		log.Printf("alerter: load results of run %d for score-drop check: %v", runID, err)
+		slog.Error("alerter: load results for score-drop check", "run_id", runID, "error", err)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (e *Evaluator) checkPair(ctx context.Context, webhook string, run *store.Ev
 	}
 	previous, _, err := e.db.PreviousDoneScore(run.SuiteID, modelDBID, run.ID)
 	if err != nil {
-		log.Printf("alerter: load previous score for suite %d model %d: %v", run.SuiteID, modelDBID, err)
+		slog.Error("alerter: load previous score", "suite_id", run.SuiteID, "model_db_id", modelDBID, "error", err)
 		return
 	}
 	if previous == nil || *previous-*current <= ScoreDropThreshold {
@@ -137,7 +137,7 @@ func (e *Evaluator) checkPair(ctx context.Context, webhook string, run *store.Ev
 
 	sentOK := true
 	if err := e.sender.Send(ctx, webhook, message); err != nil {
-		log.Printf("alerter: send score_drop alert for run %d model %d: %v", run.ID, modelDBID, err)
+		slog.Error("alerter: send score_drop alert", "run_id", run.ID, "model_db_id", modelDBID, "error", err)
 		sentOK = false
 	}
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
@@ -145,6 +145,6 @@ func (e *Evaluator) checkPair(ctx context.Context, webhook string, run *store.Ev
 		Message: message,
 		SentOK:  sentOK,
 	}); err != nil {
-		log.Printf("alerter: record score_drop event for run %d model %d: %v", run.ID, modelDBID, err)
+		slog.Error("alerter: record score_drop event", "run_id", run.ID, "model_db_id", modelDBID, "error", err)
 	}
 }

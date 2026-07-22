@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -99,7 +99,7 @@ func (w *EvalWorker) tick(ctx context.Context) {
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	ran, err := w.db.HasScheduledEvalRunSince(startOfDay)
 	if err != nil {
-		log.Printf("eval worker: check scheduled runs: %v", err)
+		slog.Error("eval worker: check scheduled runs", "error", err)
 		return
 	}
 	if ran {
@@ -127,23 +127,23 @@ func (w *EvalWorker) tick(ctx context.Context) {
 func (w *EvalWorker) runBatch(ctx context.Context) {
 	modelIDs, err := w.evalEligibleModels()
 	if err != nil {
-		log.Printf("eval worker: list models: %v", err)
+		slog.Error("eval worker: list models", "error", err)
 		return
 	}
 	if len(modelIDs) == 0 {
-		log.Printf("eval worker: no active chat models, skipping weekly batch")
+		slog.Debug("eval worker: no active chat models, skipping weekly batch")
 		return
 	}
 
 	suites, err := w.db.ListSuites()
 	if err != nil {
-		log.Printf("eval worker: list suites: %v", err)
+		slog.Error("eval worker: list suites", "error", err)
 		return
 	}
 
 	judgeModel, err := w.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
 	if err != nil {
-		log.Printf("eval worker: read judge_model setting: %v", err)
+		slog.Error("eval worker: read judge_model setting", "error", err)
 		return
 	}
 
@@ -153,11 +153,11 @@ func (w *EvalWorker) runBatch(ctx context.Context) {
 		}
 		run, err := w.db.CreateEvalRun(suite.ID, "scheduled", judgeModel)
 		if err != nil {
-			log.Printf("eval worker: create run for suite %d: %v", suite.ID, err)
+			slog.Error("eval worker: create run for suite", "suite_id", suite.ID, "error", err)
 			continue
 		}
 		if err := w.evaluator.RunEval(ctx, run.ID, modelIDs); err != nil {
-			log.Printf("eval worker: run suite %d: %v", suite.ID, err)
+			slog.Error("eval worker: run suite", "suite_id", suite.ID, "error", err)
 		}
 	}
 }

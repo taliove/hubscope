@@ -8,7 +8,7 @@ package discovery
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 
 	"git.github.net/taliove2009/ai-hub-checker/internal/classifier"
@@ -94,12 +94,12 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 	}
 	for _, hub := range hubs {
 		if !s.acquire(hub.ID) {
-			log.Printf("discovery: hub %d (%s) sync already in progress, skipping", hub.ID, hub.Name)
+			slog.Debug("discovery: sync already in progress, skipping", "hub_id", hub.ID, "hub", hub.Name)
 			continue
 		}
 		stats, err := s.syncOne(ctx, hub)
 		if err != nil {
-			log.Printf("discovery: sync hub %d (%s): %v", hub.ID, hub.Name, err)
+			slog.Error("discovery: sync hub failed", "hub_id", hub.ID, "hub", hub.Name, "error", err)
 			continue
 		}
 		total.Added += stats.Added
@@ -137,11 +137,11 @@ func (s *Syncer) StartSync(hubID int64) error {
 		defer s.release(hubID)
 		hub, err := s.db.GetHub(hubID)
 		if err != nil {
-			log.Printf("discovery: async sync hub %d: load hub: %v", hubID, err)
+			slog.Error("discovery: async sync: load hub", "hub_id", hubID, "error", err)
 			return
 		}
 		if _, err := s.syncMarked(context.Background(), *hub); err != nil {
-			log.Printf("discovery: async sync hub %d: %v", hubID, err)
+			slog.Error("discovery: async sync failed", "hub_id", hubID, "error", err)
 		}
 	}()
 	return nil
@@ -172,15 +172,16 @@ func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub) (Stats, error) {
 	if syncErr != nil {
 		msg := syncErr.Error()
 		if err := s.db.SetHubSyncResult(hub.ID, &msg); err != nil {
-			log.Printf("discovery: persist sync failure for hub %d: %v", hub.ID, err)
+			slog.Error("discovery: persist sync failure", "hub_id", hub.ID, "error", err)
 		}
 		return stats, syncErr
 	}
 	if err := s.db.SetHubSyncResult(hub.ID, nil); err != nil {
 		return stats, err
 	}
-	log.Printf("discovery: hub %d (%s) synced: added=%d retired=%d endpoints_created=%d",
-		hub.ID, hub.Name, stats.Added, stats.Retired, stats.EndpointsCreated)
+	slog.Info("discovery: hub synced",
+		"hub_id", hub.ID, "hub", hub.Name,
+		"added", stats.Added, "retired", stats.Retired, "endpoints_created", stats.EndpointsCreated)
 	return stats, nil
 }
 

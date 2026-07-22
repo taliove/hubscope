@@ -33,10 +33,16 @@ func (s *Server) handleProbeEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make([]probeDTO, 0, len(probes))
+	okCount := 0
 	for _, p := range probes {
+		if p.OK {
+			okCount++
+		}
 		results = append(results, toProbeDTO(p))
 	}
 
+	s.audit(r, "endpoint.probe", "endpoint", strconv.FormatInt(id, 10),
+		fmt.Sprintf("ok=%d/%d", okCount, len(probes)), "success")
 	writeData(w, http.StatusOK, probeRoundResponse{
 		EndpointID: id,
 		Results:    results,
