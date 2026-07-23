@@ -12,11 +12,18 @@
         <el-form @submit.prevent="onSubmit">
           <el-form-item>
             <el-input
+              v-model="username"
+              placeholder="账号"
+              autofocus
+              @keyup.enter="onSubmit"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-input
               v-model="password"
               type="password"
-              placeholder="管理员口令"
+              placeholder="密码"
               show-password
-              autofocus
               @keyup.enter="onSubmit"
             />
           </el-form-item>
@@ -39,23 +46,31 @@ import { login } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
+const username = ref('')
 const password = ref('')
 const submitting = ref(false)
 
-// Submit the password; on success bounce back to the originally requested page.
+// Submit account + password; on success bounce back to the originally
+// requested page. On failure the password is cleared (keep the username
+// so the user can retry without retyping it) — a common security UX.
 async function onSubmit() {
   if (submitting.value) return
+  if (!username.value) {
+    ElMessage.error('请输入账号')
+    return
+  }
   if (!password.value) {
-    ElMessage.error('请输入管理员口令')
+    ElMessage.error('请输入密码')
     return
   }
   submitting.value = true
   try {
-    await login(password.value)
+    await login({ username: username.value, password: password.value })
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
     router.replace(redirect)
   } catch (err) {
     ElMessage.error((err as Error).message)
+    password.value = ''
   } finally {
     submitting.value = false
   }

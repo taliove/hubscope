@@ -24,7 +24,7 @@
              users while an unfinished batch exists; the rotating Loading
              icon is the only motion (no orange-red, no flashing). -->
         <el-button
-          v-if="authed && activeBatch"
+          v-if="user && activeBatch"
           link
           type="primary"
           class="batch-entry"
@@ -35,8 +35,12 @@
             批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}
           </span>
         </el-button>
-        <el-button v-if="authed" @click="router.push('/admin')">管理视图</el-button>
-        <el-button v-if="!authed" type="primary" @click="router.push('/login')">登录</el-button>
+        <template v-if="user">
+          <span class="user-name" :title="user.username">{{ user.username }}</span>
+          <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
+        </template>
+        <el-button v-if="user" @click="router.push('/admin')">管理视图</el-button>
+        <el-button v-if="!user" type="primary" @click="router.push('/login')">登录</el-button>
         <el-button v-else link type="primary" :loading="loggingOut" @click="onLogout">
           退出
         </el-button>
@@ -51,8 +55,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { fetchAuthStatus, logout } from '@/api/auth'
+import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
+import { roleLabel, roleTagType } from '@/utils/role'
 
 // Global shell header (spec: docs/specs/0003-ui-redesign.md §4.1). Rendered by
 // App.vue on every page except /login. Session state is checked locally on
@@ -74,13 +80,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: '任务中心', to: '/tasks' },
 ]
 
-const authed = ref(false)
+// Local session identity (no global store by design — ticket 62 keeps the
+// blast radius minimal; a useAuth composable may be extracted in 66b/67).
+// `user` is null when unauthenticated; every authed-only branch reads it.
+const user = ref<AuthUser | null>(null)
 const loggingOut = ref(false)
 
-// Anonymous visitors only get the public nav entries; logout flips authed
-// to false and this computed collapses the nav back immediately.
+// Anonymous visitors only get the public nav entries; logout flips user
+// to null and this computed collapses the nav back immediately.
 const visibleNavItems = computed(() =>
-  authed.value ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.public),
+  user.value ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.public),
 )
 
 // The dashboard owns both '/' and the endpoint detail pages.
@@ -92,9 +101,9 @@ function isActive(item: NavItem): boolean {
 // A failed status check is treated as unauthenticated, same as the router guard.
 async function refreshAuth() {
   try {
-    authed.value = (await fetchAuthStatus()).authenticated
+    user.value = (await fetchAuthStatus()).user ?? null
   } catch {
-    authed.value = false
+    user.value = null
   }
 }
 
@@ -113,7 +122,7 @@ function stopBatchPolling() {
 // the entry (ui-guidelines §5 AppHeader registration). Every setInterval
 // pairs with cleanup on unmount.
 async function refreshBatch() {
-  if (!authed.value) {
+  if (!user.value) {
     activeBatch.value = null
     stopBatchPolling()
     return
@@ -143,7 +152,7 @@ async function onLogout() {
     return
   }
   loggingOut.value = false
-  authed.value = false
+  user.value = null
   router.push('/')
 }
 
@@ -231,5 +240,13 @@ onBeforeUnmount(stopBatchPolling)
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.user-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-regular);
 }
 </style>
