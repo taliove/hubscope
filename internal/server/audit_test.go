@@ -192,7 +192,10 @@ func TestAuditLogsRecordWriteOperations(t *testing.T) {
 		}
 	}
 
-	// Entries carry actor, IP and a result; newest first.
+	// Entries carry actor, IP and a result; newest first. The actor "admin"
+	// here is the logged-in username of the seeded super_admin (seedTestUser
+	// creates a user named "admin"), not a hardcoded constant — see
+	// TestAuditActorIsLoginUsername for the non-"admin" proof.
 	for _, it := range items {
 		if it["actor"] != "admin" {
 			t.Errorf("actor: expected admin, got %v", it["actor"])

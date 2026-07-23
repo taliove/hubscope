@@ -30,15 +30,15 @@ type auditPageResponse struct {
 	PageSize int           `json:"page_size"`
 }
 
-// auditActor is the actor recorded for every authenticated write; the system
-// has a single admin identity.
-const auditActor = "admin"
-
-// audit records one administrative action. Audit failures are logged but
-// never fail the request itself.
+// audit records one administrative action. The actor is the logged-in
+// username, read from the request context (injected by requireSession); the
+// "system" fallback applies only when no user is present, which in practice
+// never happens since every call site is an HTTP handler behind
+// requireSession (background jobs do not write audit logs). Audit failures
+// are logged but never fail the request itself.
 func (s *Server) audit(r *http.Request, action, objectType, objectID, detail, result string) {
 	err := s.db.InsertAudit(store.AuditLog{
-		Actor:      auditActor,
+		Actor:      actorOr(r),
 		IP:         s.clientIP(r),
 		Action:     action,
 		ObjectType: objectType,

@@ -156,6 +156,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+	// Inject the attempted identity into the request context so the audit
+	// calls below record the real username as actor. The login endpoint
+	// sits outside requireSession, so without this the disabled / wrong-
+	// password / success audits would all read "system". The "user not found"
+	// branch above has no user to inject and keeps the "system" fallback.
+	r = r.WithContext(withSessionUser(r.Context(), SessionUser{
+		UserID:   user.ID,
+		Role:     user.Role,
+		HubID:    user.HubID,
+		Username: user.Username,
+	}))
 	if !user.Enabled {
 		s.audit(r, "auth.login", "auth", req.Username, "disabled", "failed")
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
@@ -171,8 +182,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
-// handleLogout clears the session cookie.
+// handleLogout clears the session cookie. The /auth group is not gated by
+// requireSession, so the SessionUser is injected here from the cookie so the
+// logout audit records the real actor rather than the "system" fallback.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if userID, ok := s.hasValidSession(r); ok {
+		if user, err := s.db.GetUserByID(userID); err == nil && user.Enabled {
+			r = r.WithContext(withSessionUser(r.Context(), SessionUser{
+				UserID:   user.ID,
+				Role:     user.Role,
+				HubID:    user.HubID,
+				Username: user.Username,
+			}))
+		}
+	}
 	clearSessionCookie(w, r)
 	s.audit(r, "auth.logout", "auth", "", "", "success")
 	writeNoContent(w)
@@ -237,11 +260,32 @@ func (s *Server) hasValidSession(r *http.Request) (int64, bool) {
 var publicReadPattern = regexp.MustCompile(`^/api/(overview|endpoints/\d+(/series|/probes)?|models/\d+/eval-summary|shared-reports/[^/]+)$`)
 
 // requireSession rejects requests without a valid session cookie, except
-// status-board GETs, which stay public by design. Ticket 63 will inject the
-// userID into the request context; for now it only gates access.
+// status-board GETs, which stay public by design. On a valid session it
+// loads the user (role, hub scope, username) and injects it into the request
+// context via withSessionUser, so downstream handlers and s.audit can read
+// the identity without re-querying. A user whose account has been disabled
+// since the cookie was issued is rejected with 401 (same message as an
+// unauthenticated request) so disabled accounts cannot be probed and the
+// window between revocation and token expiry is closed. The public-read
+// bypass path does not load the user and is unaffected by the Enabled flag
+// (public reads are public regardless of who asks).
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := s.hasValidSession(r); ok {
+		if userID, ok := s.hasValidSession(r); ok {
+			user, err := s.db.GetUserByID(userID)
+			if err != nil || !user.Enabled {
+				// Unknown user (deleted) or disabled since the cookie was
+				// issued: treat as unauthenticated. Same message as below to
+				// avoid account-state probing.
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			r = r.WithContext(withSessionUser(r.Context(), SessionUser{
+				UserID:   user.ID,
+				Role:     user.Role,
+				HubID:    user.HubID,
+				Username: user.Username,
+			}))
 			next.ServeHTTP(w, r)
 			return
 		}

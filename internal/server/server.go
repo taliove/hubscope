@@ -158,53 +158,88 @@ func (s *Server) routes() chi.Router {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireSession)
 
-			r.Post("/hubs", s.handleCreateHub)
-			r.Get("/hubs", s.handleListHubs)
-			r.Put("/hubs/{id}", s.handleUpdateHub)
-			r.Delete("/hubs/{id}", s.handleDeleteHub)
-			r.Post("/hubs/{id}/sync", s.handleSyncHub)
+			// Super_admin-only writes: global resources (hubs, settings,
+			// classification rules, cases) and hub creation are reserved for
+			// super_admin (spec 0005 decisions 1+6). Suites have no write
+			// route (immutable/seeded, W7); cases write the global case
+			// library so they stay here. evals.create uses the library to run
+			// an assessment against a hub's models — a hub-scoped operation,
+			// so it lives in the hub-scoped group below.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireRole(store.RoleSuperAdmin))
 
-			r.Post("/models", s.handleCreateModel)
+				r.Post("/hubs", s.handleCreateHub)
+				r.Put("/hubs/{id}", s.handleUpdateHub)
+				r.Delete("/hubs/{id}", s.handleDeleteHub)
+				r.Post("/hubs/{id}/sync", s.handleSyncHub)
+
+				r.Post("/classification-rules", s.handleCreateClassificationRule)
+				r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
+				r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
+
+				r.Post("/cases", s.handleCreateCase)
+				r.Patch("/cases/{id}", s.handlePatchCase)
+
+				r.Put("/settings", s.handlePutSettings)
+			})
+
+			// Hub-scoped writes: super_admin + admin + operator. These act on
+			// resources that belong to a hub (models, endpoints, discovery,
+			// eval runs, share links) rather than global config.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireRole(store.RoleSuperAdmin, store.RoleAdmin, store.RoleOperator))
+
+				r.Post("/models", s.handleCreateModel)
+				r.Delete("/models/{id}", s.handleDeleteModel)
+				r.Post("/models/{id}/trial", s.handleTrialModel)
+
+				r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
+				r.Delete("/endpoints/{id}", s.handleDeleteEndpoint)
+				// Static segment wins over {id} in chi; registered first for clarity.
+				r.Post("/endpoints/prune-dead", s.handlePruneDeadEndpoints)
+				r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
+
+				r.Post("/discovery/run", s.handleRunDiscovery)
+
+				// evals.create runs an assessment against a hub's models using
+				// the global case library — it consumes cases, does not write
+				// them, so it is a hub-scoped operation (spec 0005 decision 6:
+				// the "global write = super_admin" list is settings/
+				// classification_rules/suites/cases, not evals).
+				r.Post("/evals", s.handleCreateEval)
+
+				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
+				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
+			})
+
+			// Reads: any authenticated user (super_admin/admin/operator/viewer).
+			// /api/users CRUD — ticket 66a, requireRole(super_admin, admin).
+
+			r.Get("/hubs", s.handleListHubs)
 			r.Get("/models", s.handleListModels)
-			r.Delete("/models/{id}", s.handleDeleteModel)
-			r.Post("/models/{id}/trial", s.handleTrialModel)
 			r.Get("/models/{id}/eval-summary", s.handleGetModelEvalSummary)
 
-			r.Patch("/endpoints/{id}", s.handlePatchEndpoint)
-			r.Delete("/endpoints/{id}", s.handleDeleteEndpoint)
 			// Static segment wins over {id} in chi; registered first for clarity.
-			r.Post("/endpoints/prune-dead", s.handlePruneDeadEndpoints)
-			r.Post("/endpoints/{id}/probe", s.handleProbeEndpoint)
 			r.Get("/endpoints/{id}", s.handleGetEndpointDetail)
 			r.Get("/endpoints/{id}/series", s.handleGetEndpointSeries)
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
-			r.Post("/discovery/run", s.handleRunDiscovery)
-
 			r.Get("/classification-rules", s.handleListClassificationRules)
-			r.Post("/classification-rules", s.handleCreateClassificationRule)
-			r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
-			r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
 
 			r.Get("/overview", s.handleGetOverview)
 
 			r.Get("/suites", s.handleListSuites)
-			r.Post("/cases", s.handleCreateCase)
-			r.Patch("/cases/{id}", s.handlePatchCase)
-			r.Post("/evals", s.handleCreateEval)
-			r.Get("/evals", s.handleListEvals)
 			// Static segment wins over {id} in chi; registered first for clarity.
 			r.Get("/evals/latest", s.handleLatestEvals)
+			r.Get("/evals", s.handleListEvals)
 			r.Get("/evals/{id}", s.handleGetEval)
 
 			r.Get("/campaigns", s.handleListCampaigns)
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
 			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 			r.Get("/campaigns/{id}/trends", s.handleGetCampaignTrends)
-			r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 
 			r.Get("/share-links", s.handleListShareLinks)
-			r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			// Public by token (ADR 0006): the requireSession middleware lets
 			// this one GET path through without a session; the token itself
 			// is the credential, and unknown/revoked tokens answer a uniform
@@ -212,7 +247,6 @@ func (s *Server) routes() chi.Router {
 			r.Get("/shared-reports/{token}", s.handleGetSharedReport)
 
 			r.Get("/settings", s.handleGetSettings)
-			r.Put("/settings", s.handlePutSettings)
 			r.Get("/alerts", s.handleListAlerts)
 
 			r.Get("/tasks", s.handleListTasks)

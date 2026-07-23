@@ -74,7 +74,7 @@ func (s *Server) handleCreateShareLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to mint share token")
 		return
 	}
-	link, err := s.db.CreateShareLink(token, id, auditActor, time.Now())
+	link, err := s.db.CreateShareLink(token, id, actorOr(r), time.Now())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create share link")
 		return

@@ -103,6 +103,20 @@ func (db *DB) GetUserByUsername(username string) (*User, error) {
 	return &u, nil
 }
 
+// SetUserEnabled flips the enabled flag on a user. Disabling a user causes
+// requireSession to reject the user's still-valid session cookie (defense
+// against the window between a credential being revoked and its token TTL
+// expiring). It is a store primitive used by the auth gate and (later) the
+// user-management API; it does not itself perform any authorization.
+func (db *DB) SetUserEnabled(username string, enabled bool) error {
+	flag := 0
+	if enabled {
+		flag = 1
+	}
+	_, err := db.conn.Exec("UPDATE users SET enabled = ? WHERE username = ?", flag, username)
+	return err
+}
+
 // GetUserByID looks up a user by primary key. Returns ErrUserNotFound when no
 // row matches; this is the /auth/me identity path.
 func (db *DB) GetUserByID(id int64) (*User, error) {
