@@ -7,6 +7,10 @@
           {{ detail.protocol }}
         </el-tag>
         <span class="hub-name">Hub:{{ detail.hub_name }}</span>
+        <el-button v-if="authed" class="share-btn" @click="shareModel">
+          <el-icon><Share /></el-icon>
+          分享
+        </el-button>
       </template>
     </header>
     <!-- Status row mirrors the Dashboard card: StatusBadge first, then tags,
@@ -47,16 +51,19 @@
 
     <!-- Window and streaming selectors drive the three charts below. -->
     <div class="controls">
-      <el-radio-group v-model="hours" @change="reloadSeries">
-        <el-radio-button :value="24">24 小时</el-radio-button>
-        <el-radio-button :value="168">7 天</el-radio-button>
-        <el-radio-button :value="720">30 天</el-radio-button>
-      </el-radio-group>
-      <el-radio-group v-model="mode" @change="reloadSeries">
-        <el-radio-button value="all">合并</el-radio-button>
-        <el-radio-button value="streaming">流式</el-radio-button>
-        <el-radio-button value="non_streaming">非流式</el-radio-button>
-      </el-radio-group>
+      <div class="controls-left">
+        <el-radio-group v-model="hours" @change="reloadSeries">
+          <el-radio-button :value="24">24 小时</el-radio-button>
+          <el-radio-button :value="168">7 天</el-radio-button>
+          <el-radio-button :value="720">30 天</el-radio-button>
+        </el-radio-group>
+        <el-radio-group v-model="mode" @change="reloadSeries">
+          <el-radio-button value="all">合并</el-radio-button>
+          <el-radio-button value="streaming">流式</el-radio-button>
+          <el-radio-button value="non_streaming">非流式</el-radio-button>
+        </el-radio-group>
+      </div>
+      <el-button v-if="authed && detail" type="primary" @click="triggerEval">评估此模型</el-button>
     </div>
 
     <el-alert
@@ -85,21 +92,39 @@
       <div class="failures-title">近期失败(最近 20 条)</div>
       <ProbeRecordTable :records="failures" :compact="false" />
     </el-card>
+
+    <EvalTriggerDialog
+      v-model="evalDialogVisible"
+      :suites="suites"
+      :models="models"
+      :preselected-model-id="detail?.model_id"
+      @triggered="onEvalTriggered"
+    />
+
+    <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Share } from '@element-plus/icons-vue'
 import { getEndpointDetail, getEndpointSeries } from '@/api/endpoints'
 import { listProbeHistory } from '@/api/probes'
-import { getModelEvalSummary } from '@/api/evals'
+import { getModelEvalSummary, listSuites } from '@/api/evals'
+import { listModels } from '@/api/models'
+import { fetchOverview } from '@/api/overview'
+import { fetchAuthStatus } from '@/api/auth'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TimeSeriesChart from '@/components/TimeSeriesChart.vue'
 import ProbeRecordTable from '@/components/ProbeRecordTable.vue'
+import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
+import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import { formatBucketTime, formatScore, formatTime } from '@/utils/format'
 import { availabilityTier, type AvailabilityTier } from '@/utils/statusCardSummary'
-import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary } from '@/api/types'
+import { createSingleModelSnapshot, type StatusCardSnapshot } from '@/utils/statusCardSnapshot'
+import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary, Suite, Model, Campaign } from '@/api/types'
 
 // Endpoint detail page: status header plus latency/TTFT/success-rate charts
 // over hourly buckets, and the recent-failures evidence table.
@@ -110,10 +135,26 @@ const detail = ref<EndpointDetail | null>(null)
 const buckets = ref<SeriesBucket[]>([])
 const failures = ref<ProbeRecord[]>([])
 const evalSummary = ref<ModelEvalSummary | null>(null)
+const suites = ref<Suite[]>([])
+const models = ref<Model[]>([])
+const evalDialogVisible = ref(false)
+const shareVisible = ref(false)
+const shareSnapshot = ref<StatusCardSnapshot | null>(null)
 const hours = ref(24)
 const mode = ref<SeriesStreaming>('all')
 const loading = ref(false)
 const error = ref('')
+
+// Session state gates the eval/share buttons: they are management actions
+// that require a login, while probe and eval data stay public.
+const authed = ref(false)
+async function refreshAuth() {
+  try {
+    authed.value = (await fetchAuthStatus()).authenticated
+  } catch {
+    authed.value = false
+  }
+}
 
 const categories = computed(() => buckets.value.map(b => formatBucketTime(b.bucket_start)))
 
@@ -169,7 +210,51 @@ async function reloadSeries() {
   }
 }
 
+async function loadEvalSummary() {
+  if (!detail.value) return
+  try {
+    evalSummary.value = await getModelEvalSummary(detail.value.model_id)
+  } catch (e) {
+    // Eval summary is optional; don't block the page if it fails
+    console.warn('Failed to load eval summary:', e)
+    evalSummary.value = null
+  }
+}
+
+function triggerEval() {
+  evalDialogVisible.value = true
+}
+
+function onEvalTriggered(campaign: Campaign) {
+  ElMessage.success(`评估已触发,批次 #${campaign.id}`)
+  // Refresh eval summary to show the latest data
+  loadEvalSummary()
+}
+
+async function shareModel() {
+  if (!detail.value) return
+  try {
+    // Fetch the latest overview to get the OverviewEntry for this endpoint
+    const overview = await fetchOverview()
+    const entry = overview.endpoints.find(e => e.endpoint_id === endpointId)
+    if (!entry) {
+      ElMessage.error('无法找到该端点的状态数据')
+      return
+    }
+    shareSnapshot.value = createSingleModelSnapshot(
+      entry,
+      detail.value.hub_name,
+      evalSummary.value,
+      new Date().toISOString()
+    )
+    shareVisible.value = true
+  } catch (e) {
+    ElMessage.error(`加载分享数据失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 onMounted(async () => {
+  await refreshAuth()
   try {
     const [d, f] = await Promise.all([
       getEndpointDetail(endpointId),
@@ -179,12 +264,21 @@ onMounted(async () => {
     failures.value = f
 
     // Load evaluation summary for this model (ticket 60.3)
-    try {
-      evalSummary.value = await getModelEvalSummary(d.model_id)
-    } catch (e) {
-      // Eval summary is optional; don't block the page if it fails
-      console.warn('Failed to load eval summary:', e)
-      evalSummary.value = null
+    await loadEvalSummary()
+
+    // Load suites and models for the eval trigger dialog (ticket 60.4);
+    // skipped for anonymous visitors since the eval button stays hidden.
+    if (authed.value) {
+      try {
+        const [suitesData, modelsData] = await Promise.all([
+          listSuites(),
+          listModels(),
+        ])
+        suites.value = suitesData
+        models.value = modelsData
+      } catch (e) {
+        console.warn('Failed to load eval trigger data:', e)
+      }
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

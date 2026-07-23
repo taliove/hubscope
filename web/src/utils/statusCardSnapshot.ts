@@ -3,7 +3,8 @@
 // export — what the user sees is exactly what gets shared (ticket 56).
 // `group` marks a per-group share (ticket 59): the card leads its scope
 // chips with it so a group subset never reads as the global picture.
-import type { EndpointStatus, OverviewEntry, Protocol } from '@/api/types'
+// Ticket 60.5: single-model snapshots include hubName and evalSummary.
+import type { EndpointStatus, OverviewEntry, Protocol, ModelEvalSummary } from '@/api/types'
 
 // Grouping dimension of a per-group share (identical to the Dashboard
 // grouping selector values).
@@ -16,4 +17,27 @@ export interface StatusCardSnapshot {
   status: EndpointStatus | ''
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the open/generation moment
+  // Single-model specific fields (only populated when entries.length === 1)
+  hubName?: string
+  evalSummary?: ModelEvalSummary | null
+}
+
+// Create a single-model snapshot (ticket 60.5): entries array contains exactly
+// one item, all filter fields are empty (no scope concept for single model).
+export function createSingleModelSnapshot(
+  entry: OverviewEntry,
+  hubName: string,
+  evalSummary: ModelEvalSummary | null,
+  generatedAt: string
+): StatusCardSnapshot {
+  return {
+    entries: [entry],
+    keyword: '',
+    protocol: '',
+    status: '',
+    group: null,
+    generatedAt,
+    hubName,
+    evalSummary,
+  }
 }
