@@ -11,6 +11,9 @@ importers:
       '@element-plus/icons-vue':
         specifier: ^2.3.1
         version: 2.3.2(vue@3.5.40(typescript@5.7.3))
+      '@zumer/snapdom':
+        specifier: ^2.18.0
+        version: 2.18.0
       echarts:
         specifier: ^5.6.0
         version: 5.6.0
@@ -461,6 +464,9 @@ packages:
     resolution: {integrity: sha512-bZpge9eSXwa4ToSiqJ7j6KRwhAsneMFoSz3LMWKQDkqimm3D/tbFlrklrs/IOqC8tEcYmXQZJ6N0UrjhBirVCg==}
     peerDependencies:
       vue: ^3.5.0
+
+  '@zumer/snapdom@2.18.0':
+    resolution: {integrity: sha512-6XirrLb+E9fXqPkn31NLeY2mG97stdVJ/FyN8ngq5dflFi48F4+NcVvQ04rlRITCkv88BWUstMH8Lf35rKyBjA==}
 
   alien-signals@1.0.13:
     resolution: {integrity: sha512-OGj9yyTnJEttvzhTUWuscOvtqxq5vrhF7vL9oS0xJ2mK0ItPYP1/y+vCFebfxoEyAz0++1AIwJ5CMr+Fk3nDmg==}
@@ -967,6 +973,8 @@ snapshots:
   '@vueuse/shared@14.3.0(vue@3.5.40(typescript@5.7.3))':
     dependencies:
       vue: 3.5.40(typescript@5.7.3)
+
+  '@zumer/snapdom@2.18.0': {}
 
   alien-signals@1.0.13: {}
 

@@ -23,3 +23,30 @@ export async function copyText(text: string): Promise<boolean> {
   document.body.removeChild(el)
   return ok
 }
+
+// canCopyImage reports whether image clipboard writes are available: they
+// require a secure context (HTTPS/localhost), navigator.clipboard.write and
+// ClipboardItem. When false, callers must degrade to a download path.
+export function canCopyImage(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.isSecureContext &&
+    typeof navigator !== 'undefined' &&
+    'clipboard' in navigator &&
+    typeof navigator.clipboard.write === 'function' &&
+    typeof ClipboardItem !== 'undefined'
+  )
+}
+
+// copyImageBlob writes an image blob to the clipboard. Returns false when
+// unsupported or rejected (permission denied, browser quirks) so callers
+// can point the user at the download fallback.
+export async function copyImageBlob(blob: Blob): Promise<boolean> {
+  if (!canCopyImage()) return false
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+    return true
+  } catch {
+    return false
+  }
+}

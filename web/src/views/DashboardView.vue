@@ -62,7 +62,19 @@
         <el-option label="按协议" value="protocol" />
         <el-option label="不分组" value="none" />
       </el-select>
+      <!-- Share the filtered picture as a Status Card PNG; disabled until the
+           first load lands (an empty board is not shareable). -->
+      <el-button
+        class="share-btn"
+        :disabled="loading && entries.length === 0"
+        @click="openShare"
+      >
+        <el-icon><Share /></el-icon>
+        分享状态
+      </el-button>
     </div>
+
+    <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
 
     <el-alert
       v-if="error"
@@ -95,11 +107,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Share } from '@element-plus/icons-vue'
 import { useOverview } from '@/composables/useOverview'
 import HealthBanner from '@/components/HealthBanner.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
+import StatusShareDialog from '@/components/StatusShareDialog.vue'
+import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, start } = useOverview()
@@ -113,6 +128,22 @@ const statusFilter = ref<EndpointStatus | ''>('')
 // Grouping dimension of the status matrix; vendor family by default.
 const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
 const matrixRef = ref<HTMLElement | null>(null)
+
+// Share dialog state. The snapshot freezes the filtered set and filter
+// conditions at open time so polling cannot change the card mid-preview.
+const shareVisible = ref(false)
+const shareSnapshot = ref<StatusCardSnapshot | null>(null)
+
+function openShare() {
+  shareSnapshot.value = {
+    entries: [...filteredEntries.value],
+    keyword: keyword.value.trim(),
+    protocol: protocolFilter.value,
+    status: statusFilter.value,
+    generatedAt: new Date().toISOString(),
+  }
+  shareVisible.value = true
+}
 
 // Disabled endpoints show up in the strip as a non-clickable count.
 const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
@@ -212,6 +243,9 @@ onMounted(start)
 }
 .filter-select {
   width: 140px;
+}
+.share-btn {
+  margin-left: auto;
 }
 .error-alert {
   margin-bottom: 16px;

@@ -54,12 +54,16 @@ _Avoid_: 作业、job(代码中可用 task)
 _Avoid_: 榜单、排名表
 
 **Report**:
-一个 Campaign 的完整报告:Leaderboard + 每 Model 跨 Campaign 趋势 + 探测侧延迟/成功率走势。Report 可生成 Share Link 对外只读分享,可导出图片/PDF。
+一个 Campaign 的完整报告:Leaderboard + 每 Model 跨 Campaign 趋势 + 探测侧延迟/成功率走势。Report 可生成 Share Link 对外只读分享,可导出 PDF。
 _Avoid_: 报表、总结页
 
 **Share Link**:
 指向某个 Report 的只读链接,带随机 token,无需登录即可打开;可撤销。
 _Avoid_: 公开链接、外部分享
+
+**Status Card**:
+Dashboard 状态板的竖版分享图片(PNG),含品牌区、范围副标题(生效筛选条件逐项列出,无筛选为「全部端点」)、结论(统计口径=筛选后集合,沿用 HealthBanner 四态语义)、异常明细与生成时间戳;前端生成,可复制到剪贴板或下载。结论必须显式标注统计范围,禁止把筛选后局部呈现为全局。
+_Avoid_: 截图、状态快照
 
 **Suite Version**:
 Suite 的题集版本。Case 不可变,改题 = 新增 Case + 停用旧 Case,Suite 版本号随之递增;Eval Run 记录所跑的 Suite Version,跨版本的趋势比较标注版本断点。
