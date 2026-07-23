@@ -37,6 +37,7 @@ function makeEntry(overrides: Partial<OverviewEntry> = {}): OverviewEntry {
     score: null,
     score_reasons: [],
     dots_24h: emptyDots(),
+    eval_score: null,
     ...overrides,
   }
 }

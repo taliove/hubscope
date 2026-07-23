@@ -275,3 +275,67 @@ func (db *DB) GetLatestCampaignForModel(modelID int64) (*Campaign, error) {
 	}
 	return &c, nil
 }
+
+// GetLatestCampaignsForModels returns a map of model_id → latest campaign for
+// all provided model IDs in a single query. Models that have never been
+// evaluated are absent from the result map. This is the batch version of
+// GetLatestCampaignForModel, used to avoid N+1 queries when loading eval
+// scores for the overview API.
+func (db *DB) GetLatestCampaignsForModels(modelIDs []int64) (map[int64]*Campaign, error) {
+	if len(modelIDs) == 0 {
+		return map[int64]*Campaign{}, nil
+	}
+
+	// Build the IN clause with placeholders
+	placeholders := make([]string, len(modelIDs))
+	args := make([]interface{}, len(modelIDs))
+	for i, id := range modelIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	// Find the latest campaign per model using a subquery to get max campaign_id
+	query := `
+		SELECT cm.model_id, ` + campaignColumns + `
+		FROM campaign_models cm
+		JOIN campaigns c ON c.id = cm.campaign_id
+		WHERE cm.model_id IN (` + string(placeholders[0])
+	for i := 1; i < len(placeholders); i++ {
+		query += ", " + placeholders[i]
+	}
+	query += `)
+		AND cm.campaign_id = (
+			SELECT MAX(cm2.campaign_id)
+			FROM campaign_models cm2
+			WHERE cm2.model_id = cm.model_id
+		)
+	`
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := map[int64]*Campaign{}
+	for rows.Next() {
+		var modelID int64
+		var c Campaign
+		var startedAt, finishedAt sql.NullString
+		var createdAt string
+		if err := rows.Scan(&modelID, &c.ID, &c.Trigger, &c.Status, &startedAt, &finishedAt, &createdAt); err != nil {
+			return nil, err
+		}
+		if startedAt.Valid {
+			t, _ := time.Parse(time.RFC3339, startedAt.String)
+			c.StartedAt = &t
+		}
+		if finishedAt.Valid {
+			t, _ := time.Parse(time.RFC3339, finishedAt.String)
+			c.FinishedAt = &t
+		}
+		c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		result[modelID] = &c
+	}
+	return result, rows.Err()
+}

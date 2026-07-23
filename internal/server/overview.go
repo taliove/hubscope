@@ -49,6 +49,7 @@ type overviewEntryDTO struct {
 	Score          *int             `json:"score"`
 	ScoreReasons   []string         `json:"score_reasons"`
 	Dots24h        []overviewDotDTO `json:"dots_24h"`
+	EvalScore      *float64         `json:"eval_score"`
 }
 
 // overviewDotDTO is one hourly bucket of the 24h stability dots: how many
@@ -160,6 +161,17 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Batch-load latest eval scores for all models to avoid N+1 queries
+	modelIDs := make([]int64, len(models))
+	for i, m := range models {
+		modelIDs[i] = m.ID
+	}
+	evalScores, err := s.getEvalScoresForModels(modelIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load eval scores")
+		return
+	}
+
 	entries := []overviewEntryDTO{}
 	families := newGroupAccumulator()
 	capabilities := newGroupAccumulator()
@@ -181,6 +193,10 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			entry := buildOverviewEntryFromStats(ep, model, stats, now)
+			// Attach eval score from the batch-loaded map
+			if score, ok := evalScores[model.ID]; ok {
+				entry.EvalScore = score
+			}
 			entries = append(entries, entry)
 			families.add(model.Family, entry, stats.samples24h)
 			capabilities.add(model.Capability, entry, stats.samples24h)
@@ -357,4 +373,72 @@ func buildDots24h(samples []store.ProbeSample, now time.Time) []overviewDotDTO {
 		}
 	}
 	return dots
+}
+
+// getEvalScoresForModels batch-loads the latest evaluation total scores for
+// all provided models. Returns a map of model_id → total_score; models without
+// any eval results are absent from the map. This avoids N+1 queries when
+// building the overview response (ticket 60.2).
+func (s *Server) getEvalScoresForModels(modelIDs []int64) (map[int64]*float64, error) {
+	campaigns, err := s.db.GetLatestCampaignsForModels(modelIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(campaigns) == 0 {
+		return map[int64]*float64{}, nil
+	}
+
+	// For each campaign, compute its scores using the same logic as the
+	// report endpoint. We need to process each campaign separately because
+	// different campaigns may have different suite versions and nadirs.
+	result := make(map[int64]*float64)
+
+	for modelID, campaign := range campaigns {
+		// Get the runs for this campaign to extract suite metadata
+		runs, err := s.db.ListEvalRunsByCampaign(campaign.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Build the suite list with versions from runs
+		suites, err := s.campaignSuites(runs)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(suites) == 0 {
+			// Campaign exists but has no runs or suites
+			continue
+		}
+
+		// Get weights configuration
+		configured, err := s.db.GetSuiteWeights()
+		if err != nil {
+			return nil, err
+		}
+		weights := effectiveWeights(suites, configured)
+
+		// Load scores for this campaign
+		scores, err := s.db.ListCampaignSuiteScores(campaign.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Build nadirs map from runs (same as campaign report)
+		nadirs := nadirBySuiteKey(suites, runs)
+
+		// Compute report rows with total scores
+		rows := buildReportRows(scores, weights, nadirs)
+
+		// Find this model's total score
+		for _, row := range rows {
+			if row.ModelDBID == modelID && row.TotalScore != nil {
+				result[modelID] = row.TotalScore
+				break
+			}
+		}
+	}
+
+	return result, nil
 }

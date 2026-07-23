@@ -38,6 +38,7 @@ type overviewEntry struct {
 	Score          *int          `json:"score"`
 	ScoreReasons   []string      `json:"score_reasons"`
 	Dots24h        []overviewDot `json:"dots_24h"`
+	EvalScore      *float64      `json:"eval_score"`
 }
 
 // overviewDot mirrors one hourly bucket of the dots_24h array.
