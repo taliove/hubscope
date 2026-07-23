@@ -87,6 +87,7 @@ const props = defineProps<{
   modelValue: boolean
   suites: Suite[]
   models: Model[]
+  preselectedModelId?: number
 }>()
 
 const emit = defineEmits<{
@@ -104,17 +105,84 @@ const chatModelCount = computed(() => props.models.filter(m => m.capability === 
 // history but are not offered for new triggers.
 const enabledSuites = computed(() => props.suites.filter(s => s.enabled))
 
-// Reset the form every time the dialog opens so stale picks never leak into
-// the next trigger.
+// localStorage keys for remembering last selection (ticket 60.7)
+const STORAGE_KEY_SUITE = 'eval-last-suite'
+const STORAGE_KEY_MODELS = 'eval-last-models'
+
+// Read last selection from localStorage
+function loadLastSelection() {
+  try {
+    const lastSuiteId = localStorage.getItem(STORAGE_KEY_SUITE)
+    const lastModelsJson = localStorage.getItem(STORAGE_KEY_MODELS)
+
+    // Restore suite if it's still in enabled suites
+    if (lastSuiteId) {
+      const parsedSuiteId = Number(lastSuiteId)
+      if (enabledSuites.value.some(s => s.id === parsedSuiteId)) {
+        suiteId.value = parsedSuiteId
+      }
+    }
+
+    // Restore models if not preselected and they're still valid chat models
+    if (!props.preselectedModelId && lastModelsJson) {
+      const lastModelIds = JSON.parse(lastModelsJson) as number[]
+      const validModelIds = lastModelIds.filter(id =>
+        props.models.some(m => m.id === id && m.capability === 'chat')
+      )
+      if (validModelIds.length > 0) {
+        selectedModelIds.value = validModelIds
+      }
+    }
+  } catch (err) {
+    // Ignore localStorage errors (e.g., quota exceeded, parse errors)
+    console.warn('Failed to load last eval selection:', err)
+  }
+}
+
+// Debounced save to localStorage
+let saveTimer: number | null = null
+function saveSelection() {
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer)
+  }
+  saveTimer = window.setTimeout(() => {
+    try {
+      if (suiteId.value !== null) {
+        localStorage.setItem(STORAGE_KEY_SUITE, String(suiteId.value))
+      }
+      if (selectedModelIds.value.length > 0) {
+        localStorage.setItem(STORAGE_KEY_MODELS, JSON.stringify(selectedModelIds.value))
+      }
+    } catch (err) {
+      // Ignore localStorage errors (e.g., quota exceeded)
+      console.warn('Failed to save eval selection:', err)
+    }
+  }, 500)
+}
+
+// Load last selection when dialog opens. If preselectedModelId is provided,
+// it overrides the localStorage model memory (ticket 04).
 watch(
   () => props.modelValue,
   visible => {
     if (visible) {
+      // Reset first
       suiteId.value = null
       selectedModelIds.value = []
+
+      // Then load last selection (respecting preselectedModelId)
+      loadLastSelection()
+
+      // If model is preselected from outside (e.g., detail page), use it
+      if (props.preselectedModelId) {
+        selectedModelIds.value = [props.preselectedModelId]
+      }
     }
   }
 )
+
+// Save selection to localStorage when user changes suite or models
+watch([suiteId, selectedModelIds], saveSelection, { deep: true })
 
 function onVisibleChange(visible: boolean) {
   if (!visible) emit('update:modelValue', false)
