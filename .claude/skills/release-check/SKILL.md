@@ -10,7 +10,8 @@ description: 发布/打包前检查清单:全量门禁、版本、部署产物�
 1. **门禁全绿**:`make test` 通过;`git status` 干净;commit 历史全为英文 Conventional Commits。
 2. **打包**:`make package`(单二进制 + Dockerfile + 部署文档 tar 包);本机无 Docker,Dockerfile 只做静态检查,如实告知未实际构建镜像。
 3. **部署要件核对**(docs/deployment.md):
-   - `ADMIN_PASSWORD`(必填,不写入任何文件)、`DATA_PATH`、`ADDR`、`LOG_LEVEL`;
+   - `SESSION_SECRET`(可选,未设则首启自动生成)、`DATA_PATH`、`ADDR`、`LOG_LEVEL`;
+   - 首个 super_admin 经 CLI `hubscope admin create` bootstrap(CLI 由 ticket 69 交付);`ADMIN_PASSWORD` 已废弃(ADR-0011),不再 gate 启动,过渡期仅 deprecation warning;
    - 出网代理:目标环境若有 fake-ip 类代理,必须设 `HTTPS_PROXY`,启动日志首行会打印生效代理,核对之;
    - 反向代理后设 `TRUST_PROXY=true`(否则限流/审计取不到真实 IP)。
 4. **数据面**:目标机的 app.db 备份;schema 自动迁移只加不删,升级无需手工 SQL,但降级不支持——提示用户确认。

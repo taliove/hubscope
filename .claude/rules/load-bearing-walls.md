@@ -35,7 +35,7 @@
 ## W6. 凭证边界
 
 - **位置:** `internal/server`(auth、脱敏)、`.githooks/`
-- **约定:** Hub token 入库脱敏(省略号+后 4 位)、任何接口不回明文;管理员口令只经 `ADMIN_PASSWORD` 环境变量注入;凭证扫描门禁 fail-closed;Lark webhook 不进日志。
+- **约定:** Hub token 入库脱敏(省略号+后 4 位)、任何接口不回明文;凭证经 `users` 表(bcrypt 哈希)注入,session 签名 key 经 `SESSION_SECRET` env 或 settings 表自动生成(独立 secret,不从密码派生),首个 super_admin 经 CLI `hubscope admin create` 创建(见 ADR 0011);`ADMIN_PASSWORD` 废弃(过渡期仅记 deprecation warning 不报错,CLI 落地后硬删——ticket 69);凭证扫描门禁 fail-closed;Lark webhook 不进日志。
 - **为何承重:** 泄露即事故,不可逆。
 
 ## W7. 评估不可变性
