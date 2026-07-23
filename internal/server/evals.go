@@ -349,7 +349,7 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	campaign, err := s.db.CreateCampaign("manual", time.Now().UTC())
+	campaign, err := s.db.CreateCampaign("manual", req.ModelIDs, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create campaign")
 		return

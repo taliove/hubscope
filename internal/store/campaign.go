@@ -68,10 +68,19 @@ func scanCampaign(s rowScanner) (Campaign, error) {
 }
 
 // CreateCampaign inserts a campaign in "running" status, stamped with the
-// given start time, and returns the stored copy.
-func (db *DB) CreateCampaign(trigger string, now time.Time) (*Campaign, error) {
+// given start time, and snapshots its model membership (ticket 53) in the
+// same transaction: the campaign and the population it set out to evaluate
+// always agree, so the progress grid can show every member — including
+// models with no results yet — from the first run on. Duplicate model IDs
+// collapse onto the membership primary key. Returns the stored copy.
+func (db *DB) CreateCampaign(trigger string, modelIDs []int64, now time.Time) (*Campaign, error) {
 	now = now.UTC()
-	result, err := db.conn.Exec(`
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`
 		INSERT INTO campaigns ("trigger", status, started_at, created_at)
 		VALUES (?, ?, ?, ?)
 	`, trigger, CampaignStatusRunning, now.Format(time.RFC3339), now.Format(time.RFC3339))
@@ -80,6 +89,17 @@ func (db *DB) CreateCampaign(trigger string, now time.Time) (*Campaign, error) {
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		return nil, err
+	}
+	for _, modelID := range modelIDs {
+		if _, err := tx.Exec(
+			"INSERT OR IGNORE INTO campaign_models (campaign_id, model_id) VALUES (?, ?)",
+			id, modelID,
+		); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return db.GetCampaign(id)

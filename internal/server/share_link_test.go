@@ -311,19 +311,35 @@ func TestSharedReportRateLimited(t *testing.T) {
 	}
 }
 
-// TestSharedReportHidesUnfinishedBoard pins the public boundary of the
-// ticket-52 live board: through a share token an unsettled campaign answers
-// empty rows — no half-scored board, no cells — even while the session-gated
-// report serves that same live board; once the batch settles, the shared
-// view renders the full ranked board like the session view.
+// TestSharedReportHidesUnfinishedBoard pins the public boundary of an
+// unsettled campaign's report (ticket 54, revising the HIGH-1 caliber of
+// ticket 52): the two data classes part ways at the session edge. Progress
+// metadata — the model x suite four-state cells with judged/expected
+// coverage — is operational fact and crosses to the shared view, so a
+// running campaign answers its stripped progress board (lexicographic rows,
+// samples withheld). Half-baked scores, rankings and deltas are evaluation
+// conclusions and never leave the session boundary pre-settle: every score
+// field stays null/empty even though the session-gated report serves the
+// live half-scored board for the same campaign. Retired models stay off the
+// shared board (the store-layer member/progress filters are inherited). Once
+// the batch settles, the shared view renders the full ranked board like the
+// session view.
 //
 // Scenario mirrors TestCampaignReportProgressGrid: the judge model is frozen
 // after three judge calls, catching the sweep mid-cap_language with results
-// already recorded for both models.
+// already recorded; gamma is a discovered model retired mid-flight.
 func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
+	stub.markBroken("alpha-model", true)
+
+	// Gamma joins the sweep as a discovered model and retires mid-flight:
+	// the shared board must drop it (store-layer filter inheritance).
+	discovery := newDiscoveryStubHub(t, []string{"gamma-model"})
+	createHubViaAPI(t, ts.URL, discovery.URL)
+	runDiscovery(t, ts.URL)
+
 	stub.resetCalls()
 	stub.blockModelAfter(store.DefaultJudgeModel, 3)
 	t.Cleanup(func() { stub.releaseModel(store.DefaultJudgeModel) })
@@ -348,14 +364,64 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 		t.Fatalf("session report of a running campaign must serve the live board, got %v", rows)
 	}
 
-	// …while the shared view of the same campaign hides every row.
+	// …and gamma's retirement must not disturb the in-flight sweep: the hub
+	// stops listing it (an empty list would be treated as a fetch anomaly
+	// and retire nothing).
+	discovery.setModels([]string{"replacement-model"})
+	runDiscovery(t, ts.URL)
+
+	// The shared view of the same campaign answers the stripped progress
+	// board: rows in model-id lexicographic order with the retired model
+	// absent, progress cells attached, and every evaluation-conclusion
+	// field empty.
 	shared := getSharedReport(t, ts.URL, token)
 	if shared["status"] != store.CampaignStatusRunning {
 		t.Fatalf("shared campaign status = %v, want running", shared["status"])
 	}
-	if rows := reportRows(t, shared); len(rows) != 0 {
-		t.Errorf("shared report of a running campaign must answer empty rows, got %v", rows)
+	if shared["baseline"] != nil {
+		t.Errorf("shared running report baseline = %v, want null", shared["baseline"])
 	}
+	rows := reportRows(t, shared)
+	if len(rows) != 2 {
+		t.Fatalf("shared running rows = %v, want alpha and beta only (retired gamma hidden)", rows)
+	}
+	for i, want := range []string{"alpha-model", "beta-model"} {
+		if rows[i]["model_id"] != want {
+			t.Errorf("shared row %d = %v, want %s (lexicographic, retired model hidden)", i, rows[i]["model_id"], want)
+		}
+	}
+	for _, row := range rows {
+		if row["total_score"] != nil {
+			t.Errorf("shared model %v total_score = %v, want null pre-settle", row["model_id"], row["total_score"])
+		}
+		if row["total_delta"] != nil {
+			t.Errorf("shared model %v total_delta = %v, want null pre-settle", row["model_id"], row["total_delta"])
+		}
+		if scores, _ := row["suite_scores"].(map[string]interface{}); len(scores) != 0 {
+			t.Errorf("shared model %v suite_scores = %v, want empty pre-settle", row["model_id"], scores)
+		}
+		cells := reportCells(t, row)
+		if len(cells) != suiteCount(t, ts.URL) {
+			t.Fatalf("shared model %v has %d cells, want one per suite", row["model_id"], len(cells))
+		}
+		for _, cell := range cells {
+			if got := int(cell["samples"].(float64)); got != 0 {
+				t.Errorf("shared model %v suite %v samples = %d, want 0 (confidence marker withheld)",
+					row["model_id"], cell["suite_key"], got)
+			}
+		}
+	}
+
+	// Cell states and coverage mirror the session grid's caliber: the four
+	// rule-only suites are done, cap_language is mid-flight (alpha's broken
+	// results fully recorded, beta seven of ten judged).
+	alpha, beta := rows[0], rows[1]
+	for _, key := range []string{"cap_instruction", "cap_reasoning", "cap_coding", "cap_knowledge"} {
+		assertCell(t, alpha, key, "done", 0, 10)
+		assertCell(t, beta, key, "done", 10, 10)
+	}
+	assertCell(t, alpha, "cap_language", "done", 0, 10)
+	assertCell(t, beta, "cap_language", "running", 7, 10)
 
 	// Settled: the shared view renders the same full board as the session
 	// view, cells included.

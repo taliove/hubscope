@@ -84,11 +84,14 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 // writeCampaignReport builds and writes the report payload for one campaign.
 // It is shared by the session-gated report endpoint and the token-gated
 // shared-report endpoint (ADR 0006), so both views render the same settled
-// board. The views diverge on an unfinished campaign: the session view
-// serves the live half-scored board (ticket 52) while the public shared
-// view keeps the older public behavior — no half-baked ranking leaves the
-// session boundary, so shared reports answer empty rows until the batch
-// settles.
+// board. The views diverge on an unfinished campaign, and the divergence
+// follows two distinct data classes (ticket 54, revising the HIGH-1
+// caliber): progress metadata — run status and judged-case coverage — is
+// operational fact and may cross the session boundary, so the shared view
+// serves the stripped progress board (sharedProgressRows); half-baked
+// scores, rankings, deltas and the samples confidence marker are evaluation
+// conclusions and never leave the session boundary before the batch
+// settles, so the live half-scored board (ticket 52) stays session-only.
 func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign, shared bool) {
 	id := campaign.ID
 
@@ -171,23 +174,35 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 			}
 			rows = withDeltas
 		}
+		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
 	} else if shared {
-		// Public shared reports never expose the live half-scored board:
-		// rows (and with them the per-suite cells) stay empty until the
-		// batch settles; the campaign progress counters still render.
-		rows = []reportRowDTO{}
+		// Public shared view of an unfinished campaign (ticket 54): progress
+		// metadata only — the stripped progress board whose constructor
+		// never sees scores/weights/nadirs; family/sort params are ignored
+		// and the cells (already attached, samples withheld) stay as built.
+		members, err := s.db.ListCampaignMembers(id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load campaign members")
+			return
+		}
+		rows = sharedProgressRows(members, suites, runs, cellProgress, expectedBySuite)
 	} else {
 		// Spec 0004 (revising spec 0002 review condition 3): an unfinished
-		// campaign serves a live half-scored board — every model with
-		// recorded results, model-id lexicographic order, no ranking, no
-		// baseline deltas. Unscored suites stay out of the totals (they
-		// drop from numerator and denominator alike, ADR 0005).
-		rows = liveReportRows(cellProgress, scores, weights, nadirs)
+		// campaign serves a live half-scored board — every snapshotted member
+		// (ticket 53), model-id lexicographic order, no ranking, no baseline
+		// deltas. Unscored suites stay out of the totals (they drop from
+		// numerator and denominator alike, ADR 0005).
+		members, err := s.db.ListCampaignMembers(id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load campaign members")
+			return
+		}
+		rows = liveReportRows(members, cellProgress, scores, weights, nadirs)
 		if family != "" {
 			rows = filterReportRowsByFamily(rows, family)
 		}
+		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
 	}
-	rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
 
 	progress := store.CampaignWithProgress{Campaign: *campaign}
 	for _, run := range runs {

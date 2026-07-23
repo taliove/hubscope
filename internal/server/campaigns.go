@@ -33,7 +33,7 @@ func (s *Server) handleFullSweep(w http.ResponseWriter, r *http.Request, judgeMo
 		return
 	}
 
-	campaign, err := s.db.CreateCampaign("manual", time.Now().UTC())
+	campaign, err := s.db.CreateCampaign("manual", modelIDs, time.Now().UTC())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create campaign")
 		return

@@ -150,6 +150,14 @@ func (db *DB) migrate() error {
 			created_at TEXT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS campaign_models (
+			campaign_id INTEGER NOT NULL,
+			model_id INTEGER NOT NULL,
+			PRIMARY KEY (campaign_id, model_id),
+			FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+			FOREIGN KEY (model_id) REFERENCES models(id)
+		);
+
 		CREATE TABLE IF NOT EXISTS eval_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			campaign_id INTEGER NOT NULL,
@@ -328,6 +336,12 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.backfillRunCampaigns(); err != nil {
+		return err
+	}
+	// Ticket 53: campaigns created before the membership snapshot existed
+	// get their members backfilled from recorded results. Runs after the
+	// run-campaign backfill so no member points at the sentinel campaign 0.
+	if err := db.backfillCampaignMembers(); err != nil {
 		return err
 	}
 	// The campaign index lives outside the schema block: on pre-campaign

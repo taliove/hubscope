@@ -152,7 +152,7 @@ func TestRestartClosesStaleRunningRuns(t *testing.T) {
 	if err != nil || len(suites) == 0 {
 		t.Fatalf("list suites: %v (n=%d)", err, len(suites))
 	}
-	campaign, err := db.CreateCampaign("scheduled", time.Now().UTC())
+	campaign, err := db.CreateCampaign("scheduled", nil, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("create campaign: %v", err)
 	}

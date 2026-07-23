@@ -339,20 +339,22 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	}
 }
 
-// TestCampaignReportRunningBatchReturnsNoRows pins the zero-result edge of
-// the spec 0004 live board: a running campaign whose only run has not
-// recorded any result yet serves an empty row list (runs carry no model
-// membership, so untouched models have no cells) — progress comes from the
-// campaign counters alone. Once results exist the rows appear (covered by
+// TestCampaignReportRunningBatchListsMembers pins the zero-result edge of
+// the spec 0004 live board under ticket 53 membership: a running campaign
+// whose only run has not recorded any result yet already lists its
+// snapshotted members, each with a pending cell (zero judged, the suite's
+// enabled case count expected) — progress no longer comes from the campaign
+// counters alone. Once results exist the cells fill in (covered by
 // TestCampaignReportProgressGrid), and once the batch settles the ranked
 // board replaces the live one.
-func TestCampaignReportRunningBatchReturnsNoRows(t *testing.T) {
+func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	stub.blockCalls()
 	t.Cleanup(stub.release)
 
 	basicID := suiteIDByKey(t, ts.URL, "basic")
+	enabledCases := enabledCaseCount(t, ts.URL, basicID)
 	runID := triggerEval(t, ts.URL, basicID, modelID)
 	waitFor(t, "eval call reaching the stub", func() bool {
 		return stub.sawModel("smart-model")
@@ -364,9 +366,11 @@ func TestCampaignReportRunningBatchReturnsNoRows(t *testing.T) {
 	if report["status"] != "running" {
 		t.Fatalf("campaign status = %v, want running", report["status"])
 	}
-	if rows := reportRows(t, report); len(rows) != 0 {
-		t.Errorf("running campaign must return no leaderboard rows, got %v", rows)
+	rows := reportRows(t, report)
+	if len(rows) != 1 || rows[0]["model_id"] != "smart-model" {
+		t.Fatalf("running campaign rows = %v, want the single member smart-model pending", rows)
 	}
+	assertCell(t, rows[0], "basic", "pending", 0, enabledCases)
 	progress := campaignProgress(t, report)
 	if int(progress["total"].(float64)) != 1 {
 		t.Errorf("running campaign progress.total = %v, want 1", progress)

@@ -148,7 +148,7 @@ func (w *EvalWorker) runBatch(ctx context.Context) {
 		return
 	}
 
-	campaign, err := w.db.CreateCampaign("scheduled", w.clock.Now().UTC())
+	campaign, err := w.db.CreateCampaign("scheduled", modelIDs, w.clock.Now().UTC())
 	if err != nil {
 		slog.Error("eval worker: create campaign", "error", err)
 		return
