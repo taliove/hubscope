@@ -269,6 +269,17 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_share_links_campaign ON share_links(campaign_id);
+
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			hub_id INTEGER NULL,
+			role TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (hub_id) REFERENCES hubs(id)
+		);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {

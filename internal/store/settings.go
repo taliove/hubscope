@@ -25,6 +25,10 @@ const (
 	// (JSON object, e.g. {"basic":2}); suites absent from the map weigh 1, so
 	// the default is equal weighting (ADR 0005).
 	SettingSuiteWeights = "suite_weights"
+	// SettingSessionSecret is the HMAC signing key for session cookies. When
+	// the SESSION_SECRET env var is unset, the server generates a random
+	// 32-byte hex value here on first start and reuses it on restart.
+	SettingSessionSecret = "session_secret"
 )
 
 // Default setting values applied when a key has never been written.
