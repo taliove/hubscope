@@ -92,6 +92,7 @@
           :key="section.group.key"
           :group="section.group"
           :entries="section.entries"
+          @share="openGroupShare(section)"
         />
         <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
       </template>
@@ -140,6 +141,23 @@ function openShare() {
     keyword: keyword.value.trim(),
     protocol: protocolFilter.value,
     status: statusFilter.value,
+    group: null,
+    generatedAt: new Date().toISOString(),
+  }
+  shareVisible.value = true
+}
+
+// Per-group share (ticket 59): the snapshot scope is the group's filtered
+// entries; the card leads its scope chips with the group identity so the
+// subset can never read as the global picture.
+function openGroupShare(section: { group: OverviewGroup; entries: OverviewEntry[] }) {
+  if (grouping.value === 'none') return
+  shareSnapshot.value = {
+    entries: [...section.entries],
+    keyword: keyword.value.trim(),
+    protocol: protocolFilter.value,
+    status: statusFilter.value,
+    group: { dimension: grouping.value, key: section.group.key },
     generatedAt: new Date().toISOString(),
   }
   shareVisible.value = true

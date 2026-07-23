@@ -12,11 +12,14 @@
 // Retina screens and in chat apps that upscale previews.
 export const STATUS_CARD_EXPORT_SCALE = 2
 
-// hubscope-status-YYYYMMDD-HHmm.png
-export function statusCardFilename(now: Date): string {
+// hubscope-status-[scope-]YYYYMMDD-HHmm.png — scope (e.g. a group key) lets
+// saved per-group shares sort apart from the global one. Characters outside
+// letters/digits/CJK/-/_ collapse to underscores.
+export function statusCardFilename(now: Date, scope?: string): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-  return `hubscope-status-${date}-${pad(now.getHours())}${pad(now.getMinutes())}.png`
+  const scopePart = scope ? `-${scope.replace(/[^\w一-鿿.-]+/g, '_')}` : ''
+  return `hubscope-status${scopePart}-${date}-${pad(now.getHours())}${pad(now.getMinutes())}.png`
 }
 
 async function capture(el: HTMLElement) {

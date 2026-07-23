@@ -15,6 +15,7 @@
         :keyword="snapshot.keyword"
         :protocol="snapshot.protocol"
         :status="snapshot.status"
+        :group="snapshot.group"
         :generated-at="snapshot.generatedAt"
         :origin="origin"
       />
@@ -33,6 +34,7 @@
       :keyword="snapshot.keyword"
       :protocol="snapshot.protocol"
       :status="snapshot.status"
+      :group="snapshot.group"
       :generated-at="snapshot.generatedAt"
       :origin="origin"
     />
@@ -71,7 +73,7 @@ import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
 import { captureStatusCard, downloadStatusCard, statusCardFilename } from '@/utils/statusCardImage'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 
-defineProps<{
+const props = defineProps<{
   visible: boolean
   snapshot: StatusCardSnapshot | null
 }>()
@@ -123,7 +125,7 @@ async function onDownload() {
   downloading.value = true
   error.value = null
   try {
-    await downloadStatusCard(el, statusCardFilename(new Date()))
+    await downloadStatusCard(el, statusCardFilename(new Date(), props.snapshot?.group?.key))
     ElMessage.success('已开始下载 PNG')
   } catch (e) {
     fail('生成图片失败', e)
@@ -141,6 +143,11 @@ function onClosed() {
 .preview {
   display: flex;
   justify-content: center;
+  /* Row-flex default is align-items: stretch, which would squash the card
+     to the container's max-height (its overflow:hidden then clips the rest
+     invisibly). flex-start keeps the card at natural height so tall cards
+     actually scroll. */
+  align-items: flex-start;
   overflow: auto;
   /* Tall cards (long abnormal lists) scroll inside the dialog body so the
      footer actions stay on screen. */
