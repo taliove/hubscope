@@ -20,29 +20,10 @@
       </div>
       <div v-else class="scope-plain">全部端点</div>
 
-      <!-- Conclusion: big verdict word (same source as HealthBanner) plus the
-           full four-status distribution, so degraded counts can never be
-           swallowed by an "N 个端点异常" headline. -->
-      <div class="conclusion-block" :class="`tone-${conclusionTone}`">
-        <div class="conclusion-main">
-          <span v-if="hasFailing" class="alert-dot" />
-          <span class="conclusion-text">{{ conclusion }}</span>
-          <span v-if="hasFailing" class="failing-chip">含 {{ counts.failing }} 个告警</span>
-        </div>
-        <div v-if="!isEmpty" class="distribution">
-          <span
-            v-for="seg in distribution"
-            :key="seg.status"
-            class="dist-seg"
-            :class="{ 'dist-zero': seg.count === 0 }"
-          >
-            <span class="dist-label" :class="seg.count > 0 ? `st-${seg.status}` : ''">{{ seg.label }}</span>
-            <span class="dist-num">{{ seg.count }}</span>
-          </span>
-        </div>
-      </div>
-
-      <StatusCardMetrics :availability="availability" :avg-latency="avgLatency" :dots="aggDots" />
+      <!-- Hero panel: availability leads, verdict + distribution ride
+           underneath (see StatusCardMetrics). The top does not foreground
+           the abnormal endpoints, but the verdict and counts stay honest. -->
+      <StatusCardMetrics :entries="enabledEntries" :is-empty="isEmpty" />
 
       <div class="divider" />
 
@@ -67,8 +48,8 @@
 // the same enabled-entry set the scope chips describe (see
 // statusCardSummary.ts for why backend aggregates are not passed through) —
 // never present a filtered subset as the global picture (mirror of ADR 0007
-// anti-fake semantics). Metrics/detail blocks live in child components;
-// this file owns the brand, scope, conclusion and footer.
+// anti-fake semantics). The hero panel and detail blocks live in child
+// components; this file owns the brand, scope and footer.
 // Static medium rules: no animations (the failing blink freezes into a solid
 // dot + text chip), no hover reliance (truncation thresholds stay
 // conservative).
@@ -76,14 +57,8 @@ import { computed } from 'vue'
 import type { EndpointStatus, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
 import { formatTime } from '@/utils/format'
-import { STATUS_LABELS, countByStatus, toneOf, conclusionText, type HealthTone } from '@/utils/healthConclusion'
-import {
-  aggregateDots24h,
-  distributionSegments,
-  meanP50Ms,
-  scopedAvailability,
-  summaryText,
-} from '@/utils/statusCardSummary'
+import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
+import { summaryText } from '@/utils/statusCardSummary'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
 import StatusCardDetail from '@/components/StatusCardDetail.vue'
 
@@ -109,22 +84,15 @@ interface ScopeChip {
   tone?: EndpointStatus
 }
 
-// Conclusion math counts enabled endpoints only (same rule as HealthBanner);
-// disabled ones surface as a trailing note, never inside the conclusion.
+// Counts feed the summary only; the hero panel computes its own availability
+// and verdict from the same enabled set (cheap, and keeps the parent's
+// responsibilities narrow). Disabled endpoints surface as a trailing note,
+// never inside the conclusion.
 const enabledEntries = computed(() => props.entries.filter(e => e.enabled))
 const disabledCount = computed(() => props.entries.length - enabledEntries.value.length)
 const isEmpty = computed(() => enabledEntries.value.length === 0)
 
 const counts = computed(() => countByStatus(enabledEntries.value))
-const tone = computed<HealthTone>(() => toneOf(counts.value))
-const conclusionTone = computed<HealthTone | 'empty'>(() => (isEmpty.value ? 'empty' : tone.value))
-const conclusion = computed(() => conclusionText(tone.value, counts.value, isEmpty.value))
-const hasFailing = computed(() => !isEmpty.value && counts.value.failing > 0)
-const distribution = computed(() => distributionSegments(counts.value))
-
-const availability = computed(() => scopedAvailability(enabledEntries.value))
-const avgLatency = computed(() => meanP50Ms(enabledEntries.value))
-const aggDots = computed(() => aggregateDots24h(enabledEntries.value))
 const summary = computed(() => summaryText(counts.value, enabledEntries.value, isEmpty.value))
 
 const scopeChips = computed<ScopeChip[]>(() => {
@@ -227,103 +195,6 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
   margin-bottom: 16px;
-}
-.conclusion-block {
-  padding: 16px 20px;
-  border-radius: var(--hs-radius);
-  margin-bottom: 16px;
-}
-.conclusion-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.tone-healthy {
-  background: var(--el-color-success-light-9);
-}
-.tone-healthy .conclusion-text {
-  color: var(--el-color-success);
-}
-.tone-degraded {
-  background: var(--el-color-warning-light-9);
-}
-.tone-degraded .conclusion-text {
-  color: var(--el-color-warning);
-}
-.tone-abnormal {
-  background: var(--el-color-danger-light-9);
-}
-.tone-abnormal .conclusion-text {
-  color: var(--el-color-danger);
-}
-/* Empty (zero matches / all disabled) stays neutral: no status tint, so
-   "no data" can never read as "全部正常" (same rule as the banner). */
-.tone-empty {
-  background: var(--hs-bg-page);
-  border: 1px solid var(--hs-border);
-}
-.tone-empty .conclusion-text {
-  color: var(--hs-text-secondary);
-}
-.conclusion-text {
-  font-size: var(--hs-text-2xl);
-  font-weight: 600;
-  line-height: 1.5;
-}
-/* Static equivalent of the failing blink: solid orange-red dot + text chip
-   (ui-guidelines §3 static-media rule). */
-.alert-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--hs-status-failing);
-}
-.failing-chip {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-status-failing);
-  border: 1px solid var(--hs-status-failing);
-  border-radius: var(--hs-radius-sm);
-  background: var(--hs-bg-card);
-  padding: 0 6px;
-}
-/* Distribution line: four segments always listed; a zero segment fades to
-   placeholder so "no failing" is confirmed, not inferred. */
-.distribution {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-top: 6px;
-  font-size: var(--hs-text-sm);
-}
-.dist-seg + .dist-seg::before {
-  content: '·';
-  margin: 0 8px;
-  color: var(--hs-text-placeholder);
-}
-.dist-label {
-  font-weight: 600;
-  margin-right: 4px;
-}
-.dist-num {
-  color: var(--hs-text-primary);
-}
-.dist-zero .dist-label,
-.dist-zero .dist-num {
-  color: var(--hs-text-placeholder);
-  font-weight: 400;
-}
-.st-healthy {
-  color: var(--el-color-success);
-}
-.st-degraded {
-  color: var(--el-color-warning);
-}
-.st-down {
-  color: var(--el-color-danger);
-}
-.st-failing {
-  color: var(--hs-status-failing);
 }
 .divider {
   border-top: 1px solid var(--hs-border);
