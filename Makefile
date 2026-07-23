@@ -38,7 +38,7 @@ frontend-build:
 
 frontend-test:
 	@if [ -f web/package.json ]; then \
-		cd web && pnpm install && pnpm typecheck && pnpm build; \
+		cd web && pnpm install && pnpm test && pnpm typecheck && pnpm build; \
 	else \
 		echo "skip: web/ not initialized yet"; \
 	fi
