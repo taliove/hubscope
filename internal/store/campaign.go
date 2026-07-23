@@ -115,9 +115,37 @@ func (db *DB) GetCampaign(id int64) (*Campaign, error) {
 	return &c, nil
 }
 
-// ListCampaigns returns all campaigns, newest first, each with the live
-// per-status count of its member runs.
-func (db *DB) ListCampaigns() ([]CampaignWithProgress, error) {
+// ListCampaignsAll returns every campaign, newest first, each with the live
+// per-status count of its member runs. It is the super_admin / store-internal
+// counterpart of ListCampaignsByHub; HTTP handlers must pick the form based
+// on the session's hub scope.
+func (db *DB) ListCampaignsAll() ([]CampaignWithProgress, error) {
+	return db.listCampaigns(0)
+}
+
+// ListCampaignsByHub returns the campaigns reachable from a single hub —
+// campaigns whose member set (campaign_models) includes at least one model
+// belonging to hubID — newest first, each with the live per-status count of
+// its member runs. It is the hub-scoped form HTTP handlers must use for
+// non-super_admin sessions.
+func (db *DB) ListCampaignsByHub(hubID int64) ([]CampaignWithProgress, error) {
+	return db.listCampaigns(hubID)
+}
+
+// listCampaigns is the shared implementation. hubID is the empty string for
+// the unscoped (all) variant, or a parameter placeholder for the hub-scoped
+// variant. The progress aggregation is identical to the old ListCampaigns.
+func (db *DB) listCampaigns(hubID int64) ([]CampaignWithProgress, error) {
+	hubFilter := ""
+	var args []interface{}
+	if hubID != 0 {
+		hubFilter = `WHERE EXISTS (
+			SELECT 1 FROM campaign_models cm
+			JOIN models m ON m.id = cm.model_id
+			WHERE cm.campaign_id = c.id AND m.hub_id = ?
+		)`
+		args = append(args, hubID)
+	}
 	rows, err := db.conn.Query(`
 		SELECT c.id, c."trigger", c.status, c.started_at, c.finished_at, c.created_at,
 			COUNT(r.id) AS total,
@@ -126,9 +154,10 @@ func (db *DB) ListCampaigns() ([]CampaignWithProgress, error) {
 			COALESCE(SUM(CASE WHEN r.status = 'running' THEN 1 ELSE 0 END), 0) AS running
 		FROM campaigns c
 		LEFT JOIN eval_runs r ON r.campaign_id = c.id
+		`+hubFilter+`
 		GROUP BY c.id
 		ORDER BY c.id DESC
-	`)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -378,9 +378,19 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 	s.writeCampaignCreated(w, campaign.ID)
 }
 
-// handleListEvals handles GET /api/evals, newest first.
+// handleListEvals handles GET /api/evals, newest first, scoped to the
+// session's hub.
 func (s *Server) handleListEvals(w http.ResponseWriter, r *http.Request) {
-	runs, err := s.db.ListEvalRuns()
+	u := sessionUser(r)
+	var runs []store.EvalRun
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		runs, err = s.db.ListEvalRunsAll()
+	} else if u.HubID == nil {
+		runs = []store.EvalRun{}
+	} else {
+		runs, err = s.db.ListEvalRunsByHub(*u.HubID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list eval runs")
 		return
@@ -431,9 +441,19 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLatestEvals handles GET /api/evals/latest: for every (suite, model)
-// pair with at least one done run, the aggregate score of the most recent one.
+// pair with at least one done run, the aggregate score of the most recent
+// one, scoped to the session's hub.
 func (s *Server) handleLatestEvals(w http.ResponseWriter, r *http.Request) {
-	latest, err := s.db.ListLatestEvalScores()
+	u := sessionUser(r)
+	var latest []store.LatestEvalScore
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		latest, err = s.db.ListLatestEvalScores()
+	} else if u.HubID == nil {
+		latest = []store.LatestEvalScore{}
+	} else {
+		latest, err = s.db.ListLatestEvalScoresByHub(*u.HubID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load latest eval scores")
 		return

@@ -68,10 +68,22 @@ func (s *Server) writeCampaignCreated(w http.ResponseWriter, campaignID int64) {
 	writeData(w, http.StatusAccepted, detail)
 }
 
-// handleListCampaigns handles GET /api/campaigns: every campaign, newest
-// first, each with its aggregated run-progress counts.
+// handleListCampaigns handles GET /api/campaigns: every campaign reachable
+// from the session's hub scope, newest first, each with its aggregated
+// run-progress counts.
 func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
-	campaigns, err := s.db.ListCampaigns()
+	u := sessionUser(r)
+	var campaigns []store.CampaignWithProgress
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		campaigns, err = s.db.ListCampaignsAll()
+	} else if u.HubID == nil {
+		// A hub-scoped role without a hub_id is a data inconsistency; fall
+		// back to an empty result rather than leaking the full set.
+		campaigns = []store.CampaignWithProgress{}
+	} else {
+		campaigns, err = s.db.ListCampaignsByHub(*u.HubID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list campaigns")
 		return

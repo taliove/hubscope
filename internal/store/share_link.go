@@ -60,11 +60,38 @@ func (db *DB) CreateShareLink(token string, campaignID int64, createdBy string, 
 	return &link, nil
 }
 
-// ListShareLinks returns every share link, newest first, live and revoked
-// alike (the admin management view shows both).
-func (db *DB) ListShareLinks() ([]ShareLink, error) {
+// ListShareLinksAll returns every share link, newest first, live and revoked
+// alike (the admin management view shows both). It is the super_admin /
+// store-internal counterpart of ListShareLinksByHub.
+func (db *DB) ListShareLinksAll() ([]ShareLink, error) {
+	return db.listShareLinks(0)
+}
+
+// ListShareLinksByHub returns the share links whose campaign membership
+// includes at least one model belonging to hubID, newest first (live and
+// revoked). HTTP handlers must use this form for non-super_admin sessions.
+func (db *DB) ListShareLinksByHub(hubID int64) ([]ShareLink, error) {
+	return db.listShareLinks(hubID)
+}
+
+// listShareLinks is the shared implementation. hubID is 0 for the unscoped
+// (all) variant — hub IDs are AUTOINCREMENT from 1, so 0 never matches — or
+// the hubID parameter for the hub-scoped variant.
+func (db *DB) listShareLinks(hubID int64) ([]ShareLink, error) {
+	hubFilter := ""
+	var args []interface{}
+	if hubID != 0 {
+		hubFilter = `WHERE EXISTS (
+			SELECT 1 FROM campaign_models cm
+			JOIN models m ON m.id = cm.model_id
+			WHERE cm.campaign_id = sl.campaign_id AND m.hub_id = ?
+		)`
+		args = append(args, hubID)
+	}
 	rows, err := db.conn.Query(
-		"SELECT " + shareLinkColumns + " FROM share_links ORDER BY id DESC")
+		"SELECT "+shareLinkColumns+" FROM share_links sl "+hubFilter+" ORDER BY sl.id DESC",
+		args...,
+	)
 	if err != nil {
 		return nil, err
 	}

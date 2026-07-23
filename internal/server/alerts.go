@@ -29,11 +29,22 @@ func toAlertEventDTO(e store.AlertEvent) alertEventDTO {
 	}
 }
 
-// handleListAlerts handles GET /api/alerts?limit=N. Public (read).
+// handleListAlerts handles GET /api/alerts?limit=N. Public (read), scoped to
+// the session's hub for non-super_admin. Hub-less score_drop events (no
+// endpoint) are visible only to super_admin via the *All store variant.
 func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"))
 
-	events, err := s.db.ListAlertEvents(limit)
+	u := sessionUser(r)
+	var events []store.AlertEvent
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		events, err = s.db.ListAlertEventsAll(limit)
+	} else if u.HubID == nil {
+		events = []store.AlertEvent{}
+	} else {
+		events, err = s.db.ListAlertEventsByHub(*u.HubID, limit)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list alert events")
 		return

@@ -83,7 +83,9 @@ func toTaskLogDTO(l store.TaskLog) taskLogDTO {
 
 // handleListTasks handles GET /api/tasks?type=T&status=S&page=N&page_size=M.
 // Tasks are monitoring data: reads follow the same session-gated tier as
-// eval runs and audit logs.
+// eval runs and audit logs, scoped to the session's hub for non-super_admin.
+// Hub-less tasks (rollup/retention) are super_admin-only via the *All store
+// variant.
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page := parsePositiveInt(q.Get("page"), 1)
@@ -92,7 +94,17 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		pageSize = 100
 	}
 
-	tasks, total, err := s.db.ListTasks(page, pageSize, q.Get("type"), q.Get("status"))
+	u := sessionUser(r)
+	var tasks []store.Task
+	var total int
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		tasks, total, err = s.db.ListTasksAll(page, pageSize, q.Get("type"), q.Get("status"))
+	} else if u.HubID == nil {
+		tasks, total, err = []store.Task{}, 0, error(nil)
+	} else {
+		tasks, total, err = s.db.ListTasksByHub(*u.HubID, page, pageSize, q.Get("type"), q.Get("status"))
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list tasks")
 		return

@@ -127,9 +127,43 @@ func (db *DB) GetEvalRun(id int64) (*EvalRun, error) {
 	return &r, nil
 }
 
-// ListEvalRuns returns all runs, newest first.
-func (db *DB) ListEvalRuns() ([]EvalRun, error) {
+// ListEvalRunsAll returns every run, newest first. It is the super_admin /
+// store-internal counterpart of ListEvalRunsByHub; HTTP handlers must pick
+// the form based on the session's hub scope.
+func (db *DB) ListEvalRunsAll() ([]EvalRun, error) {
 	rows, err := db.conn.Query("SELECT " + evalRunColumns + " FROM eval_runs ORDER BY id DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []EvalRun
+	for rows.Next() {
+		r, err := scanEvalRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, r)
+	}
+	return runs, rows.Err()
+}
+
+// ListEvalRunsByHub returns the runs whose campaign membership includes at
+// least one model belonging to hubID, newest first. The join chain is
+// eval_runs -> campaign_models -> models.hub_id (the shortest hub-reaching
+// path; eval_results is deliberately avoided to avoid dropping in-flight
+// runs that have no results yet). HTTP handlers must use this form for
+// non-super_admin sessions.
+func (db *DB) ListEvalRunsByHub(hubID int64) ([]EvalRun, error) {
+	rows, err := db.conn.Query(`
+		SELECT `+evalRunColumns+` FROM eval_runs r
+		WHERE EXISTS (
+			SELECT 1 FROM campaign_models cm
+			JOIN models m ON m.id = cm.model_id
+			WHERE cm.campaign_id = r.campaign_id AND m.hub_id = ?
+		)
+		ORDER BY r.id DESC
+	`, hubID)
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +196,27 @@ func (db *DB) SetEvalRunJudgeModel(id int64, judgeModel string) error {
 // comparison view only shows live models, while run history keeps the
 // deleted model's rows.
 func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
+	return db.listLatestEvalScores(0)
+}
+
+// ListLatestEvalScoresByHub is the hub-scoped counterpart of
+// ListLatestEvalScores: it restricts the (suite, model) pairs to models
+// belonging to hubID. HTTP handlers must use this form for non-super_admin
+// sessions.
+func (db *DB) ListLatestEvalScoresByHub(hubID int64) ([]LatestEvalScore, error) {
+	return db.listLatestEvalScores(hubID)
+}
+
+// listLatestEvalScores is the shared implementation. hubID is 0 for the
+// unscoped (all) variant — hub IDs are AUTOINCREMENT from 1, so 0 never
+// matches a real hub — or the hubID parameter for the hub-scoped variant.
+func (db *DB) listLatestEvalScores(hubID int64) ([]LatestEvalScore, error) {
+	hubFilter := ""
+	var args []interface{}
+	if hubID != 0 {
+		hubFilter = "AND m.hub_id = ?"
+		args = append(args, hubID)
+	}
 	rows, err := db.conn.Query(`
 		SELECT suite_id, suite_key, model_db_id, model_id, eval_run_id, finished_at, score
 		FROM (
@@ -176,12 +231,12 @@ func (db *DB) ListLatestEvalScores() ([]LatestEvalScore, error) {
 			JOIN eval_results res ON res.eval_run_id = r.id
 			JOIN suites s ON s.id = r.suite_id
 			JOIN models m ON m.id = res.model_db_id
-			WHERE r.status = 'done'
+			WHERE r.status = 'done' `+hubFilter+`
 			GROUP BY r.id, res.model_db_id
 		)
 		WHERE rn = 1
 		ORDER BY suite_id, model_db_id
-	`)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}

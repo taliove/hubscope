@@ -178,33 +178,74 @@ func (db *DB) ListTaskLogs(taskID int64) ([]TaskLog, error) {
 	return logs, rows.Err()
 }
 
-// ListTasks returns one page of tasks, newest first, plus the total count.
+// ListTasksAll returns one page of tasks, newest first, plus the total count.
 // taskType and status filter on exact matches when non-empty. Page is
-// 1-based; pageSize is clamped by the caller.
-func (db *DB) ListTasks(page, pageSize int, taskType, status string) ([]Task, int, error) {
-	where := ""
-	args := []interface{}{}
+// 1-based; pageSize is clamped by the caller. It is the super_admin /
+// store-internal counterpart of ListTasksByHub; HTTP handlers must pick the
+// form based on the session's hub scope. Hub-less tasks (rollup / retention
+// with entity_type "") belong to no hub and appear only here.
+func (db *DB) ListTasksAll(page, pageSize int, taskType, status string) ([]Task, int, error) {
+	return db.listTasks(0, page, pageSize, taskType, status)
+}
+
+// ListTasksByHub returns one page of tasks reachable from a single hub,
+// newest first, plus the total count. The polymorphic entity dispatch is:
+//   - entity_type 'hub'    -> entity_id is the hub id (discovery_sync tasks).
+//   - entity_type 'eval_run' -> entity_id is an eval run id, resolved to a
+//     hub through eval_runs -> campaign_models -> models.hub_id.
+//
+// Hub-less tasks (entity_type "" — rollup / retention) are excluded; they
+// belong to the global *All view (super_admin only).
+func (db *DB) ListTasksByHub(hubID int64, page, pageSize int, taskType, status string) ([]Task, int, error) {
+	return db.listTasks(hubID, page, pageSize, taskType, status)
+}
+
+// listTasks is the shared implementation. hubID is 0 for the unscoped (all)
+// variant — hub IDs are AUTOINCREMENT from 1, so 0 never matches — or the
+// hubID parameter for the hub-scoped variant.
+func (db *DB) listTasks(hubID int64, page, pageSize int, taskType, status string) ([]Task, int, error) {
+	hubFilter := ""
+	var hubArgs []interface{}
+	if hubID != 0 {
+		hubFilter = `WHERE (
+			(entity_type = 'hub' AND entity_id = ?)
+			OR (entity_type = 'eval_run' AND entity_id IN (
+				SELECT r.id FROM eval_runs r
+				WHERE EXISTS (
+					SELECT 1 FROM campaign_models cm
+					JOIN models m ON m.id = cm.model_id
+					WHERE cm.campaign_id = r.campaign_id AND m.hub_id = ?
+				)
+			))
+		)`
+		hubArgs = append(hubArgs, hubID, hubID)
+	}
+
+	typeFilter := ""
 	if taskType != "" {
-		where += " AND type = ?"
-		args = append(args, taskType)
+		typeFilter = " AND type = ?"
+		hubArgs = append(hubArgs, taskType)
 	}
 	if status != "" {
-		where += " AND status = ?"
-		args = append(args, status)
+		typeFilter += " AND status = ?"
+		hubArgs = append(hubArgs, status)
 	}
-	if where != "" {
-		where = " WHERE " + where[len(" AND "):]
+	// The type/status filters are AND-anchored to the hub WHERE when scoped,
+	// and need a leading WHERE when unscoped.
+	if hubID == 0 && (taskType != "" || status != "") {
+		hubFilter = "WHERE 1=1"
 	}
 
 	var total int
-	if err := db.conn.QueryRow("SELECT COUNT(*) FROM tasks"+where, args...).Scan(&total); err != nil {
+	if err := db.conn.QueryRow("SELECT COUNT(*) FROM tasks "+hubFilter+typeFilter, hubArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * pageSize
+	listArgs := append(append([]interface{}{}, hubArgs...), pageSize, offset)
 	rows, err := db.conn.Query(
-		"SELECT "+taskColumns+" FROM tasks"+where+" ORDER BY id DESC LIMIT ? OFFSET ?",
-		append(args, pageSize, offset)...,
+		"SELECT "+taskColumns+" FROM tasks "+hubFilter+typeFilter+" ORDER BY id DESC LIMIT ? OFFSET ?",
+		listArgs...,
 	)
 	if err != nil {
 		return nil, 0, err

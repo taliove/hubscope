@@ -85,10 +85,20 @@ func (s *Server) handleCreateShareLink(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, toShareLinkDTO(*link))
 }
 
-// handleListShareLinks handles GET /api/share-links: every link, newest
-// first, for the admin management view.
+// handleListShareLinks handles GET /api/share-links: every link reachable
+// from the session's hub scope, newest first (live and revoked), for the
+// admin management view.
 func (s *Server) handleListShareLinks(w http.ResponseWriter, r *http.Request) {
-	links, err := s.db.ListShareLinks()
+	u := sessionUser(r)
+	var links []store.ShareLink
+	var err error
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		links, err = s.db.ListShareLinksAll()
+	} else if u.HubID == nil {
+		links = []store.ShareLink{}
+	} else {
+		links, err = s.db.ListShareLinksByHub(*u.HubID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list share links")
 		return

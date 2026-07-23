@@ -81,8 +81,27 @@ func (db *DB) CreateAlertEvent(e AlertEvent) (AlertEvent, error) {
 	return e, nil
 }
 
-// ListAlertEvents returns alert events newest first.
-func (db *DB) ListAlertEvents(limit int) ([]AlertEvent, error) {
+// ListAlertEventsAll returns alert events newest first, including hub-less
+// events (score_drop / score_drop_skipped have a NULL endpoint_id). It is
+// the super_admin / store-internal counterpart of ListAlertEventsByHub.
+func (db *DB) ListAlertEventsAll(limit int) ([]AlertEvent, error) {
+	return db.listAlertEvents(limit, 0)
+}
+
+// ListAlertEventsByHub returns endpoint-bound alert events for a single hub,
+// newest first. score_drop / score_drop_skipped events (endpoint_id IS NULL)
+// have no hub ownership and are excluded — they belong to the global *All
+// view. Correct endpoint->hub attribution via a model_db_id column is
+// tracked by a follow-up ticket; the endpoint_id JOIN through endpoints ->
+// models is the correct path today.
+func (db *DB) ListAlertEventsByHub(hubID int64, limit int) ([]AlertEvent, error) {
+	return db.listAlertEvents(limit, hubID)
+}
+
+// listAlertEvents is the shared implementation. hubID is 0 for the unscoped
+// (all) variant — hub IDs are AUTOINCREMENT from 1, so 0 never matches — or
+// the hubID parameter for the hub-scoped variant.
+func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 	if limit <= 0 {
 		limit = defaultAlertLimit
 	}
@@ -90,12 +109,29 @@ func (db *DB) ListAlertEvents(limit int) ([]AlertEvent, error) {
 		limit = maxAlertLimit
 	}
 
+	hubFilter := ""
+	var args []interface{}
+	if hubID != 0 {
+		// Hub-scoped: only endpoint-bound alerts whose endpoint belongs to
+		// hubID. score_drop / score_drop_skipped events (endpoint_id IS NULL)
+		// have no hub ownership and are excluded — they belong to the
+		// global *All view (super_admin only).
+		hubFilter = `WHERE endpoint_id IN (
+			SELECT e.id FROM endpoints e
+			JOIN models m ON m.id = e.model_id
+			WHERE m.hub_id = ?
+		)`
+		args = append(args, hubID)
+	}
+	args = append(args, limit)
+
 	rows, err := db.conn.Query(`
 		SELECT id, endpoint_id, kind, message, sent_ok, created_at
 		FROM alert_events
+		`+hubFilter+`
 		ORDER BY created_at DESC, id DESC
 		LIMIT ?
-	`, limit)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
