@@ -39,6 +39,17 @@ const discoveryInterval = time.Hour
 const discoveryInitialDelay = 30 * time.Second
 
 func main() {
+	// 'hubscope admin <subcommand>' manages users out-of-band (the first
+	// super_admin has no way to be created via HTTP — auth is required to
+	// manage users, a chicken-and-egg). Routing here keeps the server path
+	// free of bootstrap-mode env vars.
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		if err := runAdmin(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "fatal:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "fatal:", err)
 		os.Exit(1)
@@ -53,13 +64,6 @@ func run() error {
 
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
-
-	// ADMIN_PASSWORD is deprecated (spec 0005). It no longer gates startup;
-	// the first user is bootstrapped via 'hubscope admin create'. Keep the
-	// warning during the transition window so operators notice.
-	if v := os.Getenv("ADMIN_PASSWORD"); v != "" {
-		slog.Warn("ADMIN_PASSWORD is deprecated; use 'hubscope admin create' to bootstrap a super_admin (will be hard-ignored in a future release)")
-	}
 
 	db, err := store.Open(dataPath)
 	if err != nil {

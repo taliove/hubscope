@@ -13,10 +13,12 @@
 
 ```sh
 make build                                    # 前端构建 + 单二进制 → bin/hubscope
-# bootstrap the first super_admin (ADR-0011; CLI delivered by ticket 69):
-./bin/hubscope admin create --username admin --password '<new-password>'
-./bin/hubscope                                 # 打开 http://localhost:8080 → 登录 → 添加 Hub → 自动发现模型
+./bin/hubscope                                # 启动服务(无需任何凭证环境变量)
+./bin/hubscope admin create --username admin --password 'a-strong-password'
+# 打开 http://localhost:8080 → 登录 → 添加 Hub → 自动发现模型
 ```
+
+首个 `super_admin` 必须用 `hubscope admin create` CLI 引导(数据库里没有用户时无法走 HTTP 鉴权)。口令经 bcrypt(cost 10)入库,不读环境变量、不进 git。
 
 ## Development
 
@@ -30,10 +32,9 @@ cd web && pnpm dev  # 前端热更新开发(代理 /api → :8080)
 
 全部经环境变量注入(Hub 凭证在管理后台维护、存数据库,见 ADR-0001):
 
-| Variable         | Default          | Purpose                |
+| Variable         | Default         | Purpose                |
 |------------------|-----------------|------------------------|
 | `ADDR`           | `:8080`         | 监听地址               |
 | `DATA_PATH`      | `./data/app.db` | SQLite 数据文件        |
-| `SESSION_SECRET` | *(自动生成)*    | session cookie HMAC 签名 key;未设则首启在 settings 表生成 32 字节 hex,轮换即全部 session 失效。见 ADR-0011 |
 
-> `ADMIN_PASSWORD` 已废弃(ADR-0011):不再 gate 启动,过渡期仅记 deprecation warning;首个 super_admin 经 CLI `hubscope admin create` 创建(CLI 由 ticket 69 交付,落地后硬删 env 读取路径)。
+管理员口令不经环境变量,用 `hubscope admin create` CLI 创建(见上)。
