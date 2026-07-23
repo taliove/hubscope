@@ -47,6 +47,8 @@
 - 后端:报告 API 透出 run 级明细(模型 × 能力点状态与覆盖率),现为聚合计数,需加字段,不动评估语义。
 - 本票为 UI 重交互,开工前必过 design-owner 评审;落地后回写 ui-guidelines.md(Progress Grid、置信标记登记)。
 
+> **分享视图边界(ticket 54 评审决议,修订 HIGH-1 口径):** 未完成批次的分享面(/report/{token})只公开进度元数据——模型 × 能力点四态 + 判分覆盖计数(X/Y 题),专用构造器 sharedProgressRows 从输入端结构性剥离 scores/weights/nadirs;**分数与名次(含 samples 置信标记)settle 前不出公开面**,「实时分数」为登录态专属。批次 settle 后分享面照常渲染完整榜单,与登录视图一致。依据:状态/覆盖率是运行元数据而非评估结论,不构成半成分数外流;模型名单 settle 后本就公开。
+
 ## 对 spec 0002 的修订
 
 spec 0002 评审硬条件③「等待中/运行中批次榜单区呈进度态,不显示半成品名次」修订为:**运行中默认 Progress Grid,半成品榜单可查看但不排名次、带 Coverage 水印**;settle 前出现名次徽章仍禁止。

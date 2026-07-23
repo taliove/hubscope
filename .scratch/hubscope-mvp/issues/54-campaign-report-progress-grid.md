@@ -4,9 +4,10 @@
 
 **Blocked by:** 52(组件已登记)
 
-**Status:** pending
+**Status:** done
 
-- [ ] CampaignReportView 运行中默认进度网格 + 实时分数切换
-- [ ] 分享页同语义且只读(无操作按钮)
-- [ ] settle 转场提示与轮询停止口径与 /eval 一致
-- [ ] 三态齐全、轮询卸载清理
+- [x] CampaignReportView 运行中默认进度网格 + 实时分数切换
+- [x] 分享页同语义且只读(无操作按钮)
+- [x] settle 转场提示与轮询停止口径与 /eval 一致
+- [x] 三态齐全、轮询卸载清理
+- [x] shared 未完成批次出剥离 cells(状态+计数,无分数无 samples)

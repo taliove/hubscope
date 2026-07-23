@@ -4,8 +4,8 @@
 
 **Blocked by:** 49 / 50a / 51 / 52 全部合入(避免与在制改动冲突)
 
-**Status:** pending
+**Status:** done
 
-- [ ] eval_test.go 拆分后 `go test ./internal/server/` 全绿
-- [ ] store/eval.go 拆分后全量 `make test` 绿
-- [ ] 无行为变更(纯移动)
+- [x] eval_test.go 拆分后 `go test ./internal/server/` 全绿
+- [x] store/eval.go 拆分后全量 `make test` 绿
+- [x] 无行为变更(纯移动)
