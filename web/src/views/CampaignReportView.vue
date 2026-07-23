@@ -33,19 +33,29 @@
     </el-card>
 
     <template v-else-if="report">
-      <!-- Running batches show progress only: half-baked rankings are never
-           displayed. Ticket 54 unifies the live progress state on
-           EvalProgressGrid; this page has not followed yet. -->
-      <el-card v-if="report.status === 'running' || report.status === 'pending'" shadow="never" class="state-block">
-        <el-progress
-          :percentage="progressPercent"
-          :status="report.progress.failed > 0 ? 'exception' : undefined"
-        />
-        <p class="progress-note">
-          批次运行中:已完成 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行,榜单将在批次结束后生成
-        </p>
-        <el-button size="small" :loading="loading" class="no-print" @click="reload">刷新进度</el-button>
-      </el-card>
+      <!-- Unfinished batches (ticket 54, spec 0004): the progress grid is
+           the default view, same as /eval. The logged-in view keeps the
+           live half-scored leaderboard behind the "实时分数" switch (both
+           stay mounted with v-show, so switching never interrupts polling
+           or resets the family filter); the shared view is read-only — the
+           grid is its only in-flight view, no switch, no drill-down. -->
+      <template v-if="isUnfinished(report.status)">
+        <EvalProgressGrid v-if="shared" :report="report" view="grid" readonly />
+        <template v-else>
+          <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
+          <Leaderboard
+            v-show="viewMode === 'scores'"
+            :key="report.id"
+            :report="report"
+            :family-options="familyOptions"
+            live
+            :view="viewMode"
+            @update:view="viewMode = $event"
+            @query="onQuery"
+            @select="openTrend"
+          />
+        </template>
+      </template>
 
       <template v-else>
         <el-alert
@@ -61,9 +71,12 @@
         </el-alert>
 
         <Leaderboard :report="report" :family-options="familyOptions" @query="onQuery" @select="openTrend" />
-
-        <ModelTrendDialog :campaign-id="campaignId" :model="trendModel" @close="trendModel = null" />
       </template>
+
+      <!-- Trend dialog mounts outside the status branches (same as /eval) so
+           live-mode drill-down works and no stale selection pops up on settle;
+           the shared unfinished view never sets trendModel. -->
+      <ModelTrendDialog :campaign-id="campaignId" :model="trendModel" @close="trendModel = null" />
     </template>
   </div>
 </template>
@@ -75,20 +88,27 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/client'
 import { getCampaignReport } from '@/api/campaigns'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
+import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
-import type { CampaignReport, CampaignStatus, ReportRow } from '@/api/types'
+import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done
 // runs, reusing the shared Leaderboard component (ticket 45). Deleted models
 // never rank (server-side); family filter and ranking column are server
-// query params re-emitted by the Leaderboard toolbar.
+// query params re-emitted by the Leaderboard toolbar. Unfinished batches
+// render the progress grid by default with the live half-scored board behind
+// the view switch (ticket 54, same dual-view semantics as /eval), and only
+// they are polled (ui-guidelines §6).
 //
 // Shared mode (ticket 33, ADR 0006): the /report/:token route renders this
 // same view without a session, fed by the public shared-report endpoint and
-// stripped of every operation entry (back links, the share button).
+// stripped of every operation entry (back links, the share button). An
+// unfinished batch shows the read-only progress grid only (ticket 54): the
+// shared boundary publishes progress metadata, never half-baked scores, so
+// there is no view switch and no row drill-down.
 const route = useRoute()
 const shareToken = route.params.token as string | undefined
 const shared = shareToken !== undefined
@@ -117,22 +137,26 @@ const query = ref<{ family?: string; sort: string }>({ sort: 'total' })
 // collapses the option list itself.
 const familyOptions = ref<string[]>([])
 
+// Board view of an unfinished batch (logged-in only): the progress grid is
+// the default (spec 0004); "scores" reveals the live half-scored
+// leaderboard. The shared view never switches (read-only grid).
+const viewMode = ref<EvalBoardView>('grid')
+
 // In shared mode the campaign id only arrives with the report payload.
 const displayCampaignId = computed(() => (shared ? (report.value?.id ?? '—') : authedCampaignId))
 
-const progressPercent = computed(() => {
-  const p = report.value?.progress
-  if (!p || p.total === 0) return 0
-  return Math.round(((p.done + p.failed) / p.total) * 100)
-})
+function isUnfinished(status: CampaignStatus): boolean {
+  return status === 'running' || status === 'pending'
+}
 
 // Poll while the batch is unfinished so progress feels live (ui-guidelines:
-// every setInterval pairs with cleanup).
+// every setInterval pairs with cleanup). The tick that observes a settled
+// batch re-arms into nothing, so polling stops on its own.
 let pollTimer: ReturnType<typeof setInterval> | undefined
 function armPolling() {
   clearInterval(pollTimer)
   pollTimer = undefined
-  if (report.value?.status === 'running' || report.value?.status === 'pending') {
+  if (report.value && isUnfinished(report.value.status)) {
     pollTimer = setInterval(reload, 3000)
   }
 }
@@ -198,8 +222,23 @@ async function reload() {
     const data = shared
       ? await getSharedReport(shareToken as string, query.value)
       : await getCampaignReport(campaignId.value, query.value)
+    const previous = report.value
     report.value = data
     armPolling()
+    // Settle transition (ui-guidelines §6): the poll tick that observes
+    // done/failed stops polling (armPolling above already re-checked) and
+    // renders from exactly this response — no extra refetch, no emphasis
+    // animation. The message carries the batch id and the outcome, with the
+    // same copy as /eval.
+    if (previous && previous.id === data.id && isUnfinished(previous.status) && !isUnfinished(data.status)) {
+      if (data.status === 'done') {
+        ElMessage.success(`批次 #${data.id} 已完成,榜单已生成`)
+      } else {
+        ElMessage.warning(
+          `批次 #${data.id} 已结束:${data.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`,
+        )
+      }
+    }
     if (!query.value.family) {
       const seen = new Set<string>()
       for (const row of data.rows) seen.add(row.family)
@@ -271,10 +310,5 @@ onMounted(reload)
 }
 .failed-link:hover {
   color: var(--hs-brand-hover);
-}
-.progress-note {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-secondary);
-  margin: 12px 0;
 }
 </style>

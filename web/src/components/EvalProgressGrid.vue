@@ -2,9 +2,12 @@
   <el-card shadow="never" class="progress-card">
     <!-- Card top: the grid/scores view switch plus the batch-level summary
          (progress bar + done count) above the grid, same card (ui-guidelines
-         §5 EvalProgressGrid registration). -->
+         §5 EvalProgressGrid registration). Read-only mode (shared report
+         page, ticket 54) hides the switch: the grid is the only in-flight
+         view over there. -->
     <div class="card-top">
       <el-radio-group
+        v-if="!readonly"
         :model-value="view"
         size="small"
         @update:model-value="emit('update:view', $event as EvalBoardView)"
@@ -69,11 +72,18 @@ import type { CampaignReport, EvalBoardView, ReportCell, ReportCellStatus } from
 // cells colored by the batch/run status color mapping (§3 — success green
 // for done, danger red for failed, brand blue for running, placeholder grey
 // for pending; no flashing, no warning yellow). It is the default view of an
-// unfinished batch; the parent feeds the report and owns polling.
-const props = defineProps<{
-  report: CampaignReport
-  view: EvalBoardView
-}>()
+// unfinished batch; the parent feeds the report and owns polling. Read-only
+// mode (ticket 54, shared report page) hides the grid/scores view switch:
+// the shared boundary publishes progress metadata only, so there is no live
+// board to switch to.
+const props = withDefaults(
+  defineProps<{
+    report: CampaignReport
+    view: EvalBoardView
+    readonly?: boolean
+  }>(),
+  { readonly: false },
+)
 
 const emit = defineEmits<{
   (e: 'update:view', view: EvalBoardView): void
