@@ -19,6 +19,32 @@
       </span>
     </div>
 
+    <!-- Metrics cards: stability score (from probes) and eval score (from latest campaign) -->
+    <div v-if="detail" class="metrics-row">
+      <el-card shadow="never" class="metric-card">
+        <div class="metric-label">24h 稳定性</div>
+        <div class="metric-value" :class="`score-${stabilityTier}`">
+          {{ formatScore(stabilityScore) }}
+        </div>
+      </el-card>
+
+      <el-card shadow="never" class="metric-card">
+        <template v-if="evalSummary">
+          <div class="metric-label">评估总分</div>
+          <div class="metric-value">{{ formatScore(evalSummary.total_score) }}</div>
+          <div class="suite-tags">
+            <el-tag v-for="suite in evalSummary.suite_scores" :key="suite.suite_id" size="small">
+              {{ suite.suite_name }} {{ formatScore(suite.score) }}
+            </el-tag>
+          </div>
+          <div class="eval-time">评估于 {{ formatTime(evalSummary.campaign_created_at) }}</div>
+        </template>
+        <template v-else>
+          <div class="metric-label empty">暂无评估数据</div>
+        </template>
+      </el-card>
+    </div>
+
     <!-- Window and streaming selectors drive the three charts below. -->
     <div class="controls">
       <el-radio-group v-model="hours" @change="reloadSeries">
@@ -67,11 +93,13 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getEndpointDetail, getEndpointSeries } from '@/api/endpoints'
 import { listProbeHistory } from '@/api/probes'
+import { getModelEvalSummary } from '@/api/evals'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TimeSeriesChart from '@/components/TimeSeriesChart.vue'
 import ProbeRecordTable from '@/components/ProbeRecordTable.vue'
-import { formatBucketTime } from '@/utils/format'
-import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming } from '@/api/types'
+import { formatBucketTime, formatScore, formatTime } from '@/utils/format'
+import { availabilityTier, type AvailabilityTier } from '@/utils/statusCardSummary'
+import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary } from '@/api/types'
 
 // Endpoint detail page: status header plus latency/TTFT/success-rate charts
 // over hourly buckets, and the recent-failures evidence table.
@@ -81,6 +109,7 @@ const endpointId = Number(route.params.id)
 const detail = ref<EndpointDetail | null>(null)
 const buckets = ref<SeriesBucket[]>([])
 const failures = ref<ProbeRecord[]>([])
+const evalSummary = ref<ModelEvalSummary | null>(null)
 const hours = ref(24)
 const mode = ref<SeriesStreaming>('all')
 const loading = ref(false)
@@ -107,6 +136,27 @@ const successSeries = computed(() => [
   },
 ])
 
+// Compute 24h stability score from recent buckets (simplified from overview entry).
+// In a full implementation this would come from the backend, but for now we
+// approximate it from the success rate of loaded buckets.
+const stabilityScore = computed((): number | null => {
+  if (buckets.value.length === 0) return null
+  let total = 0
+  let failures = 0
+  for (const b of buckets.value) {
+    total += b.total
+    failures += b.failures
+  }
+  if (total === 0) return null
+  const rate = (total - failures) / total
+  return Math.round(rate * 100)
+})
+
+const stabilityTier = computed((): AvailabilityTier => {
+  if (stabilityScore.value === null) return 'none'
+  return availabilityTier(stabilityScore.value / 100)
+})
+
 async function reloadSeries() {
   loading.value = true
   error.value = ''
@@ -127,6 +177,15 @@ onMounted(async () => {
     ])
     detail.value = d
     failures.value = f
+
+    // Load evaluation summary for this model (ticket 60.3)
+    try {
+      evalSummary.value = await getModelEvalSummary(d.model_id)
+    } catch (e) {
+      // Eval summary is optional; don't block the page if it fails
+      console.warn('Failed to load eval summary:', e)
+      evalSummary.value = null
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -172,6 +231,55 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+.metric-card {
+  --el-card-padding: 16px;
+}
+.metric-label {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  margin-bottom: 8px;
+}
+.metric-label.empty {
+  text-align: center;
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-placeholder);
+  margin-bottom: 0;
+}
+.metric-value {
+  font-size: var(--hs-text-2xl);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+  margin-bottom: 8px;
+}
+/* Availability tier colors (ui-guidelines §3) */
+.metric-value.score-ok {
+  color: var(--el-color-success);
+}
+.metric-value.score-partial {
+  color: var(--el-color-warning);
+}
+.metric-value.score-fail {
+  color: var(--el-color-danger);
+}
+.metric-value.score-none {
+  color: var(--hs-text-placeholder);
+}
+.suite-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.eval-time {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 .controls {
   display: flex;

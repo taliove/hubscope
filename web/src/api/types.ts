@@ -118,6 +118,7 @@ export interface OverviewEntry {
   score: number | null // 0-100 stability score, null when no probe data
   score_reasons: string[] // Chinese deduction explanations, empty when none
   dots_24h: OverviewDot[] // always 24 elements, oldest hour first
+  eval_score: number | null // 0-100 eval total score, null when no eval data
 }
 
 // Health aggregate of one classification group: status distribution
@@ -365,6 +366,26 @@ export interface EvalResult {
 
 export interface EvalRunDetail extends EvalRun {
   results: EvalResult[]
+}
+
+// Model evaluation summary types (ticket 60.1): the latest campaign evaluation
+// summary for a single model, including total score and per-suite breakdown.
+// Returned by GET /api/models/{id}/eval-summary; null when the model has never
+// been evaluated.
+export interface ModelEvalSuiteScore {
+  suite_id: number
+  suite_name: string
+  version: number
+  score: number | null // 0-100 nadir-normalized, null when the suite wasn't judged
+}
+
+export interface ModelEvalSummary {
+  model_id: number
+  model_id_str: string
+  campaign_id: number
+  campaign_created_at: string // RFC3339
+  total_score: number | null // weighted average of suite scores, 0-100 scale
+  suite_scores: ModelEvalSuiteScore[]
 }
 
 // Latest aggregate score of one (suite, model) pair (GET /api/evals/latest).
