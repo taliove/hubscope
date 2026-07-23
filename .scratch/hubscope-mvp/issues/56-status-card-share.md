@@ -1,4 +1,4 @@
-# 49 — Dashboard 状态分享卡(Status Card)
+# 56 — Dashboard 状态分享卡(Status Card)
 
 **What to build:** Dashboard 顶部操作区加「分享状态」按钮,一键把**当前筛选范围内**的状态板生成竖版 PNG 分享卡,`el-dialog` 预览后「复制图片」或「下载 PNG」。纯前端 DOM→PNG(候选库 snapdom,开工时用 Context7 查证最新 API 后再定;html2canvas 对 Element Plus 阴影/复杂选择器还原差,不作首选),不引入任何后端依赖(W8)。卡片为专门设计的品牌物料,非页面截图:
 

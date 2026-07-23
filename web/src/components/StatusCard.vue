@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 // StatusCard: the vertical share-image template for the Dashboard status
-// board (ticket 49, ui-guidelines §5). A designed brand artifact, not a page
+// board (ticket 56, ui-guidelines §5). A designed brand artifact, not a page
 // screenshot. Purely presentational: it renders the snapshot it is given and
 // never fetches. The conclusion covers the FILTERED set passed in, and the
 // scope chips make that range explicit — never present a filtered subset as

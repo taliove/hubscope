@@ -1,6 +1,6 @@
 // Shared health-conclusion logic and status vocabulary. Extracted from
 // HealthBanner so the banner (global scope, never filtered) and the
-// StatusCard (filtered scope, ticket 49) speak with one voice — same words,
+// StatusCard (filtered scope, ticket 56) speak with one voice — same words,
 // same thresholds, same conclusion sentences (ui-guidelines §3/§7).
 // Pure functions only: callers decide which entries enter the math
 // (banner passes all enabled endpoints, the card its filtered snapshot).

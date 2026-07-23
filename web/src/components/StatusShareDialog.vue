@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-// Preview + actions for the StatusCard (ticket 49). The exported PNG comes
+// Preview + actions for the StatusCard (ticket 56). The exported PNG comes
 // from an offscreen twin of the preview (see the capture-source comment
 // below): snapdom applies ancestor overflow clipping to its output, so the
 // scroll-capped preview cannot be the capture source. Failures keep the

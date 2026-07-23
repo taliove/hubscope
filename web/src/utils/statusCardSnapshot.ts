@@ -1,6 +1,6 @@
 // Snapshot handed to the StatusCard when the share dialog opens. Frozen at
 // open time so polling refreshes cannot swap the data between preview and
-// export — what the user sees is exactly what gets shared (ticket 49).
+// export — what the user sees is exactly what gets shared (ticket 56).
 import type { EndpointStatus, OverviewEntry, Protocol } from '@/api/types'
 
 export interface StatusCardSnapshot {

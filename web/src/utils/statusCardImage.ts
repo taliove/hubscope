@@ -1,4 +1,4 @@
-// DOM→PNG capture for the StatusCard (ticket 49). Pure client-side via
+// DOM→PNG capture for the StatusCard (ticket 56). Pure client-side via
 // snapdom; no backend involvement (W8: the dependency is bundled by vite,
 // the binary stays self-contained). snapdom is dynamically imported so its
 // ~100KB stays out of the Dashboard chunk until someone actually shares.
