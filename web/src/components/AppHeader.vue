@@ -20,6 +20,21 @@
       </nav>
 
       <div class="header-right">
+        <!-- Batch progress entry (ticket 52): rendered only for logged-in
+             users while an unfinished batch exists; the rotating Loading
+             icon is the only motion (no orange-red, no flashing). -->
+        <el-button
+          v-if="authed && activeBatch"
+          link
+          type="primary"
+          class="batch-entry"
+          @click="router.push('/eval')"
+        >
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>
+            批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}
+          </span>
+        </el-button>
         <el-button v-if="authed" @click="router.push('/admin')">管理视图</el-button>
         <el-button v-if="!authed" type="primary" @click="router.push('/login')">登录</el-button>
         <el-button v-else link type="primary" :loading="loggingOut" @click="onLogout">
@@ -31,10 +46,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { fetchAuthStatus, logout } from '@/api/auth'
+import { listCampaigns } from '@/api/campaigns'
+import type { Campaign } from '@/api/types'
 
 // Global shell header (spec: docs/specs/0003-ui-redesign.md §4.1). Rendered by
 // App.vue on every page except /login. Session state is checked locally on
@@ -80,6 +98,38 @@ async function refreshAuth() {
   }
 }
 
+// Newest unfinished batch, if any (campaigns arrive newest first). The
+// header entry is advisory: fetch failures stay silent and simply hide it.
+const activeBatch = ref<Campaign | null>(null)
+let batchTimer: ReturnType<typeof setInterval> | undefined
+
+function stopBatchPolling() {
+  clearInterval(batchTimer)
+  batchTimer = undefined
+}
+
+// Refresh the batch entry and arm the 3s poll only while an unfinished
+// batch exists; the tick that observes the settle stops the timer and hides
+// the entry (ui-guidelines §5 AppHeader registration). Every setInterval
+// pairs with cleanup on unmount.
+async function refreshBatch() {
+  if (!authed.value) {
+    activeBatch.value = null
+    stopBatchPolling()
+    return
+  }
+  try {
+    const list = await listCampaigns()
+    activeBatch.value = list.find((c) => c.status === 'running' || c.status === 'pending') ?? null
+  } catch {
+    activeBatch.value = null
+  }
+  stopBatchPolling()
+  if (activeBatch.value) {
+    batchTimer = setInterval(() => void refreshBatch(), 3000)
+  }
+}
+
 async function onLogout() {
   if (loggingOut.value) return
   loggingOut.value = true
@@ -97,8 +147,16 @@ async function onLogout() {
   router.push('/')
 }
 
-onMounted(refreshAuth)
-watch(() => route.fullPath, refreshAuth)
+// Auth gates the batch entry, so it refreshes on the same occasions: mount
+// and every route change (the refreshAuth watch precedent).
+async function refreshHeaderState() {
+  await refreshAuth()
+  await refreshBatch()
+}
+
+onMounted(refreshHeaderState)
+watch(() => route.fullPath, refreshHeaderState)
+onBeforeUnmount(stopBatchPolling)
 </script>
 
 <style scoped>

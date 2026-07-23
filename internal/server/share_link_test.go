@@ -89,6 +89,26 @@ func setupDoneCampaign(t *testing.T) (*httptest.Server, int64) {
 	return ts, campaignID
 }
 
+// getSharedReport fetches the public shared report by token and asserts 200.
+func getSharedReport(t *testing.T, base, token string) map[string]interface{} {
+	t.Helper()
+	resp := plainGet(t, base+"/api/shared-reports/"+token)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("shared report: expected 200, got %d: %s", resp.StatusCode, b)
+	}
+	var env envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode shared report: %v", err)
+	}
+	var report map[string]interface{}
+	if err := json.Unmarshal(env.Data, &report); err != nil {
+		t.Fatalf("unmarshal shared report: %v", err)
+	}
+	return report
+}
+
 // TestShareLinkLifecycle covers the ticket 33 acceptance criteria: an
 // anonymous reader opens the report by token alone; a wrong or malformed
 // token and a revoked link all answer the identical 404 (no enumeration
@@ -288,5 +308,71 @@ func TestSharedReportRateLimited(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("read 3: expected 429, got %d", resp.StatusCode)
+	}
+}
+
+// TestSharedReportHidesUnfinishedBoard pins the public boundary of the
+// ticket-52 live board: through a share token an unsettled campaign answers
+// empty rows — no half-scored board, no cells — even while the session-gated
+// report serves that same live board; once the batch settles, the shared
+// view renders the full ranked board like the session view.
+//
+// Scenario mirrors TestCampaignReportProgressGrid: the judge model is frozen
+// after three judge calls, catching the sweep mid-cap_language with results
+// already recorded for both models.
+func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
+	ts, stub, _ := setupEvalEnv(t)
+	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
+	createEvalModel(t, ts.URL, stub.URL, "beta-model")
+	stub.resetCalls()
+	stub.blockModelAfter(store.DefaultJudgeModel, 3)
+	t.Cleanup(func() { stub.releaseModel(store.DefaultJudgeModel) })
+
+	campaign := triggerFullSweep(t, ts.URL)
+	campaignID := int64(campaign["id"].(float64))
+	// The fourth judge call being recorded proves the freeze point: the
+	// campaign is running with results already on record.
+	waitFor(t, "fourth judge call reaching the stub", func() bool {
+		return stub.callTotal(store.DefaultJudgeModel) >= 4
+	})
+
+	link := createShareLink(t, ts.URL, campaignID)
+	token, _ := link["token"].(string)
+
+	// Mid-flight: the session view serves the live half-scored board…
+	authed := getCampaignReport(t, ts.URL, campaignID, "")
+	if authed["status"] != store.CampaignStatusRunning {
+		t.Fatalf("campaign status = %v, want running", authed["status"])
+	}
+	if rows := reportRows(t, authed); len(rows) == 0 {
+		t.Fatalf("session report of a running campaign must serve the live board, got %v", rows)
+	}
+
+	// …while the shared view of the same campaign hides every row.
+	shared := getSharedReport(t, ts.URL, token)
+	if shared["status"] != store.CampaignStatusRunning {
+		t.Fatalf("shared campaign status = %v, want running", shared["status"])
+	}
+	if rows := reportRows(t, shared); len(rows) != 0 {
+		t.Errorf("shared report of a running campaign must answer empty rows, got %v", rows)
+	}
+
+	// Settled: the shared view renders the same full board as the session
+	// view, cells included.
+	stub.releaseModel(store.DefaultJudgeModel)
+	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
+
+	sharedRows := reportRows(t, getSharedReport(t, ts.URL, token))
+	authedRows := reportRows(t, getCampaignReport(t, ts.URL, campaignID, ""))
+	if len(sharedRows) == 0 || len(sharedRows) != len(authedRows) {
+		t.Fatalf("settled shared rows = %v, want the full board (%d rows)", sharedRows, len(authedRows))
+	}
+	for i, row := range sharedRows {
+		if row["model_id"] != authedRows[i]["model_id"] || row["total_score"] != authedRows[i]["total_score"] {
+			t.Errorf("settled shared row %d = %v, want %v", i, row, authedRows[i])
+		}
+		if cells := reportCells(t, row); len(cells) == 0 {
+			t.Errorf("settled shared row %v must carry progress cells", row["model_id"])
+		}
 	}
 }

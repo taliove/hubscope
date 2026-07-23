@@ -111,11 +111,14 @@ func TestCampaignReportTotalDelta(t *testing.T) {
 		t.Errorf("fresh model total_delta = %v, want null (no baseline score)", d)
 	}
 
-	// Batch 3: a case edit bumps the basic suite version. Scores stop being
-	// comparable, the baseline carries the suite_changed marker, and every
-	// delta disappears.
+	// Batch 3: a case edit in an enabled suite bumps its version. Scores stop
+	// being comparable, the baseline carries the suite_changed marker, and
+	// every delta disappears.
 	stub.markBad("smart-model", false)
-	patchCase(t, ts.URL, 1, map[string]interface{}{"prompt": "只回复 pong，别的什么都不要说"})
+	instructionCase := suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{})[0].(map[string]interface{})
+	patchCase(t, ts.URL, int64(instructionCase["id"].(float64)), map[string]interface{}{
+		"prompt": "只回复单词 rotated，不要任何标点",
+	})
 	third := triggerFullSweep(t, ts.URL)
 	thirdID := int64(third["id"].(float64))
 	waitCampaignStatus(t, ts.URL, thirdID, store.CampaignStatusDone)

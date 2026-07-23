@@ -40,8 +40,8 @@
               :fix-y-range="{ min: 0, max: 100 }"
               class="chart-block"
             />
-            <p v-if="hasVersionBreak" class="break-note">
-              虚线为版本断点:题目已变更,断点两侧分数不可直接比较
+            <p v-if="hasBreak" class="break-note">
+              虚线为断点:题目已变更或判分口径已变更,断点两侧分数不可直接比较
             </p>
           </section>
 
@@ -86,7 +86,9 @@ import type { CampaignTrends, TrendSuite } from '@/api/types'
 
 // Model trend drill-down dialog (ticket 32): clicking a leaderboard row opens
 // this dialog, which fetches the model's cross-campaign trend on demand. The
-// score trend marks suite-version breaks ("vN 起题目变更"); the probe side
+// score trend marks both kinds of caliber break — suite-version breaks
+// ("vN 起题目变更", ADR 0007) and verdict-profile breaks ("判分口径已变更",
+// ADR 0008) — with the same grey dashed placeholder line; the probe side
 // (success rate + p50/p95 latency of the model's enabled endpoints) sits next
 // to it so "score steady but latency exploding" is visible at a glance.
 const props = defineProps<{
@@ -100,8 +102,8 @@ const trends = ref<CampaignTrends | null>(null)
 const loading = ref(false)
 const error = ref('')
 
-const hasVersionBreak = computed(
-  () => trends.value?.suites.some(s => s.points.some(p => p.version_changed)) ?? false
+const hasBreak = computed(
+  () => trends.value?.suites.some(s => s.points.some(p => p.version_changed || p.profile_changed)) ?? false
 )
 
 // Score charts: x = campaign batches, y = 0-100 score. Null points (unjudged
@@ -114,10 +116,18 @@ function seriesOf(suite: TrendSuite): { name: string; data: (number | null)[] }[
   return [{ name: '得分', data: suite.points.map(p => p.score) }]
 }
 
+// Break markers (ui-guidelines §5, TrendChart): one grey dashed vertical line
+// per broken point; a point where the question bank and the scoring caliber
+// changed at once carries both labels.
 function markLinesOf(suite: TrendSuite): { xAxis: string; label: string }[] {
-  return suite.points
-    .filter(p => p.version_changed)
-    .map(p => ({ xAxis: `#${p.campaign_id}`, label: `v${p.suite_version} 起题目变更` }))
+  const lines: { xAxis: string; label: string }[] = []
+  for (const p of suite.points) {
+    const labels: string[] = []
+    if (p.version_changed) labels.push(`v${p.suite_version} 起题目变更`)
+    if (p.profile_changed) labels.push('判分口径已变更')
+    if (labels.length > 0) lines.push({ xAxis: `#${p.campaign_id}`, label: labels.join(' · ') })
+  }
+  return lines
 }
 
 // Probe charts: x = hour buckets, shared across both charts.

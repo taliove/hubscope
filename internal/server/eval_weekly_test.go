@@ -100,10 +100,11 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 	}
 
 	// Advance into Sunday 01:30: the weekly batch fires — one run per suite
-	// (4 built-in suites), each covering only the chat model.
+	// in the rotation (retired suites excluded), covering only the chat model.
+	suites := suiteCount(t, ts.URL)
 	clock.Advance(2 * time.Hour)
-	waitFor(t, "weekly batch of 4 scheduled runs", func() bool {
-		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 4
+	waitFor(t, "weekly batch of scheduled runs", func() bool {
+		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == suites
 	})
 	waitFor(t, "weekly runs finishing", func() bool {
 		for _, r := range listEvalRuns(t, ts.URL) {
@@ -137,14 +138,14 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 	// Later the same Sunday morning: no second batch.
 	clock.Advance(3 * time.Hour)
 	runs = listEvalRuns(t, ts.URL)
-	if got := countRunsByTrigger(runs, "scheduled"); got != 4 {
-		t.Fatalf("same Sunday: expected still 4 scheduled runs, got %d", got)
+	if got := countRunsByTrigger(runs, "scheduled"); got != suites {
+		t.Fatalf("same Sunday: expected still %d scheduled runs, got %d", suites, got)
 	}
 
 	// Next Sunday (6 days 20 hours later, landing at 00:30): a fresh batch.
 	clock.Advance(164 * time.Hour)
 	waitFor(t, "next week's batch", func() bool {
-		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 8
+		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 2*suites
 	})
 }
 
@@ -165,12 +166,13 @@ func TestWeeklyEvalRestartDedup(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	createEvalModel(t, ts.URL, stub.URL, "restart-model")
+	suites := suiteCount(t, ts.URL)
 
 	// Start inside the window: the first worker fires the batch.
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
 	startEvalWorker(t, db, srv, clock)
 	waitFor(t, "initial weekly batch", func() bool {
-		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == 4
+		return countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled") == suites
 	})
 
 	// Simulate a restart: a brand-new worker with empty in-memory state over
@@ -179,7 +181,7 @@ func TestWeeklyEvalRestartDedup(t *testing.T) {
 	startEvalWorker(t, db, srv, clock)
 	clock.Advance(2 * time.Hour)
 	time.Sleep(200 * time.Millisecond)
-	if got := countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled"); got != 4 {
-		t.Fatalf("after restart inside window: expected still 4 scheduled runs, got %d", got)
+	if got := countRunsByTrigger(listEvalRuns(t, ts.URL), "scheduled"); got != suites {
+		t.Fatalf("after restart inside window: expected still %d scheduled runs, got %d", suites, got)
 	}
 }

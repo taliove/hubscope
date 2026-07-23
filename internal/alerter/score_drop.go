@@ -175,6 +175,15 @@ func (e *Evaluator) compareSuiteRun(campaign *store.Campaign, run *store.EvalRun
 		slog.Error("alerter: load baseline results for score-drop check", "run_id", previousRun.ID, "error", err)
 		return nil
 	}
+
+	// A verdict-profile break makes the pair incomparable exactly like a
+	// suite-version break (ADR 0008): skip and annotate instead of alerting.
+	previousProfile, currentProfile := runVerdictProfile(previousResults), runVerdictProfile(currentResults)
+	if previousProfile != "" && currentProfile != "" && previousProfile != currentProfile {
+		e.annotateProfileSkip(campaign, run, previousRun, previousProfile, currentProfile)
+		return nil
+	}
+
 	prompts := casePrompts(e.db, run.SuiteID)
 
 	var drops []modelSuiteDrop
@@ -206,16 +215,44 @@ func (e *Evaluator) compareSuiteRun(campaign *store.Campaign, run *store.EvalRun
 // event plus a warn line on the current run's (already finished) task log.
 // Nothing is sent to the webhook — the annotation replaces the alert.
 func (e *Evaluator) annotateVersionSkip(campaign *store.Campaign, run, previousRun *store.EvalRun) {
-	suiteName := fmt.Sprintf("suite %d", run.SuiteID)
-	if suite, err := e.db.GetSuite(run.SuiteID); err == nil {
-		suiteName = suite.Name
-	} else {
-		slog.Error("alerter: load suite for version-skip annotation", "suite_id", run.SuiteID, "error", err)
-	}
+	suiteName := e.suiteName(run.SuiteID)
+	e.annotateSkip(campaign, run,
+		fmt.Sprintf(
+			"【HubScope】分数对比跳过:评估集「%s」题目已变更(Suite 版本 v%d → v%d),分数不可比;本轮评估(Campaign #%d)该评估集的分数大跌对比已跳过。",
+			suiteName, previousRun.SuiteVersion, run.SuiteVersion, campaign.ID),
+		fmt.Sprintf(
+			"题目已变更(Suite 版本 v%d → v%d),分数不可比,评估集「%s」与上一轮(Campaign #%d)的分数大跌对比已跳过",
+			previousRun.SuiteVersion, run.SuiteVersion, suiteName, previousRun.CampaignID))
+}
 
-	message := fmt.Sprintf(
-		"【HubScope】分数对比跳过:评估集「%s」题目已变更(Suite 版本 v%d → v%d),分数不可比;本轮评估(Campaign #%d)该评估集的分数大跌对比已跳过。",
-		suiteName, previousRun.SuiteVersion, run.SuiteVersion, campaign.ID)
+// annotateProfileSkip records that a comparison was skipped because the two
+// runs were scored under different verdict profiles (ADR 0008). Same shape
+// as annotateVersionSkip: an event plus a task-log warn line, nothing sent.
+func (e *Evaluator) annotateProfileSkip(campaign *store.Campaign, run, previousRun *store.EvalRun, previousProfile, currentProfile string) {
+	suiteName := e.suiteName(run.SuiteID)
+	e.annotateSkip(campaign, run,
+		fmt.Sprintf(
+			"【HubScope】分数对比跳过:评估集「%s」判分口径已变更(%s → %s),分数不可比;本轮评估(Campaign #%d)该评估集的分数大跌对比已跳过。",
+			suiteName, previousProfile, currentProfile, campaign.ID),
+		fmt.Sprintf(
+			"判分口径已变更(%s → %s),分数不可比,评估集「%s」与上一轮(Campaign #%d)的分数大跌对比已跳过",
+			previousProfile, currentProfile, suiteName, previousRun.CampaignID))
+}
+
+// suiteName resolves a suite's display name, falling back to its id.
+func (e *Evaluator) suiteName(suiteID int64) string {
+	suite, err := e.db.GetSuite(suiteID)
+	if err != nil {
+		slog.Error("alerter: load suite for skip annotation", "suite_id", suiteID, "error", err)
+		return fmt.Sprintf("suite %d", suiteID)
+	}
+	return suite.Name
+}
+
+// annotateSkip persists one score_drop_skipped alert event and appends a warn
+// line to the current run's (already finished) task log. Nothing is sent to
+// the webhook — the annotation replaces the alert.
+func (e *Evaluator) annotateSkip(campaign *store.Campaign, run *store.EvalRun, message, logLine string) {
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
 		Kind:    store.AlertKindScoreDropSkipped,
 		Message: message,
@@ -226,18 +263,29 @@ func (e *Evaluator) annotateVersionSkip(campaign *store.Campaign, run, previousR
 
 	task, err := e.db.GetTaskByEntity(store.TaskEntityEvalRun, run.ID)
 	if err != nil {
-		slog.Error("alerter: find task for version-skip annotation", "run_id", run.ID, "error", err)
+		slog.Error("alerter: find task for skip annotation", "run_id", run.ID, "error", err)
 		return
 	}
 	if task == nil {
 		return
 	}
-	line := fmt.Sprintf(
-		"题目已变更(Suite 版本 v%d → v%d),分数不可比,评估集「%s」与上一轮(Campaign #%d)的分数大跌对比已跳过",
-		previousRun.SuiteVersion, run.SuiteVersion, suiteName, previousRun.CampaignID)
-	if err := e.db.AppendTaskLog(task.ID, store.TaskLogWarn, line, time.Now().UTC()); err != nil {
-		slog.Error("alerter: annotate version skip on task log", "task_id", task.ID, "error", err)
+	if err := e.db.AppendTaskLog(task.ID, store.TaskLogWarn, logLine, time.Now().UTC()); err != nil {
+		slog.Error("alerter: annotate skip on task log", "task_id", task.ID, "error", err)
 	}
+}
+
+// runVerdictProfile derives a run's scoring caliber from its results: the
+// newest profile found among its rows (profiles order lexically: v1 < v2).
+// "" means the run produced no results and its caliber is unknown — such a
+// run never anchors a profile comparison.
+func runVerdictProfile(results []store.EvalResult) string {
+	profile := ""
+	for _, r := range results {
+		if r.VerdictProfile > profile {
+			profile = r.VerdictProfile
+		}
+	}
+	return profile
 }
 
 // sendModelAlert delivers the consolidated per-model alert and records it.

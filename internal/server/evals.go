@@ -22,6 +22,8 @@ var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": t
 var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
 
 // handleListSuites handles GET /api/suites. Each suite carries its cases.
+// The optional capability query parameter filters to one capability
+// dimension (ADR 0010); an empty value lists every suite, retired included.
 func (s *Server) handleListSuites(w http.ResponseWriter, r *http.Request) {
 	suites, err := s.db.ListSuites()
 	if err != nil {
@@ -29,8 +31,12 @@ func (s *Server) handleListSuites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	capability := r.URL.Query().Get("capability")
 	dtos := make([]suiteDTO, 0, len(suites))
 	for _, suite := range suites {
+		if capability != "" && suite.Capability != capability {
+			continue
+		}
 		cases, err := s.db.ListCases(suite.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load cases")
@@ -387,7 +393,7 @@ func (s *Server) handleListEvals(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "failed to load eval results")
 			return
 		}
-		dtos = append(dtos, toEvalRunDTO(run, averageScore(results)))
+		dtos = append(dtos, toEvalRunDTO(run, averageScore(results, run.Nadir)))
 	}
 
 	writeData(w, http.StatusOK, dtos)
@@ -419,7 +425,7 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, evalRunDetailDTO{
-		evalRunDTO: toEvalRunDTO(*run, averageScore(results)),
+		evalRunDTO: toEvalRunDTO(*run, averageScore(results, run.Nadir)),
 		Results:    resultDTOs,
 	})
 }
@@ -440,10 +446,13 @@ func (s *Server) handleLatestEvals(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, dtos)
 }
 
-// averageScore computes the mean of all non-null scores. Null scores
+// averageScore computes the mean of all non-null scores, scaled through the
+// ADR-0009 nadir normalization with the run's own nadir snapshot — the same
+// caliber as the leaderboard, kept on the 0~1 wire scale the eval API has
+// always spoken (nadir=0 degenerates to the legacy raw mean). Null scores
 // (unjudged cases) are excluded, so they never drag the aggregate down.
 // Returns nil when no scored result exists.
-func averageScore(results []store.EvalResult) *float64 {
+func averageScore(results []store.EvalResult, nadir float64) *float64 {
 	var sum float64
 	var n int
 	for _, r := range results {
@@ -455,6 +464,6 @@ func averageScore(results []store.EvalResult) *float64 {
 	if n == 0 {
 		return nil
 	}
-	avg := sum / float64(n)
+	avg := normalizeScore01(sum/float64(n), nadir)
 	return &avg
 }

@@ -65,18 +65,24 @@
       </el-card>
 
       <template v-else-if="report">
-        <!-- Unfinished batches show progress only: half-baked rankings are
-             never displayed (spec 0002 review condition). -->
-        <el-card v-if="report.status === 'running' || report.status === 'pending'" shadow="never" class="state-block">
-          <el-progress
-            :percentage="progressPercent"
-            :status="report.progress.failed > 0 ? 'exception' : undefined"
+        <!-- Unfinished batches (ticket 52, spec 0004): the progress grid is
+             the default view; the live half-scored leaderboard sits behind
+             the "实时分数" switch. Both stay mounted (v-show) so the view
+             switch never interrupts polling or resets the family filter. -->
+        <template v-if="isUnfinished(report.status)">
+          <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
+          <Leaderboard
+            v-show="viewMode === 'scores'"
+            :key="report.id"
+            :report="report"
+            :family-options="familyOptions"
+            live
+            :view="viewMode"
+            @update:view="viewMode = $event"
+            @query="onQuery"
+            @select="openTrend"
           />
-          <p class="progress-note">
-            批次{{ campaignStatusLabel(report.status) }}:已完成 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行,榜单将在批次结束后生成
-          </p>
-          <el-button size="small" :loading="loadingReport" @click="loadReport">刷新进度</el-button>
-        </el-card>
+        </template>
 
         <template v-else>
           <el-alert
@@ -98,8 +104,13 @@
             :report="report"
             :family-options="familyOptions"
             @query="onQuery"
+            @select="openTrend"
           />
         </template>
+
+        <!-- Row drill-down (ticket 32 pattern, same as the report page): the
+             trend dialog fetches per model on demand. -->
+        <ModelTrendDialog :campaign-id="selectedId ?? 0" :model="trendModel" @close="trendModel = null" />
       </template>
     </template>
   </div>
@@ -108,16 +119,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { listCampaigns, getCampaignReport } from '@/api/campaigns'
+import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
+import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
-import type { Campaign, CampaignReport, CampaignStatus } from '@/api/types'
+import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Eval leaderboard page (ticket 45): a pure consumption page. The batch
-// switcher defaults to the newest done campaign; unfinished batches are
-// selectable but render a progress state instead of a board, and only they
-// are polled (ui-guidelines §6). Ops and the case library live in /admin
-// since ticket 44; row drill-down lands with the trends ticket.
+// switcher defaults to the newest done campaign; unfinished batches render
+// the progress grid by default with a live half-scored board behind the
+// view switch (ticket 52), and only they are polled (ui-guidelines §6). Ops
+// and the case library live in /admin since ticket 44; row drill-down opens
+// the shared ModelTrendDialog (ticket 32 pattern).
 const router = useRouter()
 
 const campaigns = ref<Campaign[]>([])
@@ -129,17 +144,21 @@ const loadingReport = ref(false)
 const error = ref('')
 const reportError = ref('')
 
+// Board view of an unfinished batch: the progress grid is the default
+// (spec 0004); "scores" reveals the live half-scored leaderboard.
+const viewMode = ref<EvalBoardView>('grid')
+
 // Last query chosen inside the Leaderboard toolbar; re-applied on refresh.
 const query = ref<{ family?: string; sort: string }>({ sort: 'total' })
 const familyOptions = ref<string[]>([])
 
 const selected = computed(() => campaigns.value.find((c) => c.id === selectedId.value) ?? null)
 
-const progressPercent = computed(() => {
-  const p = report.value?.progress
-  if (!p || p.total === 0) return 0
-  return Math.round(((p.done + p.failed) / p.total) * 100)
-})
+// Trend drill-down (ticket 32): the row under inspection; null = dialog closed.
+const trendModel = ref<ReportRow | null>(null)
+function openTrend(row: ReportRow) {
+  trendModel.value = row
+}
 
 function campaignStatusLabel(status: CampaignStatus): string {
   switch (status) {
@@ -212,7 +231,22 @@ async function loadReport() {
   try {
     const data = await getCampaignReport(selectedId.value, query.value)
     if (seq !== reportSeq) return
+    const previous = report.value
     report.value = data
+    // Settle transition (ui-guidelines §6): the poll tick that observes
+    // done/failed stops polling (armPolling re-checks the campaign list) and
+    // renders from exactly this response — no extra refetch, no emphasis
+    // animation; the rank dashes simply swap for numbers. The message
+    // carries the outcome.
+    if (previous && previous.id === data.id && isUnfinished(previous.status) && !isUnfinished(data.status)) {
+      if (data.status === 'done') {
+        ElMessage.success(`批次 #${data.id} 已完成,榜单已生成`)
+      } else {
+        ElMessage.warning(
+          `批次 #${data.id} 已结束:${data.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`,
+        )
+      }
+    }
     if (!query.value.family) {
       const seen = new Set<string>()
       for (const row of data.rows) seen.add(row.family)
@@ -237,6 +271,8 @@ function onBatchChange() {
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []
+  viewMode.value = 'grid'
+  trendModel.value = null
   void loadReport().then(armPolling)
 }
 
@@ -283,11 +319,6 @@ onMounted(reload)
 .meta-time {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
-}
-.progress-note {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-secondary);
-  margin: 12px 0;
 }
 .failed-link {
   font-size: var(--hs-text-sm);

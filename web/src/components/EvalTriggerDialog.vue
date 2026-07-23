@@ -8,7 +8,7 @@
     <el-form label-width="90px">
       <el-form-item label="评估集">
         <el-select v-model="suiteId" filterable placeholder="选择评估集" class="full-width">
-          <el-option v-for="s in suites" :key="s.id" :label="s.name" :value="s.id" />
+          <el-option v-for="s in enabledSuites" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="模型">
@@ -99,6 +99,10 @@ const selectedModelIds = ref<number[]>([])
 const submitting = ref(false)
 
 const chatModelCount = computed(() => props.models.filter(m => m.capability === 'chat').length)
+
+// Retired suites (question-bank v3, ADR 0010) stay in the library for
+// history but are not offered for new triggers.
+const enabledSuites = computed(() => props.suites.filter(s => s.enabled))
 
 // Reset the form every time the dialog opens so stale picks never leak into
 // the next trigger.

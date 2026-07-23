@@ -1,15 +1,17 @@
 package store
 
-// builtinSuites is the seed question bank shipped with the migration. Each
-// suite carries 12 cases across three difficulty tiers (4 basic, 4
-// intermediate, 4 hard). Rule cases stay deterministic; judge cases probe
-// open-ended ability. gen 1 cases are the original bank (kept verbatim so
-// existing deployments recognize them); gen 2 cases are the tiered expansion
-// added by ticket 21.
-var builtinSuites = []seedSuite{
+// legacySuites is the pre-v3 seed question bank, kept verbatim so existing
+// deployments recognize it. The legacy suites below carry 12 cases each
+// across three difficulty tiers (4 basic, 4 intermediate, 4 hard): gen 1
+// cases are the original bank and gen 2 the tiered expansion (ticket 21).
+// Question-bank v3 (ticket 50, ADR 0010) retires all four legacy suites at
+// generation 3 — retired, never deleted — and replaces them with the
+// capability suites in seedbank_v3.go.
+var legacySuites = []seedSuite{
 	{
-		key:  "basic",
-		name: "基础指令遵循",
+		key:         "basic",
+		name:        "基础指令遵循",
+		retireAtGen: 3,
 		cases: []seedCase{
 			{
 				gen: 1, difficulty: "basic",
@@ -98,8 +100,9 @@ var builtinSuites = []seedSuite{
 		},
 	},
 	{
-		key:  "reasoning",
-		name: "推理数学",
+		key:         "reasoning",
+		name:        "推理数学",
+		retireAtGen: 3,
 		cases: []seedCase{
 			{
 				gen: 1, difficulty: "basic",
@@ -188,8 +191,9 @@ var builtinSuites = []seedSuite{
 		},
 	},
 	{
-		key:  "coding",
-		name: "代码能力",
+		key:         "coding",
+		name:        "代码能力",
+		retireAtGen: 3,
 		cases: []seedCase{
 			{
 				gen: 1, difficulty: "basic",
@@ -278,8 +282,9 @@ var builtinSuites = []seedSuite{
 		},
 	},
 	{
-		key:  "chinese",
-		name: "中文能力",
+		key:         "chinese",
+		name:        "中文能力",
+		retireAtGen: 3,
 		cases: []seedCase{
 			{
 				gen: 1, difficulty: "basic",
@@ -356,3 +361,9 @@ var builtinSuites = []seedSuite{
 		},
 	},
 }
+
+// builtinSuites is the full seed bank: the retired legacy suites plus the
+// capability suites of question-bank v3. Retirement is generation-tracked
+// (retireAtGen), so the legacy suites seed their cases exactly once and then
+// leave the evaluation rotation without being deleted.
+var builtinSuites = append(legacySuites, capabilitySuites...)
