@@ -156,6 +156,9 @@ func TestPerHubIsolationSweep(t *testing.T) {
 	// password scheme (the default "admin" uses a different password helper).
 	seedUserWithRole(t, db, "iso-a-admin", store.RoleAdmin, &hubA.ID)
 	seedUserWithRole(t, db, "iso-sa", store.RoleSuperAdmin, nil)
+	// A Hub-B user acts as the cross-hub leak marker for /api/users (the
+	// model markers above do not appear in the users response).
+	seedUserWithRole(t, db, "iso-b-oper", store.RoleOperator, &hubB.ID)
 	aClient := loginAsClient(t, ts.URL, "iso-a-admin")
 	saClient := loginAsClient(t, ts.URL, "iso-sa")
 	anonClient := &http.Client{} // no cookie jar
@@ -188,6 +191,26 @@ func TestPerHubIsolationSweep(t *testing.T) {
 		if p.globalMarker != "" && !strings.Contains(body, p.globalMarker) {
 			t.Errorf("super_admin GET %s: expected global data (%q) to be present", p.path, p.globalMarker)
 		}
+	}
+
+	// /api/users isolation (ticket 67): the model markers do not appear in
+	// the users response, so this uses the seeded usernames as the leak
+	// signal. A Hub-A admin must not see Hub-B's "iso-b-oper", and must see
+	// the own-hub "iso-a-admin"; super_admin sees both. The response must
+	// never carry password_hash (W6).
+	aUsersBody := getBody(t, aClient, ts.URL+"/api/users")
+	if strings.Contains(aUsersBody, "iso-b-oper") {
+		t.Errorf("Hub-A admin GET /api/users: leaks Hub-B user iso-b-oper: %s", aUsersBody)
+	}
+	if !strings.Contains(aUsersBody, "iso-a-admin") {
+		t.Errorf("Hub-A admin GET /api/users: expected own-hub user iso-a-admin, got: %s", aUsersBody)
+	}
+	if strings.Contains(aUsersBody, "password_hash") {
+		t.Errorf("Hub-A admin GET /api/users: response leaks password_hash: %s", aUsersBody)
+	}
+	saUsersBody := getBody(t, saClient, ts.URL+"/api/users")
+	if !strings.Contains(saUsersBody, "iso-a-admin") || !strings.Contains(saUsersBody, "iso-b-oper") {
+		t.Errorf("super_admin GET /api/users: expected both hubs' users, got: %s", saUsersBody)
 	}
 
 	// Anonymous overview stays global (public status board semantics); the

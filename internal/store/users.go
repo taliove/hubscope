@@ -132,3 +132,154 @@ func (db *DB) GetUserByID(id int64) (*User, error) {
 	}
 	return &u, nil
 }
+
+// ListUsersAll returns every user, ordered by id. It is the super_admin list
+// form; HTTP handlers must branch on the session user before reaching it
+// (per the hub query-isolation invariant, spec 0005). password_hash is not
+// exposed via API; callers that need the list for management render a DTO
+// that omits it.
+func (db *DB) ListUsersAll() ([]User, error) {
+	rows, err := db.conn.Query("SELECT " + userColumns + " FROM users ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// ListUsersByHub returns the users whose hub_id matches the given hub, ordered
+// by id. super_admin (hub_id NULL) is excluded. It is the hub-scoped list
+// form non-super_admin sessions must use.
+func (db *DB) ListUsersByHub(hubID int64) ([]User, error) {
+	rows, err := db.conn.Query(
+		"SELECT "+userColumns+" FROM users WHERE hub_id = ? ORDER BY id",
+		hubID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// UpdateUser applies a partial patch to a user. A nil pointer leaves the
+// corresponding column unchanged; role/hubID/enabled are the
+// management-editable fields. Returns the updated row, or ErrUserNotFound
+// when no row matches the id. The store layer does not hash; password
+// rotation uses SetUserPassword.
+func (db *DB) UpdateUser(id int64, role *string, hubID *int64, enabled *bool) (*User, error) {
+	sets := []string{}
+	args := []interface{}{}
+	if role != nil {
+		sets = append(sets, "role = ?")
+		args = append(args, *role)
+	}
+	if hubID != nil {
+		sets = append(sets, "hub_id = ?")
+		args = append(args, *hubID)
+	}
+	if enabled != nil {
+		flag := 0
+		if *enabled {
+			flag = 1
+		}
+		sets = append(sets, "enabled = ?")
+		args = append(args, flag)
+	}
+	if len(sets) == 0 {
+		// Nothing to update: return the current row without writing.
+		return db.GetUserByID(id)
+	}
+	args = append(args, id)
+	q := "UPDATE users SET " + joinStrings(sets, ", ") + " WHERE id = ?"
+	if _, err := db.conn.Exec(q, args...); err != nil {
+		return nil, err
+	}
+	return db.GetUserByID(id)
+}
+
+// SetUserPassword replaces the password_hash for a user. passwordHash must
+// already be a bcrypt hash; the store does not hash. Returns ErrUserNotFound
+// when no row matches (the UPDATE affects 0 rows when the id is absent).
+func (db *DB) SetUserPassword(id int64, passwordHash string) error {
+	res, err := db.conn.Exec("UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// DeleteUser removes a user by id. Returns ErrUserNotFound when no row matches.
+// The caller is responsible for authorization (preventing self-delete,
+// cross-hub delete) before reaching this primitive.
+func (db *DB) DeleteUser(id int64) error {
+	res, err := db.conn.Exec("DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// ClearUserHubID sets hub_id to NULL for a user. It is the invariant-
+// restoring companion to a role promotion to super_admin (the store
+// contract requires super_admin to be global). Returns ErrUserNotFound
+// when no row matches.
+func (db *DB) ClearUserHubID(id int64) error {
+	res, err := db.conn.Exec("UPDATE users SET hub_id = NULL WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// joinStrings joins ss with sep. Kept unexported and local so the package
+// does not pull in strings just for this one call site.
+func joinStrings(ss []string, sep string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	out := ss[0]
+	for _, s := range ss[1:] {
+		out += sep + s
+	}
+	return out
+}

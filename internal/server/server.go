@@ -213,7 +213,17 @@ func (s *Server) routes() chi.Router {
 			})
 
 			// Reads: any authenticated user (super_admin/admin/operator/viewer).
-			// /api/users CRUD — ticket 66a, requireRole(super_admin, admin).
+			// /api/users CRUD — ticket 67. GET is admin+super_admin; writes
+			// (POST/PATCH/PUT/DELETE) are admin+super_admin and enforced
+			// per-target by assertCanManageUser (cross-hub → 403).
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireRole(store.RoleSuperAdmin, store.RoleAdmin))
+				r.Get("/users", s.handleListUsers)
+				r.Post("/users", s.handleCreateUser)
+				r.Patch("/users/{id}", s.handlePatchUser)
+				r.Put("/users/{id}/password", s.handleResetUserPassword)
+				r.Delete("/users/{id}", s.handleDeleteUser)
+			})
 
 			r.Get("/hubs", s.handleListHubs)
 			r.Get("/models", s.handleListModels)
