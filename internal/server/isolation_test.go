@@ -39,6 +39,11 @@ var isolatedListPaths = []isolatedListPath{
 	{"/api/share-links", shareTokenA, shareTokenB, ""},
 }
 
+// /api/audit-logs is hub-isolated but verified in a dedicated test
+// (TestAuditLogsHubIsolation in audit_test.go), not in this sweep: audit rows
+// require HTTP-triggered writes to materialize, unlike the store-seeded rows
+// this sweep relies on. The per-hub isolation invariant still holds there.
+//
 // Leak-signal markers. markerA/markerB are model_id strings unique to each
 // hub; their presence in a response body is the leak signal. The remaining
 // constants are per-resource markers carried by the seeded rows' free-text

@@ -20,6 +20,7 @@ type auditLogDTO struct {
 	ObjectID   string `json:"object_id"`
 	Detail     string `json:"detail"`
 	Result     string `json:"result"`
+	HubID      *int64 `json:"hub_id"`
 }
 
 // auditPageResponse is the payload for GET /api/audit-logs.
@@ -34,8 +35,12 @@ type auditPageResponse struct {
 // username, read from the request context (injected by requireSession); the
 // "system" fallback applies only when no user is present, which in practice
 // never happens since every call site is an HTTP handler behind
-// requireSession (background jobs do not write audit logs). Audit failures
-// are logged but never fail the request itself.
+// requireSession (background jobs do not write audit logs). The hub_id is
+// likewise read from the context (hubIDOr): a hub-scoped admin stamps the
+// row with their own hub so it is visible only within that hub, while a
+// super_admin (and the hub-less auth.login user-not-found branch) writes
+// NULL, which only super_admin can read. Audit failures are logged but
+// never fail the request itself.
 func (s *Server) audit(r *http.Request, action, objectType, objectID, detail, result string) {
 	err := s.db.InsertAudit(store.AuditLog{
 		Actor:      actorOr(r),
@@ -45,10 +50,22 @@ func (s *Server) audit(r *http.Request, action, objectType, objectID, detail, re
 		ObjectID:   objectID,
 		Detail:     detail,
 		Result:     result,
+		HubID:      hubIDOr(r),
 	})
 	if err != nil {
 		slog.Error("audit: insert failed", "action", action, "error", err)
 	}
+}
+
+// hubIDOr resolves the actor's hub_id from the request context, returning nil
+// when no session user is present (public-read bypass or the auth.login
+// user-not-found branch, which has no user to inject). nil means "no single
+// hub" — the row is super_admin-only.
+func hubIDOr(r *http.Request) *int64 {
+	if u := sessionUser(r); u != nil {
+		return u.HubID
+	}
+	return nil
 }
 
 // toAuditDTO maps a store.AuditLog to its API representation.
@@ -63,10 +80,14 @@ func toAuditDTO(l store.AuditLog) auditLogDTO {
 		ObjectID:   l.ObjectID,
 		Detail:     l.Detail,
 		Result:     l.Result,
+		HubID:      l.HubID,
 	}
 }
 
 // handleListAuditLogs handles GET /api/audit-logs?page=N&page_size=M&action=A.
+// A super_admin sees every row (including NULL-hub rows); a hub-scoped admin
+// sees only rows stamped with their own hub_id (spec 0005 per-hub isolation,
+// extended to the audit log by ticket 66).
 func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page := parsePositiveInt(q.Get("page"), 1)
@@ -74,8 +95,24 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if pageSize > 100 {
 		pageSize = 100
 	}
+	action := q.Get("action")
 
-	logs, total, err := s.db.ListAuditLogs(page, pageSize, q.Get("action"))
+	var (
+		logs  []store.AuditLog
+		total int
+		err   error
+	)
+	u := sessionUser(r)
+	if u != nil && u.Role == store.RoleSuperAdmin {
+		logs, total, err = s.db.ListAuditLogsAll(page, pageSize, action)
+	} else if u != nil && u.HubID != nil {
+		logs, total, err = s.db.ListAuditLogsByHub(*u.HubID, page, pageSize, action)
+	} else {
+		// No hub scope and not super_admin: a defensive branch (a disabled
+		// user is rejected at the gate; a viewer without a hub would see an
+		// empty log rather than another hub's rows).
+		logs, total, err = s.db.ListAuditLogsByHub(0, page, pageSize, action)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list audit logs")
 		return

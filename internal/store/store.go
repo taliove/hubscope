@@ -372,6 +372,17 @@ func (db *DB) migrate() error {
 		return err
 	}
 
+	// Ticket 66: every audit entry is stamped with the actor's hub_id so the
+	// listing can be hub-isolated (spec 0005 per-hub isolation extended to the
+	// audit log). super_admin actions that target no single hub (hub.create,
+	// settings.update, classification rules, case edits, auth.login
+	// user-not-found) write NULL, which only super_admin can read. Historical
+	// rows backfill NULL (equivalent to super_admin-visible), so old data is
+	// neither lost nor wrongly hidden from the only readers it ever had.
+	if err := db.ensureColumn("audit_logs", "hub_id", "INTEGER NULL"); err != nil {
+		return err
+	}
+
 	// Tasks left pending/running mean the process died mid-execution; close
 	// them out as failed so the task center shows no phantom running jobs.
 	if _, err := db.conn.Exec(

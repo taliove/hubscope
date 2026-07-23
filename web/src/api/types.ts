@@ -64,6 +64,7 @@ export interface AuditLog {
   object_id: string
   detail: string
   result: string // "success" | "failed: ..." | "accepted"
+  hub_id?: number | null // hub scope of the actor; null for super_admin / hub-less actions
 }
 
 export interface AuditLogPage {
