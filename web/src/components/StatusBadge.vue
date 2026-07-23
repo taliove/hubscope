@@ -8,18 +8,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EndpointStatus } from '@/api/types'
+import { STATUS_LABELS } from '@/utils/healthConclusion'
 
 // Colored status light with a Chinese label; the reason shows on hover.
 const props = defineProps<{ status: EndpointStatus; reason?: string }>()
 
-const LABELS: Record<EndpointStatus, string> = {
-  healthy: '正常',
-  degraded: '降级',
-  down: '宕机',
-  failing: '告警',
-}
-
-const label = computed(() => LABELS[props.status])
+const label = computed(() => STATUS_LABELS[props.status])
 const reason = computed(() => props.reason ?? '')
 </script>
 

@@ -30,6 +30,7 @@
 import { computed } from 'vue'
 import type { OverviewEntry, EndpointStatus } from '@/api/types'
 import { formatPercent, formatTime } from '@/utils/format'
+import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
 import { POLL_INTERVAL_MS } from '@/composables/useOverview'
 
 const props = defineProps<{
@@ -55,31 +56,20 @@ const isEmpty = computed(() => !isInitialLoading.value && props.entries.length =
 const enabledEntries = computed(() => props.entries.filter(e => e.enabled))
 const disabledCount = computed(() => props.entries.length - enabledEntries.value.length)
 
-const counts = computed<Record<EndpointStatus, number>>(() => {
-  const c: Record<EndpointStatus, number> = { healthy: 0, degraded: 0, down: 0, failing: 0 }
-  for (const entry of enabledEntries.value) c[entry.status] += 1
-  return c
-})
+// Conclusion math comes from the shared healthConclusion module (same words
+// and thresholds as the StatusCard); only enabled endpoints enter the counts.
+const counts = computed(() => countByStatus(enabledEntries.value))
 
 // Prefer the server aggregate; fall back to the locally computed count.
 const enabledTotal = computed(() => props.enabledEndpoints ?? enabledEntries.value.length)
 
-const tone = computed<'healthy' | 'degraded' | 'abnormal'>(() => {
-  if (counts.value.down + counts.value.failing > 0) return 'abnormal'
-  if (counts.value.degraded > 0) return 'degraded'
-  return 'healthy'
-})
+const tone = computed(() => toneOf(counts.value))
 
 const hasFailing = computed(() => counts.value.failing > 0)
 // Only the abnormal state is clickable (apply status filter + scroll).
 const clickable = computed(() => !isEmpty.value && tone.value === 'abnormal')
 
-const conclusion = computed(() => {
-  if (isEmpty.value) return '暂无数据'
-  if (tone.value === 'abnormal') return `${counts.value.down + counts.value.failing} 个端点异常`
-  if (tone.value === 'degraded') return `${counts.value.degraded} 个端点降级`
-  return '全部正常'
-})
+const conclusion = computed(() => conclusionText(tone.value, counts.value, isEmpty.value))
 
 // "HH:mm" sliced out of the shared formatTime helper ("YYYY-MM-DD HH:mm:ss").
 const updatedAt = computed(() => {
