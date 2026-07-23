@@ -32,6 +32,7 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/endpoints/1",
 		"/api/endpoints/1/series",
 		"/api/endpoints/1/probes",
+		"/api/models/1/eval-summary",
 	}
 	for _, p := range publicPaths {
 		resp := plainGet(t, ts.URL+p)
@@ -44,7 +45,6 @@ func TestReadAuthTiers(t *testing.T) {
 
 	protectedPaths := []string{
 		"/api/hubs",
-		"/api/models",
 		"/api/classification-rules",
 		"/api/suites",
 		"/api/evals",
@@ -79,6 +79,8 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/endpoints/1/foo",
 		"/api/ENDPOINTS/1",
 		"/api/endpoints/1/probesx",
+		"/api/models/abc/eval-summary",
+		"/api/models/1/eval-summaryx",
 	}
 	for _, p := range lookalikes {
 		resp := plainGet(t, ts.URL+p)
