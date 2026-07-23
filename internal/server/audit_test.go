@@ -257,7 +257,7 @@ func TestAuditLogsFailedLogin(t *testing.T) {
 	ts := newTestAPIServer(t, db)
 
 	resp, err := http.Post(ts.URL+"/api/auth/login", "application/json",
-		bytes.NewBufferString(`{"password":"definitely-wrong"}`))
+		bytes.NewBufferString(`{"username":"x","password":"definitely-wrong-fake"}`))
 	if err != nil {
 		t.Fatalf("post login: %v", err)
 	}

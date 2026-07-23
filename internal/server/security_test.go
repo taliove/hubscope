@@ -95,7 +95,7 @@ func TestReadAuthTiers(t *testing.T) {
 func loginAttempt(t *testing.T, baseURL string, headers map[string]string) int {
 	t.Helper()
 	req, err := http.NewRequest("POST", baseURL+"/api/auth/login",
-		bytes.NewBufferString(`{"password":"wrong"}`))
+		bytes.NewBufferString(`{"username":"x","password":"wrong-fake"}`))
 	if err != nil {
 		t.Fatalf("build login: %v", err)
 	}
@@ -114,7 +114,7 @@ func loginAttempt(t *testing.T, baseURL string, headers map[string]string) int {
 // TestRateLimitLogin verifies the strict per-IP limit on the login endpoint.
 func TestRateLimitLogin(t *testing.T) {
 	db := openTempDB(t)
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{
 			Login: server.RateTier{PerMinute: 2, Burst: 2},
 		}),
@@ -138,7 +138,7 @@ func TestRateLimitLogin(t *testing.T) {
 func TestRateLimitTrustProxy(t *testing.T) {
 	t.Run("trust_on", func(t *testing.T) {
 		db := openTempDB(t)
-		ts := httptest.NewServer(server.New(db, testAdminPassword,
+		ts := httptest.NewServer(server.New(db,
 			server.WithTrustProxy(true),
 			server.WithRateLimits(server.RateLimits{
 				Login: server.RateTier{PerMinute: 1, Burst: 1},
@@ -159,7 +159,7 @@ func TestRateLimitTrustProxy(t *testing.T) {
 
 	t.Run("trust_off", func(t *testing.T) {
 		db := openTempDB(t)
-		ts := httptest.NewServer(server.New(db, testAdminPassword,
+		ts := httptest.NewServer(server.New(db,
 			server.WithRateLimits(server.RateLimits{
 				Login: server.RateTier{PerMinute: 1, Burst: 1},
 			}),
@@ -181,7 +181,7 @@ func TestRateLimitTrustProxy(t *testing.T) {
 // unknown IPs fail closed once the cap is reached.
 func TestRateLimitEntryCap(t *testing.T) {
 	db := openTempDB(t)
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithTrustProxy(true),
 		server.WithRateLimits(server.RateLimits{
 			Login:             server.RateTier{PerMinute: 1000, Burst: 1000},
@@ -209,7 +209,7 @@ func TestRateLimitEntryCap(t *testing.T) {
 // TestRateLimitReads verifies the public-read tier.
 func TestRateLimitReads(t *testing.T) {
 	db := openTempDB(t)
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{
 			Read: server.RateTier{PerMinute: 2, Burst: 2},
 		}),
@@ -233,7 +233,7 @@ func TestRateLimitReads(t *testing.T) {
 // TestRateLimitWrites verifies the write tier covers authenticated mutations.
 func TestRateLimitWrites(t *testing.T) {
 	db := openTempDB(t)
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{
 			Write: server.RateTier{PerMinute: 2, Burst: 2},
 		}),

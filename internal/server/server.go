@@ -35,11 +35,11 @@ type Server struct {
 	// client IPs for rate limiting and auditing.
 	trustProxy bool
 
-	// adminPassword is kept in memory only for login comparison; it is never
-	// logged, persisted, or returned in any response. sessionKey is derived
-	// from it and signs the stateless session cookie.
-	adminPassword string
-	sessionKey    []byte
+	// sessionSecret signs the stateless session cookie. It is loaded from
+	// the SESSION_SECRET env var or the settings table (auto-generated on
+	// first start), never from a password. Rotating it invalidates all
+	// sessions.
+	sessionSecret []byte
 }
 
 // Option customizes a Server at construction time.
@@ -71,12 +71,18 @@ func WithTrustProxy(trust bool) Option {
 	}
 }
 
-// New builds a Server with all API routes registered. The admin password is
-// required: it backs both login comparison and session cookie signing.
-func New(db *store.DB, adminPassword string, opts ...Option) *Server {
-	if adminPassword == "" {
-		panic("server.New: admin password must not be empty")
+// WithSessionSecret overrides the session signing key. Tests use it to
+// inject a fixed value so forged tokens can be reproduced without reading
+// the database.
+func WithSessionSecret(secret []byte) Option {
+	return func(s *Server) {
+		s.sessionSecret = secret
 	}
+}
+
+// New builds a Server with all API routes registered. The session signing
+// key is resolved from the SESSION_SECRET env var or the settings table.
+func New(db *store.DB, opts ...Option) *Server {
 	limits := defaultRateLimits()
 	s := &Server{
 		db:            db,
@@ -84,8 +90,7 @@ func New(db *store.DB, adminPassword string, opts ...Option) *Server {
 		discovery:     discovery.New(db, hubclient.New()),
 		evaluator:     evaluator.New(db, hubclient.NewWithTimeout(evaluator.RequestTimeout)),
 		alerter:       alerter.NewEvaluator(db, alerter.NewLarkSender()),
-		adminPassword: adminPassword,
-		sessionKey:    deriveSessionKey(adminPassword),
+		sessionSecret: loadSessionSecret(db),
 		now:           time.Now,
 		loginLimiter:  newIPLimiter(limits.Login.PerMinute, limits.Login.Burst, 0),
 		writeLimiter:  newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, 0),

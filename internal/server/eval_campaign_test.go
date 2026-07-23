@@ -315,10 +315,11 @@ func TestWeeklyBatchProducesOneCampaign(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -401,10 +402,11 @@ func TestCampaignFailedWhenBatchAborted(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -524,7 +526,8 @@ func TestCampaignMigrationBackfillsOldRuns(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open migrated db: %v", err)
 		}
-		ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
+		seedTestUser(t, db)
+		ts := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{})))
 		t.Cleanup(ts.Close)
 		return ts, db
 	}

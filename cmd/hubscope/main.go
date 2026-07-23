@@ -54,11 +54,11 @@ func run() error {
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
 
-	// The admin password gates all write APIs; without it the service would
-	// run unlocked, so refuse to start. It never touches disk or logs.
-	adminPassword := os.Getenv("ADMIN_PASSWORD")
-	if adminPassword == "" {
-		return errors.New("ADMIN_PASSWORD environment variable is required (admin login password)")
+	// ADMIN_PASSWORD is deprecated (spec 0005). It no longer gates startup;
+	// the first user is bootstrapped via 'hubscope admin create'. Keep the
+	// warning during the transition window so operators notice.
+	if v := os.Getenv("ADMIN_PASSWORD"); v != "" {
+		slog.Warn("ADMIN_PASSWORD is deprecated; use 'hubscope admin create' to bootstrap a super_admin (will be hard-ignored in a future release)")
 	}
 
 	db, err := store.Open(dataPath)
@@ -71,7 +71,7 @@ func run() error {
 	// resolving client IPs (rate limiting, audit). Enable only behind a
 	// forwarding proxy that REPLACES (not appends to) any client-supplied
 	// X-Forwarded-For header; otherwise the leftmost hop is spoofable.
-	srv := server.New(db, adminPassword, server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"))
+	srv := server.New(db, server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"))
 	if dist, err := fs.Sub(web.DistFS, "dist"); err == nil {
 		srv.SetStaticFS(dist)
 	}

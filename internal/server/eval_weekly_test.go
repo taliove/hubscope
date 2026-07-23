@@ -75,10 +75,11 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -158,10 +159,11 @@ func TestWeeklyEvalRestartDedup(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 

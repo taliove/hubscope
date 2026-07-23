@@ -89,7 +89,7 @@ func TestRollupAndRetention(t *testing.T) {
 	// Rate limits are disabled: the wait loops below poll the read API far
 	// faster than the default read tier allows. Limit behavior is covered by
 	// dedicated tests with tiny tiers.
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{})))
 	t.Cleanup(ts.Close)
 

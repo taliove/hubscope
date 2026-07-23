@@ -289,7 +289,7 @@ func TestShareLinkCreationValidation(t *testing.T) {
 // report endpoint (ticket 33: the public GET tier applies).
 func TestSharedReportRateLimited(t *testing.T) {
 	db := openTempDB(t)
-	ts := httptest.NewServer(server.New(db, testAdminPassword,
+	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{
 			Read: server.RateTier{PerMinute: 2, Burst: 2},
 		}),

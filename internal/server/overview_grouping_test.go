@@ -72,7 +72,7 @@ func TestOverviewGrouping(t *testing.T) {
 	db := openTempDB(t)
 	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	clock := scheduler.NewFakeClock(now)
-	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(clock.Now)))
+	ts := httptest.NewServer(server.New(db, server.WithNow(clock.Now)))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

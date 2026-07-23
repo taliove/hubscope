@@ -22,10 +22,11 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -148,6 +149,7 @@ func TestRestartClosesStaleRunningRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	seedTestUser(t, db)
 	suites, err := db.ListSuites()
 	if err != nil || len(suites) == 0 {
 		t.Fatalf("list suites: %v (n=%d)", err, len(suites))
@@ -170,7 +172,8 @@ func TestRestartClosesStaleRunningRuns(t *testing.T) {
 		t.Fatalf("reopen db: %v", err)
 	}
 	t.Cleanup(func() { db2.Close() })
-	ts := httptest.NewServer(server.New(db2, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
+	seedTestUser(t, db2)
+	ts := httptest.NewServer(server.New(db2, server.WithRateLimits(server.RateLimits{})))
 	t.Cleanup(ts.Close)
 
 	final := getCampaign(t, ts.URL, campaign.ID)

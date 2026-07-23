@@ -45,8 +45,12 @@ func TestWalkingSkeleton(t *testing.T) {
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
 
-	// Setup API server
-	apiServer := server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{}))
+	// Setup API server (seed the test user so authedClient can log in).
+	seedTestUser(t, db)
+	apiServer := server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSessionSecret(testSessionSecret),
+	)
 	ts := httptest.NewServer(apiServer)
 	defer ts.Close()
 

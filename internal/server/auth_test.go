@@ -13,11 +13,40 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/taliove2009/hubscope/internal/store"
 )
 
-// testAdminPassword is a fixed fake password used by every test server; it is
-// not a real credential.
+// testAdminPassword is the password for the test super_admin seeded into
+// every test database; it is not a real credential.
 const testAdminPassword = "test-admin-password"
+
+// testSessionSecret is a fixed 32-byte signing key injected via
+// WithSessionSecret so forged tokens can be reproduced without reading the
+// database. It mirrors the format server.New would auto-generate (32 raw
+// bytes) but is deterministic for tests.
+var testSessionSecret = bytes.Repeat([]byte{0xAB}, 32)
+
+// seedTestUser ensures the test super_admin (username "admin", password
+// testAdminPassword) exists in the database. It is idempotent: if the user
+// already exists (e.g., a closure re-opens the same DB file), it silently
+// succeeds. bcrypt cost 4 keeps tests fast; the hash is self-contained so
+// no WithBcryptCost option is needed on the server.
+func seedTestUser(t *testing.T, db *store.DB) {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(testAdminPassword), 4)
+	if err != nil {
+		t.Fatalf("bcrypt hash: %v", err)
+	}
+	if _, err := db.CreateUser("admin", string(hash), nil, store.RoleSuperAdmin); err != nil {
+		if err == store.ErrUsernameTaken {
+			return // already seeded — idempotent
+		}
+		t.Fatalf("seed test user: %v", err)
+	}
+}
 
 // testClients caches one logged-in HTTP client per test server origin, so
 // shared request helpers transparently pass the auth middleware while test
@@ -43,7 +72,7 @@ func authedClient(t *testing.T, rawURL string) *http.Client {
 	}
 	client := &http.Client{Jar: jar}
 	resp, err := client.Post(origin+"/api/auth/login", "application/json",
-		bytes.NewBufferString(`{"password":`+strconv.Quote(testAdminPassword)+`}`))
+		bytes.NewBufferString(`{"username":"admin","password":`+strconv.Quote(testAdminPassword)+`}`))
 	if err != nil {
 		t.Fatalf("test login: %v", err)
 	}
@@ -57,13 +86,15 @@ func authedClient(t *testing.T, rawURL string) *http.Client {
 }
 
 // forgeSessionToken reproduces the server-side signing scheme so tests can
-// mint expired or tampered cookies without any server cooperation.
-func forgeSessionToken(t *testing.T, issued time.Time, tamper bool) string {
+// mint expired or tampered cookies without any server cooperation. The token
+// format is "<userId>.<issuedUnix>.<hmacHex>".
+func forgeSessionToken(t *testing.T, userID int64, issued time.Time, tamper bool) string {
 	t.Helper()
-	key := sha256.Sum256([]byte("hubscope-session:" + testAdminPassword))
+	uid := strconv.FormatInt(userID, 10)
 	stamp := strconv.FormatInt(issued.Unix(), 10)
-	mac := hmac.New(sha256.New, key[:])
-	mac.Write([]byte(stamp))
+	payload := uid + "." + stamp
+	mac := hmac.New(sha256.New, testSessionSecret)
+	mac.Write([]byte(payload))
 	sig := hex.EncodeToString(mac.Sum(nil))
 	if tamper {
 		replacement := "a"
@@ -72,7 +103,7 @@ func forgeSessionToken(t *testing.T, issued time.Time, tamper bool) string {
 		}
 		sig = replacement + sig[1:]
 	}
-	return stamp + "." + sig
+	return payload + "." + sig
 }
 
 // postRaw issues an unauthenticated POST and returns the response.
@@ -186,13 +217,13 @@ func TestAdminAuth(t *testing.T) {
 	})
 
 	t.Run("wrong_password_rejected", func(t *testing.T) {
-		resp := postRaw(t, anon, ts.URL+"/api/auth/login", `{"password":"wrong-password"}`)
+		resp := postRaw(t, anon, ts.URL+"/api/auth/login", `{"username":"admin","password":"wrong-password"}`)
 		if resp.StatusCode != http.StatusUnauthorized {
 			resp.Body.Close()
 			t.Fatalf("expected 401, got %d", resp.StatusCode)
 		}
-		if msg := readErrorMessage(t, resp); msg != "invalid password" {
-			t.Fatalf("expected 'invalid password', got %q", msg)
+		if msg := readErrorMessage(t, resp); msg != "invalid credentials" {
+			t.Fatalf("expected 'invalid credentials', got %q", msg)
 		}
 	})
 
@@ -204,7 +235,7 @@ func TestAdminAuth(t *testing.T) {
 		client := &http.Client{Jar: jar}
 
 		login := postRaw(t, client, ts.URL+"/api/auth/login",
-			`{"password":`+strconv.Quote(testAdminPassword)+`}`)
+			`{"username":"admin","password":`+strconv.Quote(testAdminPassword)+`}`)
 		login.Body.Close()
 		if login.StatusCode != http.StatusOK {
 			t.Fatalf("login: expected 200, got %d", login.StatusCode)
@@ -217,7 +248,7 @@ func TestAdminAuth(t *testing.T) {
 			t.Fatalf("authenticated write: expected 201, got %d", resp.StatusCode)
 		}
 
-		// /me confirms the session.
+		// /me confirms the session and returns the user identity.
 		me, err := client.Get(ts.URL + "/api/auth/me")
 		if err != nil {
 			t.Fatalf("GET /api/auth/me: %v", err)
@@ -225,10 +256,30 @@ func TestAdminAuth(t *testing.T) {
 		var env envelope
 		json.NewDecoder(me.Body).Decode(&env)
 		me.Body.Close()
-		var status map[string]bool
-		json.Unmarshal(env.Data, &status)
-		if !status["authenticated"] {
+		var meResp struct {
+			Authenticated bool `json:"authenticated"`
+			User          struct {
+				ID       int64   `json:"id"`
+				Username string  `json:"username"`
+				Role     string  `json:"role"`
+				HubID    *int64  `json:"hub_id"`
+				HubName  *string `json:"hub_name"`
+			} `json:"user"`
+		}
+		if err := json.Unmarshal(env.Data, &meResp); err != nil {
+			t.Fatalf("unmarshal me: %v", err)
+		}
+		if !meResp.Authenticated {
 			t.Fatal("logged-in request must be authenticated")
+		}
+		if meResp.User.Username != "admin" {
+			t.Fatalf("username: expected admin, got %q", meResp.User.Username)
+		}
+		if meResp.User.Role != "super_admin" {
+			t.Fatalf("role: expected super_admin, got %q", meResp.User.Role)
+		}
+		if meResp.User.HubID != nil {
+			t.Fatalf("super_admin hub_id must be null, got %v", *meResp.User.HubID)
 		}
 
 		// Logout clears the cookie; writes are rejected again.
@@ -246,7 +297,7 @@ func TestAdminAuth(t *testing.T) {
 
 	t.Run("expired_cookie_rejected", func(t *testing.T) {
 		// Correctly signed but issued 8 days ago, past the 7-day TTL.
-		token := forgeSessionToken(t, time.Now().Add(-8*24*time.Hour), false)
+		token := forgeSessionToken(t, 1, time.Now().Add(-8*24*time.Hour), false)
 		resp := createHub(t, anon, ts.URL, "ahc_session="+token)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -255,7 +306,7 @@ func TestAdminAuth(t *testing.T) {
 	})
 
 	t.Run("tampered_cookie_rejected", func(t *testing.T) {
-		token := forgeSessionToken(t, time.Now(), true)
+		token := forgeSessionToken(t, 1, time.Now(), true)
 		resp := createHub(t, anon, ts.URL, "ahc_session="+token)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {

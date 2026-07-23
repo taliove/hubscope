@@ -155,7 +155,7 @@ func TestOverviewStatusTransitions(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -275,7 +275,7 @@ func TestOverviewWindowStats(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

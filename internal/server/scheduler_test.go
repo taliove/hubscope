@@ -137,7 +137,9 @@ func writeStubStream(w http.ResponseWriter, isAnthropic bool) {
 	}
 }
 
-// openTempDB opens a real SQLite database in a temporary directory.
+// openTempDB opens a real SQLite database in a temporary directory and seeds
+// the test super_admin (username "admin", password testAdminPassword) so any
+// helper that goes through authedClient (doPost, doGet, …) can log in.
 func openTempDB(t *testing.T) *store.DB {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -145,15 +147,22 @@ func openTempDB(t *testing.T) *store.DB {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
 	return db
 }
 
 // newTestAPIServer starts the full API server over httptest. Rate limits
 // are disabled (zero tiers): probe-heavy tests would otherwise trip the
 // write budget. Limit behavior is covered by dedicated tests with tiny tiers.
+// The fixed session secret lets forgeSessionToken reproduce tokens without
+// reading the DB. The test user is seeded by openTempDB (or manually when
+// the DB is opened via store.Open).
 func newTestAPIServer(t *testing.T, db *store.DB) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSessionSecret(testSessionSecret),
+	))
 	t.Cleanup(ts.Close)
 	return ts
 }

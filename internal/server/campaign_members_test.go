@@ -288,7 +288,8 @@ func TestCampaignMembersMigrationBackfills(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open migrated db: %v", err)
 		}
-		ts := httptest.NewServer(server.New(db, testAdminPassword, server.WithRateLimits(server.RateLimits{})))
+		seedTestUser(t, db)
+		ts := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{})))
 		t.Cleanup(ts.Close)
 		return ts, db
 	}
