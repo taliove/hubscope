@@ -240,3 +240,116 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 		Failures:         failures,
 	})
 }
+
+// modelEvalSummaryDTO is the response of GET /api/models/{id}/eval-summary:
+// the model's latest evaluation summary, or null when the model has never been
+// evaluated. The total_score is the ADR-0005 weighted average of the model's
+// suite scores, nadir-normalized per ADR-0009 on the 0-100 scale.
+type modelEvalSummaryDTO struct {
+	ModelID           int64                 `json:"model_id"`
+	ModelIDStr        string                `json:"model_id_str"`
+	CampaignID        int64                 `json:"campaign_id"`
+	CampaignCreatedAt string                `json:"campaign_created_at"`
+	TotalScore        *float64              `json:"total_score"`
+	SuiteScores       []modelEvalSuiteScore `json:"suite_scores"`
+}
+
+// modelEvalSuiteScore is one suite's score within the model evaluation summary.
+type modelEvalSuiteScore struct {
+	SuiteID   int64    `json:"suite_id"`
+	SuiteName string   `json:"suite_name"`
+	Version   int      `json:"version"`
+	Score     *float64 `json:"score"`
+}
+
+// handleGetModelEvalSummary handles GET /api/models/{id}/eval-summary. Returns
+// the model's latest campaign evaluation summary (total score plus per-suite
+// breakdown), or {"data": null} when the model has never been evaluated. A
+// nonexistent model returns 404.
+func (s *Server) handleGetModelEvalSummary(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid model id")
+		return
+	}
+
+	model, err := s.db.GetModel(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
+
+	campaign, err := s.db.GetLatestCampaignForModel(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load latest campaign")
+		return
+	}
+	if campaign == nil {
+		writeData(w, http.StatusOK, nil)
+		return
+	}
+
+	runs, err := s.db.ListEvalRunsByCampaign(campaign.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load campaign runs")
+		return
+	}
+
+	suites, err := s.campaignSuites(runs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load suites")
+		return
+	}
+
+	configured, err := s.db.GetSuiteWeights()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read suite weights")
+		return
+	}
+	weights := effectiveWeights(suites, configured)
+
+	scores, err := s.db.ListCampaignSuiteScores(campaign.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load campaign scores")
+		return
+	}
+
+	nadirs := nadirBySuiteKey(suites, runs)
+	rows := buildReportRows(scores, weights, nadirs)
+
+	// Find this model's row
+	var modelRow *reportRowDTO
+	for _, row := range rows {
+		if row.ModelDBID == id {
+			modelRow = &row
+			break
+		}
+	}
+
+	// Model participated but has no scores yet
+	if modelRow == nil {
+		writeData(w, http.StatusOK, nil)
+		return
+	}
+
+	// Build suite scores array
+	suiteScores := make([]modelEvalSuiteScore, 0, len(suites))
+	for _, suite := range suites {
+		score := modelRow.SuiteScores[suite.Key]
+		suiteScores = append(suiteScores, modelEvalSuiteScore{
+			SuiteID:   suite.ID,
+			SuiteName: suite.Name,
+			Version:   suite.Version,
+			Score:     score,
+		})
+	}
+
+	writeData(w, http.StatusOK, modelEvalSummaryDTO{
+		ModelID:           model.ID,
+		ModelIDStr:        model.ModelID,
+		CampaignID:        campaign.ID,
+		CampaignCreatedAt: campaign.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		TotalScore:        modelRow.TotalScore,
+		SuiteScores:       suiteScores,
+	})
+}

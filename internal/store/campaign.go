@@ -253,3 +253,25 @@ func (db *DB) ListEvalRunsByCampaign(campaignID int64) ([]EvalRun, error) {
 	}
 	return runs, rows.Err()
 }
+
+// GetLatestCampaignForModel returns the most recent campaign the model
+// participated in (via campaign_models membership), or nil when the model has
+// never been evaluated. The returned campaign may be unfinished; callers must
+// check its status before assuming scores are available.
+func (db *DB) GetLatestCampaignForModel(modelID int64) (*Campaign, error) {
+	c, err := scanCampaign(db.conn.QueryRow(`
+		SELECT `+campaignColumns+`
+		FROM campaigns c
+		JOIN campaign_models cm ON cm.campaign_id = c.id
+		WHERE cm.model_id = ?
+		ORDER BY c.id DESC
+		LIMIT 1
+	`, modelID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
