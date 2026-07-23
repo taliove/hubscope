@@ -98,8 +98,12 @@ func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID stri
 }
 
 // handleListModels handles GET /api/models. Includes endpoints per model.
+// Per the per-hub query isolation invariant (spec 0005): an anonymous caller
+// is blocked at requireSession (/api/models is not in publicReadPattern), so
+// a non-nil session here is guaranteed. A non-super_admin session only sees
+// its own hub's models; super_admin sees all.
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
-	models, err := s.db.ListModels()
+	models, err := s.listModelsForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list models")
 		return
@@ -116,6 +120,24 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, dtos)
+}
+
+// listModelsForRequest selects models scoped to the request's session: all
+// models for super_admin (and the defensive anonymous case, which
+// requireSession only permits for public-read routes — /api/models is not one,
+// so this branch is unreachable for anonymous in practice), or the session
+// user's hub for hub-scoped roles.
+func (s *Server) listModelsForRequest(r *http.Request) ([]store.Model, error) {
+	u := sessionUser(r)
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		return s.db.ListModelsAll()
+	}
+	if u.HubID == nil {
+		// A hub-scoped role without a hub_id is a data inconsistency; fall
+		// back to an empty result rather than leaking the full set.
+		return []store.Model{}, nil
+	}
+	return s.db.ListModelsByHub(*u.HubID)
 }
 
 // handleDeleteModel handles DELETE /api/models/{id}. Only manual models can

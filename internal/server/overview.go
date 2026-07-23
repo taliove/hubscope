@@ -155,7 +155,7 @@ func (a *groupAccumulator) groups() []overviewGroupDTO {
 func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	now := s.now().UTC()
 
-	models, err := s.db.ListModels()
+	models, err := s.listModelsForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list models")
 		return

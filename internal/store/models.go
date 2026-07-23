@@ -170,9 +170,36 @@ func (db *DB) SetModelClassification(id int64, capability, family string) error 
 	return err
 }
 
-// ListModels returns all models with their endpoints
-func (db *DB) ListModels() ([]Model, error) {
+// ListModelsAll returns every model with its endpoints. It is the only
+// no-argument list form: per the per-hub query isolation invariant (spec
+// 0005), list calls must take an explicit hub filter so a missing filter is a
+// compile error. The All variant is reserved for super_admin paths and for
+// store-internal maintenance that is genuinely global (e.g. ReclassifyAll);
+// HTTP handlers must branch on the session user before reaching it.
+func (db *DB) ListModelsAll() ([]Model, error) {
 	rows, err := db.conn.Query("SELECT " + modelColumns + " FROM models ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var models []Model
+	for rows.Next() {
+		m, err := scanModel(rows)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, m)
+	}
+
+	return models, rows.Err()
+}
+
+// ListModelsByHub returns the models that belong to a single hub, ordered by
+// id. It is the hub-scoped counterpart of ListModelsAll and the form HTTP
+// handlers must use for non-super_admin sessions.
+func (db *DB) ListModelsByHub(hubID int64) ([]Model, error) {
+	rows, err := db.conn.Query("SELECT "+modelColumns+" FROM models WHERE hub_id = ? ORDER BY id", hubID)
 	if err != nil {
 		return nil, err
 	}

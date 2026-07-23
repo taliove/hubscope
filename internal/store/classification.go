@@ -123,7 +123,7 @@ func (db *DB) ReclassifyAll() error {
 	if err != nil {
 		return err
 	}
-	models, err := db.ListModels()
+	models, err := db.ListModelsAll()
 	if err != nil {
 		return err
 	}
