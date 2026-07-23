@@ -27,6 +27,13 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+// Render a 0~1 ratio as percentage digits without the % sign, for layouts
+// that typeset the unit separately (e.g. the StatusCard big number).
+export function formatPercentDigits(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  return (value * 100).toFixed(1)
+}
+
 // Render a 0-100 score with one decimal, dash when null. Every eval/report
 // score renders through this; components must not self-format (toFixed).
 export function formatScore(value: number | null): string {
