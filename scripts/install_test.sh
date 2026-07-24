@@ -268,10 +268,6 @@ cleanup_sandbox
 
 echo "== missing dependencies fail fast with a clear message =="
 build_sandbox no-go
-echo "DEBUG: sandbox bin:" >&2; ls -la "$FAKE_BIN" >&2
-echo "DEBUG: PATH=$SANDBOX_PATH" >&2
-echo "DEBUG: driver env: $(command -v env)" >&2
-PATH="$SANDBOX_PATH" bash -c 'echo "DEBUG: nested env: $(command -v env)"; echo "DEBUG: nested go: $(command -v go || echo MISSING)"' >&2
 set +e
 ERR_OUT="$(run_install 2>&1)"
 STATUS=$?
