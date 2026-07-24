@@ -1,13 +1,14 @@
 <template>
   <!-- Wordmark: the only logotype. "HubScope" in the system monospace
        stack (zero external font deps, single-binary friendly) with a
-       brand-colored terminal cursor block. Cursor blink is a registered
-       exception to "blink is failing-only": it is brand furniture, not
-       status semantics (ui-guidelines §2b). Sizing is em-based; the host
-       controls scale via font-size. -->
+       brand-colored pulse dot — always on, echoing the center dot of the
+       BrandMark scope glyph. Static by design: blinking/flashing is the
+       failing alert's exclusive channel (W5), so the logotype exits the
+       motion semantics entirely (ui-guidelines §2b). Sizing is em-based;
+       the host controls scale via font-size. -->
   <span class="hs-wordmark">
     <span class="hs-wordmark__text">HubScope</span>
-    <span class="hs-wordmark__cursor" aria-hidden="true"></span>
+    <span class="hs-wordmark__dot" aria-hidden="true"></span>
   </span>
 </template>
 
@@ -15,7 +16,7 @@
 .hs-wordmark {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.12em;
+  gap: 0.15em;
   font-family:
     ui-monospace,
     'SF Mono',
@@ -29,28 +30,12 @@
   letter-spacing: -0.02em;
 }
 
-.hs-wordmark__cursor {
-  width: 0.55em;
-  height: 1em;
+.hs-wordmark__dot {
+  width: 0.32em;
+  height: 0.32em;
+  border-radius: 50%;
   background: var(--hs-brand);
-  border-radius: 1px;
-  transform: translateY(0.12em);
-  animation: hs-wordmark-cursor 1.2s step-end infinite;
-}
-
-@keyframes hs-wordmark-cursor {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hs-wordmark__cursor {
-    animation: none;
-  }
+  transform: translateY(-0.04em);
 }
 </style>
+

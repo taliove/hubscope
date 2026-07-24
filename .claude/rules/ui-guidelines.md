@@ -21,7 +21,7 @@
                   亮暗两块用 color-mix 从语义令牌生成 EP 派生阶)
   ```
 
-  修改纪律:调具体色值改 tokens.css;调暗色观感改 semantics.css 的 `html.dark` 块;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。唯二豁免:① `--el-card-padding` 密度档设置(§2 间距条目的既定机制);② BrandMark 消费原始刻度与刻度外细节(§2b,图形标识非语义表达:渐变 stop、字形白色描线 `#fff`、光标方块 1px 圆角)。引入顺序(main.ts):`element-plus/dist/index.css` → `element-plus/theme-chalk/dark/css-vars.css` → tokens.css → semantics.css → ep-theme.css → print.css。ep-theme.css 必须含 `html.dark` 块(EP dark/css-vars.css 的 `html.dark` 选择器特异性高于 `:root`,需在其后加载并重复声明全部映射,亮主题 light-N 混白/dark-2 混黑 20%,暗主题反转)。
+  修改纪律:调具体色值改 tokens.css;调暗色观感改 semantics.css 的 `html.dark` 块;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。唯二豁免:① `--el-card-padding` 密度档设置(§2 间距条目的既定机制);② BrandMark 消费原始刻度与刻度外细节(§2b,图形标识非语义表达:渐变 stop、字形白色描线 `#fff`)。引入顺序(main.ts):`element-plus/dist/index.css` → `element-plus/theme-chalk/dark/css-vars.css` → tokens.css → semantics.css → ep-theme.css → print.css。ep-theme.css 必须含 `html.dark` 块(EP dark/css-vars.css 的 `html.dark` 选择器特异性高于 `:root`,需在其后加载并重复声明全部映射,亮主题 light-N 混白/dark-2 混黑 20%,暗主题反转)。
 
 - **命名前缀:** 沿用 `--hs-`(HubScope)前缀,**不**改 `--ph-`——降低存量 diff 与 Review 风险,避免多 Hub 产品生态混读;语义与层级完全对齐 ProxyHub 架构,仅前缀不同。
 
@@ -108,8 +108,7 @@
 ## 2b. 品牌标识(BrandMark / Wordmark)
 
 - **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色**瞄准镜字形**(圆环 + 十字准星刻度 + 中心脉冲点——监控隐喻:盯住 Hub 上每个 endpoint;ticket 73 后续修订,取代初版与 ProxyHub 同构的 hub 辐条字形,因用户反馈「不合群」——与 ProxyHub 的区分由图形标承担,不再只靠字标);em 尺寸宿主可控(`width/height: 1em`)。favicon 与 AppHeader 左侧品牌位同源;`web/public/logo.png` 已删除,AppHeader/LoginView/StatusCard 一律使用 BrandMark。
-- **Wordmark 是唯一字标:** 共享组件 `components/Wordmark.vue`——「HubScope」PascalCase 文本 + 主色光标方块(0.55em × 1em,1.2s 步进闪烁;`prefers-reduced-motion` 下静止),字体用**系统等宽字栈**(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`),不引入任何外部字体文件(零依赖、离线可用,与单二进制交付一致),字重 700;字号以 em 为基准,宿主用 `font-size` 覆盖等比缩放。使用点:AppHeader 品牌位(BrandMark + Wordmark 横排,默认 `--hs-text-lg` 16px)、LoginView 品牌区(`--hs-text-display` 28px)、StatusCard 品牌区(随物料画布定字号,不用令牌字面量)。
-- **光标闪烁豁免说明:** §3「闪烁为 failing 告警专属」约束的是**状态语义动画**;Wordmark 光标是品牌标识的固定构成(终端光标隐喻),非状态表达,且仅出现在品牌位,不与状态灯同语境混淆——此为例外登记,其他组件不得援引。
+- **Wordmark 是唯一字标:** 共享组件 `components/Wordmark.vue`——「HubScope」PascalCase 文本 + 主色**脉冲小圆点**(常亮,与 BrandMark 瞄准镜中心点同源的图形呼应),字体用**系统等宽字栈**(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`),不引入任何外部字体文件(零依赖、离线可用,与单二进制交付一致),字重 700;字号以 em 为基准,宿主用 `font-size` 覆盖等比缩放。使用点:AppHeader 品牌位(BrandMark + Wordmark 横排,默认 `--hs-text-lg` 16px)、LoginView 品牌区(`--hs-text-display` 28px)、StatusCard 品牌区(随物料画布定字号,不用令牌字面量)。**字标完全静止(2026-07-24 修订,取代初版闪烁终端光标):「闪烁=failing 告警专属」是 W5 承重语义,字标作为全站唯一持续运动元素挂在每页左上角,用户对「有东西在闪」的直觉解读就是「有情况」——豁免条款救得了规则救不了直觉;脉冲点常亮后,failing 重新独占全站唯一动画,无任何豁免。**
 - **LoginView 品牌区构成:** BrandMark(40px)+ Wordmark(display 档)横排居中,替代原 logo.png 40px 图块;登录卡保持工具风,不加装饰背景。
 
 ## 3. 语义色映射(核心约定)
@@ -281,7 +280,7 @@
 **品牌标识**
 - [ ] BrandMark.vue/Wordmark.vue 就位,AppHeader/LoginView/StatusCard 接入,favicon 重生成
 - [ ] `web/public/logo.png` 删除,全仓无残留引用;logo.svg/favicon.png 一并替换
-- [ ] Wordmark 光标 `prefers-reduced-motion` 静止;字体为系统等宽字栈,全仓无外部字体文件引入(无 woff2/Google Fonts 引用)
+- [ ] Wordmark 完全静止(无动画);字体为系统等宽字栈,全仓无外部字体文件引入(无 woff2/Google Fonts 引用)
 
 **圆角/阴影/密度**
 - [ ] 卡片/弹窗 radius-lg 8px、控件 radius-sm 4px、分段条 radius-xs 2px;无 6px 残留
