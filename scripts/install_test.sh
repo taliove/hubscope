@@ -105,8 +105,9 @@ build_sandbox() {
 
   # The installer builds via `make build`; the stub copies a canned binary.
   # The parameter expansion only expands inside the stub at run time.
+  # bin/ is gitignored, so on a fresh checkout (CI) it may not exist yet.
   # shellcheck disable=SC2016
-  write_fake_tool make 'if [ "${1:-}" = "build" ]; then cp "'"$FAKE_BIN"'/fake-binary" "'"$REPO_ROOT"'/bin/hubscope"; fi'
+  write_fake_tool make 'if [ "${1:-}" = "build" ]; then mkdir -p "'"$REPO_ROOT"'/bin" && cp "'"$FAKE_BIN"'/fake-binary" "'"$REPO_ROOT"'/bin/hubscope"; fi'
 
   # Record every privileged call for assertions.
   write_fake_tool systemctl 'echo "systemctl $*" >> "'"$SANDBOX"'/systemctl.log"'
