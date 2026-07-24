@@ -123,10 +123,11 @@ const emptyDetailText = computed(() => {
 <style scoped>
 .status-card {
   width: 720px;
-  border-radius: var(--hs-radius);
+  border-radius: var(--hs-radius-lg);
+  /* Static card: layering comes from the 1px border, not shadow
+     (ui-guidelines §2 shadow semantics — shadows only for clickable/overlay). */
   border: 1px solid var(--hs-border);
   background: var(--hs-bg-card);
-  box-shadow: var(--hs-shadow-card);
   overflow: hidden;
   text-align: left;
 }

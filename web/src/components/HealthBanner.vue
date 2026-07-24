@@ -104,7 +104,7 @@ function onClick() {
 
 <style scoped>
 .health-banner {
-  border-radius: var(--hs-radius);
+  border-radius: var(--hs-radius-lg);
   padding: 16px 20px;
   margin-bottom: 16px;
   transition: box-shadow 0.15s ease;
@@ -113,7 +113,7 @@ function onClick() {
   cursor: pointer;
 }
 .banner-clickable:hover {
-  box-shadow: var(--hs-shadow-hover);
+  box-shadow: var(--hs-shadow-md);
 }
 /* Initial-load skeleton sits on a neutral ground (spec 0003 §5.1), never on
    a status tint — green would falsely signal "all healthy" before data. */
@@ -145,7 +145,7 @@ function onClick() {
   gap: 8px;
 }
 .conclusion {
-  font-size: var(--hs-text-2xl);
+  font-size: var(--hs-text-display);
   font-weight: 600;
   line-height: 1.5;
 }

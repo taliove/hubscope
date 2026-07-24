@@ -111,7 +111,7 @@ function dotTooltip(dot: OverviewDot): string {
   transition: box-shadow 0.15s ease;
 }
 .endpoint-card:hover {
-  box-shadow: var(--hs-shadow-hover);
+  box-shadow: var(--hs-shadow-md);
 }
 .card-healthy {
   border-left-color: var(--el-color-success);

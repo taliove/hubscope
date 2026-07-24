@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useChartColors, seriesPalette } from '@/utils/chartColors'
 
 // Generic hourly-bucket line chart used by the endpoint detail page. The
 // parent supplies category labels and one data array per line; the component
@@ -22,50 +23,32 @@ const props = defineProps<{
 const chartEl = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
-// Mirror of styles/tokens.css — ECharts reads colors from JS, not CSS, so the
-// palette is duplicated here. Keep these values in sync with tokens.css;
-// every chart color must come from this map (ui-guidelines §3).
-const CHART_COLORS = {
-  brand: '#3B5BFD', // --hs-brand
-  success: '#67C23A', // --el-color-success
-  warning: '#E6A23C', // --el-color-warning
-  danger: '#F56C6C', // --el-color-danger
-  failing: '#FF4500', // --hs-status-failing
-  textRegular: '#3E4450', // --hs-text-regular
-  textSecondary: '#646A73', // --hs-text-secondary
-  border: '#E5E6EB', // --hs-border
-} as const
-
-// Series palette: lines are assigned in order from the brand/status palette.
-const SERIES_PALETTE = [
-  CHART_COLORS.brand,
-  CHART_COLORS.success,
-  CHART_COLORS.warning,
-  CHART_COLORS.danger,
-  CHART_COLORS.failing,
-]
+// Theme-aware palette (single source: utils/chartColors.ts, light/dark
+// mirrors of semantics.css). Charts re-render when the theme flips.
+const colors = useChartColors()
 
 function render() {
   if (!chart) return
+  const c = colors.value
   chart.setOption({
-    color: SERIES_PALETTE,
+    color: seriesPalette(c),
     grid: { left: 56, right: 16, top: 32, bottom: 24 },
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, right: 0, textStyle: { color: CHART_COLORS.textRegular } },
+    legend: { top: 0, right: 0, textStyle: { color: c.textRegular } },
     xAxis: {
       type: 'category',
       data: props.categories,
       boundaryGap: false,
-      axisLabel: { color: CHART_COLORS.textSecondary },
-      axisLine: { lineStyle: { color: CHART_COLORS.border } },
+      axisLabel: { color: c.textSecondary },
+      axisLine: { lineStyle: { color: c.border } },
     },
     yAxis: {
       type: 'value',
       name: props.yName ?? '',
       scale: true,
-      nameTextStyle: { color: CHART_COLORS.textSecondary },
-      axisLabel: { color: CHART_COLORS.textSecondary },
-      splitLine: { lineStyle: { color: CHART_COLORS.border } },
+      nameTextStyle: { color: c.textSecondary },
+      axisLabel: { color: c.textSecondary },
+      splitLine: { lineStyle: { color: c.border } },
     },
     series: props.series.map(s => ({
       name: s.name,
@@ -88,8 +71,9 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
 })
 
-// Re-render whenever the parent swaps in new buckets.
+// Re-render whenever the parent swaps in new buckets or the theme flips.
 watch(() => [props.categories, props.series], render, { deep: true })
+watch(colors, render)
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)

@@ -111,7 +111,7 @@ const distribution = computed(() => distributionSegments(counts.value))
   display: flex;
   align-items: stretch;
   background: var(--hs-bg-page);
-  border-radius: var(--hs-radius);
+  border-radius: var(--hs-radius-lg);
   padding: 16px 20px;
   margin-bottom: 16px;
 }
@@ -144,7 +144,7 @@ const distribution = computed(() => distributionSegments(counts.value))
 }
 .hero-big {
   margin-top: 4px;
-  font-size: var(--hs-text-2xl);
+  font-size: var(--hs-text-display);
   font-weight: 600;
   line-height: 1.2;
 }

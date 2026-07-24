@@ -317,7 +317,7 @@ function deltaTitle(row: ReportRow): string {
 }
 .row.clickable {
   cursor: pointer;
-  border-radius: var(--hs-radius);
+  border-radius: var(--hs-radius-lg);
   padding: 2px 4px;
   margin: -2px -4px;
 }

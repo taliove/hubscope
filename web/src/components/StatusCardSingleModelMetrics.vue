@@ -87,7 +87,7 @@ const availability = computed(() => scopedAvailability([props.entry]))
   display: flex;
   align-items: stretch;
   background: var(--hs-bg-page);
-  border-radius: var(--hs-radius);
+  border-radius: var(--hs-radius-lg);
   padding: 16px 20px;
   margin-bottom: 16px;
 }

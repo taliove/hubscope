@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useChartColors, seriesPalette } from '@/utils/chartColors'
 
 // Generic bare line chart for trend views (no card wrapper — the parent
 // dialog/section owns layout). Unlike TimeSeriesChart it breaks the line at
@@ -33,43 +34,24 @@ const props = withDefaults(
 const chartEl = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 
-// Mirror of styles/tokens.css — ECharts reads colors from JS, not CSS, so the
-// palette is duplicated here. Keep these values in sync with tokens.css;
-// every chart color must come from this map (ui-guidelines §3).
-const CHART_COLORS = {
-  brand: '#3B5BFD', // --hs-brand
-  success: '#67C23A', // --el-color-success
-  warning: '#E6A23C', // --el-color-warning
-  danger: '#F56C6C', // --el-color-danger
-  failing: '#FF4500', // --hs-status-failing
-  textRegular: '#3E4450', // --hs-text-regular
-  textSecondary: '#646A73', // --hs-text-secondary
-  placeholder: '#9CA3AF', // --hs-text-placeholder
-  border: '#E5E6EB', // --hs-border
-} as const
-
-// Series palette: lines are assigned in order from the brand/status palette.
-const SERIES_PALETTE = [
-  CHART_COLORS.brand,
-  CHART_COLORS.success,
-  CHART_COLORS.warning,
-  CHART_COLORS.danger,
-  CHART_COLORS.failing,
-]
+// Theme-aware palette (single source: utils/chartColors.ts, light/dark
+// mirrors of semantics.css). Charts re-render when the theme flips.
+const colors = useChartColors()
 
 function render() {
   if (!chart) return
+  const c = colors.value
   chart.setOption({
-    color: SERIES_PALETTE,
+    color: seriesPalette(c),
     grid: { left: 56, right: 16, top: 32, bottom: 24 },
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, right: 0, textStyle: { color: CHART_COLORS.textRegular } },
+    legend: { top: 0, right: 0, textStyle: { color: c.textRegular } },
     xAxis: {
       type: 'category',
       data: props.categories,
       boundaryGap: false,
-      axisLabel: { color: CHART_COLORS.textSecondary },
-      axisLine: { lineStyle: { color: CHART_COLORS.border } },
+      axisLabel: { color: c.textSecondary },
+      axisLine: { lineStyle: { color: c.border } },
     },
     yAxis: {
       type: 'value',
@@ -77,9 +59,9 @@ function render() {
       scale: props.fixYRange === undefined,
       min: props.fixYRange?.min,
       max: props.fixYRange?.max,
-      nameTextStyle: { color: CHART_COLORS.textSecondary },
-      axisLabel: { color: CHART_COLORS.textSecondary },
-      splitLine: { lineStyle: { color: CHART_COLORS.border } },
+      nameTextStyle: { color: c.textSecondary },
+      axisLabel: { color: c.textSecondary },
+      splitLine: { lineStyle: { color: c.border } },
     },
     series: props.series.map((s, i) => ({
       name: s.name,
@@ -95,10 +77,10 @@ function render() {
         i === 0 && props.markLines.length > 0
           ? {
               symbol: 'none',
-              lineStyle: { color: CHART_COLORS.placeholder, type: 'dashed' },
+              lineStyle: { color: c.placeholder, type: 'dashed' },
               label: {
                 formatter: (p: { name: string }) => p.name,
-                color: CHART_COLORS.textSecondary,
+                color: c.textSecondary,
                 fontSize: 12,
               },
               data: props.markLines.map(m => ({ xAxis: m.xAxis, name: m.label })),
@@ -120,6 +102,7 @@ onMounted(() => {
 
 // Re-render whenever the parent swaps in new data.
 watch(() => [props.categories, props.series, props.markLines], render, { deep: true })
+watch(colors, render)
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
