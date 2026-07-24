@@ -54,9 +54,8 @@ jobs:
       - name: Smoke-test linux/amd64 binary
         run: |
           tar -xzf "dist/hubscope_${GITHUB_REF_NAME}_linux_amd64.tar.gz" -C /tmp
-          /tmp/hubscope_${GITHUB_REF_NAME}_linux_amd64 admin create --help 2>&1 | head -5 || true
-          /tmp/hubscope_${GITHUB_REF_NAME}_linux_amd64 --help 2>&1 | head -5 || true
-          echo "binary executes: OK"
+          test -x "/tmp/hubscope_${GITHUB_REF_NAME}_linux_amd64"
+          echo "binary extracted and executable: OK"
 
       - name: Upload to GitHub Release
         env:
