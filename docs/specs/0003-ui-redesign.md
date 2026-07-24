@@ -1,6 +1,6 @@
 # HubScope — 全站 UI/UX 重设计提案(渐进式)
 
-> 状态:proposal。本提案已与 owner 确认核心决策(动机、视觉方向、品牌色、分批、导航、Dashboard 演进、技术约束),不可推翻;未确认的细节以「待评审」标注,走 design-review 流程。设计规范唯一事实源为 [.claude/rules/ui-guidelines.md](../../.claude/rules/ui-guidelines.md),本提案落地后其 §2 按文末「规范修订」同步更新。
+> 状态:**superseded(ticket 73)**。本提案的视觉基线(品牌蓝 #3B5BFD、单层 tokens.css、预生成 EP 派生阶、浅色唯一主题)已被品牌并入取代:视觉体系全面并入 ProxyHub「现代极简工具风」(电波青 teal、三层令牌、暗色一等公民),现行唯一事实源为 [.claude/rules/ui-guidelines.md](../../.claude/rules/ui-guidelines.md) 与 `.scratch/brand-merge/` 评审草案。本文件保留作历史记录。
 
 ## 1. 背景与目标
 
