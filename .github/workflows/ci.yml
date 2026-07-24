@@ -16,6 +16,11 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - name: Stub web/dist for go:embed
+        run: |
+          mkdir -p web/dist
+          printf '<!doctype html><html><title>hubscope</title><body>frontend not built yet</body></html>' > web/dist/index.html
+
       - name: Vet and test
         run: |
           gofmt -l cmd internal | tee /tmp/gofmt.out
