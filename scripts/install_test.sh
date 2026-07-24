@@ -138,12 +138,12 @@ build_sandbox() {
   # handled per-scenario below (fake or hidden via broken symlink).
   SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin"
 
-  # env shim: `env -i VAR=… cmd` (run_install) must NOT resolve `cmd` through
-  # the sandbox PATH — on Linux, coreutils env skips broken symlinks while
-  # resolving the command and would find the real go the scenario hides.
-  # Instead it re-execs the command through bash with the sandbox PATH
-  # exported (bash's own resolution does not skip the broken symlink).
-  # Everything else (stub shebangs) forwards to the real env.
+  # env shim: with -i, exports the assignments then re-execs the command
+  # through bash. This matters on Linux: coreutils env resolves the command
+  # itself and SKIPS broken symlinks, which would find a real go the
+  # missing-dependency scenarios hide. bash's resolution honors the shadows.
+  # `env bash …` (stub shebangs) also routes here so nested stubs keep the
+  # sandbox PATH instead of env's default. Everything else goes to real env.
   # shellcheck disable=SC2016
   write_fake_tool env '
 if [ "${1:-}" = "-i" ]; then
@@ -152,6 +152,10 @@ if [ "${1:-}" = "-i" ]; then
     export "$1"; shift
   done
   exec /usr/bin/env bash -c "exec \"\$@\"" dummy "$@"
+fi
+if [ "${1:-}" = "bash" ]; then
+  shift
+  exec /usr/bin/env bash -c "exec \"\$@\"" dummy bash "$@"
 fi
 exec /usr/bin/env "$@"
 '
