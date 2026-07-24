@@ -52,6 +52,15 @@ write_fake_tool() {
   chmod +x "$FAKE_BIN/$1"
 }
 
+# hide_tool NAME — makes a tool unresolvable inside the sandbox even when a
+# real one exists under /usr/bin (CI runners ship go there). A broken
+# absolute symlink in the stub dir: `command -v` requires an executable
+# *target*, so the lookup falls through — but bash caches the stub-dir name
+# and never reaches the real tool later in PATH.
+hide_tool() {
+  ln -s "/nonexistent/install-test-shadows-$1" "$FAKE_BIN/$1"
+}
+
 # expect_file PATH "description" — asserts PATH exists.
 expect_file() {
   if [ -f "$1" ]; then
@@ -124,21 +133,33 @@ build_sandbox() {
   printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$FAKE_BIN/fake-binary"
 
   # Deliberately not `local`: run_install (below) reads this after build_sandbox returns.
-  # Only /usr/bin and /bin are kept beyond the stub dir: on CI runners Go/pnpm
-  # are installed under /usr/local, /opt, or snap paths, and a wider PATH would
-  # leak the real toolchain into the missing-dependency scenarios.
+  # Real coreutils stay reachable (env -i resolves `bash` by name; stub
+  # shebangs need /usr/bin/env); the stub dir goes FIRST so fake tools shadow
+  # the real ones, and missing-dependency scenarios shadow go/pnpm with
+  # exit-127 stubs so a real toolchain can never leak in from base paths.
   SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin"
   if [ "$style" = "all" ] || [ "$style" = "no-pnpm" ]; then
     write_fake_tool go 'echo "go $*" > /dev/null'
+  else
+    # A fake make without the go requirement would let the run succeed even
+    # without go; shadow any real go that the base PATH might provide.
+    hide_tool go
   fi
   if [ "$style" = "all" ] || [ "$style" = "no-go" ]; then
     write_fake_tool pnpm 'echo "pnpm $*" > /dev/null'
+  else
+    hide_tool pnpm
   fi
 
   # Arguments are forwarded to the installer for future flag coverage.
   # Callers below intentionally pass no arguments today.
   # shellcheck disable=SC2120
   run_install() {
+    # env is resolved via the DRIVER's PATH (real /usr/bin/env): with -i, env
+    # resolves the command itself in the new minimal PATH, so bash must be
+    # reachable inside the sandbox. Stub tools shadow coreutils where needed;
+    # the missing-dependency scenarios additionally shadow go/pnpm with
+    # exit-127 stubs so a real toolchain can never leak in.
     env -i PATH="$SANDBOX_PATH" \
       HUBSCOPE_PREFIX="$PREFIX_DIR" \
       HUBSCOPE_DATA_DIR="$DATA_DIR" \
@@ -218,7 +239,7 @@ cleanup_sandbox
 echo "== env overrides: custom prefix / data dir / port honored =="
 build_sandbox all
 expect_exit 0 "install with custom port exits 0" \
-  env -i PATH="$FAKE_BIN:/usr/bin:/bin:/usr/local/bin:/usr/sbin:/sbin" \
+  env -i PATH="$SANDBOX_PATH" \
     HUBSCOPE_PREFIX="$PREFIX_DIR" HUBSCOPE_DATA_DIR="$DATA_DIR" \
     HUBSCOPE_SYSTEMD_DIR="$SYSTEMD_DIR" HUBSCOPE_PORT=9090 \
     bash "$INSTALLER"
