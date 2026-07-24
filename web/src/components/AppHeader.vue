@@ -189,7 +189,7 @@ onBeforeUnmount(stopBatchPolling)
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: var(--hs-z-sticky);
   height: 56px;
   background: var(--hs-bg-card);
   border-bottom: 1px solid var(--hs-border);

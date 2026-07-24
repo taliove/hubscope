@@ -95,18 +95,43 @@ function cardElement(): HTMLElement | null {
   return (cardRef.value?.$el as HTMLElement | undefined) ?? null
 }
 
+// Exported material always renders in the light theme (ui-guidelines §2a):
+// the PNG is an outward-facing static artifact, and dark pixels must never
+// bake into it. The capture twin is reparented under a plain wrapper that
+// carries the light tokens for the duration of the capture.
+async function withLightCapture<T>(fn: (el: HTMLElement) => Promise<T>): Promise<T> {
+  const el = cardElement()
+  if (!el) throw new Error('status card not rendered')
+  if (!document.documentElement.classList.contains('dark')) {
+    return fn(el)
+  }
+  // Keep the twin in-document (scoped styles resolve) but outside the
+  // html.dark cascade: a detached wrapper subtree inherits :root tokens.
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none;'
+  const parent = el.parentNode!
+  const next = el.nextSibling
+  wrapper.appendChild(el)
+  document.body.appendChild(wrapper)
+  try {
+    return await fn(el)
+  } finally {
+    parent.insertBefore(el, next)
+    wrapper.remove()
+  }
+}
+
 function fail(message: string, cause: unknown) {
   const reason = cause instanceof Error ? cause.message : String(cause)
   error.value = `${message}:${reason}`
 }
 
 async function onCopy() {
-  const el = cardElement()
-  if (!el || copying.value) return
+  if (!cardElement() || copying.value) return
   copying.value = true
   error.value = null
   try {
-    const blob = await captureStatusCard(el)
+    const blob = await withLightCapture((el) => captureStatusCard(el))
     if (await copyImageBlob(blob)) {
       ElMessage.success('图片已复制到剪贴板')
     } else {
@@ -120,12 +145,13 @@ async function onCopy() {
 }
 
 async function onDownload() {
-  const el = cardElement()
-  if (!el || downloading.value) return
+  if (!cardElement() || downloading.value) return
   downloading.value = true
   error.value = null
   try {
-    await downloadStatusCard(el, statusCardFilename(new Date(), props.snapshot?.group?.key))
+    await withLightCapture((el) =>
+      downloadStatusCard(el, statusCardFilename(new Date(), props.snapshot?.group?.key)),
+    )
     ElMessage.success('已开始下载 PNG')
   } catch (e) {
     fail('生成图片失败', e)
