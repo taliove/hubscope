@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/hubclient"
-	"github.com/taliove2009/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/hubclient"
+	"github.com/taliove/hubscope/internal/scheduler"
 )
 
 // TestSchedulerDefaultInterval verifies that enabled endpoints produce probe

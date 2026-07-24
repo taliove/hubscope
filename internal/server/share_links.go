@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // shareTokenBytes is the raw entropy of a share-link token: 32 crypto/rand

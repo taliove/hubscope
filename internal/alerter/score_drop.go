@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // ScoreDropThreshold is how far a (suite, model) aggregate score must fall

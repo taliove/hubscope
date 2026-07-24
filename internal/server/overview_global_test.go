@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/scheduler"
-	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/server"
 )
 
 // globalOverview mirrors the global aggregate fields of the overview

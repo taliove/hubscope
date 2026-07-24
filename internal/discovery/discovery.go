@@ -12,9 +12,9 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/taliove2009/hubscope/internal/classifier"
-	"github.com/taliove2009/hubscope/internal/hubclient"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/classifier"
+	"github.com/taliove/hubscope/internal/hubclient"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // protocols lists both hub API protocols in canonical endpoint order.

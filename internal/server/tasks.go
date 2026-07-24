@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // taskDTO is the API representation of a Task. duration_ms is the wall-clock

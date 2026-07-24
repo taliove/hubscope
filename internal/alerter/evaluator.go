@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/taliove2009/hubscope/internal/status"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/status"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // Evaluator decides when probe results warrant a Lark alert. It is invoked

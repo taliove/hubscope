@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // TestVerdictNormalizationPipeline drives the v2 verdict profile end to end:

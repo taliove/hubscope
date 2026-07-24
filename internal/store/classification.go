@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/classifier"
+	"github.com/taliove/hubscope/internal/classifier"
 )
 
 // ListClassificationRules returns all rules ordered per dimension by

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/server"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // suiteByKey fetches GET /api/suites and returns the suite with the given key.

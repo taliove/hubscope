@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // handleFullSweep is the "one-click full evaluation" (POST /api/evals

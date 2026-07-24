@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // settingsDTO is the API representation of the application settings.

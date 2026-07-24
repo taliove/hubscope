@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/evaluator"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/evaluator"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // defaultEvalPollInterval bounds how often the worker wakes to check whether

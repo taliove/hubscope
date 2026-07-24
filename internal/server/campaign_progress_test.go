@@ -3,7 +3,7 @@ package server_test
 import (
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // reportCells extracts the per-suite progress cells of one leaderboard row.

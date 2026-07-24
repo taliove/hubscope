@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/scheduler"
-	"github.com/taliove2009/hubscope/internal/server"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // getCampaign fetches GET /api/campaigns/{id} and returns the decoded detail.

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // createRuleCase posts one exact-match rule case to the suite and asserts

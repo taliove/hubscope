@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // getCampaignTrends fetches GET /api/campaigns/{id}/trends with the given raw

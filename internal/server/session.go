@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // SessionUser carries the authenticated identity through the request context.

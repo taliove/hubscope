@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/status"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/status"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // overviewWindows defines the lookback windows used by the status machine.

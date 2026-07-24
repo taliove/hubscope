@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // runTask mirrors one eval run's execution into the task center: the run is

@@ -8,12 +8,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/taliove2009/hubscope/internal/alerter"
-	"github.com/taliove2009/hubscope/internal/discovery"
-	"github.com/taliove2009/hubscope/internal/evaluator"
-	"github.com/taliove2009/hubscope/internal/hubclient"
-	"github.com/taliove2009/hubscope/internal/prober"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/alerter"
+	"github.com/taliove/hubscope/internal/discovery"
+	"github.com/taliove/hubscope/internal/evaluator"
+	"github.com/taliove/hubscope/internal/hubclient"
+	"github.com/taliove/hubscope/internal/prober"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // Server holds dependencies and the HTTP router.

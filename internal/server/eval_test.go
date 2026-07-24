@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/server"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.

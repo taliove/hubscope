@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/server"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // firstReportSuiteKey returns the key of the first suite the campaign's

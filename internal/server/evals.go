@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.

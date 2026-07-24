@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // Series query parameter bounds from api-contract.md.

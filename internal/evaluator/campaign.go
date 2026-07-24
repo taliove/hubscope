@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // RunCampaign executes one eval run per suite under the given campaign,

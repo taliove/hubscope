@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // minIntervalSeconds is the smallest allowed per-endpoint interval override.

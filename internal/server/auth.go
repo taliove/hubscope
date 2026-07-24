@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // sessionCookieName is the name of the session cookie.

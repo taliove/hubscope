@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // hubDTO is the API representation of a Hub. It never carries the raw token.

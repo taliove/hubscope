@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // VerdictProfileCurrent is the scoring caliber every new rule verdict uses

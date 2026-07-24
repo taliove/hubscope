@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // reportBaseline extracts the baseline block of a report payload; returns

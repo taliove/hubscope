@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/scheduler"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // fetchAuditLogs queries GET /api/audit-logs with the given raw query suffix

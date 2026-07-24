@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/scheduler"
-	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/server"
 )
 
 // groupPayload mirrors one group aggregate of the overview response.

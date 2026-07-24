@@ -3,7 +3,7 @@ package server
 import (
 	"sort"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // normalizeScore01 converts a 0~1 raw mean into the ADR-0009 nadir-

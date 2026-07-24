@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // patchAs issues a JSON PATCH with the given client and returns the response.

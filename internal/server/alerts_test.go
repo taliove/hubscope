@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/taliove2009/hubscope/internal/server"
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // stubLarkServer is a fake Lark group-bot webhook endpoint. It records the

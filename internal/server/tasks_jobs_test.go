@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/taliove2009/hubscope/internal/scheduler"
-	"github.com/taliove2009/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/scheduler"
+	"github.com/taliove/hubscope/internal/server"
 )
 
 // waitTasksByType polls GET /api/tasks?type=... until at least want tasks in

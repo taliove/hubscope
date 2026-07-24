@@ -3,7 +3,7 @@ package server
 import (
 	"sort"
 
-	"github.com/taliove2009/hubscope/internal/store"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // reportCellDTO is one model x suite progress cell (ticket 52): the run's

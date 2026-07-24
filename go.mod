@@ -1,4 +1,4 @@
-module github.com/taliove2009/hubscope
+module github.com/taliove/hubscope
 
 go 1.26.3
 
