@@ -42,8 +42,9 @@
 <script setup lang="ts">
 // Unique gradient id per instance so multiple BrandMarks on one page (e.g.
 // AppHeader + StatusCard preview) never collide on the shared <defs> id.
-let counter = 0
-const gradientId = `hs-brand-grad-${++counter}`
+import { useId } from 'vue'
+
+const gradientId = `hs-brand-grad-${useId()}`
 </script>
 
 <style scoped>

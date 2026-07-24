@@ -17,6 +17,12 @@ tools: Read, Grep, Glob, Bash
    - 定时器/轮询是否在组件卸载时清理(setInterval 配对 clearInterval);
    - Element Plus 组件用法是否符合版本 API;
    - 语义色、状态词表、组件复用是否符合 ui-guidelines.md(如状态展示必须复用 StatusBadge)。
-4. **契约核对** — `web/src/api/types.ts` 与后端 dto 的字段是否一致(类型、可空、命名)。
+4. **硬编码色值扫描**(ticket 73 登记,failing 橙例外的执行端牙齿)——`grep -rnE "#[0-9a-fA-F]{3,8}\b|rgba?\(" web/src --include="*.vue" --include="*.ts"`,逐一核对命中是否在**白名单**内:
+   - `web/src/styles/`(tokens.css / semantics.css / ep-theme.css / print.css)——令牌定义层;
+   - `web/src/utils/chartColors.ts`——ECharts JS 镜像(同时抽 semantics.css 的 9 个语义值与镜像逐一比对相等,防漂移);
+   - `web/src/components/BrandMark.vue`——图形标识(渐变 stop、白色描线,§2b 豁免);
+   - failing 橙二值 `#c2410c` / `#fb923c` 出现在以上文件以外的位置时,确认是 failing 语义用途(ui-guidelines §3 唯一例外),其他调色板外色相一律 FAIL。
+   另:`grep -rn "var(--el-" web/src --include="*.vue"` 除 `--el-card-padding` 外应为零(§2 修改纪律)。
+5. **契约核对** — `web/src/api/types.ts` 与后端 dto 的字段是否一致(类型、可空、命名)。
 
 输出:每项 PASS/FAIL + 具体问题位置与修法。能跑命令验证的不凭肉眼断言。

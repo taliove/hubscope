@@ -22,7 +22,12 @@ export function useTheme() {
 
   function toggleTheme() {
     const next = !dark.value
-    localStorage.setItem(STORAGE_KEY, next ? '1' : '0')
+    try {
+      localStorage.setItem(STORAGE_KEY, next ? '1' : '0')
+    } catch {
+      /* storage unavailable (private mode, quota) — theme still flips
+         for the session, it just won't persist */
+    }
     applyTheme(next)
   }
 

@@ -49,8 +49,11 @@
 /* Dark theme overrides — driven by <html class="dark">.
    Overrides ONLY this semantic layer: surfaces, text, borders, shadows,
    primary. Set up front by the inline anti-FOUC script in index.html and
-   toggled from AppHeader (localStorage key `hs:dark`; keep names in sync). */
-html.dark {
+   toggled from AppHeader (localStorage key `hs:dark`; keep names in sync).
+   Scoped to screen: exported material (print/PDF) is always light
+   (ui-guidelines §2a) — dark pixels must never bake into a document. */
+@media screen {
+  html.dark {
   /* Brand: dark primary steps up to teal-500 to keep contrast on dark. */
   --hs-brand: var(--hs-teal-500);
   --hs-brand-hover: var(--hs-teal-400);
@@ -90,6 +93,7 @@ html.dark {
   --hs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --hs-shadow-md: 0 2px 12px rgba(0, 0, 0, 0.4);
   --hs-shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.5);
+  }
 }
 
 /* Shared alert blink for the failing status (W5 semantics). Sole definition —

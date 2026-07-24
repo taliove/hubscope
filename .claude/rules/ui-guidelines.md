@@ -21,7 +21,7 @@
                   亮暗两块用 color-mix 从语义令牌生成 EP 派生阶)
   ```
 
-  修改纪律:调具体色值改 tokens.css;调暗色观感改 semantics.css 的 `html.dark` 块;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。唯二豁免:① `--el-card-padding` 密度档设置(§2 间距条目的既定机制);② BrandMark 渐变 stop 消费原始刻度(§2b,图形标识非语义表达,含字形白色描线 `#fff`)。引入顺序(main.ts):`element-plus/dist/index.css` → `element-plus/theme-chalk/dark/css-vars.css` → tokens.css → semantics.css → ep-theme.css → print.css。ep-theme.css 必须含 `html.dark` 块(EP dark/css-vars.css 的 `html.dark` 选择器特异性高于 `:root`,需在其后加载并重复声明全部映射,亮主题 light-N 混白/dark-2 混黑 20%,暗主题反转)。
+  修改纪律:调具体色值改 tokens.css;调暗色观感改 semantics.css 的 `html.dark` 块;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。唯二豁免:① `--el-card-padding` 密度档设置(§2 间距条目的既定机制);② BrandMark 消费原始刻度与刻度外细节(§2b,图形标识非语义表达:渐变 stop、字形白色描线 `#fff`、光标方块 1px 圆角)。引入顺序(main.ts):`element-plus/dist/index.css` → `element-plus/theme-chalk/dark/css-vars.css` → tokens.css → semantics.css → ep-theme.css → print.css。ep-theme.css 必须含 `html.dark` 块(EP dark/css-vars.css 的 `html.dark` 选择器特异性高于 `:root`,需在其后加载并重复声明全部映射,亮主题 light-N 混白/dark-2 混黑 20%,暗主题反转)。
 
 - **命名前缀:** 沿用 `--hs-`(HubScope)前缀,**不**改 `--ph-`——降低存量 diff 与 Review 风险,避免多 Hub 产品生态混读;语义与层级完全对齐 ProxyHub 架构,仅前缀不同。
 
@@ -90,7 +90,7 @@
 
 - **阴影语义:** 只表达「可点/浮层」,不用于装饰——静态卡片靠 1px 描边分层,用 `shadow="never"` + 边框;可点卡片 hover `--hs-shadow-md`;浮层(弹窗/抽屉/下拉)`--hs-shadow-lg`。原 `--hs-shadow-card`(静态轻阴影)撤销——工具风「轻阴影靠描边分层」,静态卡片不吃阴影。
 
-- **间距:** 4px 基准网格不变,消费 `--hs-space-1..8` 令牌;卡片内边距统一走 `--el-card-padding` 变量,**密度档位按读者类型划分**:消费页(状态板、评估榜单 /eval、分享报告页)16px,管理台(/admin 全部 tab,含评估运营与题库)紧凑档 12px——档位由读者决定,不由登录态决定;禁止 `:deep(.el-card__body)` 覆写;区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。导出物料(StatusCard 等独立画布组件)不受 el-card 16/12px 密度档约束,内边距按物料设计定(StatusCard 为 40px 横向 / 32px 纵向),区块间距沿用 4px 基准网格。
+- **间距:** 4px 基准网格不变,消费 `--hs-space-1..8` 令牌(ticket 73 落地刻度,存量 px 字面量按后续批次渐进迁移,新代码一律用令牌);卡片内边距统一走 `--el-card-padding` 变量,**密度档位按读者类型划分**:消费页(状态板、评估榜单 /eval、分享报告页)16px,管理台(/admin 全部 tab,含评估运营与题库)紧凑档 12px——档位由读者决定,不由登录态决定;禁止 `:deep(.el-card__body)` 覆写;区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。导出物料(StatusCard 等独立画布组件)不受 el-card 16/12px 密度档约束,内边距按物料设计定(StatusCard 为 40px 横向 / 32px 纵向),区块间距沿用 4px 基准网格。
 
 - **z-index 刻度:** 对齐 ProxyHub 八档——`--hs-z-sticky` 100 / `--hs-z-fixed` 500 / `--hs-z-dropdown` 1000 / `--hs-z-overlay` 2000 / `--hs-z-drawer` 2010 / `--hs-z-dialog` 2020 / `--hs-z-message` 3000 / `--hs-z-tooltip` 4000;页面代码不允许出现刻度外 z-index 字面量(EP 内部 z-index 由其自管理,不在此约束)。
 
@@ -99,7 +99,7 @@
 ## 2a. 暗色主题
 
 - **暗色一等公民:** 暗色不是反色滤镜,表面/文本/描边/阴影/主色均有独立暗色取值(§2 语义令牌表);暗色只覆盖 semantics.css 的 `html.dark` 块,页面代码零改动——页面只消费语义令牌是硬约束。
-- **切换入口:** AppHeader 右栏操作区(批次进度入口左侧)放亮/暗切换按钮(text 型图标按钮,Sun/Moon 图标),未登录态同样可用(状态板读者无差别)。当前主题下只显示目标态图标(亮主题显示 Moon)。
+- **切换入口:** AppHeader 右栏操作区(批次进度入口左侧)放亮/暗切换按钮(link 型图标按钮,Sun/Moon 图标),未登录态同样可用(状态板读者无差别)。当前主题下只显示目标态图标(亮主题显示 Moon)。
 - **持久化与防闪:** 选择存 `localStorage` 键 `hs:dark`(1/0);`index.html` 内联首屏防闪脚本在挂载前同步读该键加/去 `html.dark` class(键名两处保持一致,注释互指)。**默认亮主题、不跟随系统偏好**(v1 裁决:二态切换语义最简单,公开状态板常被投屏/截图,主题确定性优先;系统偏好跟随留作后续增强,届时改三态「跟随系统/亮/暗」需设计评审登记)。
 - **导出物料固定亮主题:** StatusCard(PNG/PDF)、分享报告页导出一律强制亮主题渲染——物料是对外传播的静态快照,亮主题保证打印/转发可读性;实现上导出画布渲染前临时去 `html.dark` class 或在离屏容器内以亮主题令牌渲染,禁止把暗色像素烤进物料。
 - **ECharts 暗色:** JS 镜像色板亮暗双份(见 §3 ECharts 条目),按当前主题取份;主题切换时图表重渲染(watch 主题状态,setOption 全量替换)。
@@ -166,7 +166,7 @@
 - **分组独立分享入口(批 59 登记):** OverviewGroupSection 标题行右端(group-metrics 之后)放 text 型 `el-button`(Share 图标 + 「分享」文字,不用裸图标按钮——状态板读者 3 秒场景下图标语义不够直白),`@click.stop` 拦截冒泡、不触发整行折叠,hover 走 Element Plus text 按钮品牌色反馈;点击复用 StatusShareDialog(弹窗本体不变),快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」,维度词表 family→厂商、capability→能力、protocol→协议),其后列全部生效筛选条件。**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致(批 59 口径修订):筛选快照不得引用 OverviewGroup/Overview 的未筛选聚合字段,否则数字描述全集、chips 声明子集,自相矛盾,违反批 56 防作假约定;且 Overview 全局无 avg_latency_ms 字段,透传路径本就不完整。** 两个标量口径:① 24h 可用率 = 快照内 enabled entries 的 dots_24h 按小时求和 ok/total(探测加权,与 `internal/server/overview.go` groupAccumulator 同定义,无筛选时与后端数字构造性相等,口径见 §3 批 59 条目);② 平均延迟 = enabled entries 的 p50_ms 均值(前端无法从 dots 复现探测加权延迟,这是唯一 scope 恒一致的口径;已知代价:与分组标题行「均延」的探测加权 mean latency 数值可能略有差异——卡片内部自洽优先于与页面逐字相等);StatusCardSnapshot 只扩展 `group` 字段,不携带任何聚合标量(statusCardSnapshot.ts)。Dashboard 全局「分享状态」入口保留现状(筛选行主按钮,不动)。
 - **StatusCard 一句话总结(批 59 登记):** 位置=明细区与页脚之间,hairline 分隔后;形态=「小结」前缀标签(`--hs-text-xs` placeholder)+ 一句话(`--hs-text-sm` secondary、常规字重,无底色无边框无语义色)——视觉权重明确次于 hero panel 主结论区,句式以行动建议动词(建议/无需)收尾,与 verdict 的陈述句式区分。生成规则抽纯函数(utils/statusCardSummary.ts),优先级自上而下命中即止:① 有告警 →「有 N 个端点触发告警,建议立即处理」;② 有宕机 →「N 个端点宕机,建议优先排查 {首个宕机模型}」;③ 有降级且存在连续非绿时段 →「{模型} 持续降级约 N 小时,建议排查上游」(N = 该端点 dots_24h 自最新向前连续「有探测且非绿」格数——只有 fail/partial 计入,无数据灰格与绿格一样中断计时;取全组最长者。**持续时长必须有连续证据支撑**:灰格计入会让稀疏数据端点一路数到窗口起点、恒输出「约 24 小时」,属无证据的时长宣称,违反本条「不掩盖异常」的对偶约束——不夸大异常,对维护受众是狼来了);④ 有降级无持续信号 →「N 个端点降级,建议关注,暂不紧急」;⑤ 全正常但 24h 可用率 <95% →「状态全部正常,但 24h 可用率仅 X%,建议持续观察」;⑥ 全正常且有数据 →「近 24 小时运行平稳,无需处理」;⑦ 无 24h 数据 → 在命中句后追加「暂无 24 小时探测数据」。空态(零匹配/全停用)不渲染总结行。**总结不得掩盖异常:** 只要存在非正常端点,总结首句必须指向最严重的异常(告警>宕机>降级),禁止输出「运行平稳」类措辞——这是批 56 防作假约定在文案层的镜像。
 - **结论必须标注统计范围(防作假约定,批 56):** 任何呈现汇总结论的导出/分享物料,结论旁必须显式列出统计范围——无筛选标「全部端点」,有筛选逐项列出全部生效条件(一个不漏),零匹配时范围仍需保留且结论用中性「暂无数据」;禁止把局部集合呈现为全局结论,禁止零匹配显示「全部正常」(ADR 0007 防作假语义在状态板域的镜像)。批 59 补充:分组也是范围,分组卡必须带分组 chip(见上条),分组卡片不得省略分组维度词。
-- **AppHeader 批次进度入口**(ticket 52 登记):仅登录态渲染(与导航同一过滤时机),位于 header-right 操作按钮左侧;文案「批次运行中 X/Y」(X/Y 口径与榜单进度一致),点击跳 /eval;发现靠 mount + 路由切换重检(refreshAuth watch 先例),仅存在未完成批次时 3s 轮询,settle 即停并隐藏,卸载必清理;禁用橙与闪烁(闪烁为 failing 告警专属)。
+- **AppHeader 批次进度入口**(ticket 52 登记):仅登录态渲染(与导航同一过滤时机),位于 header-right 操作按钮左侧;文案「批次运行中 X/Y」(X/Y 口径与榜单进度一致),点击跳 /eval;发现靠 mount + 路由切换重检(refreshAuth watch 先例),仅存在未完成批次时 3s 轮询,settle 即停并隐藏,卸载必清理;禁用橙(failing 专属)与闪烁(闪烁为 failing 告警专属)。
 - **角色 tag 是用户身份角色的唯一展示单元**(ticket 62 登记):AppHeader 右栏当前用户、AdminView 用户列表、UserManager 一律复用,禁止各处自造角色色。词表固定四词,不新增同义词:super_admin→「超级管理员」、admin→「管理员」、operator→「操作员」、viewer→「观察者」(与 spec 0005 角色定义一致)。**角色语义是「权限层级」非「健康度」**,禁用 §3 的 success/warning/danger 状态色——红黄绿是 endpoint 与批次健康信号,状态板读者眼里红=异常、绿=正常,把 super_admin 染红会读作「告警」、operator 染绿会读作「健康」,属语义错位(本映射经设计评审登记,与 §3 两套状态色并列、语义域不混用)。
 - **角色色映射:**
 

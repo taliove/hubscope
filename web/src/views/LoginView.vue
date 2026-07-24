@@ -10,7 +10,7 @@
         </div>
         <span class="login-subtitle">LLM Hub 监控与评估平台</span>
       </div>
-      <el-card class="login-card">
+      <el-card class="login-card" shadow="never">
         <el-form @submit.prevent="onSubmit">
           <el-form-item>
             <el-input

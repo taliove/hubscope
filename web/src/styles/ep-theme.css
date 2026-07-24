@@ -107,8 +107,10 @@
 }
 
 /* Dark theme: repeat the full mapping so the semantic overrides win over
-   EP's dark/css-vars.css (loaded before this file). */
-html.dark {
+   EP's dark/css-vars.css (loaded before this file). Scoped to screen so
+   print/PDF exports always get the light mapping (ui-guidelines §2a). */
+@media screen {
+  html.dark {
   --el-color-primary: var(--hs-brand);
   --el-color-primary-light-3: color-mix(in srgb, var(--hs-brand), #ffffff 30%);
   --el-color-primary-light-5: color-mix(in srgb, var(--hs-brand), #ffffff 50%);
@@ -184,4 +186,5 @@ html.dark {
 
   --el-card-border-color: var(--hs-border);
   --el-card-border-radius: var(--hs-radius-lg);
+  }
 }
