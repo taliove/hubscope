@@ -6,7 +6,7 @@
 
 **AI Hub(模型网关)的可用性监控与质量评估。**
 
-单 Go 二进制,内嵌 Vue 看板与 SQLite,无运行时依赖。
+单 Go 二进制,内嵌 Vue 看板(亮/暗双主题)与 SQLite,无运行时依赖。
 
 [![CI](https://github.com/taliove/hubscope/actions/workflows/ci.yml/badge.svg)](https://github.com/taliove/hubscope/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/taliove/hubscope)](go.mod)
@@ -25,7 +25,7 @@
 - **可用性监控** — 以 Endpoint(模型 × 协议)为单位,每 5 分钟一轮探测(非流式 + 流式),记录成败、延迟、TTFT、token 用量,产出红黄绿状态与 24 小时可用率趋势。
 - **模型评估** — 5 个内置能力 Suite(指令遵循/推理/代码/知识问答/语言理解与生成),规则判定 + LLM 裁判混合打分,每周定时或手动触发。绝对分制跨时间可比,供应商悄悄降级无处遁形。
 - **告警** — Endpoint 连续失败与恢复时推送飞书群机器人。
-- **管理后台** — Hub 实例、模型启停、Webhook、裁判模型全部在线配置。多用户、按 Hub 角色与数据隔离。
+- **管理后台** — Hub 实例、模型启停、Webhook、裁判模型全部在线配置。多用户、按 Hub 角色与数据隔离。亮/暗双主题。
 
 ## 快速开始
 
