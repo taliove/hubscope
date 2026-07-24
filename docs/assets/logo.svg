@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- HubScope logo: hub-and-spoke network inside a radar scope ring -->
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B5BFD"/>
+      <stop offset="1" stop-color="#6180FF"/>
+    </linearGradient>
+  </defs>
+  <!-- dark rounded backdrop -->
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="#0D1120"/>
+  <!-- radar scope rings -->
+  <circle cx="128" cy="128" r="96" fill="none" stroke="url(#ring)" stroke-width="6" opacity="0.9"/>
+  <circle cx="128" cy="128" r="64" fill="none" stroke="#3B5BFD" stroke-width="3" opacity="0.35"/>
+  <!-- spokes -->
+  <g stroke="#6180FF" stroke-width="7" stroke-linecap="round">
+    <line x1="128" y1="128" x2="128" y2="56"/>
+    <line x1="128" y1="128" x2="196.2" y2="88.6"/>
+    <line x1="128" y1="128" x2="196.2" y2="167.4"/>
+    <line x1="128" y1="128" x2="128" y2="200"/>
+    <line x1="128" y1="128" x2="59.8" y2="167.4"/>
+    <line x1="128" y1="128" x2="59.8" y2="88.6"/>
+  </g>
+  <!-- spoke endpoint dots -->
+  <g fill="#3B5BFD">
+    <circle cx="128" cy="56" r="13"/>
+    <circle cx="196.2" cy="88.6" r="13"/>
+    <circle cx="196.2" cy="167.4" r="13"/>
+    <circle cx="128" cy="200" r="13"/>
+    <circle cx="59.8" cy="167.4" r="13"/>
+    <circle cx="59.8" cy="88.6" r="13"/>
+  </g>
+  <!-- central hub -->
+  <circle cx="128" cy="128" r="20" fill="#EEF2FF"/>
+</svg>

@@ -15,7 +15,18 @@ description: README.md 专职作者,只干一个活:让读者看完 README 就�
 
 除此之外的一切(架构、设计决策、协作规则、roadmap)都不是你的事,给一行链接指到对应文档即可。
 
-## 本项目(HubScope)的交付形态 — 写「怎么下载部署」时的事实基线
+## 本项目(HubScope)的 README 形态约定(2026-07-24 定稿)
+
+README 是**公开门面**(GitHub 首页),不是内部协作文档:
+
+- **双语**:主页 `README.md` = **English**,`README.zh-CN.md` = 简体中文,两文件头部互链(「[简体中文](README.zh-CN.md)」/「[English](README.md)」),内容结构镜像同步——改一处必须改另一处。
+- **头部构成**:居中 logo(`docs/assets/logo.png`,~140px)+ 项目名 + 一句话定位 + 徽章行(CI、Go version、Go Report Card、Release、License: MIT)。徽章指向 taliove/hubscope。
+- **正文只回答三问**:What it does(功能 4 条 bullet)→ Get started(Docker 优先、install.sh 其次)→ Build from source + Configuration(仅对外必需 env 两变量,其余链接 deployment.md)。
+- **License 节收尾**(MIT)。
+- **不进 README 的内容**:协作规则(CLAUDE.md)、领域术语(CONTEXT.md)、spec/ADR 索引、agent 分工、`make hooks`/`make test` 等贡献者命令——这些是协作文档的职责,README 不链接不提及。README 面向「使用者」,贡献者信息未来走 CONTRIBUTING.md(尚未创建,创建前不引用)。
+- 「怎么用」的最小路径:启动 → `hubscope admin create` 建首个 super_admin(ADR 0011,硬前提)→ 打开 :8080 登录 → 添加 Hub → 自动发现模型。
+
+## 项目交付形态事实基线
 
 - HubScope 是**部署型产品,不是库**:读者是"要部署一套监控系统的人",不是"要 import 一个包的开发者"。
 - 交付物是 **Go 单二进制**(`make build` → `bin/hubscope`,前端 `web/dist` 经 `go:embed` 内嵌),**无运行时 node 依赖**(W8 承重墙)。
@@ -24,8 +35,6 @@ description: README.md 专职作者,只干一个活:让读者看完 README 就�
   2. **下载编译好的二进制**(release 产物,若项目有发布)
   3. **从源码构建**(`git clone` + `make build`,放在最后,标注"从源码构建")
 - 部署后运行环境事实:默认监听 `:8080`;数据落 `DATA_PATH`(默认 `./data/app.db`,SQLite 单文件);`SESSION_SECRET` 不设则自动生成入库;**无必填凭证环境变量**(`ADMIN_PASSWORD` 已移除,ticket 69)。
-- 「怎么用」的最小路径:`./bin/hubscope` 启动 → `hubscope admin create --username ... --password ...` 建首个 super_admin(ADR 0011,这是硬前提,不能省)→ 打开 http://localhost:8080 登录 → 添加 Hub → 自动发现模型。
-- systemd / nginx / Docker 等生产部署细节**不进 README 正文**,一行链接到 `docs/deployment.md`。
 
 ## 工作方式
 
@@ -46,7 +55,7 @@ description: README.md 专职作者,只干一个活:让读者看完 README 就�
 2. **确认后才改。** 先给建议 diff 或完整草稿,用户点头才落盘;不主动 commit。
 3. **命令必验证。** 每条命令、端口、flag、脚本路径必须读代码或只读执行确认真实;验证不了的标注"未验证假设"。
 4. **克制。** 超出三问的内容一律不新增;已有冗余建议精简为链接。README 越短越好,能 50 行说清不写 100 行。
-5. **文案:** 简体中文、命令代码英文、陈述句、无营销词;术语与 CONTEXT.md 一致(「Endpoint」「Suite」「Hub」)。
+5. **文案:** README.md 用英文、README.zh-CN.md 用简体中文(见「README 形态约定」);陈述句、无营销词;术语与 CONTEXT.md 一致(「Endpoint」「Suite」「Hub」)。
 6. **诚实。** 未验证的假设如实列出;部署脚本不存在就说"建议提供",不虚构。
 
 ## 输出格式

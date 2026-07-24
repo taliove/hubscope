@@ -1,52 +1,72 @@
+<div align="center">
+
+<img src="docs/assets/logo.png" alt="HubScope" width="140">
+
 # HubScope
 
-对内的 AI Hub(模型网关)可用性监控与质量评估网站:Go 单二进制,内嵌 Vue 前端与 SQLite。
+**Availability monitoring and quality evaluation for AI hubs (model gateways).**
 
-- **可用性监控**:以 Endpoint(模型 × 协议)为单位,每 5 分钟一轮 Probe(非流式 + 流式),记录成败、延迟、TTFT、token 用量,产出红黄绿状态与趋势曲线
-- **模型评估**:5 个内置能力 Suite(指令遵循/推理/代码/知识问答/语言理解与生成),规则判定 + LLM 裁判混合打分,每周定时 + 手动触发
-- **告警**:Endpoint 连续失败/恢复时推送飞书群机器人
-- **管理后台**:Hub 实例、模型启停、Webhook、裁判模型全部在线配置
+One Go binary. Embedded Vue dashboard. Embedded SQLite. No runtime dependencies.
 
-领域术语见 [CONTEXT.md](./CONTEXT.md),需求见 [docs/specs/](./docs/specs/),架构决策见 [docs/adr/](./docs/adr/),部署见 [docs/deployment.md](./docs/deployment.md)。协作规则见 [CLAUDE.md](./CLAUDE.md)。
+[![CI](https://github.com/taliove/hubscope/actions/workflows/ci.yml/badge.svg)](https://github.com/taliove/hubscope/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/taliove/hubscope)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/taliove/hubscope)](https://goreportcard.com/report/github.com/taliove/hubscope)
+[![Release](https://img.shields.io/github/v/release/taliove/hubscope)](https://github.com/taliove/hubscope/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 下载与部署
+**[简体中文](README.zh-CN.md)**
 
-当前未发布预编译二进制,两条路径都从仓库出发:
+</div>
 
-- **Docker(推荐)**:clone 后 `docker compose up`,不依赖本机 Go/pnpm 工具链
-- **一键部署脚本(Linux,需要 Go + pnpm)**:clone 后 `sudo scripts/install.sh`,构建并安装为 systemd 服务
+---
 
-生产部署细节(systemd/nginx)见 [docs/deployment.md](./docs/deployment.md)。
+## What it does
 
-## Quick Start
+- **Availability monitoring** — Probes every endpoint (model × protocol) every 5 minutes, over both non-streaming and streaming requests. Records success, latency, TTFT and token usage, and derives a green / yellow / red status with 24-hour availability trends.
+- **Model evaluation** — 5 built-in capability suites (instruction following, reasoning, coding, knowledge Q&A, language understanding & generation) with hybrid rule-based + LLM-judge scoring, on a weekly schedule or on demand. Absolute scores stay comparable across time — silent vendor downgrades get caught.
+- **Alerting** — Pushes to a Lark (Feishu) group bot when an endpoint keeps failing and when it recovers.
+- **Admin console** — Hubs, models, webhooks and judge models are all configured online. Multi-user with per-hub roles and isolation.
+
+## Get started
+
+**Docker** (no Go/Node toolchain needed):
 
 ```sh
-make build                                    # 前端构建 + 单二进制 → bin/hubscope
-./bin/hubscope                                # 启动服务(默认监听 :8080,数据存 ./data/app.db)
-./bin/hubscope admin create --username admin --password 'a-strong-password'
-# 打开 http://localhost:8080 → 登录 → 添加 Hub → 自动发现模型
+git clone https://github.com/taliove/hubscope.git && cd hubscope
+docker compose up -d --build
+docker compose exec hubscope hubscope admin create --username admin --password 'your-strong-password'
 ```
 
-首个 `super_admin` 必须用 `hubscope admin create` CLI 引导(数据库里没有用户时无法走 HTTP 鉴权)。口令经 bcrypt 哈希入库,不读环境变量、不进 git。
-
-## Development
+**One-command install** (Linux, requires Go + pnpm — builds from source and installs a hardened systemd service):
 
 ```sh
-make hooks        # clone 后跑一次:启用 pre-commit 门禁
-make dev          # 本地跑后端(前端未构建时用 stub 页面)
-make test         # 全量门禁:go vet + go test + 前端 typecheck + 前端构建
-cd web && pnpm dev  # 前端热更新开发(代理 /api → :8080)
+sudo scripts/install.sh
+```
+
+Then open **http://localhost:8080**, log in, add a hub — models are discovered automatically.
+
+Production deployment (systemd / nginx / reverse proxy): [docs/deployment.md](docs/deployment.md).
+
+## Build from source
+
+Requires Go 1.26+ and pnpm:
+
+```sh
+make build          # frontend (vite) + single binary → bin/hubscope
+./bin/hubscope      # serves :8080, data in ./data/app.db
 ```
 
 ## Configuration
 
-全部经环境变量注入(Hub 凭证在管理后台维护、存数据库,见 ADR-0001):
+Everything is injected via environment variables; hub credentials live in the database (managed from the admin console), never in env or git.
 
-| Variable         | Default         | Purpose                |
-|------------------|-----------------|------------------------|
-| `ADDR`           | `:8080`         | 监听地址               |
-| `DATA_PATH`      | `./data/app.db` | SQLite 数据文件        |
+| Variable  | Default         | Purpose            |
+|-----------|-----------------|--------------------|
+| `ADDR`    | `:8080`         | Listen address     |
+| `DATA_PATH` | `./data/app.db` | SQLite data file |
 
-完整环境变量表见 [docs/deployment.md](./docs/deployment.md)。
+Full table: [docs/deployment.md](docs/deployment.md).
 
-管理员口令不经环境变量,用 `hubscope admin create` CLI 创建(见上)。
+## License
+
+[MIT](LICENSE)

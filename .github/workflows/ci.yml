@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Vet and test
+        run: |
+          gofmt -l cmd internal | tee /tmp/gofmt.out
+          test -z "$(cat /tmp/gofmt.out)" || { echo "gofmt: run 'make fmt'"; exit 1; }
+          go vet ./...
+          go test ./...
+
+      - name: Shellcheck installer scripts
+        run: shellcheck scripts/install.sh scripts/install_test.sh
+
+      - name: Installer behavior tests
+        run: bash scripts/install_test.sh
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Test, typecheck, build
+        working-directory: web
+        run: |
+          pnpm install
+          pnpm test
+          pnpm typecheck
+          pnpm build
