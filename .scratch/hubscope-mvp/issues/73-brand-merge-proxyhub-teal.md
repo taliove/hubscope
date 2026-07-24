@@ -4,7 +4,7 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 执行顺序(票内多 commit 拆分,单 commit ≤8 文件)
 
