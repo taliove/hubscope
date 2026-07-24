@@ -26,7 +26,7 @@ _Avoid_: 打点、探活(口头可用,代码与文档统一用 Probe)
 ## Language — 品牌
 
 **HubScope 电波青 (Teal)**:
-HubScope 的品牌色,取自 ProxyHub 品牌体系「电波青」9 级刻度(ticket 73 品牌并入)。亮主题主色 teal-600 `#0c8078`,暗主题主色 teal-500 `#0faea2`;承载主按钮、链接、当前导航、聚焦态与「运行中」状态。图形标 BrandMark(hub 字形 SVG)与字标 Wordmark(系统等宽字栈)共同构成品牌标识,BrandMark 永不裸用。
+HubScope 的品牌色,取自 ProxyHub 品牌体系「电波青」9 级刻度(ticket 73 品牌并入)。亮主题主色 teal-600 `#0c8078`,暗主题主色 teal-500 `#0faea2`;承载主按钮、链接、当前导航、聚焦态与「运行中」状态。图形标 BrandMark(瞄准镜字形 SVG:圆环 + 十字准星刻度 + 中心脉冲点)与字标 Wordmark(系统等宽字栈)共同构成品牌标识,BrandMark 永不裸用。
 _Avoid_: 品牌蓝、#3B5BFD(并入前旧品牌色,已废弃)
 
 **告警橙 (Failing Orange)**:

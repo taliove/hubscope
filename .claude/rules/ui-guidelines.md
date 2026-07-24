@@ -107,7 +107,7 @@
 
 ## 2b. 品牌标识(BrandMark / Wordmark)
 
-- **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色 hub 字形(中心环 + 三路辐条 + P 弧 + 四节点);em 尺寸宿主可控(`width/height: 1em`)。**与 ProxyHub 完全同形同渐变(完全同构,裁决见附录裁决 5)。** favicon 与 AppHeader 左侧品牌位同源(favicon PNG 由同一图形渲染生成);删除 `web/public/logo.png`,AppHeader/LoginView/StatusCard 的 `<img src="/logo.png">` 全部替换为 BrandMark。
+- **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色**瞄准镜字形**(圆环 + 十字准星刻度 + 中心脉冲点——监控隐喻:盯住 Hub 上每个 endpoint;ticket 73 后续修订,取代初版与 ProxyHub 同构的 hub 辐条字形,因用户反馈「不合群」——与 ProxyHub 的区分由图形标承担,不再只靠字标);em 尺寸宿主可控(`width/height: 1em`)。favicon 与 AppHeader 左侧品牌位同源;`web/public/logo.png` 已删除,AppHeader/LoginView/StatusCard 一律使用 BrandMark。
 - **Wordmark 是唯一字标:** 共享组件 `components/Wordmark.vue`——「HubScope」PascalCase 文本 + 主色光标方块(0.55em × 1em,1.2s 步进闪烁;`prefers-reduced-motion` 下静止),字体用**系统等宽字栈**(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`),不引入任何外部字体文件(零依赖、离线可用,与单二进制交付一致),字重 700;字号以 em 为基准,宿主用 `font-size` 覆盖等比缩放。使用点:AppHeader 品牌位(BrandMark + Wordmark 横排,默认 `--hs-text-lg` 16px)、LoginView 品牌区(`--hs-text-display` 28px)、StatusCard 品牌区(随物料画布定字号,不用令牌字面量)。
 - **光标闪烁豁免说明:** §3「闪烁为 failing 告警专属」约束的是**状态语义动画**;Wordmark 光标是品牌标识的固定构成(终端光标隐喻),非状态表达,且仅出现在品牌位,不与状态灯同语境混淆——此为例外登记,其他组件不得援引。
 - **LoginView 品牌区构成:** BrandMark(40px)+ Wordmark(display 档)横排居中,替代原 logo.png 40px 图块;登录卡保持工具风,不加装饰背景。
@@ -247,7 +247,7 @@
 2. **字阶:** 原六档平移 + 新增 `--hs-text-display` 28px;HealthBanner 大字结论与 StatusCard 可用率大数字升档(原 2xl 24px)。理由:消费页 3 秒场景的第一视觉锚点应由大数字承担,工具风层级靠字号表达;display 档禁用于管理台标题。
 3. **圆角:** 撤销 6px 默认档,最终四档 2(分段条,存续)/ 4(控件)/ 8(卡片面板弹窗)/ 999(胶囊)。理由:对齐 ProxyHub 刻度,6px 无归属——控件偏松、卡片偏紧;分段条 2px 语义特殊(填满式时间条)保留。
 4. **批次/运行状态色:** 运行中 = brand teal(亮 teal-600/暗 teal-500),随主色切换;角色 tag `primary` 同理零改动换 teal,`info` 映射 `--hs-info`(暗色提 gray-500)。理由:两域都引用语义令牌而非字面量,主色切换天然生效。
-5. **BrandMark 差异化:** 完全同构(同字形、同 teal-400→700 渐变),不做差异化。理由:两产品用户群基本不重叠(ProxyHub 是代理管理面,HubScope 是 LLM 监控面),同构强化家族品牌资产;消歧由字标文字(HubScope vs ProxyHub)承担——BrandMark 永远与 Wordmark 同场出现(AppHeader/LoginView/StatusCard),不存在脱离字标的裸图形使用场景(favicon 按域名天然区分)。
+5. **BrandMark 差异化(2026-07-24 修订):** 初版裁决为与 ProxyHub 完全同构(同字形同渐变),理由为用户群不重叠、消歧靠字标;**交付后用户实机反馈「不合群」,修订为差异化字形**——HubScope 用瞄准镜字形(圆环 + 十字准星刻度 + 中心脉冲点,监控隐喻),与 ProxyHub 的 hub 辐条字形在图形层即区分;渐变与圆角方块保持同源(家族感由色板与容器承担,个性由字形承担)。BrandMark 永远与 Wordmark 同场出现(AppHeader/LoginView/StatusCard)的约束不变。
 6. **暗色规范:** AppHeader 右栏图标按钮切换(未登录可用),`localStorage('hs:dark')` 持久化 + index.html 首屏防闪内联脚本;默认亮、不跟随系统(投屏/截图场景主题确定性优先);导出物料(StatusCard/分享报告导出)恒亮主题渲染;ECharts 镜像双份 + 主题切换重渲染。
 7. **令牌架构:** 迁三层(tokens/semantics/ep-theme),保留 `--hs-` 前缀。理由:降低存量 diff 与 review 风险,多 Hub 产品生态下避免 `--ph-` 混读;层级与纪律完全对齐上游,前缀差异仅为命名空间。
 8. **既有 token 映射:** 全表见附录 A;要点——hero panel 中性浅灰底 = `--hs-bg-page`(同源语义「页面级中性底」);`--hs-brand-soft` → teal-50(亮)/teal-900(暗);`--hs-shadow-card` 撤销改描边分层(工具风审美第 2 条);EP 派生阶从预生成字面量改 color-mix。
