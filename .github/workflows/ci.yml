@@ -26,7 +26,11 @@ jobs:
           gofmt -l cmd internal | tee /tmp/gofmt.out
           test -z "$(cat /tmp/gofmt.out)" || { echo "gofmt: run 'make fmt'"; exit 1; }
           go vet ./...
-          go test ./...
+          # -p 1: package-at-a-time. The black-box suites spin up many httptest
+          # servers per package; on 2-core CI runners the default parallelism
+          # makes timing-sensitive tests (scheduler ticks, HTTP timeouts)
+          # flaky. Locally `make test` keeps the default.
+          go test -p 1 ./...
 
       - name: Shellcheck installer scripts
         run: shellcheck scripts/install.sh scripts/install_test.sh
