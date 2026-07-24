@@ -1,0 +1,181 @@
+/* ==========================================================================
+   ep-theme.css — Layer 3: Element Plus mapping.
+   The ONLY file in the repo allowed to declare --el-* variables. Derived
+   steps are generated with color-mix from the semantic tokens (light theme:
+   light-N mixes white, dark-2 mixes black 20%; dark theme reverses, per
+   EP's own dark/css-vars algorithm). The html.dark block must repeat every
+   mapping because EP's dark/css-vars.css wins on specificity otherwise.
+   ========================================================================== */
+:root {
+  /* Primary + derived steps. */
+  --el-color-primary: var(--hs-brand);
+  --el-color-primary-light-3: color-mix(in srgb, var(--hs-brand), #ffffff 30%);
+  --el-color-primary-light-5: color-mix(in srgb, var(--hs-brand), #ffffff 50%);
+  --el-color-primary-light-7: color-mix(in srgb, var(--hs-brand), #ffffff 70%);
+  --el-color-primary-light-8: color-mix(in srgb, var(--hs-brand), #ffffff 80%);
+  --el-color-primary-light-9: color-mix(in srgb, var(--hs-brand), #ffffff 90%);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--hs-brand), #000000 20%);
+
+  /* Functional colors + derived steps. */
+  --el-color-success: var(--hs-success);
+  --el-color-success-light-3: color-mix(in srgb, var(--hs-success), #ffffff 30%);
+  --el-color-success-light-5: color-mix(in srgb, var(--hs-success), #ffffff 50%);
+  --el-color-success-light-7: color-mix(in srgb, var(--hs-success), #ffffff 70%);
+  --el-color-success-light-8: color-mix(in srgb, var(--hs-success), #ffffff 80%);
+  --el-color-success-light-9: color-mix(in srgb, var(--hs-success), #ffffff 90%);
+  --el-color-success-dark-2: color-mix(in srgb, var(--hs-success), #000000 20%);
+
+  --el-color-warning: var(--hs-warning);
+  --el-color-warning-light-3: color-mix(in srgb, var(--hs-warning), #ffffff 30%);
+  --el-color-warning-light-5: color-mix(in srgb, var(--hs-warning), #ffffff 50%);
+  --el-color-warning-light-7: color-mix(in srgb, var(--hs-warning), #ffffff 70%);
+  --el-color-warning-light-8: color-mix(in srgb, var(--hs-warning), #ffffff 80%);
+  --el-color-warning-light-9: color-mix(in srgb, var(--hs-warning), #ffffff 90%);
+  --el-color-warning-dark-2: color-mix(in srgb, var(--hs-warning), #000000 20%);
+
+  --el-color-danger: var(--hs-danger);
+  --el-color-danger-light-3: color-mix(in srgb, var(--hs-danger), #ffffff 30%);
+  --el-color-danger-light-5: color-mix(in srgb, var(--hs-danger), #ffffff 50%);
+  --el-color-danger-light-7: color-mix(in srgb, var(--hs-danger), #ffffff 70%);
+  --el-color-danger-light-8: color-mix(in srgb, var(--hs-danger), #ffffff 80%);
+  --el-color-danger-light-9: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--hs-danger), #000000 20%);
+
+  --el-color-error: var(--hs-danger);
+  --el-color-error-light-3: color-mix(in srgb, var(--hs-danger), #ffffff 30%);
+  --el-color-error-light-5: color-mix(in srgb, var(--hs-danger), #ffffff 50%);
+  --el-color-error-light-7: color-mix(in srgb, var(--hs-danger), #ffffff 70%);
+  --el-color-error-light-8: color-mix(in srgb, var(--hs-danger), #ffffff 80%);
+  --el-color-error-light-9: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --el-color-error-dark-2: color-mix(in srgb, var(--hs-danger), #000000 20%);
+
+  --el-color-info: var(--hs-info);
+  --el-color-info-light-3: color-mix(in srgb, var(--hs-info), #ffffff 30%);
+  --el-color-info-light-5: color-mix(in srgb, var(--hs-info), #ffffff 50%);
+  --el-color-info-light-7: color-mix(in srgb, var(--hs-info), #ffffff 70%);
+  --el-color-info-light-8: color-mix(in srgb, var(--hs-info), #ffffff 80%);
+  --el-color-info-light-9: color-mix(in srgb, var(--hs-info), #ffffff 90%);
+  --el-color-info-dark-2: color-mix(in srgb, var(--hs-info), #000000 20%);
+
+  /* Text. */
+  --el-text-color-primary: var(--hs-text-primary);
+  --el-text-color-regular: var(--hs-text-regular);
+  --el-text-color-secondary: var(--hs-text-secondary);
+  --el-text-color-placeholder: var(--hs-text-placeholder);
+  --el-text-color-disabled: var(--hs-text-placeholder);
+
+  /* Borders. */
+  --el-border-color: var(--hs-border);
+  --el-border-color-light: var(--hs-border);
+  --el-border-color-lighter: var(--hs-border-light);
+  --el-border-color-extra-light: var(--hs-border-light);
+
+  /* Surfaces. */
+  --el-bg-color: var(--hs-bg-card);
+  --el-bg-color-page: var(--hs-bg-page);
+  --el-bg-color-overlay: var(--hs-bg-card);
+  --el-fill-color: var(--hs-bg-hover);
+  --el-fill-color-light: var(--hs-bg-hover);
+  --el-fill-color-lighter: var(--hs-bg-hover);
+  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-blank: var(--hs-bg-card);
+  --el-mask-color: rgba(15, 27, 32, 0.5);
+
+  /* Radius: controls default to radius-sm (4px); cards/dialogs use
+     radius-lg (8px) via the component selectors below. */
+  --el-border-radius-base: var(--hs-radius-sm);
+  --el-border-radius-small: var(--hs-radius-xs);
+  --el-border-radius-round: var(--hs-radius-full);
+
+  /* Card density stays per-reader via --el-card-padding (16px consumer
+     pages / 12px admin); components set the padding var, not deep styles. */
+  --el-card-border-color: var(--hs-border);
+  --el-card-border-radius: var(--hs-radius-lg);
+}
+
+/* Panels (cards, dialogs, message boxes) use the larger radius. */
+.el-card,
+.el-dialog,
+.el-message-box {
+  border-radius: var(--hs-radius-lg);
+}
+
+/* Dark theme: repeat the full mapping so the semantic overrides win over
+   EP's dark/css-vars.css (loaded before this file). */
+html.dark {
+  --el-color-primary: var(--hs-brand);
+  --el-color-primary-light-3: color-mix(in srgb, var(--hs-brand), #ffffff 30%);
+  --el-color-primary-light-5: color-mix(in srgb, var(--hs-brand), #ffffff 50%);
+  --el-color-primary-light-7: color-mix(in srgb, var(--hs-brand), #ffffff 70%);
+  --el-color-primary-light-8: color-mix(in srgb, var(--hs-brand), #ffffff 80%);
+  --el-color-primary-light-9: color-mix(in srgb, var(--hs-brand), #ffffff 90%);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--hs-brand), #000000 20%);
+
+  --el-color-success: var(--hs-success);
+  --el-color-success-light-3: color-mix(in srgb, var(--hs-success), #ffffff 30%);
+  --el-color-success-light-5: color-mix(in srgb, var(--hs-success), #ffffff 50%);
+  --el-color-success-light-7: color-mix(in srgb, var(--hs-success), #ffffff 70%);
+  --el-color-success-light-8: color-mix(in srgb, var(--hs-success), #ffffff 80%);
+  --el-color-success-light-9: color-mix(in srgb, var(--hs-success), #ffffff 90%);
+  --el-color-success-dark-2: color-mix(in srgb, var(--hs-success), #000000 20%);
+
+  --el-color-warning: var(--hs-warning);
+  --el-color-warning-light-3: color-mix(in srgb, var(--hs-warning), #ffffff 30%);
+  --el-color-warning-light-5: color-mix(in srgb, var(--hs-warning), #ffffff 50%);
+  --el-color-warning-light-7: color-mix(in srgb, var(--hs-warning), #ffffff 70%);
+  --el-color-warning-light-8: color-mix(in srgb, var(--hs-warning), #ffffff 80%);
+  --el-color-warning-light-9: color-mix(in srgb, var(--hs-warning), #ffffff 90%);
+  --el-color-warning-dark-2: color-mix(in srgb, var(--hs-warning), #000000 20%);
+
+  --el-color-danger: var(--hs-danger);
+  --el-color-danger-light-3: color-mix(in srgb, var(--hs-danger), #ffffff 30%);
+  --el-color-danger-light-5: color-mix(in srgb, var(--hs-danger), #ffffff 50%);
+  --el-color-danger-light-7: color-mix(in srgb, var(--hs-danger), #ffffff 70%);
+  --el-color-danger-light-8: color-mix(in srgb, var(--hs-danger), #ffffff 80%);
+  --el-color-danger-light-9: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--hs-danger), #000000 20%);
+
+  --el-color-error: var(--hs-danger);
+  --el-color-error-light-3: color-mix(in srgb, var(--hs-danger), #ffffff 30%);
+  --el-color-error-light-5: color-mix(in srgb, var(--hs-danger), #ffffff 50%);
+  --el-color-error-light-7: color-mix(in srgb, var(--hs-danger), #ffffff 70%);
+  --el-color-error-light-8: color-mix(in srgb, var(--hs-danger), #ffffff 80%);
+  --el-color-error-light-9: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --el-color-error-dark-2: color-mix(in srgb, var(--hs-danger), #000000 20%);
+
+  --el-color-info: var(--hs-info);
+  --el-color-info-light-3: color-mix(in srgb, var(--hs-info), #ffffff 30%);
+  --el-color-info-light-5: color-mix(in srgb, var(--hs-info), #ffffff 50%);
+  --el-color-info-light-7: color-mix(in srgb, var(--hs-info), #ffffff 70%);
+  --el-color-info-light-8: color-mix(in srgb, var(--hs-info), #ffffff 80%);
+  --el-color-info-light-9: color-mix(in srgb, var(--hs-info), #ffffff 90%);
+  --el-color-info-dark-2: color-mix(in srgb, var(--hs-info), #000000 20%);
+
+  --el-text-color-primary: var(--hs-text-primary);
+  --el-text-color-regular: var(--hs-text-regular);
+  --el-text-color-secondary: var(--hs-text-secondary);
+  --el-text-color-placeholder: var(--hs-text-placeholder);
+  --el-text-color-disabled: var(--hs-text-placeholder);
+
+  --el-border-color: var(--hs-border);
+  --el-border-color-light: var(--hs-border);
+  --el-border-color-lighter: var(--hs-border-light);
+  --el-border-color-extra-light: var(--hs-border-light);
+
+  --el-bg-color: var(--hs-bg-card);
+  --el-bg-color-page: var(--hs-bg-page);
+  --el-bg-color-overlay: var(--hs-bg-card);
+  --el-fill-color: var(--hs-bg-hover);
+  --el-fill-color-light: var(--hs-bg-hover);
+  --el-fill-color-lighter: var(--hs-bg-hover);
+  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-blank: var(--hs-bg-card);
+  --el-mask-color: rgba(0, 0, 0, 0.6);
+
+  --el-border-radius-base: var(--hs-radius-sm);
+  --el-border-radius-small: var(--hs-radius-xs);
+  --el-border-radius-round: var(--hs-radius-full);
+
+  --el-card-border-color: var(--hs-border);
+  --el-card-border-radius: var(--hs-radius-lg);
+}

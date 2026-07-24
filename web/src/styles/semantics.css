@@ -1,0 +1,91 @@
+/* ==========================================================================
+   semantics.css — Layer 2: semantic tokens ("what does this word mean").
+   Pages and components consume ONLY this layer. The dark theme (html.dark)
+   overrides just this layer — no page code changes on theme switch.
+   Sole source of truth: .claude/rules/ui-guidelines.md §2.
+   ========================================================================== */
+:root {
+  /* Brand: light primary is teal-600 (4.8:1 on white, WCAG AA). */
+  --hs-brand: var(--hs-teal-600);
+  --hs-brand-hover: var(--hs-teal-500);
+  --hs-brand-active: var(--hs-teal-700);
+  --hs-brand-soft: var(--hs-teal-50); /* brand tint: selected rows, highlights */
+
+  /* Functional colors. */
+  --hs-success: var(--hs-success-base);
+  --hs-warning: var(--hs-warning-base);
+  --hs-danger: var(--hs-danger-base);
+  --hs-info: var(--hs-info-base);
+
+  /* failing: more urgent than down; the ONLY animated status (W5).
+     Orange family is the registered single exception to "no new hues"
+     (ui-guidelines §3). 5.1:1 on white, passes AA for text. */
+  --hs-status-failing: var(--hs-orange-700);
+
+  /* Surfaces (three levels). */
+  --hs-bg-page: var(--hs-gray-50);
+  --hs-bg-card: #ffffff;
+  --hs-bg-hover: var(--hs-gray-100);
+
+  /* Text (four levels). */
+  --hs-text-primary: var(--hs-gray-900);
+  --hs-text-regular: var(--hs-gray-700);
+  --hs-text-secondary: var(--hs-gray-500);
+  --hs-text-placeholder: var(--hs-gray-400);
+
+  /* Borders. */
+  --hs-border: var(--hs-gray-200);
+  --hs-border-light: var(--hs-gray-100);
+}
+
+/* Dark theme overrides — driven by <html class="dark">.
+   Overrides ONLY this semantic layer: surfaces, text, borders, shadows,
+   primary. Set up front by the inline anti-FOUC script in index.html and
+   toggled from AppHeader (localStorage key `hs:dark`; keep names in sync). */
+html.dark {
+  /* Brand: dark primary steps up to teal-500 to keep contrast on dark. */
+  --hs-brand: var(--hs-teal-500);
+  --hs-brand-hover: var(--hs-teal-400);
+  --hs-brand-active: var(--hs-teal-600);
+  --hs-brand-soft: var(--hs-teal-900);
+
+  /* Functional colors keep the same values (status dot + label double
+     encoding stays legible); info steps up one gray level for readability. */
+  --hs-info: var(--hs-gray-500);
+
+  /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
+  --hs-status-failing: var(--hs-orange-400);
+
+  /* Surfaces. */
+  --hs-bg-page: #0f1115;
+  --hs-bg-card: #17191d;
+  --hs-bg-hover: #1f2227;
+
+  /* Text. */
+  --hs-text-primary: #e2e8f0;
+  --hs-text-regular: #c3c7cd;
+  --hs-text-secondary: #8a8f98;
+  --hs-text-placeholder: #5c616a;
+
+  /* Borders. */
+  --hs-border: #2a2d33;
+  --hs-border-light: #23262b;
+
+  /* Shadows: black base, wider spread (same token names as tokens.css). */
+  --hs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --hs-shadow-md: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --hs-shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Shared alert blink for the failing status (W5 semantics). Sole definition —
+   StatusBadge and HealthBanner both consume it; never copy it into a
+   component's scoped styles. */
+@keyframes hs-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}

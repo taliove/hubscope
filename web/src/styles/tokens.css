@@ -1,90 +1,96 @@
-/*
- * HubScope design tokens — single source of truth for the light theme.
- * Spec: docs/specs/0003-ui-redesign.md §3. Components must reference these
- * variables and never hardcode palette values in scoped styles.
- *
- * Two layers:
- * 1. --el-* overrides for every semantic slot Element Plus consumes
- *    (primary + derived shades, text, border, page bg, radius).
- * 2. Custom --hs-* variables for slots Element Plus does not have
- *    (failing status, brand soft fills, type scale, shadows).
- */
+/* ==========================================================================
+   tokens.css — Layer 1: raw scales (theme-independent "ruler").
+   Only scales whose values are identical across light/dark themes live here.
+   Sole source of truth: .claude/rules/ui-guidelines.md §2 (ticket 73 brand
+   merge into the ProxyHub "modern minimal tool" aesthetic).
+   Components must NOT consume this layer directly — the single exception is
+   BrandMark's gradient stops (a graphic mark, not semantic expression).
+   ========================================================================== */
 :root {
-  /* Brand primary. light-3 / light-9 use the spec's explicit values;
-     light-5 / light-7 / light-8 / dark-2 are pre-generated from #3B5BFD
-     with the Element Plus mix algorithm (white/black percentage blending)
-     so hover, disabled and tint steps stay consistent. */
-  --el-color-primary: #3b5bfd;
-  --el-color-primary-light-3: #6180ff;
-  --el-color-primary-light-5: #9dadfe;
-  --el-color-primary-light-7: #c4cefe;
-  --el-color-primary-light-8: #d8deff;
-  --el-color-primary-light-9: #eef2ff;
-  --el-color-primary-dark-2: #2f49ca;
+  /* Brand teal ("电波青") 9-step scale.
+     The "electric" band (#0ABAB5~#06B6D4, steps 400-500) has only ~2.4:1
+     contrast on white — reserved for the dark-theme primary and graphic
+     accents, never white-background text. Light-theme primary is step 600
+     (#0c8078, 4.8:1 on white, passes WCAG AA). */
+  --hs-teal-50: #effcfa;
+  --hs-teal-100: #d1f6f0;
+  --hs-teal-200: #a3ece1;
+  --hs-teal-300: #68dccf;
+  --hs-teal-400: #30c4b8;
+  --hs-teal-500: #0faea2;
+  --hs-teal-600: #0c8078;
+  --hs-teal-700: #0a6963;
+  --hs-teal-800: #085350;
+  --hs-teal-900: #063f3d;
 
-  /* Text colors */
-  --el-text-color-primary: #1f2329;
-  --el-text-color-regular: #3e4450;
-  --el-text-color-secondary: #646a73;
-  --el-text-color-placeholder: #9ca3af;
-  --el-text-color-disabled: #9ca3af;
+  /* Neutral grays: low-chroma teal-gray 10 steps (same hue family). */
+  --hs-gray-50: #f7fafb;
+  --hs-gray-100: #eff4f5;
+  --hs-gray-200: #e0e8ea;
+  --hs-gray-300: #c7d3d6;
+  --hs-gray-400: #91a3a8;
+  --hs-gray-500: #617379;
+  --hs-gray-600: #45565c;
+  --hs-gray-700: #324249;
+  --hs-gray-800: #1e2b31;
+  --hs-gray-900: #0f1b20;
 
-  /* Border colors: base/light per spec, lighter steps derived from #E5E6EB. */
-  --el-border-color: #e5e6eb;
-  --el-border-color-light: #e5e6eb;
-  --el-border-color-lighter: #edeef1;
-  --el-border-color-extra-light: #f2f3f5;
+  /* Functional base colors (mid-tone, same lightness system as primary). */
+  --hs-success-base: #059669;
+  --hs-warning-base: #d97706;
+  --hs-danger-base: #dc2626;
+  --hs-info-base: #45565c; /* gray-600 */
 
-  /* Page background and global radius */
-  --el-bg-color-page: #f7f8fa;
-  --el-border-radius-base: 6px;
+  /* Failing orange scale — the single registered exception to the "no new
+     hues" discipline (ui-guidelines §3: alert legibility = alert trust, W5).
+     700 = light-theme text/status, 400 = dark-theme, 500 = chart accents. */
+  --hs-orange-700: #c2410c;
+  --hs-orange-500: #f97316;
+  --hs-orange-400: #fb923c;
 
-  /* Custom HubScope tokens (mirror of the --el-* overrides plus slots
-     Element Plus does not provide). */
-  --hs-brand: #3b5bfd;
-  --hs-brand-hover: #6180ff;
-  --hs-brand-soft: #eef2ff;
-  --hs-text-primary: #1f2329;
-  --hs-text-regular: #3e4450;
-  --hs-text-secondary: #646a73;
-  --hs-text-placeholder: #9ca3af;
-  --hs-border: #e5e6eb;
-  --hs-bg-page: #f7f8fa;
-  --hs-bg-card: #ffffff;
+  /* Spacing scale: 4px base grid, space-1..8. */
+  --hs-space-1: 4px;
+  --hs-space-2: 8px;
+  --hs-space-3: 12px;
+  --hs-space-4: 16px;
+  --hs-space-5: 24px;
+  --hs-space-6: 32px;
+  --hs-space-7: 48px;
+  --hs-space-8: 64px;
 
-  /* failing status: more urgent than down; the only animated state.
-     Consumers: StatusBadge, HealthBanner, EndpointCard (ui-guidelines §3). */
-  --hs-status-failing: #ff4500;
-
-  /* Type scale: six fixed steps, never extended (§3.2). */
+  /* Type scale (text-md is body baseline; display for hero numbers only). */
   --hs-text-xs: 12px;
   --hs-text-sm: 13px;
   --hs-text-md: 14px;
   --hs-text-lg: 16px;
   --hs-text-xl: 20px;
   --hs-text-2xl: 24px;
+  /* display: consumer-page hero numbers (HealthBanner verdict, StatusCard
+     uptime figure). Never for admin titles or body text. */
+  --hs-text-display: 28px;
 
-  /* Radius and shadows (§3.4). Shadows only express clickable/overlay
-     semantics, never decoration. */
-  --hs-radius: 6px;
-  --hs-radius-sm: 4px;
-  /* Filled segment/time-bar elements only (e.g. the 24h uptime strip). */
-  --hs-radius-xs: 2px;
-  --hs-shadow-card:
-    0 1px 2px rgba(31, 35, 41, 0.04),
-    0 1px 6px rgba(31, 35, 41, 0.06);
-  --hs-shadow-hover: 0 4px 12px rgba(31, 35, 41, 0.1);
-}
+  /* Radius scale (4 steps; the old 6px default was retired in ticket 73). */
+  --hs-radius-xs: 2px; /* filled segment/time-bar cells only (24h strip) */
+  --hs-radius-sm: 4px; /* controls: buttons, inputs, tags, score badges */
+  --hs-radius-lg: 8px; /* cards, panels, dialogs */
+  --hs-radius-full: 999px; /* pills / count chips */
 
-/* Shared alert blink for the failing status (W5 semantics). Sole definition —
-   StatusBadge and HealthBanner both consume it; never copy it into a
-   component's scoped styles. */
-@keyframes hs-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.2;
-  }
+  /* Shadow scale (light-theme baseline, gray-900 base; dark theme overrides
+     the same token names in semantics.css). */
+  --hs-shadow-sm: 0 1px 2px rgba(15, 27, 32, 0.05);
+  --hs-shadow-md: 0 2px 8px rgba(15, 27, 32, 0.08);
+  --hs-shadow-lg: 0 8px 24px rgba(15, 27, 32, 0.12);
+
+  /* z-index scale: page code must not use literals outside this scale. */
+  --hs-z-sticky: 100;
+  --hs-z-fixed: 500;
+  --hs-z-dropdown: 1000;
+  --hs-z-overlay: 2000;
+  --hs-z-drawer: 2010;
+  --hs-z-dialog: 2020;
+  --hs-z-message: 3000;
+  --hs-z-tooltip: 4000;
+
+  /* Transition (theme-independent; exposed via the semantic layer). */
+  --hs-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
