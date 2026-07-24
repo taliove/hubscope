@@ -9,7 +9,6 @@
   --hs-brand: var(--hs-teal-600);
   --hs-brand-hover: var(--hs-teal-500);
   --hs-brand-active: var(--hs-teal-700);
-  --hs-brand-soft: var(--hs-teal-50); /* brand tint: selected rows, highlights */
 
   /* Functional colors. */
   --hs-success: var(--hs-success-base);
@@ -21,6 +20,15 @@
      Orange family is the registered single exception to "no new hues"
      (ui-guidelines §3). 5.1:1 on white, passes AA for text. */
   --hs-status-failing: var(--hs-orange-700);
+
+  /* Soft tints: selected rows, banner grounds, highlight fills. Light theme
+     mixes white 90% (EP light-9 equivalent); dark theme mixes the dark
+     surface tone — enough separation to read as a tint, never a solid. */
+  --hs-brand-soft: var(--hs-teal-50);
+  --hs-success-soft: color-mix(in srgb, var(--hs-success), #ffffff 90%);
+  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #ffffff 90%);
+  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
   /* Surfaces (three levels). */
   --hs-bg-page: var(--hs-gray-50);
@@ -47,7 +55,6 @@ html.dark {
   --hs-brand: var(--hs-teal-500);
   --hs-brand-hover: var(--hs-teal-400);
   --hs-brand-active: var(--hs-teal-600);
-  --hs-brand-soft: var(--hs-teal-900);
 
   /* Functional colors keep the same values (status dot + label double
      encoding stays legible); info steps up one gray level for readability. */
@@ -55,6 +62,14 @@ html.dark {
 
   /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
   --hs-status-failing: var(--hs-orange-400);
+
+  /* Soft tints on dark: mix toward white just enough to lift from the
+     surface (≈12%), the dark-theme reading of a light-9 tint. */
+  --hs-brand-soft: var(--hs-teal-900);
+  --hs-success-soft: color-mix(in srgb, var(--hs-success), #0f1115 82%);
+  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #0f1115 82%);
+  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #0f1115 82%);
+  --hs-info-soft: color-mix(in srgb, var(--hs-info), #0f1115 82%);
 
   /* Surfaces. */
   --hs-bg-page: #0f1115;

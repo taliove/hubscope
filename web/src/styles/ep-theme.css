@@ -93,11 +93,17 @@
   --el-card-border-radius: var(--hs-radius-lg);
 }
 
-/* Panels (cards, dialogs, message boxes) use the larger radius. */
+/* Panels (cards, dialogs, message boxes) use the larger radius. Static
+   cards layer via their 1px border, not shadow (ui-guidelines §2 shadow
+   semantics — shadows only express clickable/overlay). */
 .el-card,
 .el-dialog,
 .el-message-box {
   border-radius: var(--hs-radius-lg);
+}
+
+.el-card {
+  box-shadow: none;
 }
 
 /* Dark theme: repeat the full mapping so the semantic overrides win over
