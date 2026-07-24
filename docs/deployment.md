@@ -1,9 +1,32 @@
 # Deployment
 
 HubScope ships as a single Linux binary with the frontend and SQLite
-migrations embedded. A Dockerfile is provided as an alternative.
+migrations embedded. A Dockerfile and a `docker-compose.yml` are provided as
+an alternative.
 
-## Binary deployment (recommended)
+## Recommended: one-command install script
+
+The recommended path is `scripts/install.sh`, which automates every manual
+step described below:
+
+```sh
+sudo scripts/install.sh
+```
+
+The script checks for the Go/pnpm toolchain (failing early with a clear
+message if something is missing), builds the binary, installs it to
+`/usr/local/bin/hubscope`, creates a `hubscope` system user and the
+`/var/lib/hubscope` data directory, renders and enables the systemd unit,
+waits for the health check to pass, and prints the next steps (the
+`hubscope admin create` bootstrap command and the URL to open). Re-running
+the script is safe: it upgrades to the current source version (rebuild,
+replace the binary, restart the service) without touching existing data or
+configuration.
+
+The manual steps below are kept as a reference — for understanding what the
+script does, for hosts where it cannot run, and for packaging.
+
+## Binary deployment (manual reference)
 
 ### 1. Build
 
@@ -36,26 +59,23 @@ refuses login until at least one user exists.
 
 ### 3. systemd unit
 
-```ini
-[Unit]
-Description=HubScope
-After=network.target
+The single source of truth for the unit file is the template embedded in
+`scripts/install.sh` — do not copy a unit from this document; either run the
+script or read the template out of it. The key properties of the unit:
 
-[Service]
-Type=simple
-User=ahc
-WorkingDirectory=/opt/hubscope
-Environment=ADDR=:8080
-Environment=DATA_PATH=/var/lib/hubscope/app.db
-ExecStart=/opt/hubscope/hubscope
-Restart=on-failure
-RestartSec=5
+- `Type=simple`, `ExecStart` pointing at the installed binary
+  (`/usr/local/bin/hubscope` by default).
+- `User=hubscope` / `Group=hubscope` — a dedicated system user, never root.
+- `Environment=DATA_PATH=/var/lib/hubscope/app.db` and
+  `Environment=ADDR=:8080`; `WorkingDirectory=/var/lib/hubscope`.
+- `Restart=on-failure` with a short restart delay.
+- Basic hardening: `NoNewPrivileges=true`, `ProtectSystem=strict` (with the
+  data directory whitelisted via `ReadWritePaths`), `ProtectHome=true`.
 
-[Install]
-WantedBy=multi-user.target
-```
+After installing a unit, enable and start it:
 
 ```sh
+sudo systemctl daemon-reload
 sudo systemctl enable --now hubscope
 ```
 
@@ -77,15 +97,36 @@ server {
 
 ## Docker (alternative)
 
+The compose file at the repository root is the preferred way to run HubScope
+in Docker — it builds the image from the included Dockerfile, maps port 8080,
+and attaches a persistent named volume in one command:
+
+```sh
+docker compose up -d --build
+```
+
+The SQLite database lives on the named volume `hubscope-data`, mounted at
+`/data` inside the container (matching the Dockerfile's
+`DATA_PATH=/data/app.db`). Recreating the container — e.g. after
+`docker compose up -d --build` on a newer checkout — keeps all monitoring
+history.
+
+To bootstrap the first admin against the containerized database:
+
+```sh
+docker compose exec hubscope hubscope admin create \
+  --username admin --password 'a-strong-password'
+```
+
+If you prefer plain `docker` without compose:
+
 ```sh
 docker build -t hubscope .
 docker run -d --name hubscope \
   -p 8080:8080 \
-  -v ahc-data:/data \
+  -v hubscope-data:/data \
   hubscope
 ```
-
-The SQLite database lives on the `ahc-data` volume (`/data/app.db`).
 
 ## Bootstrap the first admin
 
@@ -95,7 +136,7 @@ before any user exists. Run the binary with the `admin create` subcommand
 against the same database the server uses:
 
 ```sh
-sudo -u ahc /opt/hubscope/hubscope admin create \
+sudo -u hubscope /usr/local/bin/hubscope admin create \
   --username admin --password 'a-strong-password'
 ```
 
@@ -103,7 +144,7 @@ To create a hub-scoped user instead of a global super_admin, pass `--hub
 <id>` and `--role admin|operator|viewer` together (both required):
 
 ```sh
-/opt/hubscope/hubscope admin create \
+sudo -u hubscope /usr/local/bin/hubscope admin create \
   --username alice --password 'a-strong-password' \
   --hub 1 --role operator
 ```

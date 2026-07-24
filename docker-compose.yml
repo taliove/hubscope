@@ -1,0 +1,24 @@
+# One-command deployment for HubScope (spec 0006, decision 3).
+#
+#   docker compose up -d --build
+#
+# The single binary, embedded frontend, and SQLite database all live in this
+# one service. Data persists on the named volume `hubscope-data`, mounted at
+# /data to match the Dockerfile (ENV DATA_PATH=/data/app.db, VOLUME /data).
+#
+# After the first start, create the initial super_admin:
+#
+#   docker compose exec hubscope hubscope admin create \
+#     --username admin --password 'a-strong-password'
+
+services:
+  hubscope:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - hubscope-data:/data
+    restart: unless-stopped
+
+volumes:
+  hubscope-data:
