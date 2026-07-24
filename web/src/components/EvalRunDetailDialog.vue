@@ -155,7 +155,7 @@ function scoreClass(score: number | null): string {
 }
 .load-error-text {
   font-size: var(--hs-text-md);
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
   margin: 0 0 12px;
   word-break: break-all;
 }
@@ -191,13 +191,13 @@ function scoreClass(score: number | null): string {
 }
 /* Score band text colors follow the ui-guidelines §3 band mapping. */
 .score-high {
-  color: var(--el-color-success-dark-2);
+  color: var(--hs-success);
 }
 .score-mid {
-  color: var(--el-color-warning-dark-2);
+  color: var(--hs-warning);
 }
 .score-low {
-  color: var(--el-color-danger-dark-2);
+  color: var(--hs-danger);
 }
 .score-none {
   color: var(--hs-text-placeholder);

@@ -172,9 +172,9 @@ function barWidth(score: number | null): string {
 // 80+, yellow at 50+, red below — the same bands as the score badge.
 function barColor(score: number | null): string {
   if (score === null) return 'transparent'
-  if (score >= 80) return 'var(--el-color-success)'
-  if (score >= 50) return 'var(--el-color-warning)'
-  return 'var(--el-color-danger)'
+  if (score >= 80) return 'var(--hs-success)'
+  if (score >= 50) return 'var(--hs-warning)'
+  return 'var(--hs-danger)'
 }
 
 // Empty-state copy distinguishes "nothing scored" from "filtered out" so a
@@ -417,7 +417,7 @@ function deltaTitle(row: ReportRow): string {
 /* Failed suite: the batch/run failure semantic color, same as the progress
    grid's failed cell (ui-guidelines §3). */
 .suite-failed {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .coverage {
   font-size: var(--hs-text-xs);
@@ -433,10 +433,10 @@ function deltaTitle(row: ReportRow): string {
   font-variant-numeric: tabular-nums;
 }
 .delta-up {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .delta-down {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .delta-flat {
   color: var(--hs-text-placeholder);

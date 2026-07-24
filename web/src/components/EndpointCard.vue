@@ -114,13 +114,13 @@ function dotTooltip(dot: OverviewDot): string {
   box-shadow: var(--hs-shadow-md);
 }
 .card-healthy {
-  border-left-color: var(--el-color-success);
+  border-left-color: var(--hs-success);
 }
 .card-degraded {
-  border-left-color: var(--el-color-warning);
+  border-left-color: var(--hs-warning);
 }
 .card-down {
-  border-left-color: var(--el-color-danger);
+  border-left-color: var(--hs-danger);
 }
 .card-failing {
   border-left-color: var(--hs-status-failing);
@@ -158,20 +158,20 @@ function dotTooltip(dot: OverviewDot): string {
   white-space: nowrap;
 }
 .score-good {
-  color: var(--el-color-success);
-  background: var(--el-color-success-light-9);
+  color: var(--hs-success);
+  background: var(--hs-success-soft);
 }
 .score-warn {
-  color: var(--el-color-warning);
-  background: var(--el-color-warning-light-9);
+  color: var(--hs-warning);
+  background: var(--hs-warning-soft);
 }
 .score-bad {
-  color: var(--el-color-danger);
-  background: var(--el-color-danger-light-9);
+  color: var(--hs-danger);
+  background: var(--hs-danger-soft);
 }
 .score-none {
   color: var(--hs-text-placeholder);
-  background: var(--el-color-info-light-9);
+  background: var(--hs-info-soft);
   font-weight: 400;
 }
 .score-reasons {
@@ -235,13 +235,13 @@ function dotTooltip(dot: OverviewDot): string {
   background: var(--hs-border);
 }
 .dot-ok {
-  background: var(--el-color-success);
+  background: var(--hs-success);
 }
 .dot-partial {
-  background: var(--el-color-warning);
+  background: var(--hs-warning);
 }
 .dot-fail {
-  background: var(--el-color-danger);
+  background: var(--hs-danger);
 }
 .card-foot {
   font-size: var(--hs-text-xs);

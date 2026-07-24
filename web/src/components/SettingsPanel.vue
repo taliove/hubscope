@@ -168,10 +168,10 @@ onMounted(async () => {
 }
 /* Delivery outcome maps to the semantic status palette (§3). */
 .sent-ok {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .sent-fail {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .field-hint {
   margin-left: 12px;

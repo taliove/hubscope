@@ -122,22 +122,22 @@ function onClick() {
   border: 1px solid var(--hs-border);
 }
 .banner-healthy {
-  background: var(--el-color-success-light-9);
+  background: var(--hs-success-soft);
 }
 .banner-healthy .conclusion {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .banner-degraded {
-  background: var(--el-color-warning-light-9);
+  background: var(--hs-warning-soft);
 }
 .banner-degraded .conclusion {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .banner-abnormal {
-  background: var(--el-color-danger-light-9);
+  background: var(--hs-danger-soft);
 }
 .banner-abnormal .conclusion {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .conclusion-row {
   display: flex;
@@ -182,7 +182,7 @@ function onClick() {
 }
 .skeleton-line {
   border-radius: var(--hs-radius-sm);
-  background: var(--el-border-color-extra-light);
+  background: var(--hs-border-light);
   animation: pulse 1.2s ease-in-out infinite;
 }
 .skeleton-title {
@@ -201,6 +201,12 @@ function onClick() {
   }
   50% {
     opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
   }
 }
 </style>

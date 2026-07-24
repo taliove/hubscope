@@ -49,15 +49,15 @@ withDefaults(defineProps<{ records: ProbeRecord[]; compact?: boolean }>(), { com
 
 <style scoped>
 .ok {
-  color: var(--el-color-success);
+  color: var(--hs-success);
   font-weight: 600;
 }
 .fail {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
   font-weight: 600;
 }
 .fail-text {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .muted {
   color: var(--hs-text-placeholder);

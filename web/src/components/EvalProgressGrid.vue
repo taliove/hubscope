@@ -199,10 +199,10 @@ function cellTitle(cell: ReportCell): string {
 }
 /* Four-state batch/run status color mapping (ui-guidelines §3). */
 .cell-done {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .cell-failed {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .cell-running {
   color: var(--hs-brand);
