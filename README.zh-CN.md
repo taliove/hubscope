@@ -29,6 +29,15 @@
 
 ## 快速开始
 
+**预编译二进制**(Linux / macOS,amd64 / arm64,见 [Releases](https://github.com/taliove/hubscope/releases)):
+
+```sh
+curl -LO https://github.com/taliove/hubscope/releases/download/v0.1.0/hubscope_v0.1.0_linux_amd64.tar.gz
+tar xzf hubscope_v0.1.0_linux_amd64.tar.gz
+./hubscope_v0.1.0_linux_amd64
+./hubscope_v0.1.0_linux_amd64 admin create --username admin --password '换成强口令'
+```
+
 **Docker**(无需 Go/Node 工具链):
 
 ```sh

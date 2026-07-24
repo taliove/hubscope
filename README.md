@@ -29,6 +29,15 @@ One Go binary. Embedded Vue dashboard. Embedded SQLite. No runtime dependencies.
 
 ## Get started
 
+**Prebuilt binary** (Linux / macOS, amd64 / arm64 — from [Releases](https://github.com/taliove/hubscope/releases)):
+
+```sh
+curl -LO https://github.com/taliove/hubscope/releases/download/v0.1.0/hubscope_v0.1.0_linux_amd64.tar.gz
+tar xzf hubscope_v0.1.0_linux_amd64.tar.gz
+./hubscope_v0.1.0_linux_amd64
+./hubscope_v0.1.0_linux_amd64 admin create --username admin --password 'your-strong-password'
+```
+
 **Docker** (no Go/Node toolchain needed):
 
 ```sh

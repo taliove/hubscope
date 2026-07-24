@@ -31,9 +31,11 @@ README 是**公开门面**(GitHub 首页),不是内部协作文档:
 - HubScope 是**部署型产品,不是库**:读者是"要部署一套监控系统的人",不是"要 import 一个包的开发者"。
 - 交付物是 **Go 单二进制**(`make build` → `bin/hubscope`,前端 `web/dist` 经 `go:embed` 内嵌),**无运行时 node 依赖**(W8 承重墙)。
 - 因此「怎么下载」的正确答案不是 `git clone && make build`(那是贡献者路径),而是按易得性排序的**使用者路径**:
-  1. **一键部署脚本**(若仓库已提供,如 `scripts/install.sh` / `deploy.sh`——写 README 前先 Glob 确认它存在;不存在则在报告中提出"应提供一键部署脚本"的建议,不假装它存在)
-  2. **下载编译好的二进制**(release 产物,若项目有发布)
-  3. **从源码构建**(`git clone` + `make build`,放在最后,标注"从源码构建")
+  1. **预编译二进制**(GitHub Releases,自 v0.1.0 起提供:linux/darwin × amd64/arm64,release workflow 自动构建)——首选
+  2. **Docker**(`docker compose up`,clone 即可,无需工具链)
+  3. **一键部署脚本**(`scripts/install.sh`,Linux,需要 Go+pnpm,装为 systemd 服务)
+  4. **从源码构建**(`git clone` + `make build`,贡献者路径)
+  排序随发布形态演进;写「下载」节前先 `gh release view` 确认当前 release 实际产物。
 - 部署后运行环境事实:默认监听 `:8080`;数据落 `DATA_PATH`(默认 `./data/app.db`,SQLite 单文件);`SESSION_SECRET` 不设则自动生成入库;**无必填凭证环境变量**(`ADMIN_PASSWORD` 已移除,ticket 69)。
 
 ## 工作方式

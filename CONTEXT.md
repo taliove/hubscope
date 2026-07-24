@@ -23,6 +23,16 @@ _Avoid_: 接口、路由
 对单个 Endpoint 执行的一轮可用性检查,包含一次非流式请求和一次流式请求。记录成败、HTTP 状态码、错误信息、总延迟、TTFT、token 用量。
 _Avoid_: 打点、探活(口头可用,代码与文档统一用 Probe)
 
+## Language — 品牌
+
+**HubScope 电波青 (Teal)**:
+HubScope 的品牌色,取自 ProxyHub 品牌体系「电波青」9 级刻度(ticket 73 品牌并入)。亮主题主色 teal-600 `#0c8078`,暗主题主色 teal-500 `#0faea2`;承载主按钮、链接、当前导航、聚焦态与「运行中」状态。图形标 BrandMark(hub 字形 SVG)与字标 Wordmark(系统等宽字栈)共同构成品牌标识,BrandMark 永不裸用。
+_Avoid_: 品牌蓝、#3B5BFD(并入前旧品牌色,已废弃)
+
+**告警橙 (Failing Orange)**:
+failing 告警语义色,亮主题 `#c2410c` / 暗主题 `#fb923c`,是「调色板外不引入新色相」纪律的唯一具名例外(ui-guidelines §3 裁决)——告警辨识度 = 告警可信度(W5)。仅用于 failing 告警语义,不得泛化为装饰色。
+_Avoid_: 橙红、#FF4500(并入前旧告警色,已废弃)
+
 ## Language — 评估
 
 **Suite**:
