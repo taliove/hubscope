@@ -31,7 +31,7 @@ web/dist/
 .scratch/design/
 .scratch/web
 
-# AI tool configs (personal preferences, not team-standard; project charter is CLAUDE.md)
+# AI tool configs (personal preferences, not team-standard; governance charter is AGENTS.md, tracked)
 .codebuddy/
 .cursorrules
 .gemini/
@@ -42,7 +42,6 @@ CODEBUDDY.md
 GEMINI.md
 QODER.md
 opencode.jsonc
-AGENTS.md
 
 # code-review-graph MCP (personal config; .mcp.json has machine-specific cwd)
 .mcp.json
