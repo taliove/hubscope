@@ -1,27 +1,36 @@
 <template>
   <div>
-    <!-- Metrics panel: left side shows probe metrics (availability + latency),
-         right side shows eval metrics (total score + capability tags) -->
-    <div class="metrics-panel">
-      <div class="metrics-left">
-        <div class="metric-block">
-          <span class="metric-label">
-            24h 可用率
-            <span v-if="availability === null" class="metric-note">24h 内无探测数据</span>
-          </span>
-          <span class="metric-big" :class="`av-${availabilityTier(availability)}`">
-            <template v-if="availability !== null">
-              {{ formatPercentDigits(availability) }}<span class="metric-unit">%</span>
-            </template>
-            <template v-else>-</template>
-          </span>
+    <!-- Hero panel (single-model mode, design ruling): availability leads at
+         display size; a single-status statement replaces the aggregate
+         verdict + distribution (the scope is one endpoint — counts would be
+         noise). Failing keeps its static double-encoding (orange dot + the
+         count-less "含告警" chip). The right column carries eval data; the
+         panel stays put (with a no-data line) when the model was never
+         evaluated. The failing chip copy comes from the statement object
+         (null unless failing), so no status wording lives in the template. -->
+    <div class="hero-panel">
+      <div class="hero-left">
+        <span class="metric-label">
+          24h 可用率
+          <span v-if="availability === null" class="metric-note">24h 内无探测数据</span>
+        </span>
+        <span class="hero-big" :class="`av-${availabilityTier(availability)}`">
+          <template v-if="availability !== null">
+            {{ formatPercentDigits(availability) }}<span class="metric-unit">%</span>
+          </template>
+          <template v-else>-</template>
+        </span>
+        <div class="statement">
+          <span v-if="statement.failingChip" class="alert-dot" />
+          <span class="statement-text" :class="`vc-${statement.tone}`">{{ statement.text }}</span>
+          <span v-if="statement.failingChip" class="failing-chip">{{ statement.failingChip }}</span>
         </div>
-        <div class="metric-block">
+        <div class="metric-block latency-block">
           <span class="metric-label">
             平均延迟
             <span v-if="entry.p50_ms === null" class="metric-note">24h 内无探测数据</span>
           </span>
-          <span class="metric-value" :class="{ 'av-none': entry.p50_ms === null }">
+          <span class="metric-latency" :class="{ 'av-none': entry.p50_ms === null }">
             {{ formatMs(entry.p50_ms) }}
           </span>
         </div>
@@ -29,22 +38,21 @@
 
       <div class="metric-divider" />
 
-      <div class="metrics-right">
+      <div class="hero-right">
         <template v-if="evalSummary">
           <div class="metric-block">
             <span class="metric-label">评估总分</span>
-            <span class="metric-big">{{ formatScore(evalSummary.total_score) }}</span>
+            <span class="metric-score">{{ formatScore(evalSummary.total_score) }}</span>
           </div>
-          <div class="capability-tags">
-            <el-tag v-for="suite in evalSummary.suite_scores" :key="suite.suite_id" size="small">
+          <div v-if="suiteScores.length > 0" class="capability-tags">
+            <el-tag v-for="suite in suiteScores" :key="suite.suite_id" size="small">
               {{ suite.suite_name }} {{ formatScore(suite.score) }}
             </el-tag>
+            <el-tag v-if="overflowCount > 0" size="small" type="info">+{{ overflowCount }}</el-tag>
           </div>
         </template>
         <template v-else>
-          <div class="metric-block">
-            <span class="metric-label empty">暂无评估数据</span>
-          </div>
+          <span class="eval-empty">暂无评估数据</span>
         </template>
       </div>
     </div>
@@ -65,13 +73,16 @@
 </template>
 
 <script setup lang="ts">
-// Single-model metrics card for StatusCard (ticket 60.5): displays probe
-// metrics (availability + latency) on the left, eval metrics (score + tags)
-// on the right, followed by the 24h segmented bar.
+// Single-model hero panel for StatusCard (ticket 60.5, design-ruling rework):
+// probe metrics (availability + statement + latency) on the left, eval
+// metrics (total score + capability suite tags, capped at 6 with a +N
+// counter) on the right, followed by the 24h segmented bar. Mounted by
+// StatusCard only in single-model mode; the aggregate StatusCardMetrics is
+// untouched.
 import { computed } from 'vue'
 import type { OverviewEntry, ModelEvalSummary } from '@/api/types'
 import { formatPercentDigits, formatMs, formatScore } from '@/utils/format'
-import { dotTier, availabilityTier, scopedAvailability } from '@/utils/statusCardSummary'
+import { dotTier, availabilityTier, scopedAvailability, singleModelStatement } from '@/utils/statusCardSummary'
 
 const props = defineProps<{
   entry: OverviewEntry
@@ -80,10 +91,18 @@ const props = defineProps<{
 
 // Compute availability from the entry's 24h dots
 const availability = computed(() => scopedAvailability([props.entry]))
+const statement = computed(() => singleModelStatement(props.entry, availability.value))
+
+// Suite tags cap at 6; the overflow collapses into a +N counter chip so a
+// wide capability set cannot blow up the export height.
+const MAX_SUITE_TAGS = 6
+const suiteScores = computed(() => props.evalSummary?.suite_scores.slice(0, MAX_SUITE_TAGS) ?? [])
+const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 0) - suiteScores.value.length)
 </script>
 
 <style scoped>
-.metrics-panel {
+/* Same neutral ground as the aggregate hero panel (ui-guidelines §5). */
+.hero-panel {
   display: flex;
   align-items: stretch;
   background: var(--hs-bg-page);
@@ -91,14 +110,13 @@ const availability = computed(() => scopedAvailability([props.entry]))
   padding: 16px 20px;
   margin-bottom: 16px;
 }
-.metrics-left {
+.hero-left {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
-.metrics-right {
+.hero-right {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -117,23 +135,16 @@ const availability = computed(() => scopedAvailability([props.entry]))
 .metric-label {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
-  margin-bottom: 4px;
-}
-.metric-label.empty {
-  text-align: center;
-  font-size: var(--hs-text-md);
-  color: var(--hs-text-placeholder);
-  margin-bottom: 0;
 }
 .metric-note {
   margin-left: 8px;
   color: var(--hs-text-placeholder);
 }
-.metric-big {
-  font-size: var(--hs-text-2xl);
+.hero-big {
+  margin-top: 4px;
+  font-size: var(--hs-text-display);
   font-weight: 600;
   line-height: 1.2;
-  color: var(--hs-text-primary);
 }
 .metric-unit {
   font-size: var(--hs-text-md);
@@ -141,7 +152,56 @@ const availability = computed(() => scopedAvailability([props.entry]))
   color: var(--hs-text-secondary);
   margin-left: 2px;
 }
-.metric-value {
+/* Single-status statement: same visual weight as the aggregate verdict
+   line, tone-colored so severity stays legible at a glance. */
+.statement {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: var(--hs-text-sm);
+}
+.statement-text {
+  font-weight: 600;
+}
+.vc-healthy {
+  color: var(--hs-success);
+}
+.vc-degraded {
+  color: var(--hs-warning);
+}
+.vc-abnormal {
+  color: var(--hs-danger);
+}
+.alert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--hs-status-failing);
+}
+.failing-chip {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-status-failing);
+  border: 1px solid var(--hs-status-failing);
+  border-radius: var(--hs-radius-sm);
+  background: var(--hs-bg-card);
+  padding: 0 6px;
+}
+.latency-block {
+  margin-top: 12px;
+}
+.latency-block .metric-label {
+  margin-bottom: 4px;
+}
+.metric-latency {
+  font-size: var(--hs-text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--hs-text-primary);
+}
+.metric-score {
+  margin-top: 4px;
   font-size: var(--hs-text-xl);
   font-weight: 600;
   line-height: 1.2;
@@ -151,6 +211,10 @@ const availability = computed(() => scopedAvailability([props.entry]))
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.eval-empty {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
 }
 /* Availability tier colors (ui-guidelines §3) */
 .av-ok {

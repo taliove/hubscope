@@ -8,10 +8,25 @@
     </div>
 
     <div class="card-body">
-      <!-- Scope: the anti-fake line. A group share always leads with the
-           group chip ("分组:厂商 · Anthropic"); every active filter shows up
-           as a chip (none omitted); neither → the plain "全部端点" line. -->
-      <div v-if="scopeChips.length > 0" class="scope-row">
+      <!-- Scope: the anti-fake line. Single-model mode states the exact
+           subject (model · protocol · Hub chips); a group share leads with
+           the group chip; every active filter shows up as a chip (none
+           omitted); neither → the plain "全部端点" line. -->
+      <div v-if="isSingleModel" class="scope-row">
+        <span class="scope-chip">
+          <span class="chip-label">模型</span>
+          <span class="chip-value" :title="singleEntry.model_id">{{ singleEntry.model_id }}</span>
+        </span>
+        <span class="scope-chip">
+          <span class="chip-label">协议</span>
+          <span class="chip-value" :title="singleEntry.protocol">{{ singleEntry.protocol }}</span>
+        </span>
+        <span class="scope-chip">
+          <span class="chip-label">Hub</span>
+          <span class="chip-value" :title="hubName">{{ hubName }}</span>
+        </span>
+      </div>
+      <div v-else-if="scopeChips.length > 0" class="scope-row">
         <span v-for="chip in scopeChips" :key="chip.label" class="scope-chip">
           <span class="chip-label">{{ chip.label }}</span>
           <span class="chip-value" :class="chip.tone ? `value-${chip.tone}` : ''" :title="chip.value">
@@ -21,14 +36,24 @@
       </div>
       <div v-else class="scope-plain">全部端点</div>
 
-      <!-- Hero panel: availability leads, verdict + distribution ride
-           underneath (see StatusCardMetrics). The top does not foreground
-           the abnormal endpoints, but the verdict and counts stay honest. -->
-      <StatusCardMetrics :entries="enabledEntries" :is-empty="isEmpty" />
+      <!-- Hero panel: single-model mode mounts the reworked single-model
+           panel (statement instead of verdict + distribution); the aggregate
+           panel is untouched for global/group shares. -->
+      <StatusCardSingleModelMetrics
+        v-if="isSingleModel"
+        :entry="singleEntry"
+        :eval-summary="evalSummary ?? null"
+      />
+      <StatusCardMetrics v-else :entries="enabledEntries" :is-empty="isEmpty" />
 
       <div class="divider" />
 
-      <StatusCardDetail :entries="enabledEntries" :empty-text="emptyDetailText" :summary="summary" />
+      <StatusCardDetail
+        :entries="enabledEntries"
+        :empty-text="emptyDetailText"
+        :summary="summary"
+        :single-model="isSingleModel"
+      />
     </div>
 
     <div class="card-footer">
@@ -55,12 +80,13 @@
 // dot + text chip), no hover reliance (truncation thresholds stay
 // conservative).
 import { computed } from 'vue'
-import type { EndpointStatus, OverviewEntry, Protocol } from '@/api/types'
+import type { EndpointStatus, ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
 import { formatTime } from '@/utils/format'
 import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
-import { summaryText } from '@/utils/statusCardSummary'
+import { scopedAvailability, singleModelSummaryText, summaryText } from '@/utils/statusCardSummary'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
+import StatusCardSingleModelMetrics from '@/components/StatusCardSingleModelMetrics.vue'
 import StatusCardDetail from '@/components/StatusCardDetail.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import Wordmark from '@/components/Wordmark.vue'
@@ -73,6 +99,11 @@ const props = defineProps<{
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the snapshot moment
   origin: string
+  // Single-model mode markers (design ruling, ticket 60.5 wiring): hubName
+  // is the flag — a filtered snapshot that happens to hold one entry has no
+  // hubName and stays on the aggregate layout.
+  hubName?: string
+  evalSummary?: ModelEvalSummary | null
 }>()
 
 const DIMENSION_LABELS: Record<GroupDimension, string> = {
@@ -95,8 +126,19 @@ const enabledEntries = computed(() => props.entries.filter(e => e.enabled))
 const disabledCount = computed(() => props.entries.length - enabledEntries.value.length)
 const isEmpty = computed(() => enabledEntries.value.length === 0)
 
+// Single-model mode (design ruling): exactly one entry AND a non-empty
+// hubName — the hub name is the marker that the snapshot was built for one
+// model, so a filter that narrows the board to a single endpoint (or an
+// empty hubName) never flips the layout.
+const isSingleModel = computed(() => props.entries.length === 1 && Boolean(props.hubName))
+const singleEntry = computed(() => props.entries[0])
+
 const counts = computed(() => countByStatus(enabledEntries.value))
-const summary = computed(() => summaryText(counts.value, enabledEntries.value, isEmpty.value))
+const summary = computed(() =>
+  isSingleModel.value
+    ? singleModelSummaryText(singleEntry.value, scopedAvailability([singleEntry.value]))
+    : summaryText(counts.value, enabledEntries.value, isEmpty.value),
+)
 
 const scopeChips = computed<ScopeChip[]>(() => {
   const chips: ScopeChip[] = []

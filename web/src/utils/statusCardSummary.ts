@@ -12,7 +12,7 @@
 // internal/server/overview.go's groupAccumulator).
 import type { OverviewDot, OverviewEntry } from '@/api/types'
 import { formatPercent, formatPercentDigits } from '@/utils/format'
-import { STATUS_LABELS, type HealthCounts } from '@/utils/healthConclusion'
+import { STATUS_LABELS, type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
 
 // Availability tiers (ui-guidelines §3): same thresholds as EndpointCard
 // dots — no data gray, 0% red, ≥95% green, below 95% yellow.
@@ -134,6 +134,69 @@ export function summaryText(counts: HealthCounts, entries: OverviewEntry[], empt
     // All green but the window has no probes: "平稳" would claim evidence we
     // do not have, so state the fact and the gap.
     text = '当前全部正常'
+  }
+  if (availability === null) text += ';暂无 24 小时探测数据'
+  return text
+}
+
+// --- Single-model mode (design ruling, ticket 60.5 wiring) -----------------
+// A single-model card (entries.length === 1 && hubName set) renders its hero
+// and summary with these two functions instead of the aggregate versions:
+// the conclusion speaks about THE endpoint (no counts, no distribution), the
+// failing double-encoding (orange dot + chip) is preserved, and the summary
+// never papers over an abnormal state — same anti-fake invariant, one model.
+
+export interface SingleModelStatement {
+  text: string
+  tone: HealthTone // reuses the vc-healthy / vc-degraded / vc-abnormal classes
+  // Failing double-encoding (design ruling): the static orange chip copy,
+  // '含告警' when the endpoint is failing, null otherwise — the template
+  // renders the chip (with the orange dot) only when this is non-null.
+  failingChip: string | null
+}
+
+// Statement under the availability number, replacing the aggregate verdict +
+// distribution: "降级 · 24h 可用率 80.0%". The rate clause degrades to a
+// no-data note when the window has no probes.
+export function singleModelStatement(entry: OverviewEntry, availability: number | null): SingleModelStatement {
+  const rate = availability !== null ? `24h 可用率 ${formatPercent(availability)}` : '24h 内无探测数据'
+  switch (entry.status) {
+    case 'healthy':
+      return {
+        text:
+          availability !== null && availability < 0.95
+            ? `正常 · 24h 可用率仅 ${formatPercent(availability)},低于 95%`
+            : `正常 · ${rate}`,
+        tone: 'healthy',
+        failingChip: null,
+      }
+    case 'degraded':
+      return { text: `降级 · ${rate}`, tone: 'degraded', failingChip: null }
+    case 'down':
+      return { text: `宕机 · ${rate}`, tone: 'abnormal', failingChip: null }
+    case 'failing':
+      return { text: `告警 · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+  }
+}
+
+// Single-model one-sentence summary: same priority chain as the aggregate
+// summaryText, with singular phrasing (no counts, no model name — the scope
+// chips already name the model).
+export function singleModelSummaryText(entry: OverviewEntry, availability: number | null): string {
+  let text: string
+  if (entry.status === 'failing') {
+    text = '触发告警,建议立即处理'
+  } else if (entry.status === 'down') {
+    text = '宕机,建议优先排查'
+  } else if (entry.status === 'degraded') {
+    const streak = longestDegradedStreak([entry])
+    text = streak ? `持续降级约 ${streak.hours} 小时,建议排查上游` : '降级,建议关注,暂不紧急'
+  } else if (availability !== null && availability < 0.95) {
+    text = `状态正常,但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
+  } else if (availability !== null) {
+    text = '近 24 小时运行平稳,无需处理'
+  } else {
+    text = '当前状态正常'
   }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text

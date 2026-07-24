@@ -15,6 +15,8 @@ import {
   longestDegradedStreak,
   meanP50Ms,
   scopedAvailability,
+  singleModelStatement,
+  singleModelSummaryText,
   summaryText,
 } from '@/utils/statusCardSummary'
 
@@ -237,5 +239,105 @@ describe('summaryText', () => {
   it('never claims 平稳 without probe data', () => {
     const entries = [makeEntry()]
     expect(summaryText(emptyHealthCounts(), entries, false)).toBe('当前全部正常;暂无 24 小时探测数据')
+  })
+})
+
+// Single-model mode (design ruling, ticket 60.5 wiring): the card renders one
+// endpoint with hubName set, so the conclusion line and the 小结 speak about
+// THE endpoint — no counts, no "其余". The anti-fake invariant is unchanged:
+// the status word and the failing double-encoding stay front and center.
+describe('singleModelStatement', () => {
+  it('healthy at or above 95% states the plain rate', () => {
+    const entry = makeEntry({ dots_24h: dotsWith(100, 0, [23]) })
+    expect(singleModelStatement(entry, 1)).toEqual({
+      text: '正常 · 24h 可用率 100.0%',
+      tone: 'healthy',
+      failingChip: null,
+    })
+  })
+  it('healthy below 95% flags the shortfall', () => {
+    const entry = makeEntry({ dots_24h: dotsWith(100, 10, [23]) })
+    expect(singleModelStatement(entry, 0.9)).toEqual({
+      text: '正常 · 24h 可用率仅 90.0%,低于 95%',
+      tone: 'healthy',
+      failingChip: null,
+    })
+  })
+  it('healthy at exactly 95% uses the plain wording', () => {
+    const entry = makeEntry({ dots_24h: dotsWith(100, 5, [23]) })
+    expect(singleModelStatement(entry, 0.95)).toEqual({
+      text: '正常 · 24h 可用率 95.0%',
+      tone: 'healthy',
+      failingChip: null,
+    })
+  })
+  it('healthy without probes omits the rate clause', () => {
+    expect(singleModelStatement(makeEntry(), null)).toEqual({
+      text: '正常 · 24h 内无探测数据',
+      tone: 'healthy',
+      failingChip: null,
+    })
+  })
+  it('degraded states the status word and the rate', () => {
+    const entry = makeEntry({ status: 'degraded', dots_24h: dotsWith(100, 20, [23]) })
+    expect(singleModelStatement(entry, 0.8)).toEqual({
+      text: '降级 · 24h 可用率 80.0%',
+      tone: 'degraded',
+      failingChip: null,
+    })
+  })
+  it('down states the status word and the rate', () => {
+    const entry = makeEntry({ status: 'down', dots_24h: dotsWith(100, 100, [23]) })
+    expect(singleModelStatement(entry, 0)).toEqual({
+      text: '宕机 · 24h 可用率 0.0%',
+      tone: 'abnormal',
+      failingChip: null,
+    })
+  })
+  it('failing keeps the double-encoding flag and the abnormal tone', () => {
+    const entry = makeEntry({ status: 'failing', dots_24h: dotsWith(100, 30, [23]) })
+    expect(singleModelStatement(entry, 0.7)).toEqual({
+      text: '告警 · 24h 可用率 70.0%',
+      tone: 'abnormal',
+      failingChip: '含告警',
+    })
+  })
+  it('down without probes degrades to the no-data clause', () => {
+    const entry = makeEntry({ status: 'down' })
+    expect(singleModelStatement(entry, null)).toEqual({
+      text: '宕机 · 24h 内无探测数据',
+      tone: 'abnormal',
+      failingChip: null,
+    })
+  })
+})
+
+describe('singleModelSummaryText', () => {
+  it('failing tells the reader to act now', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'failing' }), null)).toBe(
+      '触发告警,建议立即处理;暂无 24 小时探测数据',
+    )
+  })
+  it('down names no model (the card scope already does)', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'down' }), 0)).toBe('宕机,建议优先排查')
+  })
+  it('reports the degraded streak when one exists', () => {
+    const entry = makeEntry({ status: 'degraded', dots_24h: dotsWith(10, 5, [21, 22, 23]) })
+    expect(singleModelSummaryText(entry, 0.5)).toBe('持续降级约 3 小时,建议排查上游')
+  })
+  it('degraded without a streak stays low-urgency', () => {
+    const entry = makeEntry({ status: 'degraded', dots_24h: dotsWith(10, 0, [23]) })
+    expect(singleModelSummaryText(entry, 1)).toBe('降级,建议关注,暂不紧急')
+  })
+  it('healthy below 95% suggests watching', () => {
+    expect(singleModelSummaryText(makeEntry(), 0.9)).toBe(
+      '状态正常,但 24h 可用率仅 90.0%,建议持续观察',
+    )
+  })
+  it('healthy at or above 95% declares steady operation', () => {
+    expect(singleModelSummaryText(makeEntry(), 1)).toBe('近 24 小时运行平稳,无需处理')
+  })
+  it('healthy without probes states the fact and the gap', () => {
+    expect(singleModelSummaryText(makeEntry(), null)).toBe('当前状态正常;暂无 24 小时探测数据')
   })
 })

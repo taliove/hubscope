@@ -31,10 +31,14 @@
       <div v-if="overflowCount > 0" class="detail-more">
         另有 {{ overflowCount }} 个异常端点未列出,详见状态板
       </div>
-      <div v-if="healthyCount > 0" class="healthy-line">
+      <!-- Aggregate mode only: a single-model card has no "其余" endpoints. -->
+      <div v-if="!singleModel && healthyCount > 0" class="healthy-line">
         其余 <span class="healthy-num">{{ healthyCount }}</span> 个端点<span class="healthy-word">正常</span>{{ rangeText }}
       </div>
     </template>
+    <div v-else-if="singleModel" class="healthy-line detail-healthy">
+      当前状态<span class="healthy-word">正常</span>{{ rangeText }}
+    </div>
     <div v-else class="healthy-line detail-healthy">
       全部 <span class="healthy-num">{{ entries.length }}</span> 个端点<span class="healthy-word">正常</span>{{ rangeText }}
     </div>
@@ -68,6 +72,9 @@ const props = defineProps<{
   entries: OverviewEntry[] // scoped ENABLED entries only
   emptyText: string // non-empty renders the empty state instead of the list
   summary: string | null
+  // Single-model mode (design ruling): no "其余 N 个端点正常" line (there is
+  // no remainder), and the all-healthy line drops the count ("当前状态正常").
+  singleModel?: boolean
 }>()
 
 // Cap the abnormal list so a widespread outage cannot produce an unbounded

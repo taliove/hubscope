@@ -17,7 +17,11 @@ export interface StatusCardSnapshot {
   status: EndpointStatus | ''
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the open/generation moment
-  // Single-model specific fields (only populated when entries.length === 1)
+  // Single-model specific fields (only populated when entries.length === 1).
+  // hubName doubles as the single-model marker: StatusCard renders the
+  // single-model layout only when entries.length === 1 && hubName is set, so
+  // a filter that narrows the board to one endpoint keeps the aggregate
+  // layout (design ruling).
   hubName?: string
   evalSummary?: ModelEvalSummary | null
 }

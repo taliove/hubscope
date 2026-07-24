@@ -18,6 +18,8 @@
         :group="snapshot.group"
         :generated-at="snapshot.generatedAt"
         :origin="origin"
+        :hub-name="snapshot.hubName"
+        :eval-summary="snapshot.evalSummary"
       />
     </div>
 
@@ -37,6 +39,8 @@
       :group="snapshot.group"
       :generated-at="snapshot.generatedAt"
       :origin="origin"
+      :hub-name="snapshot.hubName"
+      :eval-summary="snapshot.evalSummary"
     />
 
     <el-alert
