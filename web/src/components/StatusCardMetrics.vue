@@ -173,13 +173,13 @@ const distribution = computed(() => distributionSegments(counts.value))
   font-weight: 600;
 }
 .vc-healthy {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .vc-degraded {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .vc-abnormal {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .vc-empty {
   color: var(--hs-text-secondary);
@@ -226,25 +226,25 @@ const distribution = computed(() => distributionSegments(counts.value))
   font-weight: 400;
 }
 .st-healthy {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .st-degraded {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .st-down {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .st-failing {
   color: var(--hs-status-failing);
 }
 .av-ok {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .av-partial {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .av-fail {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .av-none {
   color: var(--hs-text-placeholder);
@@ -269,13 +269,13 @@ const distribution = computed(() => distributionSegments(counts.value))
   border-radius: var(--hs-radius-xs);
 }
 .seg-ok {
-  background: var(--el-color-success);
+  background: var(--hs-success);
 }
 .seg-partial {
-  background: var(--el-color-warning);
+  background: var(--hs-warning);
 }
 .seg-fail {
-  background: var(--el-color-danger);
+  background: var(--hs-danger);
 }
 .seg-none {
   background: var(--hs-border);

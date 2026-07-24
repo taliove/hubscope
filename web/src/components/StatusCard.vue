@@ -3,7 +3,8 @@
     <div class="brand-bar" />
     <div class="brand-section">
       <BrandMark class="brand-mark" />
-      <span class="brand-title">HubScope 服务状态</span>
+      <Wordmark class="brand-wordmark" />
+      <span class="brand-title">服务状态</span>
     </div>
 
     <div class="card-body">
@@ -62,6 +63,7 @@ import { summaryText } from '@/utils/statusCardSummary'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
 import StatusCardDetail from '@/components/StatusCardDetail.vue'
 import BrandMark from '@/components/BrandMark.vue'
+import Wordmark from '@/components/Wordmark.vue'
 
 const props = defineProps<{
   entries: OverviewEntry[] // scoped snapshot, disabled endpoints included
@@ -146,6 +148,10 @@ const emptyDetailText = computed(() => {
   font-size: 32px;
   flex-shrink: 0;
 }
+.brand-wordmark {
+  font-size: var(--hs-text-xl);
+  flex-shrink: 0;
+}
 .brand-title {
   font-size: var(--hs-text-2xl);
   font-weight: 600;
@@ -182,13 +188,13 @@ const emptyDetailText = computed(() => {
   white-space: nowrap;
 }
 .value-healthy {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .value-degraded {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .value-down {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .value-failing {
   color: var(--hs-status-failing);

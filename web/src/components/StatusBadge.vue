@@ -32,13 +32,13 @@ const reason = computed(() => props.reason ?? '')
   flex: none;
 }
 .status-healthy .dot {
-  background: var(--el-color-success);
+  background: var(--hs-success);
 }
 .status-degraded .dot {
-  background: var(--el-color-warning);
+  background: var(--hs-warning);
 }
 .status-down .dot {
-  background: var(--el-color-danger);
+  background: var(--hs-danger);
 }
 .status-failing .dot {
   background: var(--hs-status-failing);

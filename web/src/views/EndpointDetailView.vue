@@ -354,13 +354,13 @@ onMounted(async () => {
 }
 /* Availability tier colors (ui-guidelines §3) */
 .metric-value.score-ok {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .metric-value.score-partial {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .metric-value.score-fail {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .metric-value.score-none {
   color: var(--hs-text-placeholder);

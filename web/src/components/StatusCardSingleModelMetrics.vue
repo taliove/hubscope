@@ -154,13 +154,13 @@ const availability = computed(() => scopedAvailability([props.entry]))
 }
 /* Availability tier colors (ui-guidelines §3) */
 .av-ok {
-  color: var(--el-color-success);
+  color: var(--hs-success);
 }
 .av-partial {
-  color: var(--el-color-warning);
+  color: var(--hs-warning);
 }
 .av-fail {
-  color: var(--el-color-danger);
+  color: var(--hs-danger);
 }
 .av-none {
   color: var(--hs-text-placeholder);
@@ -184,13 +184,13 @@ const availability = computed(() => scopedAvailability([props.entry]))
   border-radius: var(--hs-radius-xs);
 }
 .seg-ok {
-  background: var(--el-color-success);
+  background: var(--hs-success);
 }
 .seg-partial {
-  background: var(--el-color-warning);
+  background: var(--hs-warning);
 }
 .seg-fail {
-  background: var(--el-color-danger);
+  background: var(--hs-danger);
 }
 .seg-none {
   background: var(--hs-border);
