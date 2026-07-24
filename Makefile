@@ -1,27 +1,38 @@
 BINARY := bin/hubscope
 GO := go
 
-.PHONY: build test dev clean fmt lint package frontend-build frontend-test backend-build backend-test ensure-dist hooks
+.PHONY: build test dev clean fmt lint package frontend-build frontend-test backend-build backend-test ensure-dist hooks install-test
 
 ## build: frontend (vite) + backend single binary with embedded assets
 build: frontend-build backend-build
 
 ## test: everything that must pass before any commit
-test: lint backend-test frontend-test
+test: lint backend-test frontend-test install-test
 
 ## fmt: auto-format Go sources (frontend formats via its own tooling if present)
 fmt:
 	$(GO)fmt -w cmd internal
 
-## lint: static checks — unformatted Go and vet findings are hard failures
+## lint: static checks — unformatted Go and vet findings are hard failures;
+## shellcheck is a hard failure when the tool is present, a warning when absent
+## (fail-closed for real findings; dev machines without shellcheck are not blocked)
 lint: ensure-dist
 	@test -z "$$($(GO)fmt -l cmd internal)" || { $(GO)fmt -l cmd internal; echo "gofmt: run 'make fmt'"; exit 1; }
 	$(GO) vet ./...
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck scripts/install.sh scripts/install_test.sh; \
+	else \
+		echo "WARNING: shellcheck not found, skipping scripts/*.sh static check"; \
+	fi
 
-## package: build + tarball the single binary with deploy docs
+## install-test: black-box behavior tests for scripts/install.sh (sandboxed, no root)
+install-test:
+	bash scripts/install_test.sh
+
+## package: build + tarball the single binary with deploy docs and the installer
 package: build
 	mkdir -p dist
-	tar -czf dist/hubscope-$$(git describe --tags --always --dirty 2>/dev/null || echo dev).tar.gz $(BINARY) Dockerfile docs/deployment.md
+	tar -czf dist/hubscope-$$(git describe --tags --always --dirty 2>/dev/null || echo dev).tar.gz $(BINARY) Dockerfile docs/deployment.md scripts/install.sh
 
 backend-build: ensure-dist
 	$(GO) build -o $(BINARY) ./cmd/hubscope
