@@ -10,5 +10,6 @@
 - [ ] 修复 discovery.StartSync goroutine 生命周期(若证实):注入可等待的完成信号或改用测试可驱动时钟,黑盒不断言内部状态的前提下让测试能确定性等待 sync 收尾
 - [ ] 修复 WAL/TempDir 冲突(若证实):测试 db.Close 前 checkpoint 或换 journal_mode=DELETE 于测试路径
 - [ ] `go test -race ./internal/server/` 全绿(当前 TestAuditPrunedByRollupWorker 挂)
-- [ ] CI 连续 5 次全绿(gh run list 截图证据贴 ticket)
+- [ ] install_test.sh Ubuntu 兼容:missing-go/missing-pnpm 场景在 Linux 失败(macOS 30/30 全绿)。已排除方案:exit-127 stub(bash 哈希不穿透)、非可执行文件(command -v 不识别)、broken symlink(Linux coreutils env 解析命令时跳过)、env shim(Linux env 默认 PATH 丢失)。剩余可靠方向:Linux 专属 sandbox 命名空间(bubblewrap/unshare,CI 可用)、放弃 PATH 遮蔽改走安装器依赖注入、或 missing-dep 场景标记 Linux-skip 并记入本票妥协项
+- [ ] CI 连续 5 次全绿(gh run list 截图证据贴 ticket),且 workflow 不再含 continue-on-error 妥协项
 - [ ] `make test` 全绿
