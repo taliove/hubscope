@@ -133,11 +133,28 @@ build_sandbox() {
   printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$FAKE_BIN/fake-binary"
 
   # Deliberately not `local`: run_install (below) reads this after build_sandbox returns.
-  # Real coreutils stay reachable (env -i resolves `bash` by name; stub
-  # shebangs need /usr/bin/env); the stub dir goes FIRST so fake tools shadow
-  # the real ones, and missing-dependency scenarios shadow go/pnpm with
-  # exit-127 stubs so a real toolchain can never leak in from base paths.
+  # Base dirs stay for real coreutils (mkdir/cp/date/sleep) and the stub
+  # shebangs' /usr/bin/env; stub dir first so fakes shadow. go/pnpm are
+  # handled per-scenario below (fake or hidden via broken symlink).
   SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin"
+
+  # env shim: `env -i VAR=… cmd` (run_install) must NOT resolve `cmd` through
+  # the sandbox PATH — on Linux, coreutils env skips broken symlinks while
+  # resolving the command and would find the real go the scenario hides.
+  # Instead it re-execs the command through bash with the sandbox PATH
+  # exported (bash's own resolution does not skip the broken symlink).
+  # Everything else (stub shebangs) forwards to the real env.
+  # shellcheck disable=SC2016
+  write_fake_tool env '
+if [ "${1:-}" = "-i" ]; then
+  shift
+  while [ $# -gt 0 ] && [ "${1%%=*}" != "$1" ]; do
+    export "$1"; shift
+  done
+  exec /usr/bin/env bash -c "exec \"\$@\"" dummy "$@"
+fi
+exec /usr/bin/env "$@"
+'
   if [ "$style" = "all" ] || [ "$style" = "no-pnpm" ]; then
     write_fake_tool go 'echo "go $*" > /dev/null'
   else
@@ -155,12 +172,11 @@ build_sandbox() {
   # Callers below intentionally pass no arguments today.
   # shellcheck disable=SC2120
   run_install() {
-    # env is resolved via the DRIVER's PATH (real /usr/bin/env): with -i, env
-    # resolves the command itself in the new minimal PATH, so bash must be
-    # reachable inside the sandbox. Stub tools shadow coreutils where needed;
-    # the missing-dependency scenarios additionally shadow go/pnpm with
-    # exit-127 stubs so a real toolchain can never leak in.
-    env -i PATH="$SANDBOX_PATH" \
+    # The stub env (sandbox dir) handles the -i form itself: it exports the
+    # assignments and re-execs through bash, so the command is resolved by
+    # bash — which honors the broken-symlink shadows — instead of env, which
+    # on Linux would skip them and find the real toolchain.
+    PATH="$SANDBOX_PATH" env -i PATH="$SANDBOX_PATH" \
       HUBSCOPE_PREFIX="$PREFIX_DIR" \
       HUBSCOPE_DATA_DIR="$DATA_DIR" \
       HUBSCOPE_SYSTEMD_DIR="$SYSTEMD_DIR" \
@@ -239,7 +255,7 @@ cleanup_sandbox
 echo "== env overrides: custom prefix / data dir / port honored =="
 build_sandbox all
 expect_exit 0 "install with custom port exits 0" \
-  env -i PATH="$SANDBOX_PATH" \
+  env PATH="$SANDBOX_PATH" \
     HUBSCOPE_PREFIX="$PREFIX_DIR" HUBSCOPE_DATA_DIR="$DATA_DIR" \
     HUBSCOPE_SYSTEMD_DIR="$SYSTEMD_DIR" HUBSCOPE_PORT=9090 \
     bash "$INSTALLER"
