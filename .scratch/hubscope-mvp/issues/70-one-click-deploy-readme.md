@@ -4,7 +4,7 @@
 
 **Blocked by:** 无(spec 0006 已立)
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-24,commits 6a51023 / 85adf49 / 9bb72dd)
 
 - [ ] `scripts/install.sh`(新):set -euo pipefail;env 覆盖四变量;依赖检查缺 Go/pnpm 明确报错;幂等每步先查后做;systemd unit 内嵌 heredoc 模板(User=hubscope、Environment=DATA_PATH/ADDR、Restart=on-failure、基本加固);健康检查轮询 /api/overview 30s;引导输出含 admin create 示例与访问地址
 - [ ] `docker-compose.yml`(新,根目录):单 service build:.,ports 8080,named volume hubscope-data→/var/lib/hubscope,restart unless-stopped
