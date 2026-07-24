@@ -65,10 +65,13 @@ build_binary() {
   [ -f "$REPO_ROOT/bin/hubscope" ] || fail "make build did not produce bin/hubscope"
 }
 
+# BUILD_OUTPUT lets tests redirect the artifact install_binary() picks up;
+# production never sets it (defaults to the make build product).
 install_binary() {
+  local source="${BUILD_OUTPUT:-$REPO_ROOT/bin/hubscope}"
   log "installing binary to $PREFIX/bin/hubscope"
   as_root mkdir -p "$PREFIX/bin"
-  as_root install -m 0755 "$REPO_ROOT/bin/hubscope" "$PREFIX/bin/hubscope"
+  as_root install -m 0755 "$source" "$PREFIX/bin/hubscope"
 }
 
 ensure_user() {

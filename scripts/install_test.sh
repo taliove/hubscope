@@ -112,11 +112,13 @@ build_sandbox() {
   SYSTEMD_DIR="$SANDBOX/systemd"
   mkdir -p "$FAKE_BIN" "$PREFIX_DIR" "$DATA_DIR" "$SYSTEMD_DIR"
 
-  # The installer builds via `make build`; the stub copies a canned binary.
-  # The parameter expansion only expands inside the stub at run time.
-  # bin/ is gitignored, so on a fresh checkout (CI) it may not exist yet.
+  # The installer builds via `make build`; the stub copies a canned binary
+  # to a path INSIDE the sandbox and run_install points BUILD_OUTPUT at it,
+  # so the repo's real bin/hubscope is never touched. (The previous stub
+  # copied the fake into $REPO_ROOT/bin/hubscope, silently swapping out the
+  # developer's real binary on every `make test` run.)
   # shellcheck disable=SC2016
-  write_fake_tool make 'if [ "${1:-}" = "build" ]; then mkdir -p "'"$REPO_ROOT"'/bin" && cp "'"$FAKE_BIN"'/fake-binary" "'"$REPO_ROOT"'/bin/hubscope"; fi'
+  write_fake_tool make 'if [ "${1:-}" = "build" ]; then cp "'"$FAKE_BIN"'/fake-binary" "'"$SANDBOX"'/built-binary"; fi'
 
   # Record every privileged call for assertions.
   write_fake_tool systemctl 'echo "systemctl $*" >> "'"$SANDBOX"'/systemctl.log"'
@@ -184,6 +186,7 @@ exec /usr/bin/env "$@"
       HUBSCOPE_PREFIX="$PREFIX_DIR" \
       HUBSCOPE_DATA_DIR="$DATA_DIR" \
       HUBSCOPE_SYSTEMD_DIR="$SYSTEMD_DIR" \
+      BUILD_OUTPUT="$SANDBOX/built-binary" \
       bash "$INSTALLER" "$@"
   }
 }
