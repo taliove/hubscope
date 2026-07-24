@@ -1,10 +1,12 @@
 <template>
   <header class="app-header">
     <div class="header-inner">
-      <!-- Brand block: app icon (same master as favicon) + wordmark, click goes home. -->
+      <!-- Brand block: BrandMark + Wordmark, click goes home. BrandMark is
+           never used bare — it always appears alongside the Wordmark
+           (ui-guidelines §2b). -->
       <router-link to="/" class="brand">
-        <img src="/logo.png" alt="HubScope" class="brand-logo" />
-        <span class="brand-name">HubScope</span>
+        <BrandMark class="brand-mark" />
+        <Wordmark class="brand-wordmark" />
       </router-link>
 
       <nav class="main-nav">
@@ -20,6 +22,17 @@
       </nav>
 
       <div class="header-right">
+        <!-- Theme toggle (ui-guidelines §2a): available to anonymous
+             visitors too — the status board serves both audiences. Shows
+             the target-state icon (Moon in light theme). -->
+        <el-button
+          link
+          class="theme-toggle"
+          :title="dark ? '切换浅色' : '切换深色'"
+          @click="toggleTheme"
+        >
+          <el-icon :size="16"><Sunny v-if="dark" /><Moon v-else /></el-icon>
+        </el-button>
         <!-- Batch progress entry (ticket 52): rendered only for logged-in
              users while an unfinished batch exists; the rotating Loading
              icon is the only motion (no orange-red, no flashing). -->
@@ -53,12 +66,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, Moon, Sunny } from '@element-plus/icons-vue'
 import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
 import { roleLabel, roleTagType } from '@/utils/role'
+import { useTheme } from '@/utils/theme'
+import BrandMark from './BrandMark.vue'
+import Wordmark from './Wordmark.vue'
 
 // Global shell header (spec: docs/specs/0003-ui-redesign.md §4.1). Rendered by
 // App.vue on every page except /login. Session state is checked locally on
@@ -85,6 +101,7 @@ const NAV_ITEMS: NavItem[] = [
 // `user` is null when unauthenticated; every authed-only branch reads it.
 const user = ref<AuthUser | null>(null)
 const loggingOut = ref(false)
+const { dark, toggleTheme } = useTheme()
 
 // Anonymous visitors only get the public nav entries; logout flips user
 // to null and this computed collapses the nav back immediately.
@@ -192,17 +209,11 @@ onBeforeUnmount(stopBatchPolling)
   gap: 8px;
   text-decoration: none;
 }
-.brand-logo {
-  width: 24px;
-  height: 24px;
-  display: block;
-  /* Apple squircle crop: master is a full-bleed square, corners rounded here */
-  border-radius: 22.4%;
+.brand-mark {
+  font-size: 24px;
 }
-.brand-name {
+.brand-wordmark {
   font-size: var(--hs-text-lg);
-  font-weight: 600;
-  color: var(--hs-text-primary);
 }
 .main-nav {
   display: flex;

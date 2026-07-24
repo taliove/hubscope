@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" alt="HubScope" width="140">
+<img src="docs/assets/logo.svg" alt="HubScope" width="56">
 
 # HubScope
 

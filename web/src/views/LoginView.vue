@@ -1,11 +1,13 @@
 <template>
   <div class="login-page">
     <div class="login-stack">
-      <!-- Brand block above the card (spec §4.2): 40px logo tile, wordmark
-           and platform subtitle; the page renders no AppHeader. -->
+      <!-- Brand block above the card (ui-guidelines §2b): BrandMark +
+           Wordmark (display step) + subtitle; the page renders no AppHeader. -->
       <div class="login-brand">
-        <img src="/logo.png" alt="HubScope" class="login-logo" />
-        <span class="login-wordmark">HubScope</span>
+        <div class="login-brand-row">
+          <BrandMark class="login-mark" />
+          <Wordmark class="login-wordmark" />
+        </div>
         <span class="login-subtitle">LLM Hub 监控与评估平台</span>
       </div>
       <el-card class="login-card">
@@ -43,6 +45,8 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '@/api/auth'
+import BrandMark from '@/components/BrandMark.vue'
+import Wordmark from '@/components/Wordmark.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -97,17 +101,16 @@ async function onSubmit() {
   align-items: center;
   gap: 8px;
 }
-.login-logo {
-  width: 40px;
-  height: 40px;
-  display: block;
-  /* Apple squircle crop: master is a full-bleed square, corners rounded here */
-  border-radius: 22.4%;
+.login-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.login-mark {
+  font-size: 40px;
 }
 .login-wordmark {
-  font-size: var(--hs-text-xl);
-  font-weight: 600;
-  color: var(--hs-text-primary);
+  font-size: var(--hs-text-display);
 }
 .login-subtitle {
   font-size: var(--hs-text-sm);

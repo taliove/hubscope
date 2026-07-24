@@ -2,7 +2,7 @@
   <div class="status-card">
     <div class="brand-bar" />
     <div class="brand-section">
-      <img src="/logo.png" alt="HubScope" class="brand-logo" />
+      <BrandMark class="brand-mark" />
       <span class="brand-title">HubScope 服务状态</span>
     </div>
 
@@ -61,6 +61,7 @@ import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
 import { summaryText } from '@/utils/statusCardSummary'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
 import StatusCardDetail from '@/components/StatusCardDetail.vue'
+import BrandMark from '@/components/BrandMark.vue'
 
 const props = defineProps<{
   entries: OverviewEntry[] // scoped snapshot, disabled endpoints included
@@ -140,12 +141,12 @@ const emptyDetailText = computed(() => {
   padding: 16px 40px;
   background: var(--hs-brand-soft);
 }
-.brand-logo {
-  width: 32px;
-  height: 32px;
+.brand-mark {
+  font-size: 32px;
+  flex-shrink: 0;
 }
 .brand-title {
-  font-size: var(--hs-text-xl);
+  font-size: var(--hs-text-2xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
