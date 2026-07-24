@@ -30,3 +30,21 @@ web/dist/
 .gstack/
 .scratch/design/
 .scratch/web
+
+# AI tool configs (personal preferences, not team-standard; project charter is CLAUDE.md)
+.codebuddy/
+.cursorrules
+.gemini/
+.kiro/
+.qoder/
+.windsurfrules
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+opencode.jsonc
+AGENTS.md
+
+# code-review-graph MCP (personal config; .mcp.json has machine-specific cwd)
+.mcp.json
+.vscode/
+.github/code-review-graph.instruction.md
