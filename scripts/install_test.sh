@@ -124,7 +124,10 @@ build_sandbox() {
   printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$FAKE_BIN/fake-binary"
 
   # Deliberately not `local`: run_install (below) reads this after build_sandbox returns.
-  SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin:/usr/local/bin:/usr/sbin:/sbin"
+  # Only /usr/bin and /bin are kept beyond the stub dir: on CI runners Go/pnpm
+  # are installed under /usr/local, /opt, or snap paths, and a wider PATH would
+  # leak the real toolchain into the missing-dependency scenarios.
+  SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin"
   if [ "$style" = "all" ] || [ "$style" = "no-pnpm" ]; then
     write_fake_tool go 'echo "go $*" > /dev/null'
   fi
