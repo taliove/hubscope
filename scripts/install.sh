@@ -173,9 +173,14 @@ download_binary() {
   sha256_verify "$tarball" "$expected" \
     || fail "checksum verification failed for $asset — aborting, nothing installed"
 
+  # The tarball holds a single platform-suffixed binary
+  # (hubscope_v0.1.0_linux_amd64), not a file literally named "hubscope".
   mkdir -p "$work/binary"
   tar -xzf "$tarball" -C "$work/binary"
-  [ -f "$work/binary/hubscope" ] || fail "tarball did not contain a 'hubscope' binary"
+  local extracted
+  extracted="$(find "$work/binary" -maxdepth 1 -type f -name 'hubscope_*' | head -1)"
+  [ -n "$extracted" ] || fail "tarball did not contain a hubscope binary"
+  mv "$extracted" "$work/binary/hubscope"
   DOWNLOADED_BINARY="$work/binary/hubscope"
 }
 

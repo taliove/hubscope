@@ -136,10 +136,12 @@ make_release_fixture() {
   suffix="$(asset_suffix_for_test)"
   asset="hubscope_${FIXTURE_VERSION}_${suffix}.tar.gz"
   mkdir -p "$root/$FIXTURE_VERSION"
+  # Mirror the real goreleaser tarball layout: the binary inside carries the
+  # platform suffix, not a bare "hubscope" name.
   staged="$(mktemp -d)"
-  printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$staged/hubscope"
-  chmod +x "$staged/hubscope"
-  tar -czf "$root/$FIXTURE_VERSION/$asset" -C "$staged" hubscope
+  printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$staged/hubscope_${FIXTURE_VERSION}_${suffix}"
+  chmod +x "$staged/hubscope_${FIXTURE_VERSION}_${suffix}"
+  tar -czf "$root/$FIXTURE_VERSION/$asset" -C "$staged" "hubscope_${FIXTURE_VERSION}_${suffix}"
   rm -rf "$staged"
   hash="$(sha256_of "$root/$FIXTURE_VERSION/$asset")"
   printf '%s  %s\n' "$hash" "$asset" > "$root/$FIXTURE_VERSION/hubscope_${FIXTURE_VERSION}_checksums.txt"
