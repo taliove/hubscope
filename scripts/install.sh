@@ -165,7 +165,7 @@ download_binary() {
 
   log "downloading $asset"
   fetch_file "$RELEASES_BASE/$VERSION/$asset" "$tarball"
-  fetch_file "$RELEASES_BASE/$VERSION/hubscope_${VERSION#v}_checksums.txt" "$work/checksums.txt"
+  fetch_file "$RELEASES_BASE/$VERSION/hubscope_${VERSION}_checksums.txt" "$work/checksums.txt"
 
   log "verifying sha256 checksum"
   expected="$(awk -v f="$asset" '$2 == f {print $1}' "$work/checksums.txt")"

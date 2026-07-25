@@ -142,7 +142,7 @@ make_release_fixture() {
   tar -czf "$root/$FIXTURE_VERSION/$asset" -C "$staged" hubscope
   rm -rf "$staged"
   hash="$(sha256_of "$root/$FIXTURE_VERSION/$asset")"
-  printf '%s  %s\n' "$hash" "$asset" > "$root/$FIXTURE_VERSION/hubscope_${FIXTURE_VERSION#v}_checksums.txt"
+  printf '%s  %s\n' "$hash" "$asset" > "$root/$FIXTURE_VERSION/hubscope_${FIXTURE_VERSION}_checksums.txt"
   FIXTURE_ASSET="$asset"
 }
 
