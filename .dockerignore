@@ -1,0 +1,11 @@
+# Keep the Docker build context small and deterministic.
+.git
+node_modules
+web/node_modules
+web/dist
+bin
+data
+*.db
+.claude
+.githooks
+docs/assets

@@ -1,0 +1,17 @@
+# pnpm 10+ blocks dependency build scripts by default; pnpm 11 additionally
+# fails the install (strictDepBuilds=true) when any build script is ignored
+# (ERR_PNPM_IGNORED_BUILDS). esbuild needs its postinstall to place the
+# platform binary, otherwise vite builds break. node:22-alpine's corepack
+# resolves the latest pnpm, so the Docker build hits the pnpm 11 behavior.
+#
+# Config lives in this root file rather than web/package.json: pnpm 11 ignores
+# the deprecated `pnpm` field in package.json and reads these settings only
+# from pnpm-workspace.yaml, discovered by walking up from web/.
+packages:
+  - web
+allowBuilds:
+  esbuild: true
+# Reuse the pre-workspace node_modules layout in place (symlinks still valid);
+# without this, pnpm wants to purge and relink, which aborts non-TTY runs
+# (Makefile, CI) with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
+confirmModulesPurge: false

@@ -2,6 +2,10 @@
 FROM node:22-alpine AS web
 WORKDIR /build
 RUN corepack enable
+# Root pnpm-workspace.yaml carries allowBuilds (esbuild) — required by pnpm 11,
+# which node:22-alpine's corepack resolves to and which fails the install on
+# ignored build scripts (ERR_PNPM_IGNORED_BUILDS).
+COPY pnpm-workspace.yaml ../
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./

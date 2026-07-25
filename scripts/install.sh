@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
 # install.sh — one-command HubScope deployment for Linux servers (root or sudo user).
 #
-# Behavior: dependency check -> make build -> install binary -> create system
-# user and data directory -> render systemd unit (embedded template below is the
-# single source of truth; docs/deployment.md describes this script, it does not
-# duplicate the unit) -> enable and start -> poll health endpoint -> print
-# next-step guidance.
+# Default behavior: download the prebuilt release binary from GitHub Releases
+# (version via HUBSCOPE_VERSION, default: latest) -> verify checksum -> install
+# binary -> create system user and data directory -> render systemd unit
+# (embedded template below is the single source of truth; docs/deployment.md
+# describes this script, it does not duplicate the unit) -> enable and start ->
+# poll health endpoint -> print next-step guidance. No Go/Node toolchain
+# needed — HubScope ships as a single static binary.
+#
+# With --build-from-source (or HUBSCOPE_BUILD_FROM_SOURCE=1): dependency check
+# (go + pnpm) -> make build -> same install steps. For developers only.
 #
 # Idempotent: every step checks before acting; the unit file is rewritten on
 # each run (content is the truth); the data directory is created but never
-# cleared. Re-running the script upgrades to the current source version.
+# cleared. Re-running the script upgrades to the requested release version.
 #
 # Overridable via environment:
-#   HUBSCOPE_PREFIX      install prefix           (default /usr/local)
-#   HUBSCOPE_DATA_DIR    data directory           (default /var/lib/hubscope)
-#   HUBSCOPE_USER        service system user      (default hubscope)
-#   HUBSCOPE_PORT        listen port              (default 8080)
-#   HUBSCOPE_SYSTEMD_DIR systemd unit directory   (default /etc/systemd/system;
-#                        exists so tests never touch the real system)
+#   HUBSCOPE_VERSION      release tag to install  (default: latest release)
+#   HUBSCOPE_PREFIX       install prefix          (default /usr/local)
+#   HUBSCOPE_DATA_DIR     data directory          (default /var/lib/hubscope)
+#   HUBSCOPE_USER         service system user     (default hubscope)
+#   HUBSCOPE_PORT         listen port             (default 8080)
+#   HUBSCOPE_SYSTEMD_DIR  systemd unit directory  (default /etc/systemd/system;
+#                         exists so tests never touch the real system)
+#   RELEASES_BASE         releases download root  (default GitHub Releases URL;
+#                         tests point this at a file:// fixture)
+#   DOWNLOAD_DIR          scratch dir for downloads (default: mktemp; tests
+#                         redirect it into the sandbox)
 set -euo pipefail
 
 PREFIX="${HUBSCOPE_PREFIX:-/usr/local}"
@@ -25,13 +35,40 @@ DATA_DIR="${HUBSCOPE_DATA_DIR:-/var/lib/hubscope}"
 SVC_USER="${HUBSCOPE_USER:-hubscope}"
 PORT="${HUBSCOPE_PORT:-8080}"
 SYSTEMD_DIR="${HUBSCOPE_SYSTEMD_DIR:-/etc/systemd/system}"
+VERSION="${HUBSCOPE_VERSION:-}"
+RELEASES_BASE="${RELEASES_BASE:-https://github.com/taliove/hubscope/releases/download}"
+GITHUB_API_LATEST="https://api.github.com/repos/taliove/hubscope/releases/latest"
 SERVICE_NAME="hubscope"
 HEALTH_TIMEOUT_SECONDS=30
+BUILD_FROM_SOURCE=0
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 log()  { printf '[hubscope-install] %s\n' "$*"; }
 fail() { printf '[hubscope-install] ERROR: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<EOF
+Usage: install.sh [--build-from-source]
+
+  (default)            download the prebuilt release binary and install it as a
+                       systemd service. Requires only curl and tar.
+  --build-from-source  build from this checkout with 'make build' instead
+                       (requires Go and pnpm). For developers.
+
+Environment overrides: HUBSCOPE_VERSION, HUBSCOPE_PREFIX, HUBSCOPE_DATA_DIR,
+HUBSCOPE_USER, HUBSCOPE_PORT — see script header for the full list.
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --build-from-source) BUILD_FROM_SOURCE=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "unknown argument: $arg (see --help)" ;;
+  esac
+done
+[ "${HUBSCOPE_BUILD_FROM_SOURCE:-0}" = "1" ] && BUILD_FROM_SOURCE=1
 
 # as_root runs a command directly when root, otherwise via sudo.
 SUDO=""
@@ -55,8 +92,89 @@ require_cmd() {
 }
 
 check_dependencies() {
-  require_cmd go "Go toolchain: https://go.dev/dl/"
-  require_cmd pnpm "pnpm: https://pnpm.io/installation"
+  if [ "$BUILD_FROM_SOURCE" -eq 1 ]; then
+    require_cmd go "Go toolchain: https://go.dev/dl/"
+    require_cmd pnpm "pnpm: https://pnpm.io/installation"
+    require_cmd make "make"
+  else
+    require_cmd curl "curl"
+    require_cmd tar "tar"
+  fi
+}
+
+# detect_asset_suffix maps the current machine onto a release asset suffix
+# like linux_amd64. Release assets follow goreleaser naming:
+# hubscope_<version>_<os>_<arch>.tar.gz
+detect_asset_suffix() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os" in
+    Linux)  os="linux" ;;
+    Darwin) os="darwin" ;;
+    *) fail "unsupported OS: $os (release assets cover linux/darwin only)" ;;
+  esac
+  case "$arch" in
+    x86_64|amd64)   arch="amd64" ;;
+    aarch64|arm64)  arch="arm64" ;;
+    *) fail "unsupported architecture: $arch (release assets cover amd64/arm64 only)" ;;
+  esac
+  printf '%s_%s' "$os" "$arch"
+}
+
+resolve_version() {
+  if [ -n "$VERSION" ]; then
+    log "installing requested version $VERSION"
+    return 0
+  fi
+  log "resolving latest release version..."
+  VERSION="$(curl -fsSL "$GITHUB_API_LATEST" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  [ -n "$VERSION" ] || fail "could not resolve latest release from $GITHUB_API_LATEST; set HUBSCOPE_VERSION explicitly"
+  log "latest release is $VERSION"
+}
+
+# fetch_file URL DEST — thin wrapper so tests and logs see every download.
+fetch_file() {
+  curl -fsSL "$1" -o "$2" || fail "download failed: $1"
+}
+
+# sha256_verify FILE EXPECTED_HASH — verifies FILE against its expected
+# sha256. macOS ships shasum but not sha256sum; both print "hash  name".
+sha256_verify() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    [ "$(sha256sum "$1" | awk '{print $1}')" = "$2" ]
+  elif command -v shasum >/dev/null 2>&1; then
+    [ "$(shasum -a 256 "$1" | awk '{print $1}')" = "$2" ]
+  else
+    fail "neither sha256sum nor shasum available; cannot verify release checksum"
+  fi
+}
+
+# download_binary fetches the release tarball + checksums into DOWNLOAD_DIR,
+# verifies the tarball against its sha256, and extracts the binary to
+# $DOWNLOAD_DIR/binary/hubscope.
+download_binary() {
+  local suffix asset tarball url work expected
+  suffix="$(detect_asset_suffix)"
+  asset="hubscope_${VERSION#v}_${suffix}.tar.gz"
+  work="${DOWNLOAD_DIR:-$(mktemp -d)}"
+  mkdir -p "$work"
+  tarball="$work/$asset"
+
+  log "downloading $asset"
+  fetch_file "$RELEASES_BASE/$VERSION/$asset" "$tarball"
+  fetch_file "$RELEASES_BASE/$VERSION/hubscope_${VERSION#v}_checksums.txt" "$work/checksums.txt"
+
+  log "verifying sha256 checksum"
+  expected="$(awk -v f="$asset" '$2 == f {print $1}' "$work/checksums.txt")"
+  [ -n "$expected" ] || fail "checksums file has no entry for $asset — aborting, nothing installed"
+  sha256_verify "$tarball" "$expected" \
+    || fail "checksum verification failed for $asset — aborting, nothing installed"
+
+  mkdir -p "$work/binary"
+  tar -xzf "$tarball" -C "$work/binary"
+  [ -f "$work/binary/hubscope" ] || fail "tarball did not contain a 'hubscope' binary"
+  DOWNLOADED_BINARY="$work/binary/hubscope"
 }
 
 build_binary() {
@@ -65,13 +183,28 @@ build_binary() {
   [ -f "$REPO_ROOT/bin/hubscope" ] || fail "make build did not produce bin/hubscope"
 }
 
-# BUILD_OUTPUT lets tests redirect the artifact install_binary() picks up;
-# production never sets it (defaults to the make build product).
+# obtain_binary picks the artifact install_binary() will pick up:
+#   BUILD_OUTPUT override (tests) > built-from-source product > downloaded
+#   release binary. Production sets neither BUILD_OUTPUT nor DOWNLOADED_BINARY
+#   before obtain_binary runs.
+obtain_binary() {
+  if [ -n "${BUILD_OUTPUT:-}" ]; then
+    BINARY_SOURCE="$BUILD_OUTPUT"
+  elif [ "$BUILD_FROM_SOURCE" -eq 1 ]; then
+    build_binary
+    BINARY_SOURCE="$REPO_ROOT/bin/hubscope"
+  else
+    resolve_version
+    download_binary
+    BINARY_SOURCE="$DOWNLOADED_BINARY"
+  fi
+  [ -f "$BINARY_SOURCE" ] || fail "binary not found at $BINARY_SOURCE"
+}
+
 install_binary() {
-  local source="${BUILD_OUTPUT:-$REPO_ROOT/bin/hubscope}"
   log "installing binary to $PREFIX/bin/hubscope"
   as_root mkdir -p "$PREFIX/bin"
-  as_root install -m 0755 "$source" "$PREFIX/bin/hubscope"
+  as_root install -m 0755 "$BINARY_SOURCE" "$PREFIX/bin/hubscope"
 }
 
 ensure_user() {
@@ -173,7 +306,7 @@ EOF
 
 main() {
   check_dependencies
-  build_binary
+  obtain_binary
   install_binary
   ensure_user
   ensure_data_dir
@@ -183,4 +316,4 @@ main() {
   print_guidance
 }
 
-main "$@"
+main
