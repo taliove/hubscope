@@ -29,7 +29,39 @@ One Go binary. Embedded Vue dashboard with light and dark themes. Embedded SQLit
 
 ## Get started
 
-**Prebuilt binary** (Linux / macOS, amd64 / arm64 — from [Releases](https://github.com/taliove/hubscope/releases)):
+**One-command install** (Linux — downloads the latest release binary, verifies its sha256, and installs a hardened systemd service; no Go/Node toolchain needed):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/taliove/hubscope/main/scripts/install.sh | sudo bash
+sudo DATA_PATH=/var/lib/hubscope/app.db /usr/local/bin/hubscope admin create --username admin --password 'your-strong-password'
+```
+
+Pin a version with `HUBSCOPE_VERSION=v0.1.0`. Overridable via env: `HUBSCOPE_PREFIX`, `HUBSCOPE_DATA_DIR`, `HUBSCOPE_PORT` — see the script header.
+
+**Docker** (no Go/Node toolchain needed — the image builds itself):
+
+```sh
+git clone https://github.com/taliove/hubscope.git && cd hubscope
+docker compose up -d --build
+docker compose exec hubscope hubscope admin create --username admin --password 'your-strong-password'
+```
+
+> **Behind an HTTP proxy?** The build pulls base images, Go modules and npm packages, so both the Docker daemon and the build itself need the proxy:
+>
+> ```sh
+> # 1. daemon: /etc/systemd/system/docker.service.d/proxy.conf
+> [Service]
+> Environment="HTTP_PROXY=http://<proxy-host>:<port>"
+> Environment="HTTPS_PROXY=http://<proxy-host>:<port>"
+> Environment="NO_PROXY=localhost,127.0.0.1,::1"
+> # then: sudo systemctl daemon-reload && sudo systemctl restart docker
+>
+> # 2. build containers:
+> HTTP_PROXY=http://<proxy-host>:<port> HTTPS_PROXY=http://<proxy-host>:<port> \
+>   docker compose up -d --build
+> ```
+
+**Prebuilt binary, no service** (Linux / macOS, amd64 / arm64 — from [Releases](https://github.com/taliove/hubscope/releases); good for a quick look):
 
 ```sh
 curl -LO https://github.com/taliove/hubscope/releases/download/v0.1.0/hubscope_v0.1.0_linux_amd64.tar.gz
@@ -38,23 +70,9 @@ tar xzf hubscope_v0.1.0_linux_amd64.tar.gz
 ./hubscope_v0.1.0_linux_amd64 admin create --username admin --password 'your-strong-password'
 ```
 
-**Docker** (no Go/Node toolchain needed):
-
-```sh
-git clone https://github.com/taliove/hubscope.git && cd hubscope
-docker compose up -d --build
-docker compose exec hubscope hubscope admin create --username admin --password 'your-strong-password'
-```
-
-**One-command install** (Linux, requires Go + pnpm — builds from source and installs a hardened systemd service):
-
-```sh
-sudo scripts/install.sh
-```
-
 Then open **http://localhost:8080**, log in, add a hub — models are discovered automatically.
 
-Production deployment (systemd / nginx / reverse proxy): [docs/deployment.md](docs/deployment.md).
+Production deployment (systemd / nginx / reverse proxy): [docs/deployment.md](docs/deployment.md). Building from source or hacking on the code: `sudo scripts/install.sh --build-from-source` (requires Go + pnpm).
 
 ## Build from source
 

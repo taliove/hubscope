@@ -29,7 +29,39 @@
 
 ## 快速开始
 
-**预编译二进制**(Linux / macOS,amd64 / arm64,见 [Releases](https://github.com/taliove/hubscope/releases)):
+**一键部署脚本**(Linux——下载最新 release 二进制、校验 sha256、安装为加固的 systemd 服务;无需 Go/Node 工具链):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/taliove/hubscope/main/scripts/install.sh | sudo bash
+sudo DATA_PATH=/var/lib/hubscope/app.db /usr/local/bin/hubscope admin create --username admin --password '换成强口令'
+```
+
+可用 `HUBSCOPE_VERSION=v0.1.0` 锁定版本;`HUBSCOPE_PREFIX`、`HUBSCOPE_DATA_DIR`、`HUBSCOPE_PORT` 等环境变量可覆盖默认值,详见脚本头部注释。
+
+**Docker**(无需 Go/Node 工具链——镜像在本地自行构建):
+
+```sh
+git clone https://github.com/taliove/hubscope.git && cd hubscope
+docker compose up -d --build
+docker compose exec hubscope hubscope admin create --username admin --password '换成强口令'
+```
+
+> **走 HTTP 代理?** 构建需要拉基础镜像、Go modules 和 npm 包,Docker daemon 和构建容器都要配代理:
+>
+> ```sh
+> # 1. daemon:/etc/systemd/system/docker.service.d/proxy.conf
+> [Service]
+> Environment="HTTP_PROXY=http://<代理地址>:<端口>"
+> Environment="HTTPS_PROXY=http://<代理地址>:<端口>"
+> Environment="NO_PROXY=localhost,127.0.0.1,::1"
+> # 然后:sudo systemctl daemon-reload && sudo systemctl restart docker
+>
+> # 2. 构建容器:
+> HTTP_PROXY=http://<代理地址>:<端口> HTTPS_PROXY=http://<代理地址>:<端口> \
+>   docker compose up -d --build
+> ```
+
+**预编译二进制,不装服务**(Linux / macOS,amd64 / arm64,见 [Releases](https://github.com/taliove/hubscope/releases);适合快速体验):
 
 ```sh
 curl -LO https://github.com/taliove/hubscope/releases/download/v0.1.0/hubscope_v0.1.0_linux_amd64.tar.gz
@@ -38,23 +70,9 @@ tar xzf hubscope_v0.1.0_linux_amd64.tar.gz
 ./hubscope_v0.1.0_linux_amd64 admin create --username admin --password '换成强口令'
 ```
 
-**Docker**(无需 Go/Node 工具链):
-
-```sh
-git clone https://github.com/taliove/hubscope.git && cd hubscope
-docker compose up -d --build
-docker compose exec hubscope hubscope admin create --username admin --password '换成强口令'
-```
-
-**一键部署脚本**(Linux,需要 Go + pnpm——从源码构建并安装为加固的 systemd 服务):
-
-```sh
-sudo scripts/install.sh
-```
-
 然后打开 **http://localhost:8080**,登录,添加 Hub——模型自动发现。
 
-生产部署(systemd / nginx / 反向代理)见 [docs/deployment.md](docs/deployment.md)。
+生产部署(systemd / nginx / 反向代理)见 [docs/deployment.md](docs/deployment.md)。从源码安装或二次开发:`sudo scripts/install.sh --build-from-source`(需要 Go + pnpm)。
 
 ## 从源码构建
 

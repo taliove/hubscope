@@ -7,21 +7,25 @@ an alternative.
 ## Recommended: one-command install script
 
 The recommended path is `scripts/install.sh`, which automates every manual
-step described below:
+step described below — **no Go/pnpm toolchain required**:
 
 ```sh
-sudo scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/taliove/hubscope/main/scripts/install.sh | sudo bash
 ```
 
-The script checks for the Go/pnpm toolchain (failing early with a clear
-message if something is missing), builds the binary, installs it to
+The script resolves the latest release (pin one with `HUBSCOPE_VERSION=vX.Y.Z`),
+downloads the prebuilt binary for the host's OS/arch from GitHub Releases,
+verifies its sha256 against the release checksums, installs it to
 `/usr/local/bin/hubscope`, creates a `hubscope` system user and the
 `/var/lib/hubscope` data directory, renders and enables the systemd unit,
 waits for the health check to pass, and prints the next steps (the
 `hubscope admin create` bootstrap command and the URL to open). Re-running
-the script is safe: it upgrades to the current source version (rebuild,
+the script is safe: it upgrades to the requested release version (download,
 replace the binary, restart the service) without touching existing data or
 configuration.
+
+For development checkouts, `sudo scripts/install.sh --build-from-source`
+builds the binary from source instead (this path does require Go + pnpm).
 
 The manual steps below are kept as a reference — for understanding what the
 script does, for hosts where it cannot run, and for packaging.
@@ -133,10 +137,15 @@ docker run -d --name hubscope \
 The first user (a global `super_admin`) must be created out-of-band via the
 CLI, because there is no way to reach the authenticated user-management API
 before any user exists. Run the binary with the `admin create` subcommand
-against the same database the server uses:
+against the same database the server uses — **passing `DATA_PATH`
+explicitly**: the CLI defaults to `./data/app.db` relative to your current
+directory, and running it from another directory silently creates a fresh,
+empty database there (the command succeeds, but logins against the real
+service database then fail with "invalid credentials"):
 
 ```sh
-sudo -u hubscope /usr/local/bin/hubscope admin create \
+sudo -u hubscope DATA_PATH=/var/lib/hubscope/app.db \
+  /usr/local/bin/hubscope admin create \
   --username admin --password 'a-strong-password'
 ```
 
@@ -144,7 +153,8 @@ To create a hub-scoped user instead of a global super_admin, pass `--hub
 <id>` and `--role admin|operator|viewer` together (both required):
 
 ```sh
-sudo -u hubscope /usr/local/bin/hubscope admin create \
+sudo -u hubscope DATA_PATH=/var/lib/hubscope/app.db \
+  /usr/local/bin/hubscope admin create \
   --username alice --password 'a-strong-password' \
   --hub 1 --role operator
 ```
