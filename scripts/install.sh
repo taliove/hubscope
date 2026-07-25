@@ -299,8 +299,12 @@ print_guidance() {
 HubScope installed and running.
 
 Next steps:
+  # The CLI resolves the database via DATA_PATH (default ./data/app.db),
+  # so the admin command must run with the service's DATA_PATH — otherwise
+  # it silently writes to a fresh db in the caller's cwd and logins fail
+  # against the real one.
   1. Create the first super admin (replace with your own strong password):
-       $PREFIX/bin/hubscope admin create --username admin --password 'REPLACE-WITH-STRONG-PASSWORD'
+       sudo DATA_PATH=$DATA_DIR/app.db $PREFIX/bin/hubscope admin create --username admin --password 'REPLACE-WITH-STRONG-PASSWORD'
   2. Open the dashboard:
        http://localhost:$PORT
   3. Manage the service:
