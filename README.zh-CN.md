@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/taliove/hubscope/main/scripts/insta
 sudo DATA_PATH=/var/lib/hubscope/app.db /usr/local/bin/hubscope admin create --username admin --password '换成强口令'
 ```
 
-可用 `HUBSCOPE_VERSION=v0.1.0` 锁定版本;`HUBSCOPE_PREFIX`、`HUBSCOPE_DATA_DIR`、`HUBSCOPE_PORT` 等环境变量可覆盖默认值,详见脚本头部注释。
+可用 `HUBSCOPE_VERSION=v0.2.0` 锁定版本;`HUBSCOPE_PREFIX`、`HUBSCOPE_DATA_DIR`、`HUBSCOPE_PORT` 等环境变量可覆盖默认值,详见脚本头部注释。
 
 **Docker**(无需 Go/Node 工具链——镜像在本地自行构建):
 
@@ -64,10 +64,10 @@ docker compose exec hubscope hubscope admin create --username admin --password '
 **预编译二进制,不装服务**(Linux / macOS,amd64 / arm64,见 [Releases](https://github.com/taliove/hubscope/releases);适合快速体验):
 
 ```sh
-curl -LO https://github.com/taliove/hubscope/releases/download/v0.1.0/hubscope_v0.1.0_linux_amd64.tar.gz
-tar xzf hubscope_v0.1.0_linux_amd64.tar.gz
-./hubscope_v0.1.0_linux_amd64
-./hubscope_v0.1.0_linux_amd64 admin create --username admin --password '换成强口令'
+curl -LO https://github.com/taliove/hubscope/releases/download/v0.2.0/hubscope_v0.2.0_linux_amd64.tar.gz
+tar xzf hubscope_v0.2.0_linux_amd64.tar.gz
+./hubscope_v0.2.0_linux_amd64
+./hubscope_v0.2.0_linux_amd64 admin create --username admin --password '换成强口令'
 ```
 
 然后打开 **http://localhost:8080**,登录,添加 Hub——模型自动发现。
