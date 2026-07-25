@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -56,11 +57,24 @@ func main() {
 	}
 }
 
+// initFallbackRoots installs the system CA bundle as the fallback root pool
+// so TLS verification works in scratch containers that lack
+// /etc/ssl/certs/ca-certificates.crt. It is a no-op when the system pool is
+// available (normal host installs).
+func initFallbackRoots() {
+	pool, err := x509.SystemCertPool()
+	if err != nil || len(pool.Subjects()) == 0 {
+		return
+	}
+	x509.SetFallbackRoots(pool)
+}
+
 // run assembles dependencies, starts the HTTP server, and blocks until a
 // termination signal triggers graceful shutdown.
 func run() error {
 	configureLogging()
 	logEffectiveProxy()
+	initFallbackRoots()
 
 	dataPath := envOr("DATA_PATH", defaultDataPath)
 	addr := envOr("ADDR", defaultAddr)
