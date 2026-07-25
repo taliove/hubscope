@@ -66,6 +66,11 @@ jobs:
 
           # Assemble the notes: fixed install/upgrade section + the highlights
           # carried in the tag annotation + auto-generated categorized changes.
+          # actions/checkout fetches the tag push by commit sha
+          # (+<commit>:refs/tags/<tag>), which replaces the tag ref with a
+          # LIGHTWEIGHT tag — the annotation object is not in the clone.
+          # Re-fetch the tag ref explicitly to restore the annotation.
+          git fetch --no-tags --depth=1 origin "+refs/tags/${TAG}:refs/tags/${TAG}"
           HIGHLIGHTS="$(git tag -l --format='%(contents:body)' "$TAG")"
           {
             echo "## Install / Upgrade"
