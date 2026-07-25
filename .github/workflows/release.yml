@@ -57,7 +57,20 @@ jobs:
           test -x "/tmp/hubscope_${GITHUB_REF_NAME}_linux_amd64"
           echo "binary extracted and executable: OK"
 
-      - name: Upload to GitHub Release
+      - name: Create GitHub Release with notes and assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*_checksums.txt --clobber
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # create (not upload) so the workflow is self-contained — no
+          # manual `gh release create` race before the upload step. Notes are
+          # auto-generated from merged PRs and categorized per
+          # .github/release.yml. Re-runs on an existing release only refresh
+          # the assets.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tar.gz "dist/hubscope_${TAG}_checksums.txt" --clobber
+          else
+            gh release create "$TAG" dist/*.tar.gz "dist/hubscope_${TAG}_checksums.txt" \
+              --title "$TAG" --generate-notes --verify-tag
+          fi

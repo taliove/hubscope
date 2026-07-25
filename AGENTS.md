@@ -47,6 +47,7 @@
 1. 从 frontier ticket 开工(`.scratch/hubscope-mvp/issues/`,Blocked by 全部完成的票)。
 2. 影响分析(`architect`)→ TDD 实现(`implementer` + implement-ticket skill)→ 三层测试(`test-verifier`)→ `code-reviewer` 独立审查 → 英文 commit。
 3. 一票一 commit(或一票内多个原子 commit),完成 ticket 后在其文件的 Status 处标记 done。
+4. **合并与发布走 [docs/releasing.md](./docs/releasing.md)**:改动一律经 PR(模板 + 恰好一个 release-notes label + CI 绿 + squash merge)进 main,禁止本地 FF 直推;发版唯一入口是 `scripts/release.sh vX.Y.Z`(经用户明确指令后执行),GitHub Release 由 release workflow 自动创建(分类 notes + 产物)。
 
 ## 持续进化
 

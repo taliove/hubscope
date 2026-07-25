@@ -5,7 +5,7 @@ description: 发布/打包前检查清单:全量门禁、版本、部署产物�
 
 # 发布检查清单
 
-发布动作(push、tag、部署)只在用户明确指令后执行;本清单只做检查与准备。
+发布动作(push、tag、部署)只在用户明确指令后执行;本清单只做检查与准备。**发版动作的唯一入口是 `scripts/release.sh vX.Y.Z`,完整流程(含 PR 合并规范)见 [docs/releasing.md](../../../docs/releasing.md);本清单是发版前的核对项,不替代该流程。**
 
 1. **门禁全绿**:`make test` 通过;`git status` 干净;commit 历史全为英文 Conventional Commits。
 2. **打包**:`make package`(单二进制 + Dockerfile + 部署文档 tar 包);本机无 Docker,Dockerfile 只做静态检查,如实告知未实际构建镜像。
