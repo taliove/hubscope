@@ -134,7 +134,7 @@ make_release_fixture() {
   local root="$1"
   local suffix asset staged hash
   suffix="$(asset_suffix_for_test)"
-  asset="hubscope_${FIXTURE_VERSION#v}_${suffix}.tar.gz"
+  asset="hubscope_${FIXTURE_VERSION}_${suffix}.tar.gz"
   mkdir -p "$root/$FIXTURE_VERSION"
   staged="$(mktemp -d)"
   printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$staged/hubscope"

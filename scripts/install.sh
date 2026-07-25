@@ -156,7 +156,9 @@ sha256_verify() {
 download_binary() {
   local suffix asset tarball url work expected
   suffix="$(detect_asset_suffix)"
-  asset="hubscope_${VERSION#v}_${suffix}.tar.gz"
+  # Release assets follow goreleaser naming: hubscope_<tag>_<os>_<arch>.tar.gz
+  # (the tag's v prefix is kept — hubscope_v0.1.0_linux_amd64.tar.gz).
+  asset="hubscope_${VERSION}_${suffix}.tar.gz"
   work="${DOWNLOAD_DIR:-$(mktemp -d)}"
   mkdir -p "$work"
   tarball="$work/$asset"
