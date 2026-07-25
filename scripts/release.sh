@@ -7,12 +7,17 @@
 #   2. Run the full test gate (make test — the same gate as the git hooks).
 #   3. Bump the README version references (download URL + HUBSCOPE_VERSION
 #      example) from the current version to the requested one.
-#   4. Commit the bump, create the annotated tag, push main and the tag.
+#   4. Collect the Highlights for the release notes (an editor opens with a
+#      template; 1-3 user-facing sentences — what this release is and why it
+#      is worth upgrading).
+#   5. Commit the bump, create the annotated tag, push main and the tag.
+#      The collected highlights travel to the release workflow as the tag
+#      message (the annotation after the version line).
 #
 # The tag push triggers .github/workflows/release.yml, which cross-compiles
-# the binaries and creates the GitHub Release with auto-generated,
-# label-categorized notes (see .github/release.yml) — no manual release
-# creation step.
+# the binaries and creates the GitHub Release: fixed install/upgrade
+# instructions + the highlights + auto-generated, label-categorized notes
+# (see .github/release.yml) — no manual release creation step.
 #
 # Usage: scripts/release.sh vX.Y.Z
 #
@@ -72,13 +77,30 @@ rm -f README.md.bak README.zh-CN.md.bak
 git add README.md README.zh-CN.md
 git diff --cached --stat
 
-# --- 4. Commit, tag, push -----------------------------------------------------
+# --- 4. Collect release highlights ---------------------------------------------
+
+# The highlights become the tag annotation (after the version line) and the
+# release workflow lifts them into the GitHub Release notes. An editor opens
+# with a template; lines starting with # are stripped.
+HIGHLIGHTS_FILE="$(mktemp "${TMPDIR:-/tmp}/hubscope-release-notes.XXXXXX")"
+trap 'rm -f "$HIGHLIGHTS_FILE"' EXIT
+cat > "$HIGHLIGHTS_FILE" <<'EOF'
+
+# Highlights for this release: 1-3 user-facing sentences — what this release
+# is and why it is worth upgrading. Write for someone deciding whether to
+# upgrade, not for a reviewer. Lines starting with # are ignored.
+EOF
+"${EDITOR:-vi}" "$HIGHLIGHTS_FILE"
+HIGHLIGHTS="$(grep -v '^#' "$HIGHLIGHTS_FILE" | sed -e 's/^[[:space:]]*//' -e '/^$/d')"
+[ -n "$HIGHLIGHTS" ] || fail "no highlights provided — a release without a user-facing summary is not publishable"
+
+# --- 5. Commit, tag, push -------------------------------------------------------
 
 log "committing version bump"
 git commit -m "chore(release): $VERSION" --quiet
 
 log "tagging $VERSION"
-git tag -a "$VERSION" -m "$VERSION"
+git tag -a "$VERSION" -m "$VERSION" -m "$HIGHLIGHTS"
 
 log "pushing main and $VERSION (pre-push gate re-runs make test)"
 git push origin main --quiet

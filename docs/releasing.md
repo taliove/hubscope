@@ -39,7 +39,11 @@ The script:
    unused) and runs `make test`.
 2. Bumps the README version references (download URL, `HUBSCOPE_VERSION`
    example) in both `README.md` and `README.zh-CN.md`.
-3. Commits the bump (`chore(release): vX.Y.Z`), creates the annotated tag,
+3. Opens an editor for the **release highlights** — 1-3 user-facing
+   sentences about what the release is and why it is worth upgrading. They
+   travel to the workflow as the tag annotation and land in the release
+   notes. A release without highlights is refused.
+4. Commits the bump (`chore(release): vX.Y.Z`), creates the annotated tag,
    pushes `main` and the tag.
 
 The tag push triggers `.github/workflows/release.yml`, which:
@@ -47,11 +51,15 @@ The tag push triggers `.github/workflows/release.yml`, which:
 1. Builds the frontend, cross-compiles `linux/darwin × amd64/arm64` binaries,
    generates `hubscope_<tag>_checksums.txt`, smoke-tests the linux/amd64
    binary.
-2. Creates the GitHub Release itself — `gh release create --generate-notes` —
-   with notes auto-generated from merged PRs and categorized by label
-   (Features / Fixes / Documentation / Maintenance / Other Changes), then
-   attaches the tarballs and checksums. No manual `gh release create` step;
-   re-running the workflow on an existing release only refreshes assets.
+2. Creates the GitHub Release itself with a notes body assembled from:
+   a fixed **Install / Upgrade** section (one-command install, Docker,
+   binaries + checksum verification, in-place upgrade note), the
+   **Highlights** from the tag annotation, and the auto-generated
+   **What's Changed** list categorized by label (Features / Fixes /
+   Documentation / Maintenance / Other Changes). The generated
+   "New Contributors" section is stripped — noise in a solo-maintained repo.
+   No manual `gh release create` step; re-running the workflow on an
+   existing release only refreshes assets.
 
 After the workflow finishes, verify:
 

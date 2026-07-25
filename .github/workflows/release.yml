@@ -63,14 +63,56 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          # create (not upload) so the workflow is self-contained — no
-          # manual `gh release create` race before the upload step. Notes are
-          # auto-generated from merged PRs and categorized per
-          # .github/release.yml. Re-runs on an existing release only refresh
-          # the assets.
+
+          # Assemble the notes: fixed install/upgrade section + the highlights
+          # carried in the tag annotation + auto-generated categorized changes.
+          HIGHLIGHTS="$(git tag -l --format='%(contents:body)' "$TAG")"
+          {
+            echo "## Install / Upgrade"
+            echo ""
+            echo "**One-command install** (Linux, systemd service):"
+            echo '```sh'
+            echo "curl -fsSL https://raw.githubusercontent.com/taliove/hubscope/main/scripts/install.sh | sudo bash"
+            echo '```'
+            echo "**Docker**:"
+            echo '```sh'
+            echo "git clone https://github.com/taliove/hubscope.git && cd hubscope"
+            echo "docker compose up -d --build"
+            echo '```'
+            echo "**Binaries**: download the tarball for your platform below (linux/darwin × amd64/arm64). Verify with \`${TAG}_checksums.txt\`:"
+            echo '```sh'
+            echo "sha256sum -c hubscope_${TAG}_checksums.txt --ignore-missing"
+            echo '```'
+            echo "Already running an older release? Re-run the same command you installed with — it upgrades in place and preserves data."
+            echo ""
+            if [ -n "$HIGHLIGHTS" ]; then
+              echo "## Highlights"
+              echo ""
+              echo "$HIGHLIGHTS"
+              echo ""
+            fi
+          } > fixed-notes.md
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/*.tar.gz "dist/hubscope_${TAG}_checksums.txt" --clobber
           else
             gh release create "$TAG" dist/*.tar.gz "dist/hubscope_${TAG}_checksums.txt" \
-              --title "$TAG" --generate-notes --verify-tag
+              --title "$TAG" --generate-notes --verify-tag \
+              --notes-file fixed-notes.md
           fi
+
+          # --generate-notes appends its output after our notes-file; strip
+          # the sections that are noise for this repo (solo maintainer:
+          # "New Contributors" is always the same person). The section is
+          # always last in the generated output, so cut from its heading to
+          # the next heading (or EOF), then re-append Full Changelog if the
+          # cut swallowed it.
+          CURRENT_BODY="$(gh release view "$TAG" --json body --jq .body)"
+          printf '%s\n' "$CURRENT_BODY" | awk '
+            /^## New Contributors$/          { skip=1; next }
+            skip && /^\*\*Full Changelog\*\*/ { skip=0 }
+            skip && /^## /                   { skip=0 }
+            skip && /^[*]/                   { next }
+            !skip                            { print }
+          ' > clean-notes.md
+          gh release edit "$TAG" --notes-file clean-notes.md
