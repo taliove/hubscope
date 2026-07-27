@@ -103,12 +103,13 @@
 - **切换入口:** AppHeader 右栏操作区(批次进度入口左侧)放亮/暗切换按钮(link 型图标按钮,Sun/Moon 图标),未登录态同样可用(状态板读者无差别)。当前主题下只显示目标态图标(亮主题显示 Moon)。
 - **持久化与防闪:** 选择存 `localStorage` 键 `hs:dark`(1/0);`index.html` 内联首屏防闪脚本在挂载前同步读该键加/去 `html.dark` class(键名两处保持一致,注释互指)。**默认亮主题、不跟随系统偏好**(v1 裁决:二态切换语义最简单,公开状态板常被投屏/截图,主题确定性优先;系统偏好跟随留作后续增强,届时改三态「跟随系统/亮/暗」需设计评审登记)。
 - **导出物料固定亮主题:** StatusCard(PNG/PDF)、分享报告页导出一律强制亮主题渲染——物料是对外传播的静态快照,亮主题保证打印/转发可读性;实现上导出画布渲染前临时去 `html.dark` class 或在离屏容器内以亮主题令牌渲染,禁止把暗色像素烤进物料。
+- **离屏捕获定位约定(snapdom 修复登记):** 导出物料的离屏捕获双份(EvalShareDialog / StatusShareDialog 的 `.capture-source` 及 `withLightCapture` 临时 wrapper)一律 `position: absolute; left: -10000px`,**禁用 `position: fixed`**——snapdom 对 fixed 元素按视口宽度重排舞台,卡片被拉宽、flex 轨道重伸展而 % 宽度已冻结 px 的子元素不动,导致条形/分数/涨跌列错位;absolute 离屏不触发该重排,舞台宽度与预览一致。
 - **ECharts 暗色:** JS 镜像色板亮暗双份(见 §3 ECharts 条目),按当前主题取份;主题切换时图表重渲染(watch 主题状态,setOption 全量替换)。
 - **暗色验收:** 暗色下功能色文字场景(表格内着色文字、明细行状态词)需抽查对比度;failing 闪烁动画暗色下不调整(闪烁是语义,非装饰)。
 
 ## 2b. 品牌标识(BrandMark / Wordmark)
 
-- **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色**瞄准镜字形**(圆环 + 十字准星刻度 + 中心脉冲点——监控隐喻:盯住 Hub 上每个 endpoint;ticket 73 后续修订,取代初版与 ProxyHub 同构的 hub 辐条字形,因用户反馈「不合群」——与 ProxyHub 的区分由图形标承担,不再只靠字标);em 尺寸宿主可控(`width/height: 1em`)。favicon 与 AppHeader 左侧品牌位同源;`web/public/logo.png` 已删除,AppHeader/LoginView/StatusCard 一律使用 BrandMark。
+- **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色**瞄准镜字形**(圆环 + 十字准星刻度 + 中心脉冲点——监控隐喻:盯住 Hub 上每个 endpoint;ticket 73 后续修订,取代初版与 ProxyHub 同构的 hub 辐条字形,因用户反馈「不合群」——与 ProxyHub 的区分由图形标承担,不再只靠字标);em 尺寸宿主可控(`width/height: 1em`)。**捕获兜底属性(snapdom 修复登记):** `<stop>` 元素同时携带 `stop-color` 表现属性(`#30c4b8` / `#0a6963`,镜像 tokens.css teal-400/teal-700)——snapdom 对 SVG 内部元素(stop/defs/linearGradient 等)从不内联计算样式,仅写在 scoped CSS 的 `var(--hs-teal-*)` 会在克隆中丢失、落回默认黑;表现属性是导出物料保真的兜底,**不是第二色值来源**——浏览器内 CSS 优先级高于表现属性,`var()` 令牌链路仍是权威;tokens.css 改色时两处必须同步(BrandMark.vue 注释与本条互指)。favicon 与 AppHeader 左侧品牌位同源;`web/public/logo.png` 已删除,AppHeader/LoginView/StatusCard 一律使用 BrandMark。
 - **Wordmark 是唯一字标:** 共享组件 `components/Wordmark.vue`——「HubScope」PascalCase 文本 + 主色**脉冲小圆点**(常亮,与 BrandMark 瞄准镜中心点同源的图形呼应),字体用**系统等宽字栈**(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`),不引入任何外部字体文件(零依赖、离线可用,与单二进制交付一致),字重 700;字号以 em 为基准,宿主用 `font-size` 覆盖等比缩放。使用点:AppHeader 品牌位(BrandMark + Wordmark 横排,默认 `--hs-text-lg` 16px)、LoginView 品牌区(`--hs-text-display` 28px)、StatusCard 品牌区(随物料画布定字号,不用令牌字面量)。**字标完全静止(2026-07-24 修订,取代初版闪烁终端光标):「闪烁=failing 告警专属」是 W5 承重语义,字标作为全站唯一持续运动元素挂在每页左上角,用户对「有东西在闪」的直觉解读就是「有情况」——豁免条款救得了规则救不了直觉;脉冲点常亮后,failing 重新独占全站唯一动画,无任何豁免。**
 - **LoginView 品牌区构成:** BrandMark(40px)+ Wordmark(display 档)横排居中,替代原 logo.png 40px 图块;登录卡保持工具风,不加装饰背景。
 

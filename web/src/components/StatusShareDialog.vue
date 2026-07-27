@@ -111,8 +111,10 @@ async function withLightCapture<T>(fn: (el: HTMLElement) => Promise<T>): Promise
   }
   // Keep the twin in-document (scoped styles resolve) but outside the
   // html.dark cascade: a detached wrapper subtree inherits :root tokens.
+  // Absolutely positioned like the twin's own class — never fixed (see
+  // .capture-source for why fixed breaks the capture stage).
   const wrapper = document.createElement('div')
-  wrapper.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none;'
+  wrapper.style.cssText = 'position:absolute;left:-10000px;top:0;pointer-events:none;'
   const parent = el.parentNode!
   const next = el.nextSibling
   wrapper.appendChild(el)
@@ -184,9 +186,12 @@ function onClosed() {
   max-height: 62vh;
 }
 /* Offscreen capture twin: in-document (styles/variables resolve) but
-   outside every overflow constraint and out of view. */
+   outside every overflow constraint and out of view. Absolutely positioned,
+   never `fixed`: snapdom re-stages fixed elements against the viewport, which
+   stretches the card beyond its 720px design width (flex tracks re-expand
+   while px-frozen children stay) and breaks column alignment. */
 .capture-source {
-  position: fixed;
+  position: absolute;
   left: -10000px;
   top: 0;
   pointer-events: none;
