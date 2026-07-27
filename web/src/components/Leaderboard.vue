@@ -1,11 +1,12 @@
 <template>
   <el-card shadow="never" class="leaderboard-card">
-    <!-- Toolbar: suite view switch and family filter (ticket 78 transitional:
-         the radio/select still drive the server-side ranking column until the
-         next commit replaces them with column-header sorting). In live mode
-         (unfinished batch, ticket 52) the grid/scores view switch takes the
-         lead slot and both ranking controls are disabled — the half-scored
-         board never re-ranks; family filtering stays available. -->
+    <!-- Toolbar (spec 0009): family filter + baseline note + share entry.
+         The dimension radio and sort select are gone — every dimension is
+         on screen at once and the column headers are the ranking control.
+         In live mode (unfinished batch, ticket 52) the grid/scores view
+         switch takes the lead slot and the headers are not clickable — the
+         half-scored board never re-ranks; family filtering stays
+         available. -->
     <div class="toolbar">
       <el-radio-group
         v-if="live"
@@ -15,12 +16,6 @@
       >
         <el-radio-button value="grid">进度网格</el-radio-button>
         <el-radio-button value="scores">实时分数</el-radio-button>
-      </el-radio-group>
-      <el-radio-group v-model="viewSuite" size="small" :disabled="live" @change="onViewSuiteChange">
-        <el-radio-button value="total">总分</el-radio-button>
-        <el-radio-button v-for="s in report.suites" :key="s.key" :value="s.key">
-          {{ s.name }}
-        </el-radio-button>
       </el-radio-group>
       <el-select
         v-model="family"
@@ -32,12 +27,8 @@
       >
         <el-option v-for="f in familyOptions" :key="f" :label="f" :value="f" />
       </el-select>
-      <el-select v-model="sortKey" size="small" class="sort-select" :disabled="live" @change="emitQuery">
-        <el-option label="按总分排序" value="total" />
-        <el-option v-for="s in report.suites" :key="s.key" :label="`按${s.name}排序`" :value="s.key" />
-      </el-select>
       <span v-if="!live" class="toolbar-end">
-        <span v-if="viewSuite === 'total' && baselineNote" class="baseline-note">{{ baselineNote }}</span>
+        <span v-if="baselineNote" class="baseline-note">{{ baselineNote }}</span>
         <!-- Share-image entry (ticket 76): settled batches only — the live
              toolbar never renders this button, so running/pending batches
              have no image-share entry on any of the three pages (spec 0004
@@ -66,9 +57,28 @@
       <div class="lb-grid lb-header" :style="gridStyle">
         <span class="h-rank">名次</span>
         <span class="h-model">模型</span>
-        <span class="h-total">总分</span>
+        <!-- Sortable headers (spec 0009, descending-only ruling): click to
+             rank by that column descending (↓ indicator on the active one);
+             click the active column to fall back to the total. Ranking goes
+             through the server-side query.sort unchanged. -->
+        <span
+          class="h-total h-sortable"
+          :class="{ 'h-active': sortKey === 'total' }"
+          @click="onSort('total')"
+        >
+          总分<span v-if="sortKey === 'total'" class="sort-arrow">↓</span>
+        </span>
         <span v-if="!live" class="h-delta">涨跌</span>
-        <span v-for="s in report.suites" :key="s.key" class="h-suite" :title="s.name">{{ s.name }}</span>
+        <span
+          v-for="s in report.suites"
+          :key="s.key"
+          class="h-suite h-sortable"
+          :class="{ 'h-active': sortKey === s.key }"
+          :title="s.name"
+          @click="onSort(s.key)"
+        >
+          {{ s.name }}<span v-if="sortKey === s.key" class="sort-arrow">↓</span>
+        </span>
         <span v-if="live" class="h-note" />
       </div>
       <div class="rows">
@@ -143,6 +153,7 @@ import type { CampaignReport, EvalBoardView, ReportCell, ReportRow } from '@/api
 import ScoreCell from '@/components/ScoreCell.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { scoreBand, liveCounts } from '@/utils/scoreTier'
+import { nextSortKey } from '@/utils/sortHeader'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText } from '@/utils/evalWording'
 
@@ -180,13 +191,15 @@ const emit = defineEmits<{
   (e: 'update:view', view: EvalBoardView): void
 }>()
 
-const viewSuite = ref('total')
 const family = ref('')
 const sortKey = ref('total')
 
 // Share-image state (ticket 76): the snapshot freezes the currently
-// displayed batch + filters + view at open time; a report prop refresh
-// never rebuilds an open snapshot.
+// displayed batch + filters at open time; a report prop refresh never
+// rebuilds an open snapshot. The view argument is pinned to 'total' — the
+// matrix has no dimension view (spec 0009), and the snapshot builder's
+// total branch already produces the target chip set (batch / family /
+// non-default sort / baseline).
 const shareVisible = ref(false)
 const shareSnapshot = ref<EvalCardSnapshot | null>(null)
 
@@ -194,13 +207,16 @@ function openShare() {
   shareSnapshot.value = buildEvalCardSnapshot(
     props.report,
     { family: family.value || undefined, sort: sortKey.value },
-    viewSuite.value,
+    'total',
   )
   shareVisible.value = true
 }
 
-function onViewSuiteChange(value: string | number | boolean) {
-  sortKey.value = String(value)
+// Column-header sorting (descending-only ruling): live mode never re-ranks —
+// the rows keep the backend's lexicographic order.
+function onSort(key: string) {
+  if (props.live) return
+  sortKey.value = nextSortKey(sortKey.value, key)
   emitQuery()
 }
 
@@ -295,9 +311,6 @@ function deltaTitle(row: ReportRow): string {
 .family-select {
   width: 140px;
 }
-.sort-select {
-  width: 160px;
-}
 .toolbar-end {
   margin-left: auto;
   display: flex;
@@ -330,6 +343,22 @@ function deltaTitle(row: ReportRow): string {
 }
 .h-delta {
   text-align: right;
+}
+/* Sortable headers: hover feedback on every ranking column, the active one
+   takes primary ink plus the descending arrow (spec 0009). */
+.h-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.h-sortable:hover {
+  color: var(--hs-text-primary);
+}
+.h-active {
+  color: var(--hs-text-primary);
+  font-weight: 600;
+}
+.sort-arrow {
+  margin-left: 2px;
 }
 .rows {
   display: flex;
