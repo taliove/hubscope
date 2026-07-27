@@ -187,7 +187,8 @@ download_binary() {
 build_binary() {
   log "building hubscope binary (make build)..."
   (cd "$REPO_ROOT" && make build)
-  [ -f "$REPO_ROOT/bin/hubscope" ] || fail "make build did not produce bin/hubscope"
+  local out="${BUILD_OUTPUT:-$REPO_ROOT/bin/hubscope}"
+  [ -f "$out" ] || fail "make build did not produce $out"
 }
 
 # obtain_binary picks the artifact install_binary() will pick up:
@@ -199,7 +200,7 @@ obtain_binary() {
     BINARY_SOURCE="$BUILD_OUTPUT"
   elif [ "$BUILD_FROM_SOURCE" -eq 1 ]; then
     build_binary
-    BINARY_SOURCE="$REPO_ROOT/bin/hubscope"
+    BINARY_SOURCE="${BUILD_OUTPUT:-$REPO_ROOT/bin/hubscope}"
   else
     resolve_version
     download_binary

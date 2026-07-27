@@ -54,14 +54,12 @@ write_fake_tool() {
   chmod +x "$FAKE_BIN/$1"
 }
 
-# hide_tool NAME — makes a tool unresolvable inside the sandbox even when a
-# real one exists under /usr/bin (CI runners ship go there). A broken
-# absolute symlink in the stub dir: `command -v` requires an executable
-# *target*, so the lookup falls through — but bash caches the stub-dir name
-# and never reaches the real tool later in PATH.
-hide_tool() {
-  ln -s "/nonexistent/install-test-shadows-$1" "$FAKE_BIN/$1"
-}
+# Tools hidden in a given scenario are simply ABSENT from the sandbox's
+# mirrored /usr/bin (see build_sandbox). The previous broken-symlink shadow
+# did not work: `command -v` requires an executable *target*, so the lookup
+# fell through to the real tool later in PATH — scenarios only passed on
+# hosts where the tool happened not to live in /usr/bin (latent host-state
+# dependency, e.g. this dev machine ships /usr/bin/go).
 
 # expect_file PATH "description" — asserts PATH exists.
 expect_file() {
@@ -214,18 +212,36 @@ esac
 
   printf '#!/usr/bin/env bash\necho fake hubscope binary\n' > "$FAKE_BIN/fake-binary"
 
+  # Mirror the host's /usr/bin + /bin into a sandbox dir, minus the tools the
+  # scenario hides. `command -v` then genuinely cannot find a hidden tool —
+  # deterministic regardless of what the host has installed.
+  local hidden_list=" "
+  case "$style" in
+    no-go)        hidden_list+="go " ;;
+    no-pnpm)      hidden_list+="pnpm " ;;
+    no-toolchain) hidden_list+="go pnpm " ;;
+  esac
+  SANDBOX_USR_BIN="$SANDBOX/usr-bin"
+  mkdir -p "$SANDBOX_USR_BIN"
+  local t name
+  for t in /usr/bin/* /bin/*; do
+    [ -d "$t" ] && continue  # skip directories (ln would dereference into them)
+    name="${t##*/}"
+    case "$hidden_list" in
+      *" $name "*) continue ;;
+    esac
+    ln -sfn "$t" "$SANDBOX_USR_BIN/$name"
+  done
+
   # Deliberately not `local`: run_install (below) reads this after build_sandbox returns.
-  # Base dirs stay for real coreutils (mkdir/cp/date/sleep) and the stub
-  # shebangs' /usr/bin/env; stub dir first so fakes shadow. go/pnpm are
-  # handled per-scenario below (fake or hidden via broken symlink).
-  SANDBOX_PATH="$FAKE_BIN:/usr/bin:/bin"
+  # Stub dir first so fakes shadow the mirrored coreutils.
+  SANDBOX_PATH="$FAKE_BIN:$SANDBOX_USR_BIN"
 
   # env shim: with -i, exports the assignments then re-execs the command
-  # through bash. This matters on Linux: coreutils env resolves the command
-  # itself and SKIPS broken symlinks, which would find a real go the
-  # missing-dependency scenarios hide. bash's resolution honors the shadows.
-  # `env bash …` (stub shebangs) also routes here so nested stubs keep the
-  # sandbox PATH instead of env's default. Everything else goes to real env.
+  # through bash so the command is resolved with the sandbox PATH in a
+  # predictable way across env implementations. `env bash …` (stub shebangs)
+  # also routes here so nested stubs keep the sandbox PATH. Everything else
+  # goes to real env.
   # shellcheck disable=SC2016
   write_fake_tool env '
 if [ "${1:-}" = "-i" ]; then
@@ -243,23 +259,30 @@ exec /usr/bin/env "$@"
 '
   if [ "$style" = "all" ] || [ "$style" = "no-pnpm" ]; then
     write_fake_tool go 'echo "go $*" > /dev/null'
-  else
-    # A fake make without the go requirement would let the run succeed even
-    # without go; shadow any real go that the base PATH might provide.
-    hide_tool go
   fi
   if [ "$style" = "all" ] || [ "$style" = "no-go" ]; then
     write_fake_tool pnpm 'echo "pnpm $*" > /dev/null'
-  else
-    hide_tool pnpm
   fi
+  # Hidden tools need no fake: they are absent from the mirrored usr-bin, so
+  # the installer's require_cmd fails on them exactly as on a host without them.
+
+  # Deterministic `id`: the sandbox service user never "exists", so ensure_user
+  # always attempts useradd regardless of the host's real user database (the
+  # useradd.log assertion previously depended on the host NOT having a real
+  # hubscope user). `-u` still answers 0 for the installer's root check.
+  # shellcheck disable=SC2016
+  write_fake_tool id 'if [ "${1:-}" = "-u" ]; then echo 0; else exit 1; fi'
+
   # run_install runs the installer against the fixture release; extra
   # arguments (e.g. --build-from-source) are forwarded.
   run_install() {
-    # The stub env (sandbox dir) handles the -i form itself: it exports the
-    # assignments and re-execs through bash, so the command is resolved by
-    # bash — which honors the broken-symlink shadows — instead of env, which
-    # on Linux would skip them and find the real toolchain.
+    # Source-build runs point BUILD_OUTPUT at the fake make's product inside
+    # the sandbox, so the repo's real bin/hubscope is never consulted (the
+    # installer honors BUILD_OUTPUT in its source-build path).
+    local extra_env=()
+    case " $* " in
+      *--build-from-source*) extra_env=(BUILD_OUTPUT="$SANDBOX/built-binary") ;;
+    esac
     PATH="$SANDBOX_PATH" env -i PATH="$SANDBOX_PATH" \
       HUBSCOPE_PREFIX="$PREFIX_DIR" \
       HUBSCOPE_DATA_DIR="$DATA_DIR" \
@@ -267,6 +290,7 @@ exec /usr/bin/env "$@"
       HUBSCOPE_VERSION="$FIXTURE_VERSION" \
       RELEASES_BASE="file://$FIXTURE_DIR" \
       DOWNLOAD_DIR="$SANDBOX/download" \
+      ${extra_env[@]+"${extra_env[@]}"} \
       bash "$INSTALLER" "$@"
   }
 }
