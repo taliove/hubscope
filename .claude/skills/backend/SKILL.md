@@ -15,6 +15,8 @@ description: 后端开发流程:契约先行 → 影响分析(调 plan)→ 黑�
 
    **断言面:** 状态码 + 响应体 + 必要的库内副作用(经 API 读回验证,不直查表);错误路径(4xx/5xx、超时、半断流)与成功路径都要覆盖。
 
+   **测试 helper 状态纪律(ticket 83 登记):** 测试 helper 禁止按可复用标识(origin/端口/URL 等)跨测试缓存有状态对象(已登录 client、连接、句柄)——httptest 端口会被 OS 回收复用,按 origin 缓存的 client 会把旧服务器的 session cookie 打到复用端口的新服务器上,造成整包轮换随机 FAIL(401/截断 JSON/DB closed),侵蚀门禁可信度。确需缓存时键必须含测试实例(如 `*testing.T`),并用 `t.Cleanup` 配对清理;包级可变状态只允许不可变常量与类型。
+
 4. **实现**:dto 进 `dto.go`(或对应领域文件),handler 进领域文件,路由注册进 `server.go`;三态可选字段用 `json.RawMessage` 区分 absent/null(既有惯例)。
 5. **安全自查**:输入边界校验;错误信息不泄漏内部细节;写接口过鉴权中间件;敏感字段(token、webhook)不回明文。测试数据一律假值(假 token、假口令),触发凭证扫描的值要含 test/fake/example 字样。
 6. **前端同步**:更新 `web/src/api/types.ts` 与对应 api 模块,交 check agent 前端维度。规则类常量(阈值/系数/档界)若被前端镜像(阈值线、档色等),契约中写明口径与出处,改动时检索前端 utils 同步(数字语义双端同源,见 frontend skill)。

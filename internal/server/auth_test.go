@@ -48,10 +48,21 @@ func seedTestUser(t *testing.T, db *store.DB) {
 	}
 }
 
-// testClients caches one logged-in HTTP client per test server origin, so
-// shared request helpers transparently pass the auth middleware while test
-// assertions stay unchanged.
-var testClients sync.Map // origin -> *http.Client
+// testClients caches one logged-in HTTP client per (test, server origin).
+// The key MUST include the test instance (ticket 83): httptest ports are
+// recycled by the OS, so an origin-only key can hand a cookie signed by a
+// dead server's session secret to a new server that happens to reuse its
+// port — the rotating 401 / truncated-JSON package failures. Within one
+// test an origin identifies at most one live server (two live servers
+// cannot share a port; the single db-reopen test starts a fresh httptest
+// server), so one login per (test, origin) is both correct and as cheap
+// as the old happy path. Entries die with their test.
+var testClients sync.Map // clientCacheKey -> *http.Client
+
+type clientCacheKey struct {
+	test   *testing.T
+	origin string
+}
 
 // authedClient returns an HTTP client that has logged in against the server
 // hosting rawURL, carrying the session cookie in its jar.
@@ -62,7 +73,8 @@ func authedClient(t *testing.T, rawURL string) *http.Client {
 		t.Fatalf("parse url %q: %v", rawURL, err)
 	}
 	origin := u.Scheme + "://" + u.Host
-	if cached, ok := testClients.Load(origin); ok {
+	key := clientCacheKey{test: t, origin: origin}
+	if cached, ok := testClients.Load(key); ok {
 		return cached.(*http.Client)
 	}
 
@@ -81,7 +93,8 @@ func authedClient(t *testing.T, rawURL string) *http.Client {
 		t.Fatalf("test login: expected 200, got %d", resp.StatusCode)
 	}
 
-	actual, _ := testClients.LoadOrStore(origin, client)
+	actual, _ := testClients.LoadOrStore(key, client)
+	t.Cleanup(func() { testClients.Delete(key) })
 	return actual.(*http.Client)
 }
 
