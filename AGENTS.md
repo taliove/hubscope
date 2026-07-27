@@ -48,6 +48,7 @@
 2. 影响分析(`plan`)→ TDD 实现(`write` + 组合领域 skill)→ 三层测试与独立审查(`check`)→ 英文 commit。
 3. 一票一 commit(或一票内多个原子 commit),完成 ticket 后在其文件的 Status 处标记 done。
 4. **合并与发布走 [docs/releasing.md](./docs/releasing.md)**:改动一律经 PR(模板 + 恰好一个 release-notes label + CI 绿 + squash merge)进 main,禁止本地 FF 直推;发版唯一入口是 `scripts/release.sh vX.Y.Z`(经用户明确指令后执行),GitHub Release 由 release workflow 自动创建(分类 notes + 产物)。
+5. **测试线部署:** 192.168.1.101 测试服务器部署流程见 [.claude/skills/deploy-test-101/](./.claude/skills/deploy-test-101/),涵盖标签部署(生产发布)与开发部署(测试未提交代码)两种模式,包含完整的备份、健康检查和回滚流程。用户明确指令后可执行 `/deploy-test-101` skill。
 
 ## 持续进化
 

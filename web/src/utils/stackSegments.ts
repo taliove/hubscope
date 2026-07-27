@@ -21,6 +21,7 @@ export const LABEL_MIN_PX = 44
 export const WATERMARK_EXTRA_PX = 30
 
 export type ScoreBand = 'success' | 'warning' | 'danger'
+export type SuiteColor = 'suite-1' | 'suite-2' | 'suite-3' | 'suite-4' | 'suite-5' | 'suite-6'
 
 export interface StackSegment {
   key: string
@@ -29,6 +30,7 @@ export interface StackSegment {
   weight: number // effective weight: missing or <=0 falls back to 1 (backend parity)
   widthPct: number // percent of the track, on the total-score scale
   band: ScoreBand
+  color: SuiteColor // suite-specific color (ticket 77)
   label: string // formatScore(score)
   showLabel: boolean // segment pixel width >= LABEL_MIN_PX
   watermark: string // '·8/10' for a done suite with incomplete coverage, else ''
@@ -57,6 +59,13 @@ export function scoreBand(score: number): ScoreBand {
   if (score >= 80) return 'success'
   if (score >= 50) return 'warning'
   return 'danger'
+}
+
+// Suite color mapping (ticket 77): each suite gets a unique color by index
+// for cross-row recognition. Cycles through 6 colors if more suites exist.
+export function suiteColor(index: number): SuiteColor {
+  const colors: SuiteColor[] = ['suite-1', 'suite-2', 'suite-3', 'suite-4', 'suite-5', 'suite-6']
+  return colors[index % colors.length]
 }
 
 // Coverage watermark: a done suite that judged fewer cases than expected
@@ -92,7 +101,7 @@ export function buildStackSegments(
   const scored = suites.filter((s) => suiteScores[s.key] !== null && suiteScores[s.key] !== undefined)
   const wsum = scored.reduce((acc, s) => acc + effectiveWeight(weights, s.key), 0)
   if (wsum <= 0) return []
-  return scored.map((s) => {
+  return scored.map((s, index) => {
     const score = suiteScores[s.key] as number
     const weight = effectiveWeight(weights, s.key)
     const widthPct = (score * weight) / wsum
@@ -107,6 +116,7 @@ export function buildStackSegments(
       weight,
       widthPct,
       band: scoreBand(score),
+      color: suiteColor(index),
       label: formatScore(score),
       showLabel,
       watermark,

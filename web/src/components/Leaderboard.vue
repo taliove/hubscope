@@ -52,14 +52,23 @@
     <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
     <el-empty v-if="report.rows.length === 0" :description="emptyDescription" />
 
-    <!-- DesignArena-style horizontal bar leaderboard (ui-guidelines §5).
+    <!-- Suite legend and ruler (ticket 77): color legend explains the suite
+         colors, ruler labels sit above the stacked bars aligned with segments.
+         DesignArena-style horizontal bar leaderboard (ui-guidelines §5).
          Rows are clickable: a click emits select for the trend drill-down
          dialog (ticket 32, no inline row expansion per §4). Live mode keeps
          the row order the backend sent (model-id lexicographic) and swaps
          the rank slot for a placeholder dash. The bar is the shared
          ScoreStackBar (ticket 75): per-suite segments stacked left to right,
          bar length equal to the total score by construction. -->
-    <div v-else class="rows">
+    <div v-else>
+      <SuiteLegend :suites="report.suites" />
+      <SuiteRuler
+        :suites="report.suites"
+        :weights="report.weights"
+        :reference-scores="report.rows[0].suite_scores"
+      />
+      <div class="rows">
       <div
         v-for="(row, index) in report.rows"
         :key="row.model_db_id"
@@ -88,6 +97,7 @@
         </span>
       </div>
     </div>
+    </div>
 
     <!-- Share-image dialog; the snapshot freezes at open time so a report
          refresh cannot swap the data between preview and export. -->
@@ -101,6 +111,8 @@ import { Share } from '@element-plus/icons-vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
 import type { CampaignReport, EvalBoardView, ReportRow } from '@/api/types'
 import ScoreStackBar from '@/components/ScoreStackBar.vue'
+import SuiteLegend from '@/components/SuiteLegend.vue'
+import SuiteRuler from '@/components/SuiteRuler.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText } from '@/utils/evalWording'

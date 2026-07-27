@@ -13,7 +13,7 @@
         v-for="seg in segments"
         :key="seg.key"
         class="stack-seg"
-        :class="[`band-${seg.band}`, { dimmed: isDimmed(seg.key) }]"
+        :class="[`color-${seg.color}`, { dimmed: isDimmed(seg.key) }]"
         :style="{ width: seg.widthPct + '%' }"
         :title="staticMode ? undefined : seg.tooltip"
       >
@@ -128,14 +128,25 @@ function isDimmed(key: string): boolean {
 .stack-seg.dimmed {
   opacity: 0.4;
 }
-.band-success {
-  background: var(--hs-success);
+/* Suite colors (ticket 77): each suite gets a unique color for cross-row
+   recognition, replacing the old score-band colors. */
+.color-suite-1 {
+  background: var(--hs-suite-1);
 }
-.band-warning {
-  background: var(--hs-warning);
+.color-suite-2 {
+  background: var(--hs-suite-2);
 }
-.band-danger {
-  background: var(--hs-danger);
+.color-suite-3 {
+  background: var(--hs-suite-3);
+}
+.color-suite-4 {
+  background: var(--hs-suite-4);
+}
+.color-suite-5 {
+  background: var(--hs-suite-5);
+}
+.color-suite-6 {
+  background: var(--hs-suite-6);
 }
 .seg-label {
   font-size: var(--hs-text-xs);

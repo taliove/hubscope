@@ -21,6 +21,7 @@ web/dist/
 .env
 .env.*
 !.env.example
+!.env.local.example
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
