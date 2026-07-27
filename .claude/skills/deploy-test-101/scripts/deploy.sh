@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Load .env.local if it exists
 if [ -f .env.local ]; then
+  # shellcheck source=/dev/null
   source .env.local
 fi
 
@@ -12,9 +13,12 @@ BACKUP_DIR=${BACKUP_DIR:-$DATA_DIR/hubscope-backups}
 CONTAINER_NAME=hubscope
 PORT=8080
 HOST_IP=192.168.1.101
+OPS_DIR=${OPS_DIR:-/opt/hubscope/bin}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 # Set by backup_data: 1 when no app.db existed before this deployment
-# (fresh install → init_admin creates the default super_admin), 0 otherwise.
+# (fresh install → init_admin prompts for interactive super_admin creation), 0 otherwise.
 DB_FRESH=0
 
 # Icons
@@ -108,7 +112,8 @@ check_git_status() {
 
 # Backup data
 backup_data() {
-  local ts=$(date +%Y%m%d-%H%M%S)
+  local ts
+  ts=$(date +%Y%m%d-%H%M%S)
 
   log_info "Backing up data..."
   mkdir -p "$BACKUP_DIR"
@@ -119,14 +124,16 @@ backup_data() {
   if [ -s "$DATA_DIR/hubscope/app.db" ]; then
     DB_FRESH=0
     sudo cp "$DATA_DIR/hubscope/app.db" "$BACKUP_DIR/app.db.bak-$ts"
-    local db_size=$(ls -lh "$DATA_DIR/hubscope/app.db" | awk '{print $5}')
+    local db_size
+    db_size=$(du -h "$DATA_DIR/hubscope/app.db" | cut -f1)
     log_success "Database backed up ($db_size) to $BACKUP_DIR/app.db.bak-$ts"
   else
     DB_FRESH=1
     log_warning "No existing database found (first deployment)"
   fi
 
-  local prev_image=$(docker inspect $CONTAINER_NAME --format '{{.Config.Image}}' 2>/dev/null || echo "none")
+  local prev_image
+  prev_image=$(docker inspect $CONTAINER_NAME --format '{{.Config.Image}}' 2>/dev/null || echo "none")
   echo "Previous image: $prev_image" > "$BACKUP_DIR/rollback-$ts.txt"
   log_success "Rollback info saved to $BACKUP_DIR/rollback-$ts.txt"
 }
@@ -166,7 +173,8 @@ build_image() {
     # the current code, never reused from a stale cached layer.
     # Local time (no -u): all deploys happen in one timezone, wall-clock
     # readability beats UTC purity on the test line.
-    local dev_version="dev-$(date +%Y%m%d-%H%M%S)"
+    local dev_version
+    dev_version="dev-$(date +%Y%m%d-%H%M%S)"
     docker build $build_args \
       --build-arg VERSION="$dev_version" \
       --build-arg CACHEBUST="$dev_version" \
@@ -207,7 +215,8 @@ health_check() {
   log_info "Waiting for service to be healthy..."
   local healthy=0
   for i in {1..30}; do
-    local code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
     if [ "$code" = "200" ]; then
       log_success "Health check passed (attempt $i)"
       healthy=1
@@ -231,23 +240,34 @@ health_check() {
 # A fresh database means no users, so the default super_admin is safe to
 # create. Existing data is never touched, and no probe-with-side-effects
 # is needed to detect it.
+# Sync standardized ops scripts (scripts/ops/) to the host — same toolset on
+# both lines (test + prod), see spec 0008 decision 10
+sync_ops_scripts() {
+  log_info "Syncing ops scripts to $OPS_DIR ..."
+  sudo mkdir -p "$OPS_DIR"
+  for f in "$REPO_ROOT"/scripts/ops/hubscope-*; do
+    sudo cp "$f" "$OPS_DIR/"
+  done
+  sudo chmod +x "$OPS_DIR"/hubscope-*
+  log_success "Ops scripts synced"
+}
+
 init_admin() {
   if [ "${DB_FRESH:-0}" -ne 1 ]; then
     log_info "Existing database detected, skipping admin account creation"
     return
   fi
 
-  log_info "Fresh database, creating default super_admin..."
-  docker exec $CONTAINER_NAME sh -c 'hubscope admin create --username admin --password "HubScope2026!"'
-
+  # W6 credential boundary: never create a default-password account (a default
+  # password in a public repo = anyone can log in). On a fresh DB, prompt for
+  # interactive creation; the password is read with read -s and never persisted
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  log_success "Default super_admin account created:"
-  echo "  Username: admin"
-  echo "  Password: HubScope2026!"
-  echo "  $ICON_WARNING Please change the password after first login!"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
+  read -r -p "Fresh database detected. Create super_admin now? [Y/n]: " answer
+  if [ "$answer" = "n" ] || [ "$answer" = "N" ]; then
+    log_warning "Skipped. Create one later with: $OPS_DIR/hubscope-admin-create"
+    return
+  fi
+  "$OPS_DIR/hubscope-admin-create"
 }
 
 # Verify deployment
@@ -267,7 +287,8 @@ verify_deployment() {
   # Check frontend assets
   echo ""
   echo "3. Frontend assets:"
-  local asset_hash=$(curl -s "http://$HOST_IP:$PORT/" | grep -o 'index-[^"]*\.js' | head -1)
+  local asset_hash
+  asset_hash=$(curl -s "http://$HOST_IP:$PORT/" | grep -o 'index-[^"]*\.js' | head -1)
   echo "   $asset_hash"
 
   # Check database size
@@ -285,10 +306,12 @@ cleanup_images() {
   log_info "Cleaning up old Docker images..."
 
   # Get all hubscope images sorted by creation date (newest first)
-  local images=$(docker images --filter "reference=$CONTAINER_NAME" --format "{{.ID}} {{.CreatedAt}}" | sort -k2 -r)
+  local images
+  images=$(docker images --filter "reference=$CONTAINER_NAME" --format "{{.ID}} {{.CreatedAt}}" | sort -k2 -r)
 
   local count=0
-  local seven_days_ago=$(date -d '7 days ago' +%s 2>/dev/null || date -v-7d +%s)
+  local seven_days_ago
+  seven_days_ago=$(date -d '7 days ago' +%s 2>/dev/null || date -v-7d +%s)
 
   echo "$images" | while read -r id created_at; do
     count=$((count + 1))
@@ -300,7 +323,8 @@ cleanup_images() {
     fi
 
     # Check if image is older than 7 days
-    local created_ts=$(date -d "$created_at" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$created_at" +%s 2>/dev/null || echo "0")
+    local created_ts
+    created_ts=$(date -d "$created_at" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$created_at" +%s 2>/dev/null || echo "0")
 
     if [ "$created_ts" -lt "$seven_days_ago" ] && [ "$created_ts" != "0" ]; then
       log_info "Removing old image: $id (created: $created_at)"
@@ -341,6 +365,7 @@ deploy_dev() {
   fix_permissions
   start_container
   health_check
+  sync_ops_scripts
   init_admin
   verify_deployment
   cleanup_images
@@ -361,6 +386,7 @@ deploy_tag() {
   fix_permissions
   start_container
   health_check
+  sync_ops_scripts
   init_admin
   verify_deployment
   cleanup_images
@@ -375,14 +401,18 @@ rollback() {
   log_info "Rolling back to previous deployment..."
 
   # Find latest rollback info
-  local rollback_file=$(ls -t "$BACKUP_DIR"/rollback-*.txt 2>/dev/null | head -1)
+  local rollback_file
+  # shellcheck disable=SC2012  # mtime ordering is required; find expresses this worse
+  rollback_file=$(ls -t "$BACKUP_DIR"/rollback-*.txt 2>/dev/null | head -1)
   if [ -z "$rollback_file" ]; then
     log_error "No rollback info found"
     exit 1
   fi
 
-  local prev_image=$(grep "Previous image:" "$rollback_file" | cut -d' ' -f3)
-  local backup_ts=$(basename "$rollback_file" .txt | sed 's/rollback-//')
+  local prev_image
+  prev_image=$(grep "Previous image:" "$rollback_file" | cut -d' ' -f3)
+  local backup_ts
+  backup_ts=$(basename "$rollback_file" .txt | sed 's/rollback-//')
 
   log_info "Previous image: $prev_image"
   log_info "Backup timestamp: $backup_ts"
@@ -415,7 +445,8 @@ rollback() {
   log_info "Verifying rollback..."
   local healthy=0
   for i in {1..30}; do
-    local code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
     if [ "$code" = "200" ]; then
       log_success "Rollback successful (attempt $i)"
       healthy=1
