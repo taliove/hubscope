@@ -58,12 +58,10 @@ func startEvalWorker(t *testing.T, db *store.DB, srv *server.Server, clock *sche
 	}()
 	t.Cleanup(func() {
 		cancel()
-		start := time.Now()
 		select {
 		case <-done:
-			t.Logf("eval worker stopped after %v", time.Since(start))
 		case <-time.After(2 * time.Second):
-			t.Errorf("eval worker did not stop within 2s of cancellation")
+			t.Error("eval worker did not stop within 2s of cancellation")
 		}
 	})
 }
