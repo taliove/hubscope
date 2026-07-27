@@ -3,11 +3,14 @@
     <div class="header-inner">
       <!-- Brand block: BrandMark + Wordmark, click goes home. BrandMark is
            never used bare — it always appears alongside the Wordmark
-           (ui-guidelines §2b). -->
-      <router-link to="/" class="brand">
-        <BrandMark class="brand-mark" />
-        <Wordmark class="brand-wordmark" />
-      </router-link>
+           (ui-guidelines §2b). Version number displays below the brand. -->
+      <div class="brand-block">
+        <router-link to="/" class="brand">
+          <BrandMark class="brand-mark" />
+          <Wordmark class="brand-wordmark" />
+        </router-link>
+        <span v-if="version" class="version" :title="`HubScope ${version}`">{{ shortVersion }}</span>
+      </div>
 
       <nav class="main-nav">
         <router-link
@@ -48,8 +51,6 @@
             批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}
           </span>
         </el-button>
-        <!-- Version display -->
-        <span v-if="version" class="version" :title="`HubScope ${version}`">{{ version }}</span>
         <template v-if="user">
           <span class="user-name" :title="user.username">{{ user.username }}</span>
           <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
@@ -112,6 +113,14 @@ const { dark, toggleTheme } = useTheme()
 const visibleNavItems = computed(() =>
   user.value ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.public),
 )
+
+// Short version: extract only the tag part (e.g., "v0.2.3" from "v0.2.3-4-g1adea03-dirty")
+const shortVersion = computed(() => {
+  if (!version.value) return ''
+  // Match vX.Y.Z at the start
+  const match = version.value.match(/^v\d+\.\d+\.\d+/)
+  return match ? match[0] : version.value
+})
 
 // The dashboard owns both '/' and the endpoint detail pages.
 function isActive(item: NavItem): boolean {
@@ -221,6 +230,11 @@ onBeforeUnmount(stopBatchPolling)
   align-items: center;
   gap: 24px;
 }
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .brand {
   display: flex;
   align-items: center;
@@ -232,6 +246,12 @@ onBeforeUnmount(stopBatchPolling)
 }
 .brand-wordmark {
   font-size: var(--hs-text-lg);
+}
+.version {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  margin-left: 32px;
 }
 .main-nav {
   display: flex;
@@ -269,11 +289,6 @@ onBeforeUnmount(stopBatchPolling)
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.version {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-placeholder);
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 .user-name {
   max-width: 120px;
