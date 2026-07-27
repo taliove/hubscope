@@ -164,7 +164,9 @@ func (s *Server) routes() chi.Router {
 			r.Get("/me", s.handleAuthMe)
 		})
 
-		// All other API routes: GET is public, writes require a session.
+		// All other API routes require a session, except the read paths
+		// whitelisted in publicReadPattern (status board, public eval
+		// board, token-gated shared report).
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireSession)
 
