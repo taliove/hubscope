@@ -239,6 +239,35 @@ func (db *DB) PreviousDoneCampaign(id int64) (*Campaign, error) {
 	return &c, nil
 }
 
+// LatestSettledCampaign returns the newest settled (done or failed)
+// campaign, or nil when there is none. Failed campaigns count as settled:
+// their board is a legitimate, complete evaluation outcome (spec 0010 — the
+// public eval board shows the newest settled batch, never a running one).
+func (db *DB) LatestSettledCampaign() (*Campaign, error) {
+	c, err := scanCampaign(db.conn.QueryRow(
+		"SELECT "+campaignColumns+" FROM campaigns WHERE status IN (?, ?) ORDER BY id DESC LIMIT 1",
+		CampaignStatusDone, CampaignStatusFailed))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// HasUnfinishedCampaign reports whether any campaign is still pending or
+// running (spec 0010 — the public board's neutral "a new batch is in
+// flight" hint; the flag is operational metadata, not an evaluation
+// conclusion).
+func (db *DB) HasUnfinishedCampaign() (bool, error) {
+	var n int
+	err := db.conn.QueryRow(
+		"SELECT COUNT(*) FROM campaigns WHERE status IN (?, ?)",
+		CampaignStatusPending, CampaignStatusRunning).Scan(&n)
+	return n > 0, err
+}
+
 // PreviousDoneCampaignRun returns the run covering the given suite inside the
 // most recent done campaign strictly before the given campaign, or nil when
 // no earlier done campaign covered the suite. It is the baseline the

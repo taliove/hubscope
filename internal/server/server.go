@@ -259,6 +259,12 @@ func (s *Server) routes() chi.Router {
 			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 			r.Get("/campaigns/{id}/trends", s.handleGetCampaignTrends)
 
+			// Public eval board (spec 0010): anonymous like the status board
+			// via the publicReadPattern whitelist; serves the newest settled
+			// campaign's report at the same information level as the
+			// token-gated shared report.
+			r.Get("/public/eval/board", s.handleGetPublicEvalBoard)
+
 			r.Get("/share-links", s.handleListShareLinks)
 			// Public by token (ADR 0006): the requireSession middleware lets
 			// this one GET path through without a session; the token itself

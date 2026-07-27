@@ -81,6 +81,14 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 	s.writeCampaignReport(w, r, campaign, false)
 }
 
+// reportBuildError carries an HTTP failure out of buildCampaignReport so
+// callers (the session report, the shared report and the public eval
+// board) can each decide how to write it.
+type reportBuildError struct {
+	status int
+	msg    string
+}
+
 // writeCampaignReport builds and writes the report payload for one campaign.
 // It is shared by the session-gated report endpoint and the token-gated
 // shared-report endpoint (ADR 0006), so both views render the same settled
@@ -93,18 +101,33 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 // conclusions and never leave the session boundary before the batch
 // settles, so the live half-scored board (ticket 52) stays session-only.
 func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign, shared bool) {
+	report, berr := s.buildCampaignReport(r, campaign, shared)
+	if berr != nil {
+		writeError(w, berr.status, berr.msg)
+		return
+	}
+	writeData(w, http.StatusOK, report)
+}
+
+// buildCampaignReport assembles the report payload for one campaign; the
+// data-class split described on writeCampaignReport lives here. Query
+// params: family filters rows to one model family; sort picks the ranking
+// column of a settled board ("total" by default, or a covered suite key),
+// always descending with unscored models last.
+func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, shared bool) (campaignReportDTO, *reportBuildError) {
+	fail := func(status int, msg string) (campaignReportDTO, *reportBuildError) {
+		return campaignReportDTO{}, &reportBuildError{status: status, msg: msg}
+	}
 	id := campaign.ID
 
 	runs, err := s.db.ListEvalRunsByCampaign(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load campaign runs")
-		return
+		return fail(http.StatusInternalServerError, "failed to load campaign runs")
 	}
 
 	suites, err := s.campaignSuites(runs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load suites")
-		return
+		return fail(http.StatusInternalServerError, "failed to load suites")
 	}
 
 	sortKey := r.URL.Query().Get("sort")
@@ -112,21 +135,18 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		sortKey = "total"
 	}
 	if sortKey != "total" && !hasSuiteKey(suites, sortKey) {
-		writeError(w, http.StatusBadRequest, "sort must be \"total\" or a suite key of this campaign")
-		return
+		return fail(http.StatusBadRequest, "sort must be \"total\" or a suite key of this campaign")
 	}
 
 	configured, err := s.db.GetSuiteWeights()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read suite weights")
-		return
+		return fail(http.StatusInternalServerError, "failed to read suite weights")
 	}
 	weights := effectiveWeights(suites, configured)
 
 	scores, err := s.db.ListCampaignSuiteScores(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to aggregate campaign scores")
-		return
+		return fail(http.StatusInternalServerError, "failed to aggregate campaign scores")
 	}
 
 	// Nadir constants come from the runs' snapshots (ADR 0009), so every
@@ -135,14 +155,12 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 
 	cellProgress, err := s.db.ListCampaignCellProgress(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load campaign progress")
-		return
+		return fail(http.StatusInternalServerError, "failed to load campaign progress")
 	}
 
 	expectedBySuite, err := s.enabledCaseCounts(suites)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to count suite cases")
-		return
+		return fail(http.StatusInternalServerError, "failed to count suite cases")
 	}
 
 	family := r.URL.Query().Get("family")
@@ -161,8 +179,7 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		var deltas map[int64]*float64
 		baseline, deltas, err = s.reportBaseline(campaign.ID, suites, weights, rows)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to build report baseline")
-			return
+			return fail(http.StatusInternalServerError, "failed to build report baseline")
 		}
 		if len(deltas) > 0 {
 			withDeltas := make([]reportRowDTO, len(rows))
@@ -182,8 +199,7 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		// and the cells (already attached, samples withheld) stay as built.
 		members, err := s.db.ListCampaignMembers(id)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load campaign members")
-			return
+			return fail(http.StatusInternalServerError, "failed to load campaign members")
 		}
 		rows = sharedProgressRows(members, suites, runs, cellProgress, expectedBySuite)
 	} else {
@@ -194,8 +210,7 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		// numerator and denominator alike, ADR 0005).
 		members, err := s.db.ListCampaignMembers(id)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load campaign members")
-			return
+			return fail(http.StatusInternalServerError, "failed to load campaign members")
 		}
 		rows = liveReportRows(members, cellProgress, scores, weights, nadirs)
 		if family != "" {
@@ -217,13 +232,13 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 		}
 	}
 
-	writeData(w, http.StatusOK, campaignReportDTO{
+	return campaignReportDTO{
 		campaignDTO: toCampaignDTO(progress),
 		Suites:      suites,
 		Weights:     weights,
 		Rows:        rows,
 		Baseline:    baseline,
-	})
+	}, nil
 }
 
 // reportBaseline resolves the previous done campaign and, when it covered
