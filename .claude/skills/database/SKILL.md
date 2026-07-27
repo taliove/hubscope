@@ -1,5 +1,5 @@
 ---
-name: db-change
+name: database
 description: 数据库变更流程:schema 迁移、seed 幂等、保留字与单连接约束。改表结构、加字段、改 seed 时使用。
 ---
 
@@ -16,4 +16,4 @@ description: 数据库变更流程:schema 迁移、seed 幂等、保留字与单
 3. **seed 变更**:按 generation 追踪(settings 表 `seed_gen_<key>`),只增量补新代,绝不覆盖管理员编辑过的行;删光的默认规则不复活。
 4. **TDD**:黑盒测试走 HTTP 接缝验证迁移后行为;如需直测 store,用真 SQLite 临时库,不 mock。
 5. **数据隔离**:确认新表/字段不含跨 Hub 泄漏面;含凭证的字段一律不脱敏不出库(回包走 dto 脱敏层)。
-6. **验证**:三层测试 + `code-reviewer` 审查;commit 前用本地真实库 `make dev` 起一次确认迁移无碍。
+6. **验证**:三层测试 + check agent 审查;commit 前用本地真实库 `make dev` 起一次确认迁移无碍。

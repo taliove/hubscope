@@ -1,6 +1,6 @@
 # UI Guidelines(设计规范)
 
-> HubScope 前端唯一设计规范,由 `design-owner` 代理维护。`frontend-checker` 的 UI 自查以本文件为依据。修改本文件的语义映射(状态色、词表)属于承重语义变更,须在设计评审中说明理由。
+> HubScope 前端唯一设计规范,由 `plan` agent 维护。`check` agent 的 UI 自查以本文件为依据。修改本文件的语义映射(状态色、词表)属于承重语义变更,须在设计评审中说明理由。
 > 视觉基线(ticket 73)并入 ProxyHub「现代极简工具风」(电波青 teal 品牌色、三层令牌、暗色一等公民);HubScope 词表、状态语义、防作假约定全部保留,仅做色值与刻度映射。
 
 ## 1. 产品形态与读者
@@ -210,9 +210,9 @@
 
 ## 8. 规范的维护
 
-- 本文件由 design-owner 代理维护;设计评审中做出的新约定须回写本文件,否则视为未约定。
+- 本文件由 `plan` agent 维护;设计评审中做出的新约定须回写本文件,否则视为未约定。
 - 本文件与 [load-bearing-walls.md](./load-bearing-walls.md) 的关系:本文件管「体验一致性」,承重墙管「系统语义」;冲突时以承重墙为准(如状态机红黄绿语义由 W5 决定,本文件只做视觉映射)。
-- 与 ProxyHub 上游规范的关系:令牌刻度与审美纪律源自 proxyhub `docs/design-frontend.md`;HubScope 侧业务语义(状态词表、防作假约定、failing 例外、导出物料)以本文件为准,不回写上游;上游刻度修订时由 design-owner 评估同步。
+- 与 ProxyHub 上游规范的关系:令牌刻度与审美纪律源自 proxyhub `docs/design-frontend.md`;HubScope 侧业务语义(状态词表、防作假约定、failing 例外、导出物料)以本文件为准,不回写上游;上游刻度修订时由 `plan` agent 评估同步。
 
 ---
 

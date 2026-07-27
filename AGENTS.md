@@ -38,14 +38,14 @@
 
 ## 开工纪律
 
-1. **先影响分析,后动手。** 每次开工前书面列出:直接影响(改哪些文件/接口)、间接影响(哪些调用方/页面/任务受波及)、公共调用方法(被动到的函数有哪些使用者)、权限与数据隔离风险(是否触碰鉴权边界、跨 Hub/租户数据)。影响分析由 `architect` 代理产出,实现者不复制其文本、直接调用。**按 Hub 查询隔离不变量(spec 0005,Phase 64 起的新隐式承重约定):** 新增 list/query handler 必须按 session user 的 hub_id 过滤(super_admin 传 nil / 走 `*All` 变体);store 层 `List*` 函数签名强制 hubID 非可选(去无参形态,拆 `ListXByHub(hubID)` + `ListXAll()`,`All` 仅 super_admin 路径与 store-internal 全局维护可达)——漏传 hub 过滤 = 编译错误;运行时第二道防线是 `internal/server/isolation_test.go` 的 sweep,新增已隔离 list 接口须登记入其 `isolatedListPaths` 表并加断言行。
+1. **先影响分析,后动手。** 每次开工前书面列出:直接影响(改哪些文件/接口)、间接影响(哪些调用方/页面/任务受波及)、公共调用方法(被动到的函数有哪些使用者)、权限与数据隔离风险(是否触碰鉴权边界、跨 Hub/租户数据)。影响分析由 `plan` 代理产出,write agent 不复制其文本、直接调用。**按 Hub 查询隔离不变量(spec 0005,Phase 64 起的新隐式承重约定):** 新增 list/query handler 必须按 session user 的 hub_id 过滤(super_admin 传 nil / 走 `*All` 变体);store 层 `List*` 函数签名强制 hubID 非可选(去无参形态,拆 `ListXByHub(hubID)` + `ListXAll()`,`All` 仅 super_admin 路径与 store-internal 全局维护可达)——漏传 hub 过滤 = 编译错误;运行时第二道防线是 `internal/server/isolation_test.go` 的 sweep,新增已隔离 list 接口须登记入其 `isolatedListPaths` 表并加断言行。
 2. **改动收敛。** 单次任务只改必要范围,单 commit 最多 8 个文件(票内多 commit 拆分);不做无关重构,顺手发现的问题另记 ticket。
-3. **Agent 分工与协作。** 扁平结构不设 Lead:架构与影响分析用 `architect`;UI/UX 事前设计评审用 `design-owner`(新视图/新交互/新复用组件必过);ticket 实现用 `implementer`;代码审查一律由独立的 `code-reviewer` 执行(作者不自审);测试验证用 `test-verifier`;前端改动后过 `frontend-checker`;README 改动用 `readme-writer`。调用网、派发协议(任务/背景/输入/执行/输出/影响/风险七字段)、职责重叠裁决见 [.claude/rules/collaboration.md](./.claude/rules/collaboration.md)。高频流程见 `.claude/skills/`(new-api、db-change、frontend-dev、design-review、add-tests、implement-ticket、review、release-check、deploy)。探索代码先用 code-review-graph 工具,纪律见 [.claude/rules/graph-tools.md](./.claude/rules/graph-tools.md)。
+3. **Agent 分工与协作。** 扁平结构不设 Lead,3 个 agent + 5 个领域 skill:`plan`(开工前影响分析 + UI/UX 设计评审,只读,仅维护 ui-guidelines.md)、`write`(ticket 实现,阶段 1 调 plan、阶段 2 组合领域 skill)、`check`(提交前三维度验证:测试 + 规范双轴 + 前端细节,不改代码只报告);领域 skill 由 write agent 按任务组合:`product`/`frontend`/`backend`/`database`/`ops`。调用网、派发协议(任务/背景/输入/执行/输出/影响/风险七字段)、职责重叠裁决见 [.claude/rules/collaboration.md](./.claude/rules/collaboration.md)。探索代码先用 code-review-graph 工具,纪律见 [.claude/rules/graph-tools.md](./.claude/rules/graph-tools.md)。
 
 ## 工作流
 
 1. 从 frontier ticket 开工(`.scratch/hubscope-mvp/issues/`,Blocked by 全部完成的票)。
-2. 影响分析(`architect`)→ TDD 实现(`implementer` + implement-ticket skill)→ 三层测试(`test-verifier`)→ `code-reviewer` 独立审查 → 英文 commit。
+2. 影响分析(`plan`)→ TDD 实现(`write` + 组合领域 skill)→ 三层测试与独立审查(`check`)→ 英文 commit。
 3. 一票一 commit(或一票内多个原子 commit),完成 ticket 后在其文件的 Status 处标记 done。
 4. **合并与发布走 [docs/releasing.md](./docs/releasing.md)**:改动一律经 PR(模板 + 恰好一个 release-notes label + CI 绿 + squash merge)进 main,禁止本地 FF 直推;发版唯一入口是 `scripts/release.sh vX.Y.Z`(经用户明确指令后执行),GitHub Release 由 release workflow 自动创建(分类 notes + 产物)。
 
@@ -60,4 +60,4 @@ AI 团队在实践中沉淀,不设专门仪式,触发器挂在既有钩子上:
 | 出现无人认领的职责 | 新增 agent,并在 [collaboration.md](./.claude/rules/collaboration.md) 调用网登记 |
 | 一个非显而易见的决策被做出 | 系统语义 → `docs/adr/`;协作/流程教训 → 用户级 memory |
 
-执行机制:`code-reviewer` 审查时发现同类问题第二次出现,在报告末尾附「沉淀建议」;ticket 收尾(标记 Status: done 前)自问一句——有没有「第三次手写的流程 / 第二次违反的约束 / 无人认领的职责 / 未记录的决策」,有则顺手沉淀或另记 ticket。
+执行机制:`check` agent 审查时发现同类问题第二次出现,在报告末尾附「沉淀建议」;ticket 收尾(标记 Status: done 前)自问一句——有没有「第三次手写的流程 / 第二次违反的约束 / 无人认领的职责 / 未记录的决策」,有则顺手沉淀或另记 ticket。
