@@ -22,6 +22,7 @@ web/dist/
 .env.*
 !.env.example
 !.env.local.example
+!.env.prod.example
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
@@ -32,6 +33,7 @@ web/dist/
 .gstack/
 .scratch/design/
 .scratch/web
+.scratch/prod-deploy/
 
 # AI tool configs (personal preferences, not team-standard; governance charter is AGENTS.md, tracked)
 .codebuddy/

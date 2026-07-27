@@ -1,0 +1,61 @@
+#!/bin/bash
+# hubscope-status — HubScope runtime status at a glance
+#
+# Output: container / image / data dir / disk / health check; when Caddy is
+# present, also its service state and certificate expiry (environments without
+# Caddy, e.g. the test line, skip that section gracefully).
+#
+# Usage: hubscope-status
+set -euo pipefail
+
+DATA_DIR=${DATA_DIR:-/data/hubscope}
+BACKUP_DIR=${BACKUP_DIR:-/data/hubscope-backups}
+CONTAINER_NAME=${CONTAINER_NAME:-hubscope}
+PORT=${PORT:-8080}
+HOST_BIND=${HOST_BIND:-127.0.0.1}
+
+echo "=== 容器 ==="
+if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  docker ps -a --filter "name=^${CONTAINER_NAME}\$" \
+    --format '状态: {{.Status}}  镜像: {{.Image}}  端口: {{.Ports}}'
+  docker inspect "$CONTAINER_NAME" --format '重启策略: {{.HostConfig.RestartPolicy.Name}}'
+else
+  echo "✗ 容器 $CONTAINER_NAME 不存在"
+fi
+
+echo ""
+echo "=== 健康检查 ==="
+code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_BIND:$PORT/healthz" 2>/dev/null || echo "000")
+[ "$code" = "200" ] && echo "✓ healthz 200" || echo "✗ healthz $code"
+
+echo ""
+echo "=== 数据 ==="
+if [ -f "$DATA_DIR/app.db" ]; then
+  echo "app.db: $(du -h "$DATA_DIR/app.db" | cut -f1) ($(date -r "$DATA_DIR/app.db" '+%Y-%m-%d %H:%M'))"
+else
+  echo "✗ $DATA_DIR/app.db 不存在"
+fi
+if [ -d "$BACKUP_DIR" ]; then
+  # shellcheck disable=SC2012
+  CNT=$(ls "$BACKUP_DIR"/app.db.bak-* 2>/dev/null | wc -l)
+  echo "备份: $CNT 份 ($BACKUP_DIR)"
+  # shellcheck disable=SC2012
+  ls -t "$BACKUP_DIR"/app.db.bak-* 2>/dev/null | head -1 | xargs -r -I{} ls -lh {} | awk '{print "最新: "$9" ("$5")"}'
+fi
+df -h "$DATA_DIR" 2>/dev/null | awk 'NR==2{print "磁盘: "$3" 已用 / "$2" 总共 ("$5")"}'
+
+echo ""
+echo "=== Caddy ==="
+if command -v caddy >/dev/null 2>&1 || systemctl list-unit-files caddy.service >/dev/null 2>&1; then
+  systemctl is-active caddy 2>/dev/null | sed 's/^/服务状态: /' || echo "服务状态: unknown"
+  CRT=$(find /var/lib/caddy -name '*.crt' 2>/dev/null | head -1 || true)
+  if [ -n "$CRT" ]; then
+    openssl x509 -in "$CRT" -noout -subject -enddate 2>/dev/null | sed 's/^/证书: /'
+  fi
+else
+  echo "(未安装 Caddy,跳过)"
+fi
+
+echo ""
+echo "=== 镜像 ==="
+docker images | grep -E "^hubscope|^REPOSITORY" || true

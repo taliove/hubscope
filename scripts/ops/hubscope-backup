@@ -1,0 +1,65 @@
+#!/bin/bash
+# hubscope-backup — back up the HubScope SQLite database
+#
+# Strategy (spec 0008, defense line 2):
+#   1. Prefer `sqlite3 .backup` online hot backup (WAL-safe, no downtime)
+#   2. Fall back to "stop container → cp → start container" when the host has
+#      no sqlite3 (seconds of downtime, most conservative semantics)
+# Every backup is verified with integrity_check; keep the newest KEEP_BACKUPS
+# files (default 5, never fewer than 3).
+#
+# Usage: hubscope-backup
+# Env: DATA_DIR / BACKUP_DIR / CONTAINER_NAME / KEEP_BACKUPS
+set -euo pipefail
+
+DATA_DIR=${DATA_DIR:-/data/hubscope}
+BACKUP_DIR=${BACKUP_DIR:-/data/hubscope-backups}
+CONTAINER_NAME=${CONTAINER_NAME:-hubscope}
+KEEP_BACKUPS=${KEEP_BACKUPS:-5}
+[ "$KEEP_BACKUPS" -ge 3 ] 2>/dev/null || KEEP_BACKUPS=3
+
+DB="$DATA_DIR/app.db"
+TS=$(date +%Y%m%d-%H%M%S)
+OUT="$BACKUP_DIR/app.db.bak-$TS"
+
+mkdir -p "$BACKUP_DIR"
+
+if [ ! -s "$DB" ]; then
+  echo "✗ $DB 不存在或为空(首次部署?无需备份)" >&2
+  exit 1
+fi
+
+if command -v sqlite3 >/dev/null 2>&1; then
+  echo "ℹ 在线热备(不停服)..."
+  sqlite3 "$DB" ".backup '$OUT'"
+else
+  echo "ℹ 无 sqlite3,回落停服备份(秒级停机)..."
+  docker stop "$CONTAINER_NAME" >/dev/null
+  cp "$DB" "$OUT"
+  docker start "$CONTAINER_NAME" >/dev/null
+fi
+
+# Verify backup integrity (when sqlite3 is available)
+if command -v sqlite3 >/dev/null 2>&1; then
+  RESULT=$(sqlite3 "$OUT" "PRAGMA integrity_check;")
+  if [ "$RESULT" != "ok" ]; then
+    echo "✗ 备份完整性校验失败: $RESULT" >&2
+    rm -f "$OUT"
+    exit 1
+  fi
+fi
+
+SIZE=$(du -h "$OUT" | cut -f1)
+echo "✓ 备份完成: $OUT ($SIZE)"
+
+# Rollback record (consumed by deploy.sh rollback / hubscope-restore)
+PREV_IMAGE=$(docker inspect "$CONTAINER_NAME" --format '{{.Config.Image}}' 2>/dev/null || echo "none")
+echo "Previous image: $PREV_IMAGE" > "$BACKUP_DIR/rollback-$TS.txt"
+
+# Retain the newest N backups
+cd "$BACKUP_DIR"
+# shellcheck disable=SC2012
+ls -t app.db.bak-* 2>/dev/null | tail -n "+$((KEEP_BACKUPS + 1))" | xargs -r rm -f
+# shellcheck disable=SC2012
+ls -t rollback-*.txt 2>/dev/null | tail -n "+$((KEEP_BACKUPS + 1))" | xargs -r rm -f
+echo "✓ 保留最近 $KEEP_BACKUPS 份备份"

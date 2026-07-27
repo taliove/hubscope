@@ -1,0 +1,76 @@
+#!/bin/bash
+# hubscope-restore — restore the HubScope database from a backup
+#
+# Flow: confirmation prompt → backup integrity_check → stop container →
+#       restore → permission fix (uid 10001) → start container → health check
+#
+# Usage:
+#   hubscope-restore                # restore the newest backup (with prompt)
+#   hubscope-restore <backup-file>  # restore a specific backup
+#   hubscope-restore --yes <file>   # skip the confirmation (scripted use)
+set -euo pipefail
+
+DATA_DIR=${DATA_DIR:-/data/hubscope}
+BACKUP_DIR=${BACKUP_DIR:-/data/hubscope-backups}
+CONTAINER_NAME=${CONTAINER_NAME:-hubscope}
+PORT=${PORT:-8080}
+HOST_BIND=${HOST_BIND:-127.0.0.1}
+
+ASSUME_YES=0
+BACKUP_FILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes|-y) ASSUME_YES=1; shift ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) BACKUP_FILE="$1"; shift ;;
+  esac
+done
+
+if [ -z "$BACKUP_FILE" ]; then
+  # shellcheck disable=SC2012
+  BACKUP_FILE=$(ls -t "$BACKUP_DIR"/app.db.bak-* 2>/dev/null | head -1 || true)
+  [ -n "$BACKUP_FILE" ] || { echo "✗ $BACKUP_DIR 下没有备份文件" >&2; exit 1; }
+fi
+[ -s "$BACKUP_FILE" ] || { echo "✗ 备份文件不存在或为空: $BACKUP_FILE" >&2; exit 1; }
+
+echo "将用以下备份覆盖当前数据库:"
+echo "  $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+if [ "$ASSUME_YES" -ne 1 ]; then
+  read -r -p "确认恢复? 当前数据将被覆盖 [y/N]: " ANSWER
+  [ "$ANSWER" = "y" ] || [ "$ANSWER" = "Y" ] || { echo "已取消"; exit 0; }
+fi
+
+if command -v sqlite3 >/dev/null 2>&1; then
+  RESULT=$(sqlite3 "$BACKUP_FILE" "PRAGMA integrity_check;")
+  [ "$RESULT" = "ok" ] || { echo "✗ 备份文件完整性校验失败: $RESULT" >&2; exit 1; }
+fi
+
+echo "ℹ 停容器..."
+docker stop "$CONTAINER_NAME" >/dev/null
+
+# Keep a lifeline copy of the current database before overwriting it
+if [ -s "$DATA_DIR/app.db" ]; then
+  cp "$DATA_DIR/app.db" "$BACKUP_DIR/app.db.pre-restore-$(date +%Y%m%d-%H%M%S)"
+fi
+
+cp "$BACKUP_FILE" "$DATA_DIR/app.db"
+chown 10001:10001 "$DATA_DIR/app.db"
+echo "✓ 备份已落位,权限已修复"
+
+echo "ℹ 起容器..."
+docker start "$CONTAINER_NAME" >/dev/null
+
+HEALTHY=0
+for i in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_BIND:$PORT/healthz" 2>/dev/null || true)
+  if [ "$code" = "200" ]; then
+    echo "✓ 恢复完成,健康检查通过(第 $i 次)"
+    HEALTHY=1
+    break
+  fi
+  sleep 2
+done
+if [ "$HEALTHY" -ne 1 ]; then
+  echo "✗ 恢复后健康检查失败,查日志: docker logs $CONTAINER_NAME" >&2
+  exit 1
+fi

@@ -22,7 +22,7 @@ lint: ensure-dist
 	@test -z "$$($(GO)fmt -l cmd internal)" || { $(GO)fmt -l cmd internal; echo "gofmt: run 'make fmt'"; exit 1; }
 	$(GO) vet ./...
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck scripts/install.sh scripts/install_test.sh; \
+		shellcheck scripts/install.sh scripts/install_test.sh scripts/ops/* .claude/skills/*/scripts/*.sh; \
 	else \
 		echo "WARNING: shellcheck not found, skipping scripts/*.sh static check"; \
 	fi

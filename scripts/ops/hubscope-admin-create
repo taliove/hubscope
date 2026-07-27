@@ -1,0 +1,77 @@
+#!/bin/bash
+# hubscope-admin-create — interactively create a HubScope user (super_admin by default)
+#
+# Credential discipline (W6):
+#   - The password is always read interactively via read -s: never echoed,
+#     never written to shell history, never persisted anywhere by this script.
+#   - It reaches the container via `docker exec -e`, which means it appears
+#     transiently in this host's process argv (visible to local `ps` while the
+#     command runs) and in the container process cmdline — an accepted,
+#     host-local, ephemeral exposure. No persistent record is created.
+#   - bcrypt hashing is done by the hubscope CLI; this script never handles it.
+#
+# Usage:
+#   hubscope-admin-create                      # interactive super_admin creation
+#   hubscope-admin-create --hub 3 --role admin # hub-scoped user (admin|operator|viewer)
+set -euo pipefail
+
+CONTAINER_NAME=${CONTAINER_NAME:-hubscope}
+
+HUB_ID=""
+ROLE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --hub)  HUB_ID="${2:-}"; shift 2 ;;
+    --role) ROLE="${2:-}"; shift 2 ;;
+    -h|--help)
+      grep '^#' "$0" | sed 's/^# \?//'
+      exit 0 ;;
+    *) echo "未知参数: $1(支持 --hub <id> --role <admin|operator|viewer>)" >&2; exit 1 ;;
+  esac
+done
+
+if [ -n "$HUB_ID" ] && [ -z "$ROLE" ] || [ -z "$HUB_ID" ] && [ -n "$ROLE" ]; then
+  echo "✗ --hub 与 --role 必须同时提供(或都不提供 = super_admin)" >&2
+  exit 1
+fi
+if [ -n "$HUB_ID" ]; then
+  [[ "$HUB_ID" =~ ^[0-9]+$ ]] || { echo "✗ --hub 必须是数字" >&2; exit 1; }
+  case "$ROLE" in admin|operator|viewer) ;; *) echo "✗ --role 必须是 admin|operator|viewer" >&2; exit 1 ;; esac
+fi
+
+if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  echo "✗ 容器 $CONTAINER_NAME 未运行" >&2
+  exit 1
+fi
+
+read -r -p "用户名 [admin]: " USERNAME
+USERNAME=${USERNAME:-admin}
+# Username is restricted to safe characters (passed into the container via
+# env, never shell-expanded there, but keep the input surface tight anyway)
+[[ "$USERNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "✗ 用户名只允许字母数字._-" >&2; exit 1; }
+
+while true; do
+  read -r -s -p "密码(>=8位,不回显): " PW1; echo
+  read -r -s -p "再次输入密码: " PW2; echo
+  if [ "$PW1" != "$PW2" ]; then
+    echo "✗ 两次输入不一致,请重试"
+    continue
+  fi
+  if [ ${#PW1} -lt 8 ]; then
+    echo "✗ 密码至少 8 位,请重试"
+    continue
+  fi
+  break
+done
+
+# shellcheck disable=SC2016  # single quotes are intentional: vars expand inside the container, not on this host
+CMD='hubscope admin create --username "$HS_ADMIN_USER" --password "$HS_ADMIN_PW"'
+if [ -n "$HUB_ID" ]; then
+  CMD="$CMD --hub $HUB_ID --role $ROLE"
+fi
+
+docker exec -e HS_ADMIN_USER="$USERNAME" -e HS_ADMIN_PW="$PW1" \
+  "$CONTAINER_NAME" sh -c "$CMD"
+
+unset PW1 PW2
+echo "✓ 用户 $USERNAME 创建完成(密码不回显,请妥善保管)"
