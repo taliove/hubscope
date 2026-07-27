@@ -64,6 +64,9 @@ let observer: ResizeObserver | null = null
 
 onMounted(() => {
   if (!trackRef.value) return
+  // Read the laid-out width synchronously so the first frame already knows
+  // which labels fit; the observer only tracks later resizes.
+  trackWidth.value = trackRef.value.clientWidth
   observer = new ResizeObserver((entries) => {
     trackWidth.value = entries[0]?.contentRect.width ?? 0
   })
@@ -114,7 +117,7 @@ function isDimmed(key: string): boolean {
   box-sizing: border-box;
   overflow: hidden;
   transition:
-    width 0.3s ease,
+    width var(--hs-transition),
     opacity var(--hs-transition);
 }
 /* Inter-segment separator reveals the card surface (ui-guidelines §5:
