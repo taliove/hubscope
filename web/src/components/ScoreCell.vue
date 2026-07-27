@@ -34,18 +34,18 @@ const WATERMARK_MIN_PX = 80
 
 // Props seam (design-review freeze, ticket 78): split fields rather than the
 // whole ReportRow, so the ticket-79 static EvalCard can construct the same
-// inputs without the row shape. `live` only affects the unscored-cell
-// tooltip wording (batch/run status); the render itself is identical — a
-// null score is a dash over an empty track in both modes.
+// inputs without the row shape. `staticMode` is the exported-material mode
+// (no tooltip, no width measurement — the fixed 720px canvas always has
+// room). A null score is a dash over an empty track in every mode; the
+// unscored tooltip wording comes from the cell's own status.
 const props = withDefaults(
   defineProps<{
     name: string
     score: number | null
     cell: ReportCell | undefined
-    live?: boolean
     staticMode?: boolean
   }>(),
-  { live: false, staticMode: false },
+  { staticMode: false },
 )
 
 const label = computed(() => (props.score === null ? '–' : formatScore(props.score)))

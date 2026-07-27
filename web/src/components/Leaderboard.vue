@@ -66,7 +66,11 @@
         <span
           class="h-total h-sortable"
           :class="{ 'h-active': !live && sortKey === 'total', 'h-disabled': live }"
+          :role="live ? undefined : 'button'"
+          :tabindex="live ? undefined : 0"
           @click="onSort('total')"
+          @keydown.enter="onSort('total')"
+          @keydown.space.prevent="onSort('total')"
         >
           总分<span v-if="!live && sortKey === 'total'" class="sort-arrow">↓</span>
         </span>
@@ -77,7 +81,11 @@
           class="h-suite h-sortable"
           :class="{ 'h-active': !live && sortKey === s.key, 'h-disabled': live }"
           :title="s.name"
+          :role="live ? undefined : 'button'"
+          :tabindex="live ? undefined : 0"
           @click="onSort(s.key)"
+          @keydown.enter="onSort(s.key)"
+          @keydown.space.prevent="onSort(s.key)"
         >
           {{ s.name }}<span v-if="!live && sortKey === s.key" class="sort-arrow">↓</span>
         </span>
@@ -129,7 +137,6 @@
             :name="s.name"
             :score="row.suite_scores[s.key] ?? null"
             :cell="cellOf(row, s.key)"
-            :live="live"
           />
           <span v-if="live" class="live-note">
             <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
@@ -351,9 +358,14 @@ function deltaTitle(row: ReportRow): string {
 .h-sortable {
   cursor: pointer;
   user-select: none;
+  border-radius: var(--hs-radius-sm);
 }
 .h-sortable:hover {
   color: var(--hs-text-primary);
+}
+.h-sortable:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
 }
 .h-active {
   color: var(--hs-text-primary);
