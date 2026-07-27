@@ -68,6 +68,8 @@
           :weights="report.weights"
           :suite-scores="row.suite_scores"
           :cells="row.cells"
+          :live="live"
+          :highlight="highlightKey"
         />
         <span class="score">{{ formatScore(scoreOf(row)) }}</span>
         <span v-if="!live && viewSuite === 'total'" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
@@ -97,7 +99,8 @@ import ScoreStackBar from '@/components/ScoreStackBar.vue'
 // slot shows a placeholder dash (no rank badges pre-settle), rows keep the
 // backend's model-id lexicographic order, the sort select and suite switch
 // are disabled, and the delta column hides entirely. Scored suites stack
-// normally; unrun suites occupy no width.
+// normally; unrun suites occupy no width and surface in the bar's
+// right-of-bar "N 个维度进行中 / N 个失败" note (ticket 75).
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -136,6 +139,15 @@ function scoreOf(row: ReportRow): number | null {
   if (viewSuite.value === 'total') return row.total_score
   return row.suite_scores[viewSuite.value] ?? null
 }
+
+// Dimension switch highlight (ticket 75): the selected suite's segment
+// stays opaque while the rest dim to ~40%; the score slot already swaps to
+// that suite's score via scoreOf. Total view (and live mode, where the
+// switch is disabled) highlights nothing.
+const highlightKey = computed(() => {
+  if (props.live || viewSuite.value === 'total') return null
+  return viewSuite.value
+})
 
 // Empty-state copy distinguishes "nothing scored" from "filtered out" so a
 // fully-failed batch never reads as "deleted models don't rank". Live mode
