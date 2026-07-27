@@ -41,21 +41,6 @@
   --hs-text-secondary: var(--hs-gray-500);
   --hs-text-placeholder: var(--hs-gray-400);
 
-  /* Ink on a solid functional-color fill (ScoreStackBar in-segment score
-     labels, ui-guidelines §5). Same in both themes: the fill colors are
-     theme-invariant, so white stays the legible ink. */
-  --hs-text-on-color: #ffffff;
-
-  /* Suite colors: dedicated colors for eval capability dimensions (ticket 77).
-     Each suite gets a unique color for cross-row recognition. Palette chosen
-     for sufficient contrast on white/dark surfaces and mutual distinguishability. */
-  --hs-suite-1: #0c8078; /* teal-600: primary brand tone */
-  --hs-suite-2: #7c3aed; /* violet-600: distinct from teal */
-  --hs-suite-3: #dc2626; /* danger red (already in palette) */
-  --hs-suite-4: #d97706; /* warning amber (already in palette) */
-  --hs-suite-5: #059669; /* success green (already in palette) */
-  --hs-suite-6: #2563eb; /* blue-600: classic blue */
-
   /* Borders. */
   --hs-border: var(--hs-gray-200);
   --hs-border-light: var(--hs-gray-100);
@@ -80,14 +65,6 @@
 
   /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
   --hs-status-failing: var(--hs-orange-400);
-
-  /* Suite colors: dark theme adjusts for contrast on dark surfaces. */
-  --hs-suite-1: var(--hs-teal-500); /* brighter teal for dark */
-  --hs-suite-2: #a78bfa; /* violet-400: brightened */
-  --hs-suite-3: #ef4444; /* red-500: brightened */
-  --hs-suite-4: #fbbf24; /* amber-400: brightened */
-  --hs-suite-5: #10b981; /* green-500: brightened */
-  --hs-suite-6: #60a5fa; /* blue-400: brightened */
 
   /* Soft tints on dark: mix toward white just enough to lift from the
      surface (≈12%), the dark-theme reading of a light-9 tint. */

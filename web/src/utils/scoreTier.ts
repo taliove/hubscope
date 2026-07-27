@@ -1,8 +1,7 @@
 // Pure presentation logic for eval-board score cells (ticket 78, spec 0009):
 // the score band, coverage watermark, confidence tooltip, live-cell status
-// wording and live counts. Moved out of stackSegments.ts so the matrix
-// Leaderboard (ScoreCell) and — until ticket 79 retires it — the legacy
-// ScoreStackBar consume one source of truth.
+// wording and live counts. Single source of truth for the matrix
+// Leaderboard's ScoreCell on both ends (page and static EvalCard).
 //
 // The band thresholds (>=80 success / >=50 warning / below danger) are the
 // business caliber shared with the backend score badge and never move
