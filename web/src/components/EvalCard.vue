@@ -42,7 +42,13 @@
           <span v-if="snapshot.showDeltaColumn" class="h-delta">涨跌</span>
           <span v-for="s in snapshot.suites" :key="s.key" class="h-suite">{{ s.name }}</span>
         </div>
-        <div v-for="row in snapshot.rows" :key="row.modelId" class="ec-grid row" :style="gridStyle">
+        <div
+          v-for="row in snapshot.rows"
+          :key="row.modelId"
+          class="ec-grid row"
+          :class="{ 'rank-top-rail': row.rank <= 3 }"
+          :style="gridStyle"
+        >
           <span class="rank" :class="{ 'rank-top': row.rank <= 3 }">{{ row.rank }}</span>
           <span class="model">{{ row.modelId }}</span>
           <span class="total">
@@ -268,9 +274,14 @@ function deltaTone(row: EvalCardRow): string {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
 }
-/* Top-3 emphasis (spec 0009, same as the page): brand teal + 600. */
+/* Top-3 ceremony (ticket 82, same as the page): 3px brand rail + the rank
+   number one size up at 600. */
+.rank-top-rail {
+  border-left-color: var(--hs-brand);
+}
 .rank-top {
   color: var(--hs-brand);
+  font-size: var(--hs-text-lg);
   font-weight: 600;
 }
 .model {

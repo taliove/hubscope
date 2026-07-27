@@ -96,7 +96,7 @@
           v-for="(row, index) in report.rows"
           :key="row.model_db_id"
           class="lb-grid row"
-          :class="{ clickable: selectable }"
+          :class="{ clickable: selectable, 'rank-top-rail': !live && index < 3 }"
           :role="selectable ? 'button' : undefined"
           :tabindex="selectable ? 0 : undefined"
           :style="gridStyle"
@@ -416,9 +416,16 @@ function deltaTitle(row: ReportRow): string {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
 }
-/* Top-3 emphasis (spec 0009): brand teal + 600; the rest stay secondary. */
+/* Top-3 ceremony (ticket 82, spec 0010): a 3px brand rail on the row's
+   left edge — border language, never a background block — plus the rank
+   number one size up at 600. The rail stays visible over the brand-soft
+   hover tint in both themes. */
+.rank-top-rail {
+  border-left-color: var(--hs-brand);
+}
 .rank-top {
   color: var(--hs-brand);
+  font-size: var(--hs-text-lg);
   font-weight: 600;
 }
 .rank-live {
