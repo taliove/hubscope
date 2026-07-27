@@ -1,6 +1,6 @@
 # 0007 — 评估榜单堆叠条改造与榜单分享卡片
 
-**Status:** accepted(2026-07-27,grill 共识 + 用户评审通过)
+**Status:** superseded(2026-07-27,spec 0009 取代堆叠条形态:ticket 75/77 交付的堆叠条榜单、五色分类色与 SuiteLegend/SuiteRuler 全部退役;ticket 76 分享卡片条款经 spec 0009 修订为矩阵构成 + chips 新集合,外框约定/快照冻结/防作假边界不变,现行口径以 spec 0009 与 ui-guidelines §5 为准)
 **ADRs:** 无新增(不改评估语义;防作假边界沿用 ADR 0006/0007 与 spec 0004 既有口径)
 **Tickets:** 75(堆叠条榜单行)/ 76(榜单分享卡片)
 
