@@ -1,7 +1,7 @@
 # Releasing HubScope
 
 This document is the single source of truth for how changes land on `main`
-and how releases are cut. The `release-check` skill remains the pre-release
+and how releases are cut. The `ops` skill (section A) remains the pre-release
 *checklist*; `scripts/release.sh` is the *mechanism*.
 
 ## Landing changes: the PR workflow
