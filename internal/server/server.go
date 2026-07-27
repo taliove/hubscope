@@ -32,6 +32,9 @@ type Server struct {
 	loginLimiter *ipLimiter
 	writeLimiter *ipLimiter
 	readLimiter  *ipLimiter
+	// loginDelayer penalizes per-account repeated login failures with a
+	// progressive response delay (spec 0010 decision 3); nil disables it.
+	loginDelayer *loginDelayer
 	// trustProxy controls whether X-Forwarded-For is honored when resolving
 	// client IPs for rate limiting and auditing.
 	trustProxy bool
@@ -72,6 +75,16 @@ func WithTrustProxy(trust bool) Option {
 	}
 }
 
+// WithLoginDelay overrides the per-account progressive login-delay policy
+// (spec 0010 decision 3). A zero policy disables the delay; tests inject a
+// millisecond-scale table so backoff stays observable without slowing the
+// suite (the WithRateLimits precedent).
+func WithLoginDelay(policy LoginDelayPolicy) Option {
+	return func(s *Server) {
+		s.loginDelayer = newLoginDelayer(policy)
+	}
+}
+
 // WithSessionSecret overrides the session signing key. Tests use it to
 // inject a fixed value so forged tokens can be reproduced without reading
 // the database.
@@ -103,6 +116,7 @@ func New(db *store.DB, opts ...Option) *Server {
 		loginLimiter:  newIPLimiter(limits.Login.PerMinute, limits.Login.Burst, 0),
 		writeLimiter:  newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, 0),
 		readLimiter:   newIPLimiter(limits.Read.PerMinute, limits.Read.Burst, 0),
+		loginDelayer:  newLoginDelayer(defaultLoginDelayPolicy()),
 	}
 	// Alert evaluation hooks into every probe round served by this prober.
 	// main hooks the scheduler's prober into the same evaluator via Alerter().

@@ -152,8 +152,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.db.GetUserByUsername(req.Username)
 	if err != nil {
-		s.audit(r, "auth.login", "auth", req.Username, "user not found", "failed")
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		s.failLogin(w, r, req.Username, "user not found")
 		return
 	}
 	// Inject the attempted identity into the request context so the audit
@@ -168,18 +167,37 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Username: user.Username,
 	}))
 	if !user.Enabled {
-		s.audit(r, "auth.login", "auth", req.Username, "disabled", "failed")
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		s.failLogin(w, r, req.Username, "disabled")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		s.audit(r, "auth.login", "auth", req.Username, "wrong password", "failed")
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		s.failLogin(w, r, req.Username, "wrong password")
 		return
+	}
+	// Correct password: always admitted immediately (verify first, penalize
+	// later — the delay only ever lands on wrong-password responses), and the
+	// account's failure counter resets.
+	if s.loginDelayer != nil {
+		s.loginDelayer.reset(req.Username)
 	}
 	setSessionCookie(w, r, signSession(s.sessionSecret, user.ID, time.Now()))
 	s.audit(r, "auth.login", "auth", req.Username, "", "success")
 	writeData(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
+// failLogin is the single exit for every failed login (unknown user,
+// disabled account, wrong password): it audits the specific reason, then
+// applies the per-account progressive delay, then answers the uniform 401.
+// Routing all three branches through one exit keeps status, message, and
+// delay band identical across them — no username-enumeration side channel
+// (spec 0010 decision 3). The delay runs after the audit insert, so the
+// sleep never holds any DB resource (single-connection SQLite, W2).
+func (s *Server) failLogin(w http.ResponseWriter, r *http.Request, username, reason string) {
+	s.audit(r, "auth.login", "auth", username, reason, "failed")
+	if s.loginDelayer != nil {
+		s.loginDelayer.penalize(r.Context(), username)
+	}
+	writeError(w, http.StatusUnauthorized, "invalid credentials")
 }
 
 // handleLogout clears the session cookie. The /auth group is not gated by
