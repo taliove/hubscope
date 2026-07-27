@@ -35,7 +35,7 @@
 ### 堆叠条语义
 
 - 段顺序 = `report.suites` 固定顺序(与工具条能力点顺序一致),跨行可竖向对比同一维度。
-- **段宽 = `score_i × (weight_i / Σweights)`**,以总分刻度归一(满分条 = 100 分 = 满宽)。总分是加权平均(spec 0004),段宽不乘权重则条长与右侧总分数字成为两个口径,违反 grill 共识「不产生第二口径」。weights 来自 `report.weights`,前端归一化,不改 API。
+- **段宽 = `score_i × (weight_i / Σw_scored)`**——归一化分母是「已判分维度」的权重和,与后端 `totalScore`(internal/server/report_scoring.go,未判分维度同时退出分子与分母)同口径,以总分刻度归一(满分条 = 100 分 = 满宽)。总分是加权平均(spec 0004),段宽不按已判分权重归一则条长与右侧总分数字成为两个口径,违反 grill 共识「不产生第二口径」。weights 来自 `report.weights`,前端归一化,不改 API。
 - 未得分段(suite_scores 为 null,含未判分/未跑)不占宽度,已得分段从左边连续堆叠,右端统一留空;**空隙 = 丢分 + 未跑**,与总分数字同向。
 - 段色按分数档位映射(≥80 success / ≥50 warning / <50 danger,与得分徽标同一映射,阈值口径不动);段间 1–2px 分隔(卡片底色),圆角仅条的两端(`--hs-radius-sm`)。
 - 轨道底色 `--hs-brand-soft`,条高沿用现 20px。

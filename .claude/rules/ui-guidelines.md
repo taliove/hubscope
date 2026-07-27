@@ -59,6 +59,7 @@
 | `--hs-text-regular` | gray-700 `#324249` | `#c3c7cd` | 常规正文 |
 | `--hs-text-secondary` | gray-500 `#617379` | `#8a8f98` | 次要说明、标签、辅助 |
 | `--hs-text-placeholder` | gray-400 `#91a3a8` | `#5c616a` | 占位/禁用、等待中状态 |
+| `--hs-text-on-color` | `#ffffff` | 同值 | 色段/色块上的文字与图标(白墨压色段):堆叠条段内分数与压缩水印专用;亮暗同值——色段功能色两主题同值,压其色上的白字不需随主题变 |
 | `--hs-border` | gray-200 `#e0e8ea` | `#2a2d33` | 卡片边、输入框边 |
 | `--hs-border-light` | gray-100 `#eff4f5` | `#23262b` | 浅分割、hairline |
 | `--hs-shadow-sm/md/lg`(暗色覆盖 tokens 同名刻度) | 见 tokens | `0 1px 2px rgba(0,0,0,.3)` / `0 2px 12px rgba(0,0,0,.4)` / `0 6px 24px rgba(0,0,0,.5)` | 阴影 |
@@ -154,11 +155,11 @@
 - **StatusBadge 是唯一的状态展示组件**,需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
 - **HealthBanner 是 Dashboard 的全局健康横幅组件**(批 2 登记):四态(全部正常/N 个端点降级/N 个端点异常含告警闪烁/加载 skeleton),数据只反映全局、永不受页面过滤器影响;仅异常态可点(应用状态过滤并滚动定位)。其他页面不得复刻其结论文案模式。大字结论用 `--hs-text-display` 档(§2 字阶)。
 - **Leaderboard 是评估榜单的唯一排行展示组件**(/eval 与 /report/{token} 复用):每模型一行(排名/模型名/堆叠条/总分/涨跌箭头),堆叠条由共享组件 ScoreStackBar 渲染(见下条),模型名截断 + `title` hover 全显;Suite 切换、family 过滤、排序切换走榜单上方工具条,不进单元格;行下钻不内嵌行内展开,走 `el-dialog`(§4 既有约定,EvalRunDetailDialog 模式)。
-- **Leaderboard 运行中半成品模式**(ticket 52 登记,ticket 75 随堆叠条重构修订 ④⑤):未完成批次下榜单可查看但——① 名次列显示 `–` 占位(`--hs-text-placeholder`),禁名次徽章;② 行序固定模型名字典序(后端保证,前端不重排),工具条禁用排序切换与 Suite 切换、保留 family 过滤;③ 涨跌箭头列整列隐藏;④ 已判分维度段照常堆叠(段宽口径同 settled),覆盖率不满的段内分数后随压缩水印「·8/10」(宽度自适应可见、tooltip 恒兜底,口径见下条;样式沿用 `--hs-text-xs` + `--hs-text-secondary`,常规字重,不用颜色区分),覆盖率满不显示;⑤ 未跑维度不占段宽,条右端(总分数字前)灰字标注「N 个维度进行中」(`--hs-text-xs` + `--hs-text-placeholder`),有失败 run 追加「· N 个失败」(danger 色)——标注不占条宽、不进总分,取代原 strip 的「进行中」占位;⑥ settle 后名次直接替换占位、不做强调动画,转场提示由 ElMessage 承载。
+- **Leaderboard 运行中半成品模式**(ticket 52 登记,ticket 75 随堆叠条重构修订 ④⑤):未完成批次下榜单可查看但——① 名次列显示 `–` 占位(`--hs-text-placeholder`),禁名次徽章;② 行序固定模型名字典序(后端保证,前端不重排),工具条禁用排序切换与 Suite 切换、保留 family 过滤;③ 涨跌箭头列整列隐藏;④ 已判分维度段照常堆叠(段宽口径同 settled),覆盖率不满的段内分数后随压缩水印「·8/10」(宽度自适应可见、tooltip 恒兜底;水印在色段内,样式同段内数值口径——同色白墨弱化,见下条),覆盖率满不显示;⑤ 未跑维度不占段宽,条右端(总分数字前)灰字标注「N 个维度进行中」(`--hs-text-xs` + `--hs-text-placeholder`),有失败 run 追加「· N 个失败」(danger 色)——标注不占条宽、不进总分,取代原 strip 的「进行中」占位;⑥ settle 后名次直接替换占位、不做强调动画,转场提示由 ElMessage 承载。
 - **ScoreStackBar 是榜单堆叠条的唯一共享组件**(ticket 75 登记,改写原 ticket 51「维度分同屏条带」条目;Leaderboard 行消费,ticket 76 EvalCard 复用——两票共享接缝):单条紧凑堆叠条取代原「总分长条 + 行下 mini bar strip」两层结构,settled 与 live 两模式同构。语义:
   - 段顺序 = `report.suites` 固定顺序(与工具条能力点顺序一致),跨行可竖向对比同一维度;段色按 §3 分数档位(≥80 success / ≥50 warning / <50 danger,与得分徽标同一映射,阈值口径不动);段间 1–2px 分隔(露卡片底色,消费 `--hs-bg-card` 令牌,不写字面量),圆角仅条的两端 `--hs-radius-sm`;轨道 `--hs-brand-soft`,条高 20px。
   - **段宽口径(防作假自洽,正确性硬约束):段宽 = `score_i × (weight_i / Σw_scored)`——归一化分母是「已判分维度」的权重和,与后端 `totalScore`(internal/server/report_scoring.go,未判分维度同时退出分子与分母)同口径,条总长与右侧总分数字在任何覆盖状态下构造性相等,不产生第二口径。** 未判分段(suite_scores 为 null,含未判分/未跑/失败)零宽、右端统一留空,空隙 = 归一口径下的丢分;weight 缺失或 ≤0 回落 1(与后端防御一致),全维度未判分(Σw_scored=0)渲染空轨道。live 模式下随判分推进分母增大、存量段等比收缩放——这是「条长 ≡ 总分」恒成立的必然代价,不视为跳动 bug。
-  - 段内数值:段宽足够(阈值**暂定 ≥44px**,ticket 75 落地按 15 模型真实数据校准后回写本档定稿)时段内居中显示 `formatScore` 分数(白字压色段,`--hs-text-xs`/600),窄段省略;每段 hover tooltip 恒有「能力点名 · 分数 · 判分 X/Y 题 · 采样 N 次」(沿用 ticket 51 confidence 口径)。
+  - 段内数值:段宽足够(阈值**暂定 ≥44px**,ticket 75 实机校准因环境拦截顺延,待用户实机确认后回写本档定稿)时段内居中显示 `formatScore` 分数(`--hs-text-on-color` 白墨压色段,`--hs-text-xs`/600),窄段省略;段内压缩水印与分数同色白墨 + opacity 0.85 弱化(水印次于分数本体,灰字压色段不可读故不用 `--hs-text-secondary`);每段 hover tooltip 恒有「能力点名 · 分数 · 判分 X/Y 题 · 采样 N 次」(沿用 ticket 51 confidence 口径)。
   - **覆盖率水印条款修订(ticket 75 设计评审登记,取代 ticket 51/52「水印必须可见」):** 不满覆盖(done 且 judged < expected)的段内分数后随压缩水印「·8/10」,**宽度自适应可见——段内宽度够才渲染,不够则省略,完整置信信息由 tooltip 恒兜底**。修订理由:堆叠条段内空间远小于原 strip 的独立条带位(5 段共分一根条),「必须可见」在窄段会溢出段界或挤压分数本体,反而损害分数可读性;防作假对置信标记的硬约束是「信息不可隐藏、不可静默省略」而非「水印恒占视觉位」——tooltip 恒有完整「判分 X/Y 题 · 采样 N 次」保证可达性不丢,可见性让位给宽度自适应,二者合起来不削弱置信标记语义。静态物料(ticket 76)无 hover,水印按页面同规则渲染(宽度够则显示),tooltip 信息不进物料,视为物料读者的已知信息差(spec 0007 已载)。
   - 维度切换联动:切到某能力点 = 该维度段保持不透明、其余段降至 ~40% 透明(行重排与右侧数字换维度分由 Leaderboard 承担,涨跌列仍仅总分视图);「总分」视图 = 全段不透明 + 总分 + 涨跌列。**暗色风险登记(ticket 75 风险 3):~40% 透明在暗色下可能显得「段消失」,check 环节暗色抽查,必要时改降饱和而非降透明——届时回写本条。**
   - props 接缝(ticket 75 设计评审定稿):`{ suites, weights, suiteScores, cells, highlight?, live?, staticMode? }`——传拆好字段而非整 row(EvalCard 快照构造复用时不受 ReportRow 形状耦合);`highlight` 为维度切换高亮的 suite key,`live` 门控条右端「N 个维度进行中 · N 个失败」灰字标注,`staticMode` 为静态物料模式(无 hover/tooltip)。
