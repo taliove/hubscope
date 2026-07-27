@@ -42,7 +42,7 @@
              toolbar never renders this button, so running/pending batches
              have no image-share entry on any of the three pages (spec 0004
              half-baked-score boundary). -->
-        <el-button text size="small" class="share-btn" @click="openShare">
+        <el-button text size="small" @click="openShare">
           <el-icon><Share /></el-icon>
           {{ shared ? '保存图片' : '分享图片' }}
         </el-button>
