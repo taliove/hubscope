@@ -74,7 +74,7 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import StatusCard from '@/components/StatusCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
-import { captureStatusCard, downloadStatusCard, statusCardFilename } from '@/utils/statusCardImage'
+import { captureCardImage, downloadCardImage, cardFilename } from '@/utils/cardImage'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 
 const props = defineProps<{
@@ -135,7 +135,7 @@ async function onCopy() {
   copying.value = true
   error.value = null
   try {
-    const blob = await withLightCapture((el) => captureStatusCard(el))
+    const blob = await withLightCapture((el) => captureCardImage(el))
     if (await copyImageBlob(blob)) {
       ElMessage.success('图片已复制到剪贴板')
     } else {
@@ -154,7 +154,7 @@ async function onDownload() {
   error.value = null
   try {
     await withLightCapture((el) =>
-      downloadStatusCard(el, statusCardFilename(new Date(), props.snapshot?.group?.key)),
+      downloadCardImage(el, cardFilename(new Date(), 'status', props.snapshot?.group?.key)),
     )
     ElMessage.success('已开始下载 PNG')
   } catch (e) {
