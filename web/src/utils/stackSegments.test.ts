@@ -9,8 +9,6 @@ import {
   WATERMARK_EXTRA_PX,
   buildStackSegments,
   effectiveWeight,
-  liveCounts,
-  scoreBand,
 } from '@/utils/stackSegments'
 
 function makeSuite(key: string, name = key): ReportSuite {
@@ -112,17 +110,6 @@ describe('effectiveWeight', () => {
   })
 })
 
-describe('scoreBand', () => {
-  it('maps the 80 boundary to success', () => {
-    expect(scoreBand(80)).toBe('success')
-    expect(scoreBand(79.9)).toBe('warning')
-  })
-  it('maps the 50 boundary to warning', () => {
-    expect(scoreBand(50)).toBe('warning')
-    expect(scoreBand(49.9)).toBe('danger')
-  })
-})
-
 describe('coverage watermark and tooltip', () => {
   const suites = [makeSuite('a', '推理')]
   const weights = { a: 1 }
@@ -169,21 +156,5 @@ describe('in-segment label thresholds', () => {
     const mid = buildStackSegments(suites, weights, { a: (needed - 5) / 5 }, cells, 500)
     expect(mid[0].showLabel).toBe(true)
     expect(mid[0].showWatermark).toBe(false)
-  })
-})
-
-describe('liveCounts', () => {
-  it('counts pending/running as in flight and failed separately', () => {
-    const cells = [
-      makeCell('a', { status: 'pending' }),
-      makeCell('b', { status: 'running' }),
-      makeCell('c', { status: 'failed' }),
-      makeCell('d', { status: 'done' }),
-    ]
-    expect(liveCounts(cells)).toEqual({ inFlight: 2, failed: 1 })
-  })
-
-  it('returns zeros for a settled batch', () => {
-    expect(liveCounts([makeCell('a'), makeCell('b')])).toEqual({ inFlight: 0, failed: 0 })
   })
 })

@@ -10,8 +10,17 @@
 // (internal/server/report_scoring.go: unscored suites drop out of both
 // numerator and denominator). Summing the segment widths therefore equals
 // the total score under any coverage state; there is no second caliber.
+// The band/watermark/tooltip/live-count logic lives in scoreTier.ts (shared
+// with the ticket-78 matrix cells); re-exported here so existing consumers
+// (ScoreStackBar, tests) keep their import path until ticket 79 deletes this
+// module.
 import type { ReportCell, ReportSuite } from '@/api/types'
 import { formatScore } from '@/utils/format'
+import { scoreBand, watermarkOf, tooltipOf, liveCounts } from '@/utils/scoreTier'
+import type { ScoreBand, LiveCounts } from '@/utils/scoreTier'
+
+export { scoreBand, liveCounts }
+export type { ScoreBand, LiveCounts }
 
 // In-segment score label threshold (ui-guidelines §5 ScoreStackBar entry):
 // tentative 44px, calibrated against the 15-model production board before
@@ -20,7 +29,6 @@ import { formatScore } from '@/utils/format'
 export const LABEL_MIN_PX = 44
 export const WATERMARK_EXTRA_PX = 30
 
-export type ScoreBand = 'success' | 'warning' | 'danger'
 export type SuiteColor = 'suite-1' | 'suite-2' | 'suite-3' | 'suite-4' | 'suite-5' | 'suite-6'
 
 export interface StackSegment {
@@ -38,14 +46,6 @@ export interface StackSegment {
   tooltip: string // '{name} · {score} · 判分 X/Y 题 · 采样 N 次'
 }
 
-// Live-mode annotation counts (spec 0007): suites still waiting/running and
-// failed runs, derived from the report cells. Rendered as grey text right of
-// the bar; never occupies bar width, never feeds the total.
-export interface LiveCounts {
-  inFlight: number
-  failed: number
-}
-
 // Weight fallback mirrors the backend: a missing key or a non-positive
 // weight counts as 1 (internal/server/report_scoring.go totalScore).
 export function effectiveWeight(weights: Record<string, number>, key: string): number {
@@ -53,37 +53,11 @@ export function effectiveWeight(weights: Record<string, number>, key: string): n
   return w > 0 ? w : 1
 }
 
-// Score-band mapping (ui-guidelines §3): green at 80+, yellow at 50+, red
-// below — the same bands as the score badge.
-export function scoreBand(score: number): ScoreBand {
-  if (score >= 80) return 'success'
-  if (score >= 50) return 'warning'
-  return 'danger'
-}
-
 // Suite color mapping (ticket 77): each suite gets a unique color by index
 // for cross-row recognition. Cycles through 6 colors if more suites exist.
 export function suiteColor(index: number): SuiteColor {
   const colors: SuiteColor[] = ['suite-1', 'suite-2', 'suite-3', 'suite-4', 'suite-5', 'suite-6']
   return colors[index % colors.length]
-}
-
-// Coverage watermark: a done suite that judged fewer cases than expected
-// carries the compressed '·8/10' form; full coverage (and non-done cells,
-// whose status the live annotation carries) shows nothing.
-function watermarkOf(cell: ReportCell | undefined): string {
-  if (!cell || cell.status !== 'done') return ''
-  if (cell.expected_cases <= 0 || cell.judged_cases >= cell.expected_cases) return ''
-  return `·${cell.judged_cases}/${cell.expected_cases}`
-}
-
-// Confidence tooltip (ticket 51 caliber): suite name, score, judged-case
-// coverage and the number of judged answer attempts. A scored suite always
-// has judged cases, but the shape degrades gracefully if the cell is absent.
-function tooltipOf(name: string, score: number, cell: ReportCell | undefined): string {
-  const head = `${name} · ${formatScore(score)}`
-  if (!cell || cell.judged_cases <= 0) return head
-  return `${head} · 判分 ${cell.judged_cases}/${cell.expected_cases} 题 · 采样 ${cell.samples} 次`
 }
 
 // Build the stacked segments for one board row: one segment per SCORED
@@ -124,17 +98,4 @@ export function buildStackSegments(
       tooltip: tooltipOf(s.name, score, cell),
     }
   })
-}
-
-// Live counts for the right-of-bar annotation: pending/running cells read as
-// "in flight", failed cells as failures (batch/run status vocabulary,
-// ui-guidelines §7).
-export function liveCounts(cells: ReportCell[]): LiveCounts {
-  let inFlight = 0
-  let failed = 0
-  for (const c of cells) {
-    if (c.status === 'pending' || c.status === 'running') inFlight += 1
-    else if (c.status === 'failed') failed += 1
-  }
-  return { inFlight, failed }
 }
