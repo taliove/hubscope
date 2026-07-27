@@ -103,27 +103,27 @@ onMounted(load)
 .board-page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--hs-space-5) var(--hs-space-3);
+  padding: var(--hs-space-5) var(--hs-space-4);
 }
 .page-title {
-  margin: 0 0 var(--hs-space-3);
+  margin: 0 0 var(--hs-space-4);
   font-size: var(--hs-text-xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
 .state-block {
-  margin-bottom: var(--hs-space-3);
+  margin-bottom: var(--hs-space-4);
 }
 /* In-flight hint (spec 0010): one neutral line, no background, no border,
    no polling. */
 .running-note {
-  margin: 0 0 var(--hs-space-3);
+  margin: 0 0 var(--hs-space-4);
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
 }
 .board-footer {
   margin-top: var(--hs-space-5);
-  padding-top: var(--hs-space-3);
+  padding-top: var(--hs-space-4);
   border-top: 1px solid var(--hs-border-light);
   text-align: center;
 }

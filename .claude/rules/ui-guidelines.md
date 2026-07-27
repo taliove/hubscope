@@ -54,7 +54,7 @@
 | `--hs-success-soft` / `--hs-warning-soft` / `--hs-danger-soft` / `--hs-info-soft` | 功能色混白 90%(EP light-9 等价) | 功能色混暗底 82% | 功能浅底:横幅底、选中态、高亮填充 |
 | `--hs-bg-page` | gray-50 `#f7fafb` | `#0f1115` | 页面全局背景、hero panel 中性浅底 |
 | `--hs-bg-card`(表面) | `#ffffff` | `#17191d` | 卡片/表格/弹窗表面 |
-| `--hs-bg-hover` | gray-100 `#eff4f5` | `#1f2227` | 行/菜单悬浮 |
+| `--hs-bg-hover` | gray-100 `#eff4f5` | `#1f2227` | 行/菜单悬浮;榜单条形轨道 |
 | `--hs-text-primary` | gray-900 `#0f1b20` | `#e2e8f0` | 标题、正文主文字 |
 | `--hs-text-regular` | gray-700 `#324249` | `#c3c7cd` | 常规正文 |
 | `--hs-text-secondary` | gray-500 `#617379` | `#8a8f98` | 次要说明、标签、辅助 |

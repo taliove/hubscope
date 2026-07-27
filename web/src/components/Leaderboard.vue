@@ -342,6 +342,9 @@ function deltaTitle(row: ReportRow): string {
   margin-bottom: 0;
   padding-bottom: var(--hs-space-2);
   border-bottom: 1px solid var(--hs-border);
+  /* Matches the rows' transparent 3px rail so header columns share the
+     rows' x positions exactly (matrix alignment invariant). */
+  border-left: 3px solid transparent;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }

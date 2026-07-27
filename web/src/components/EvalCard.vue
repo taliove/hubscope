@@ -234,13 +234,16 @@ function deltaTone(row: EvalCardRow): string {
 .rows {
   display: flex;
   flex-direction: column;
-  margin-bottom: 24px;
+  margin-bottom: var(--hs-space-5);
 }
 /* Table polish (ticket 82, same rhythm as the page): header hairline,
    inter-row hairlines, 46px rows. */
 .ec-header {
   padding-bottom: var(--hs-space-2);
   border-bottom: 1px solid var(--hs-border);
+  /* Matches the rows' transparent 3px rail so header columns share the
+     rows' x positions exactly (matrix alignment invariant). */
+  border-left: 3px solid transparent;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
