@@ -47,6 +47,56 @@ func TestPublicEvalBoardEmpty(t *testing.T) {
 	}
 }
 
+// TestPublicEvalBoardOnlyRunning covers the combination state: a campaign in
+// flight but nothing settled yet — the report stays null while the running
+// flag is true (the public page renders its empty state plus the hint line).
+func TestPublicEvalBoardOnlyRunning(t *testing.T) {
+	ts, _, db := setupEvalEnv(t)
+
+	if _, err := db.CreateCampaign("manual", nil, time.Now().UTC()); err != nil {
+		t.Fatalf("seed running campaign: %v", err)
+	}
+	board := getPublicEvalBoard(t, ts.URL)
+	if board["report"] != nil {
+		t.Errorf("report = %v, want null with only a running campaign", board["report"])
+	}
+	if board["running"] != true {
+		t.Errorf("running = %v, want true with a campaign in flight", board["running"])
+	}
+}
+
+// TestPublicEvalBoardIgnoresQueryParams pins spec 0010: the endpoint takes
+// no sort/family params — an anonymous request carrying them gets the
+// default board (total-desc, unfiltered), identical to a param-free call.
+func TestPublicEvalBoardIgnoresQueryParams(t *testing.T) {
+	ts, stub, _ := setupEvalEnv(t)
+	createEvalModel(t, ts.URL, stub.URL, "smart-model")
+	createEvalModel(t, ts.URL, stub.URL, "dumb-model")
+
+	campaign := triggerFullSweep(t, ts.URL)
+	campaignID := int64(campaign["id"].(float64))
+	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
+
+	plain := getPublicEvalBoard(t, ts.URL)
+	resp := plainGet(t, ts.URL+"/api/public/eval/board?family=zzz&sort=nosuch")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /api/public/eval/board with params: expected 200, got %d: %s", resp.StatusCode, b)
+	}
+	var env envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode public eval board: %v", err)
+	}
+	var withParams map[string]interface{}
+	if err := json.Unmarshal(env.Data, &withParams); err != nil {
+		t.Fatalf("unmarshal public eval board: %v", err)
+	}
+	if !reflect.DeepEqual(plain, withParams) {
+		t.Errorf("query params must not affect the board:\nplain:  %v\nparams: %v", plain, withParams)
+	}
+}
+
 // TestPublicEvalBoardLatestSettled covers the core contract (spec 0010): the
 // board serves the newest settled campaign — done or failed alike, skipping
 // running/pending ones — the payload is byte-identical to the session-gated

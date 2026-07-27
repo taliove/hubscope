@@ -37,7 +37,13 @@ func (s *Server) handleGetPublicEvalBoard(w http.ResponseWriter, r *http.Request
 		writeData(w, http.StatusOK, publicEvalBoardDTO{Report: nil, Running: running})
 		return
 	}
-	report, berr := s.buildCampaignReport(r, campaign, false)
+	// The endpoint takes no sort/family params (spec 0010): strip any
+	// incoming query so the shared builder always serves the default board
+	// (total-desc, unfiltered) — an anonymous ?family=x&sort=y must not
+	// take effect.
+	qr := r.Clone(r.Context())
+	qr.URL.RawQuery = ""
+	report, berr := s.buildCampaignReport(qr, campaign, false)
 	if berr != nil {
 		writeError(w, berr.status, berr.msg)
 		return
