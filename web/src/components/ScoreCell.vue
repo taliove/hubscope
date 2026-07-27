@@ -27,11 +27,12 @@ import type { ReportCell } from '@/api/types'
 import { formatScore } from '@/utils/format'
 import { cellStatusText, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
 
-// Tentative watermark threshold: the score label ('100.0' at md/600, tabular)
-// plus the '·10/10' suffix needs roughly 80px; the matrix dimension columns
-// are ~100-140px, so the watermark normally fits. Calibrated against the
-// production board before the guideline entry lands (ticket 79), same
-// discipline as the stack bar's LABEL_MIN_PX.
+// Watermark threshold (finalized in ticket 79 and registered in
+// ui-guidelines §5): the score label ('100.0' at md/600, tabular, ~38px)
+// plus the '·10/10' suffix (~34px) plus slack. Page dimension columns are
+// ~100-140px, so the watermark normally fits; the material's ~56-68px
+// columns stay below it, so the watermark never renders there (the
+// registered information gap).
 const WATERMARK_MIN_PX = 80
 
 // Props seam (design-review freeze, ticket 78): split fields rather than the

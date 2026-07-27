@@ -115,10 +115,10 @@ const timeText = computed(() => {
 
 // The grid template shared by the header and every row (same alignment
 // discipline as the page matrix). Fixed widths: rank 24 / model 150 /
-// total 64 / delta 60; dimension columns split the rest equally (~68px
-// each with five suites — enough for the score digits, below the
-// watermark threshold, so coverage detail stays page-side per the
-// registered information gap).
+// total 64 / delta 60; dimension columns split the rest equally (~56-68px
+// each with five suites, depending on the delta column — enough for the
+// score digits, below the watermark threshold, so coverage detail stays
+// page-side per the registered information gap).
 const gridStyle = computed(() => {
   const cols = ['24px', '150px', '64px']
   if (props.snapshot.showDeltaColumn) cols.push('60px')
