@@ -4,7 +4,7 @@
 
 **Blocked by:** 75(榜单行堆叠条;EvalCard 行复用 `ScoreStackBar.vue` 静态模式,条与页面同源)
 
-**Status:** pending
+**Status:** done
 
 ## 执行顺序(票内多 commit 拆分,单 commit ≤8 文件)
 
