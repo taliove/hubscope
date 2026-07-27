@@ -14,8 +14,14 @@
   >
     <defs>
       <linearGradient :id="gradientId" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" class="hs-brand-mark__stop-start" />
-        <stop offset="1" class="hs-brand-mark__stop-end" />
+        <!-- stop-color attributes mirror tokens.css (teal-400/teal-700) as a
+             capture fallback: snapdom never inlines computed styles for SVG
+             inner elements, so class-based var() colors are lost in PNG
+             export and the gradient falls back to black. In the live app the
+             scoped CSS var() rules below stay authoritative (CSS beats the
+             presentation attribute). -->
+        <stop offset="0" class="hs-brand-mark__stop-start" stop-color="#30c4b8" />
+        <stop offset="1" class="hs-brand-mark__stop-end" stop-color="#0a6963" />
       </linearGradient>
     </defs>
     <rect x="2" y="2" width="60" height="60" rx="14" :fill="`url(#${gradientId})`" />

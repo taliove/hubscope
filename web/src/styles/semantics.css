@@ -41,6 +41,11 @@
   --hs-text-secondary: var(--hs-gray-500);
   --hs-text-placeholder: var(--hs-gray-400);
 
+  /* Ink on a solid functional-color fill (ScoreStackBar in-segment score
+     labels, ui-guidelines §5). Same in both themes: the fill colors are
+     theme-invariant, so white stays the legible ink. */
+  --hs-text-on-color: #ffffff;
+
   /* Borders. */
   --hs-border: var(--hs-gray-200);
   --hs-border-light: var(--hs-gray-100);

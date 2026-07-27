@@ -1,26 +1,15 @@
 <template>
   <el-dialog
     :model-value="visible"
-    title="分享状态"
+    :title="shared ? '保存图片' : '分享图片'"
     width="752px"
-    class="status-share-dialog"
+    class="eval-share-dialog"
     destroy-on-close
     @update:model-value="emit('update:visible', $event)"
     @closed="onClosed"
   >
     <div class="preview">
-      <StatusCard
-        v-if="snapshot"
-        :entries="snapshot.entries"
-        :keyword="snapshot.keyword"
-        :protocol="snapshot.protocol"
-        :status="snapshot.status"
-        :group="snapshot.group"
-        :generated-at="snapshot.generatedAt"
-        :origin="origin"
-        :hub-name="snapshot.hubName"
-        :eval-summary="snapshot.evalSummary"
-      />
+      <EvalCard v-if="snapshot" :snapshot="snapshot" :origin="origin" />
     </div>
 
     <!-- Offscreen twin used as the capture source. The preview caps its
@@ -28,28 +17,9 @@
          slice (ancestors with overflow clip snapdom's output). This twin
          lives in the same document, so scoped styles and CSS variables
          resolve identically, but no ancestor constrains its paint box. -->
-    <StatusCard
-      v-if="snapshot"
-      ref="cardRef"
-      class="capture-source"
-      :entries="snapshot.entries"
-      :keyword="snapshot.keyword"
-      :protocol="snapshot.protocol"
-      :status="snapshot.status"
-      :group="snapshot.group"
-      :generated-at="snapshot.generatedAt"
-      :origin="origin"
-      :hub-name="snapshot.hubName"
-      :eval-summary="snapshot.evalSummary"
-    />
+    <EvalCard v-if="snapshot" ref="cardRef" class="capture-source" :snapshot="snapshot" :origin="origin" />
 
-    <el-alert
-      v-if="error"
-      :title="error"
-      type="error"
-      :closable="false"
-      class="error-alert"
-    />
+    <el-alert v-if="error" :title="error" type="error" :closable="false" class="error-alert" />
 
     <template #footer>
       <span v-if="!copySupported" class="copy-hint">当前环境不支持复制图片,请使用下载</span>
@@ -64,27 +34,35 @@
 </template>
 
 <script setup lang="ts">
-// Preview + actions for the StatusCard (ticket 56). The exported PNG comes
-// from an offscreen twin of the preview (see the capture-source comment
-// below): snapdom applies ancestor overflow clipping to its output, so the
-// scroll-capped preview cannot be the capture source. Failures keep the
-// buttons usable — the buttons themselves are the retry path
-// (ui-guidelines §6).
+// Preview + actions for the EvalCard (ticket 76), structurally identical to
+// the StatusShareDialog (ticket 56): the exported PNG comes from an
+// offscreen twin of the preview (see the capture-source comment above), the
+// capture always happens in the light theme, and failures keep the buttons
+// usable — the buttons themselves are the retry path (ui-guidelines §6).
+// Purely client-side (props snapshot + snapdom + local download/clipboard):
+// the shared report page mounts this without any session API, keeping the
+// ADR 0006 share-surface invariant.
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import StatusCard from '@/components/StatusCard.vue'
+import EvalCard from '@/components/EvalCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
 import { captureCardImage, downloadCardImage, cardFilename } from '@/utils/cardImage'
-import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
+import type { EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 
-const props = defineProps<{
-  visible: boolean
-  snapshot: StatusCardSnapshot | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    snapshot: EvalCardSnapshot | null
+    // Shared report page (/report/:token): the reader is the recipient, so
+    // the entry copy and the dialog title read "保存图片" (ui-guidelines §5).
+    shared?: boolean
+  }>(),
+  { shared: false },
+)
 
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void }>()
 
-const cardRef = ref<InstanceType<typeof StatusCard> | null>(null)
+const cardRef = ref<InstanceType<typeof EvalCard> | null>(null)
 const copying = ref(false)
 const downloading = ref(false)
 const error = ref<string | null>(null)
@@ -105,7 +83,7 @@ function cardElement(): HTMLElement | null {
 // carries the light tokens for the duration of the capture.
 async function withLightCapture<T>(fn: (el: HTMLElement) => Promise<T>): Promise<T> {
   const el = cardElement()
-  if (!el) throw new Error('status card not rendered')
+  if (!el) throw new Error('eval card not rendered')
   if (!document.documentElement.classList.contains('dark')) {
     return fn(el)
   }
@@ -155,8 +133,10 @@ async function onDownload() {
   downloading.value = true
   error.value = null
   try {
+    // Scope is always the batch number; the finer scope (filters, view) is
+    // stated by the in-card chips, not the filename (ui-guidelines §5).
     await withLightCapture((el) =>
-      downloadCardImage(el, cardFilename(new Date(), 'status', props.snapshot?.group?.key)),
+      downloadCardImage(el, cardFilename(new Date(), 'eval', `批次${props.snapshot?.campaignId ?? ''}`)),
     )
     ElMessage.success('已开始下载 PNG')
   } catch (e) {
@@ -181,15 +161,15 @@ function onClosed() {
      actually scroll. */
   align-items: flex-start;
   overflow: auto;
-  /* Tall cards (long abnormal lists) scroll inside the dialog body so the
-     footer actions stay on screen. */
+  /* Tall cards (up to 20 stacked-bar rows) scroll inside the dialog body so
+     the footer actions stay on screen. */
   max-height: 62vh;
 }
 /* Offscreen capture twin: in-document (styles/variables resolve) but
    outside every overflow constraint and out of view. Absolutely positioned,
    never `fixed`: snapdom re-stages fixed elements against the viewport, which
    stretches the card beyond its 720px design width (flex tracks re-expand
-   while px-frozen children stay) and breaks column alignment. */
+   while px-frozen children stay) and breaks bar/score alignment. */
 .capture-source {
   position: absolute;
   left: -10000px;

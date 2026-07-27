@@ -12,7 +12,9 @@
           <span class="meta-time">{{ formatTime(report.started_at) }}</span>
         </template>
         <span class="header-actions no-print">
-          <el-button v-if="!shared" size="small" :loading="sharing" @click="onShare">分享</el-button>
+          <!-- Link share (ADR 0006) renamed to disambiguate from the
+               leaderboard's image share (ticket 76); behavior unchanged. -->
+          <el-button v-if="!shared" size="small" :loading="sharing" @click="onShare">复制链接</el-button>
           <el-button size="small" @click="onPrint">导出 PDF</el-button>
         </span>
       </div>
@@ -63,14 +65,20 @@
           type="warning"
           :closable="false"
           class="state-block"
-          :title="`批次有 ${report.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`"
+          :title="failedBatchWarning(report.progress.failed)"
         >
           <template v-if="!shared" #default>
             <router-link to="/admin" class="failed-link no-print">到管理台评估运营查看失败运行详情</router-link>
           </template>
         </el-alert>
 
-        <Leaderboard :report="report" :family-options="familyOptions" @query="onQuery" @select="openTrend" />
+        <Leaderboard
+          :report="report"
+          :family-options="familyOptions"
+          :shared="shared"
+          @query="onQuery"
+          @select="openTrend"
+        />
       </template>
 
       <!-- Trend dialog mounts outside the status branches (same as /eval) so
@@ -93,6 +101,7 @@ import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
+import { failedBatchWarning } from '@/utils/evalWording'
 import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done

@@ -90,7 +90,7 @@
             type="warning"
             :closable="false"
             class="state-block"
-            :title="`批次有 ${report.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`"
+            :title="failedBatchWarning(report.progress.failed)"
           >
             <template #default>
               <router-link to="/admin" class="failed-link">到管理台评估运营查看失败运行详情</router-link>
@@ -125,6 +125,7 @@ import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
+import { failedBatchWarning } from '@/utils/evalWording'
 import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Eval leaderboard page (ticket 45): a pure consumption page. The batch
