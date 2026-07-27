@@ -60,24 +60,26 @@
         <!-- Sortable headers (spec 0009, descending-only ruling): click to
              rank by that column descending (↓ indicator on the active one);
              click the active column to fall back to the total. Ranking goes
-             through the server-side query.sort unchanged. -->
+             through the server-side query.sort unchanged. In live mode the
+             headers are inert — no pointer, no indicator — because the
+             half-scored board keeps the backend's lexicographic order. -->
         <span
           class="h-total h-sortable"
-          :class="{ 'h-active': sortKey === 'total' }"
+          :class="{ 'h-active': !live && sortKey === 'total', 'h-disabled': live }"
           @click="onSort('total')"
         >
-          总分<span v-if="sortKey === 'total'" class="sort-arrow">↓</span>
+          总分<span v-if="!live && sortKey === 'total'" class="sort-arrow">↓</span>
         </span>
         <span v-if="!live" class="h-delta">涨跌</span>
         <span
           v-for="s in report.suites"
           :key="s.key"
           class="h-suite h-sortable"
-          :class="{ 'h-active': sortKey === s.key }"
+          :class="{ 'h-active': !live && sortKey === s.key, 'h-disabled': live }"
           :title="s.name"
           @click="onSort(s.key)"
         >
-          {{ s.name }}<span v-if="sortKey === s.key" class="sort-arrow">↓</span>
+          {{ s.name }}<span v-if="!live && sortKey === s.key" class="sort-arrow">↓</span>
         </span>
         <span v-if="live" class="h-note" />
       </div>
@@ -356,6 +358,13 @@ function deltaTitle(row: ReportRow): string {
 .h-active {
   color: var(--hs-text-primary);
   font-weight: 600;
+}
+/* Live mode: headers are inert (no pointer, no hover feedback, no arrow). */
+.h-disabled {
+  cursor: default;
+}
+.h-disabled:hover {
+  color: var(--hs-text-secondary);
 }
 .sort-arrow {
   margin-left: 2px;
