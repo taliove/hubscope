@@ -10,6 +10,7 @@
 // aggregate. An empty filtered result keeps all chips and shows a neutral
 // "暂无匹配模型", never a "全部上榜"-style conclusion.
 import type { CampaignReport, CampaignStatus, EvalTrigger, ReportCell, ReportSuite } from '@/api/types'
+import { baselineChipText, failedBatchWarning } from '@/utils/evalWording'
 
 // Cap on leaderboard rows rendered into the card; the rest collapse into a
 // single overflow line (same shape as the StatusCard detail overflow).
@@ -67,17 +68,6 @@ function suiteName(suites: ReportSuite[], key: string): string {
   return suites.find((s) => s.key === key)?.name ?? key
 }
 
-// Baseline chip value — the incomparable branches use the exact words of the
-// Leaderboard baselineNote (ADR 0007/0008 caliber breaks).
-function baselineChipValue(report: CampaignReport): string | null {
-  const baseline = report.baseline
-  if (!baseline) return null
-  if (baseline.comparable) return `较批次 #${baseline.campaign_id}`
-  if (baseline.reason === 'suite_changed') return `较批次 #${baseline.campaign_id}:题目已变更,分数不可比`
-  if (baseline.reason === 'profile_changed') return `较批次 #${baseline.campaign_id}:判分口径已变更,分数不可比`
-  return `较批次 #${baseline.campaign_id}:考核口径不同,分数不可比`
-}
-
 // Scope chips in fixed order: 批次 → 系列 → 维度 → 排序 → 涨跌基准. The batch
 // chip is always present and neutral (the failed emphasis is carried by the
 // warning line, not a colored chip). The sort chip is deduped against the
@@ -96,7 +86,7 @@ function buildChips(report: CampaignReport, query: { family?: string; sort: stri
     chips.push({ label: '排序', value: suiteName(report.suites, query.sort) })
   }
   if (viewSuite === 'total') {
-    const value = baselineChipValue(report)
+    const value = baselineChipText(report.baseline)
     if (value !== null) chips.push({ label: '涨跌基准', value })
   }
   return chips
@@ -110,10 +100,7 @@ export function buildEvalCardSnapshot(
   query: { family?: string; sort: string },
   viewSuite: string,
 ): EvalCardSnapshot {
-  const failedWarning =
-    report.status === 'failed'
-      ? `批次有 ${report.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`
-      : null
+  const failedWarning = report.status === 'failed' ? failedBatchWarning(report.progress.failed) : null
   const rows: EvalCardRow[] = report.rows.slice(0, EVAL_CARD_MAX_ROWS).map((row, index) => ({
     rank: index + 1,
     modelId: row.model_id,

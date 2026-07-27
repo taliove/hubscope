@@ -65,7 +65,7 @@
           type="warning"
           :closable="false"
           class="state-block"
-          :title="`批次有 ${report.progress.failed} 个评估运行失败,榜单仅统计已完成的评估集`"
+          :title="failedBatchWarning(report.progress.failed)"
         >
           <template v-if="!shared" #default>
             <router-link to="/admin" class="failed-link no-print">到管理台评估运营查看失败运行详情</router-link>
@@ -101,6 +101,7 @@ import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
+import { failedBatchWarning } from '@/utils/evalWording'
 import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done

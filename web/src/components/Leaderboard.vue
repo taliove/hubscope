@@ -103,6 +103,7 @@ import type { CampaignReport, EvalBoardView, ReportRow } from '@/api/types'
 import ScoreStackBar from '@/components/ScoreStackBar.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
+import { baselineNoteText } from '@/utils/evalWording'
 
 // Leaderboard is the single ranking display of the eval board (registered in
 // ui-guidelines §5): one row per model — rank, truncated name, family tag,
@@ -197,14 +198,7 @@ const emptyDescription = computed(() => {
 // Baseline note next to the toolbar: names the comparison batch, or why the
 // comparison is impossible (ADR 0007 question-bank break / ADR 0008
 // scoring-caliber break).
-const baselineNote = computed(() => {
-  const baseline = props.report.baseline
-  if (!baseline) return ''
-  if (baseline.comparable) return `涨跌较批次 #${baseline.campaign_id}`
-  if (baseline.reason === 'suite_changed') return `较批次 #${baseline.campaign_id}:题目已变更,分数不可比`
-  if (baseline.reason === 'profile_changed') return `较批次 #${baseline.campaign_id}:判分口径已变更,分数不可比`
-  return `较批次 #${baseline.campaign_id}:考核口径不同,分数不可比`
-})
+const baselineNote = computed(() => baselineNoteText(props.report.baseline))
 
 // Delta arrows (ui-guidelines §3): up is green, down is red, and ties,
 // missing baselines and caliber breaks never show an arrow — a grey
