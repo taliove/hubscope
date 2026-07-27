@@ -49,7 +49,7 @@ func countRunsByTrigger(runs []map[string]interface{}, trigger string) int {
 func startEvalWorker(t *testing.T, db *store.DB, srv *server.Server, clock *scheduler.FakeClock) {
 	t.Helper()
 	worker := scheduler.NewEvalWorker(db, srv.Evaluator(), clock,
-		scheduler.WithEvalPollInterval(time.Minute))
+		scheduler.WithEvalPollInterval(100*time.Millisecond))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {

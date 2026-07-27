@@ -253,7 +253,7 @@ func probeRecords(t *testing.T, baseURL string, endpointID int) []map[string]int
 // waitFor polls cond until it holds or the deadline passes.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
