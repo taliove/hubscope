@@ -31,6 +31,13 @@
         @query="onQuery"
       />
     </template>
+
+    <!-- Quiet admin entry (spec 0010): the public board is the outward
+         facade, so the header carries no login button and the entry
+         retreats to this footer line. -->
+    <footer class="board-footer">
+      <router-link to="/login" class="admin-link">管理登录</router-link>
+    </footer>
   </div>
 </template>
 
@@ -113,5 +120,19 @@ onMounted(load)
   margin: 0 0 16px;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
+}
+.board-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hs-border-light);
+  text-align: center;
+}
+.admin-link {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+  text-decoration: none;
+}
+.admin-link:hover {
+  color: var(--hs-brand-hover);
 }
 </style>

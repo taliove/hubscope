@@ -56,8 +56,11 @@
           <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
         </template>
         <el-button v-if="user" @click="router.push('/admin')">管理视图</el-button>
-        <el-button v-if="!user" type="primary" @click="router.push('/login')">登录</el-button>
-        <el-button v-else link type="primary" :loading="loggingOut" @click="onLogout">
+        <!-- Login entry: hidden on /board (spec 0010 — the public board is
+             the outward-facing page, the login entry retreats to its
+             footer); the status board keeps it as a high-frequency entry. -->
+        <el-button v-if="!user && !isPublicBoard" type="primary" @click="router.push('/login')">登录</el-button>
+        <el-button v-if="user" link type="primary" :loading="loggingOut" @click="onLogout">
           退出
         </el-button>
       </div>
@@ -92,10 +95,16 @@ interface NavItem {
   // Public items render for anonymous visitors; the rest would only be
   // bounced to /login by the route guard, so they are hidden instead.
   public?: boolean
+  // Anonymous-only items (the public eval board) hide once logged in — the
+  // session audience gets the full version (/eval) instead.
+  anonOnly?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
   { label: '状态总览', to: '/', public: true },
+  // The leaderboard is public since spec 0010: anonymous visitors get the
+  // settled-batch board at /board; logged-in users keep /eval.
+  { label: '评估榜单', to: '/board', public: true, anonOnly: true },
   { label: '评估榜单', to: '/eval' },
   { label: '任务中心', to: '/tasks' },
 ]
@@ -111,8 +120,12 @@ const { dark, toggleTheme } = useTheme()
 // Anonymous visitors only get the public nav entries; logout flips user
 // to null and this computed collapses the nav back immediately.
 const visibleNavItems = computed(() =>
-  user.value ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.public),
+  user.value ? NAV_ITEMS.filter((item) => !item.anonOnly) : NAV_ITEMS.filter((item) => item.public),
 )
+
+// The public board hides the header login button (spec 0010): the page is
+// the outward-facing facade and carries a quiet "管理登录" footer instead.
+const isPublicBoard = computed(() => route.path === '/board')
 
 // Short version: extract only the tag part (e.g., "v0.2.3" from "v0.2.3-4-g1adea03-dirty")
 const shortVersion = computed(() => {
