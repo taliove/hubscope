@@ -22,7 +22,10 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=web /repo/web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -o /hubscope ./cmd/hubscope
+# VERSION build arg is injected at build time (docker build --build-arg VERSION=vX.Y.Z).
+# It defaults to "dev" when not provided.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.Version=${VERSION}" -o /hubscope ./cmd/hubscope
 
 # Runtime
 FROM alpine:3.21
