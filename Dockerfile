@@ -11,7 +11,11 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY web/package.json ./web/
 RUN pnpm install --frozen-lockfile
 COPY web/ ./web/
-RUN pnpm --dir web build
+# CACHEBUST: when the value changes, the frontend build layer is invalidated
+# and pnpm build re-runs. deploy.sh passes a fresh timestamp so every test-line
+# deploy recompiles the frontend instead of reusing a cached dist.
+ARG CACHEBUST=0
+RUN echo "$CACHEBUST" > /tmp/cachebust && pnpm --dir web build
 
 # Build the backend (pure Go, no cgo)
 FROM golang:1.26-alpine AS go

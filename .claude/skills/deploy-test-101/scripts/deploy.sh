@@ -13,6 +13,10 @@ CONTAINER_NAME=hubscope
 PORT=8080
 HOST_IP=192.168.1.101
 
+# Set by backup_data: 1 when no app.db existed before this deployment
+# (fresh install → init_admin creates the default super_admin), 0 otherwise.
+DB_FRESH=0
+
 # Icons
 ICON_SUCCESS="✓"
 ICON_ERROR="✗"
@@ -109,11 +113,16 @@ backup_data() {
   log_info "Backing up data..."
   mkdir -p "$BACKUP_DIR"
 
-  if [ -f "$DATA_DIR/hubscope/app.db" ]; then
+  # Record whether the database exists BEFORE this deployment. init_admin
+  # uses this flag: a default super_admin is created only when the service
+  # starts against a fresh (empty) database — never on top of existing data.
+  if [ -s "$DATA_DIR/hubscope/app.db" ]; then
+    DB_FRESH=0
     sudo cp "$DATA_DIR/hubscope/app.db" "$BACKUP_DIR/app.db.bak-$ts"
     local db_size=$(ls -lh "$DATA_DIR/hubscope/app.db" | awk '{print $5}')
     log_success "Database backed up ($db_size) to $BACKUP_DIR/app.db.bak-$ts"
   else
+    DB_FRESH=1
     log_warning "No existing database found (first deployment)"
   fi
 
@@ -151,9 +160,18 @@ build_image() {
     log_success "Built production image: $IMAGE_TAG"
   else
     log_info "Building from current working directory (development)"
-    docker build $build_args -t "$CONTAINER_NAME:dev" .
+    # Pass a fresh timestamp as both VERSION and CACHEBUST on every dev deploy:
+    # VERSION busts the Go build layer (fresh version stamp) and CACHEBUST busts
+    # the frontend build layer — both frontend and backend are recompiled from
+    # the current code, never reused from a stale cached layer.
+    # Local time (no -u): all deploys happen in one timezone, wall-clock
+    # readability beats UTC purity on the test line.
+    local dev_version="dev-$(date +%Y%m%d-%H%M%S)"
+    docker build $build_args \
+      --build-arg VERSION="$dev_version" \
+      --build-arg CACHEBUST="$dev_version" \
+      -t "$CONTAINER_NAME:dev" .
 
-    local dev_version=$(docker run --rm "$CONTAINER_NAME:dev" --version 2>&1 | grep -oP 'dev-\d{8}-\d{6}' || echo "unknown")
     IMAGE_TAG="$CONTAINER_NAME:dev"
     log_success "Built development image: $IMAGE_TAG ($dev_version)"
   fi
@@ -208,27 +226,28 @@ health_check() {
   fi
 }
 
-# Initialize admin account (first deployment only)
+# Initialize admin account (first deployment only). Gated on DB_FRESH —
+# the flag backup_data sets when no app.db existed before this deployment.
+# A fresh database means no users, so the default super_admin is safe to
+# create. Existing data is never touched, and no probe-with-side-effects
+# is needed to detect it.
 init_admin() {
-  log_info "Checking admin accounts..."
-
-  local admin_exists=$(docker exec $CONTAINER_NAME sh -c 'hubscope admin create --username admin --password "test123456" 2>&1' | grep -c "already taken" || echo "0")
-
-  if [ "$admin_exists" -eq 0 ]; then
-    log_info "No admin account found, creating default super_admin..."
-    docker exec $CONTAINER_NAME sh -c 'hubscope admin create --username admin --password "HubScope2026!"'
-
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "Default super_admin account created:"
-    echo "  Username: admin"
-    echo "  Password: HubScope2026!"
-    echo "  $ICON_WARNING Please change the password after first login!"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-  else
-    log_info "Admin accounts already exist, skipping account creation"
+  if [ "${DB_FRESH:-0}" -ne 1 ]; then
+    log_info "Existing database detected, skipping admin account creation"
+    return
   fi
+
+  log_info "Fresh database, creating default super_admin..."
+  docker exec $CONTAINER_NAME sh -c 'hubscope admin create --username admin --password "HubScope2026!"'
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  log_success "Default super_admin account created:"
+  echo "  Username: admin"
+  echo "  Password: HubScope2026!"
+  echo "  $ICON_WARNING Please change the password after first login!"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
 }
 
 # Verify deployment
@@ -294,6 +313,20 @@ cleanup_images() {
   log_success "Cleanup completed"
 }
 
+# Test gate: backend tests + frontend test/typecheck/build must pass before
+# anything is deployed. Deliberately NOT `make test`: that target also runs
+# install-test, which validates scripts/install.sh (the production install
+# path) — irrelevant to the docker deploy path — and two of its cases assume
+# a clean machine (no hubscope user, go outside /usr/bin), so they can never
+# pass on the test server itself. Runs against the working tree for dev
+# deploys; tag deploys rely on the release gate (CI green) that produced the tag.
+run_tests() {
+  log_info "Running tests (backend + frontend)..."
+  make backend-test
+  make frontend-test
+  log_success "All tests passed"
+}
+
 # Deploy from current working directory (development)
 deploy_dev() {
   local no_cache=${1:-false}
@@ -301,6 +334,7 @@ deploy_dev() {
   log_info "Starting development deployment..."
 
   check_dependencies
+  run_tests
   backup_data
   build_image "dev" "" "$no_cache"
   stop_container
