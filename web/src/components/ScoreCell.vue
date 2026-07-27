@@ -7,8 +7,10 @@
        empty track. The compressed coverage watermark rides the score when
        the cell is wide enough; the hover tooltip always carries the full
        ticket-51 confidence caliber. staticMode (exported material, ticket
-       79) drops the tooltip and the width measurement — the card's fixed
-       720px canvas always has room. -->
+       79) drops the tooltip and measures the width once without observing
+       (the material never resizes) — the watermark follows the same width
+       rule as the page, and the tooltip's confidence info stays out of the
+       material (registered information gap, ui-guidelines §5). -->
   <div ref="rootRef" class="score-cell" :title="tooltip">
     <span class="cell-value" :class="valueClass">
       {{ label }}<span v-if="showWatermark" class="cell-watermark">{{ watermark }}</span>
@@ -35,9 +37,9 @@ const WATERMARK_MIN_PX = 80
 // Props seam (design-review freeze, ticket 78): split fields rather than the
 // whole ReportRow, so the ticket-79 static EvalCard can construct the same
 // inputs without the row shape. `staticMode` is the exported-material mode
-// (no tooltip, no width measurement — the fixed 720px canvas always has
-// room). A null score is a dash over an empty track in every mode; the
-// unscored tooltip wording comes from the cell's own status.
+// (no tooltip; width measured once, never observed). A null score is a
+// dash over an empty track in every mode; the unscored tooltip wording
+// comes from the cell's own status.
 const props = withDefaults(
   defineProps<{
     name: string
@@ -60,14 +62,18 @@ const watermark = computed(() => watermarkOf(props.cell))
 
 // The watermark is width-adaptive: rendered when the measured cell is wide
 // enough, omitted otherwise — the tooltip below always carries the full
-// confidence info (anti-fake: reachable, never silently dropped).
+// confidence info (anti-fake: reachable, never silently dropped). Static
+// material measures once (it has layout in the off-screen capture container
+// but never resizes), so the page rule "rendered when wide enough" holds
+// identically on both ends.
 const rootRef = ref<HTMLElement | null>(null)
 const cellWidth = ref(0)
 let observer: ResizeObserver | null = null
 
 onMounted(() => {
-  if (props.staticMode || !rootRef.value) return
+  if (!rootRef.value) return
   cellWidth.value = rootRef.value.clientWidth
+  if (props.staticMode) return
   observer = new ResizeObserver((entries) => {
     cellWidth.value = entries[0]?.contentRect.width ?? 0
   })
@@ -79,9 +85,7 @@ onBeforeUnmount(() => {
   observer = null
 })
 
-const showWatermark = computed(
-  () => watermark.value !== '' && (props.staticMode || cellWidth.value >= WATERMARK_MIN_PX),
-)
+const showWatermark = computed(() => watermark.value !== '' && cellWidth.value >= WATERMARK_MIN_PX)
 
 const tooltip = computed(() => {
   if (props.staticMode) return undefined
