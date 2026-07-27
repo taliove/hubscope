@@ -205,19 +205,15 @@ const sortKey = ref('total')
 
 // Share-image state (ticket 76): the snapshot freezes the currently
 // displayed batch + filters at open time; a report prop refresh never
-// rebuilds an open snapshot. The view argument is pinned to 'total' — the
-// matrix has no dimension view (spec 0009), and the snapshot builder's
-// total branch already produces the target chip set (batch / family /
-// non-default sort / baseline).
+// rebuilds an open snapshot.
 const shareVisible = ref(false)
 const shareSnapshot = ref<EvalCardSnapshot | null>(null)
 
 function openShare() {
-  shareSnapshot.value = buildEvalCardSnapshot(
-    props.report,
-    { family: family.value || undefined, sort: sortKey.value },
-    'total',
-  )
+  shareSnapshot.value = buildEvalCardSnapshot(props.report, {
+    family: family.value || undefined,
+    sort: sortKey.value,
+  })
   shareVisible.value = true
 }
 
