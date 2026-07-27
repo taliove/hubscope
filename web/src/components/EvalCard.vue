@@ -291,7 +291,8 @@ function deltaTone(row: EvalCardRow): string {
   display: block;
   height: 6px;
   margin-top: 2px;
-  background: var(--hs-brand-soft);
+  /* Neutral track, same token and rationale as ScoreCell (ticket 82). */
+  background: var(--hs-bg-hover);
   border-radius: var(--hs-radius-xs);
   overflow: hidden;
 }

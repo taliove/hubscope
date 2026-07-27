@@ -127,7 +127,10 @@ const tooltip = computed(() => {
 .cell-track {
   height: 4px;
   margin-top: 2px;
-  background: var(--hs-brand-soft);
+  /* Neutral track (ticket 82, spec 0010): the band colors are the only loud
+     element on the board; the track is a surface tint one step above the
+     card (--hs-bg-hover), never a brand tint. */
+  background: var(--hs-bg-hover);
   border-radius: var(--hs-radius-xs);
   overflow: hidden;
 }
