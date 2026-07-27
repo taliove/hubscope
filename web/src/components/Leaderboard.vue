@@ -1,11 +1,11 @@
 <template>
   <el-card shadow="never" class="leaderboard-card">
-    <!-- Toolbar: suite view switch, family filter, ranking column. Suite
-         switching also re-ranks by that suite so bar lengths stay monotonic
-         top to bottom (the board is a ranking). In live mode (unfinished
-         batch, ticket 52) the grid/scores view switch takes the lead slot
-         and both ranking controls are disabled — the half-scored board
-         never re-ranks; family filtering stays available. -->
+    <!-- Toolbar: suite view switch and family filter (ticket 78 transitional:
+         the radio/select still drive the server-side ranking column until the
+         next commit replaces them with column-header sorting). In live mode
+         (unfinished batch, ticket 52) the grid/scores view switch takes the
+         lead slot and both ranking controls are disabled — the half-scored
+         board never re-ranks; family filtering stays available. -->
     <div class="toolbar">
       <el-radio-group
         v-if="live"
@@ -52,51 +52,81 @@
     <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
     <el-empty v-if="report.rows.length === 0" :description="emptyDescription" />
 
-    <!-- Suite legend and ruler (ticket 77): color legend explains the suite
-         colors, ruler labels sit above the stacked bars aligned with segments.
-         DesignArena-style horizontal bar leaderboard (ui-guidelines §5).
-         Rows are clickable: a click emits select for the trend drill-down
-         dialog (ticket 32, no inline row expansion per §4). Live mode keeps
-         the row order the backend sent (model-id lexicographic) and swaps
-         the rank slot for a placeholder dash. The bar is the shared
-         ScoreStackBar (ticket 75): per-suite segments stacked left to right,
-         bar length equal to the total score by construction. -->
+    <!-- Matrix board (ticket 78, spec 0009): one fixed column per dimension —
+         rank | model(+family tag) | total | delta | suite 1..N. Header and
+         rows share the same CSS grid template, so every column's x position
+         is constant across the whole table regardless of family-tag width
+         (the flex-row drift that made alignment structurally impossible).
+         Dimension cells are the shared ScoreCell: band-colored score over a
+         thin bar on a fixed 0-100 track. Rows are clickable: a click emits
+         select for the trend drill-down dialog (ticket 32, no inline row
+         expansion per §4). Live mode keeps the backend's model-id
+         lexicographic order and swaps the rank slot for a placeholder dash. -->
     <div v-else>
-      <SuiteLegend :suites="report.suites" />
-      <SuiteRuler
-        :suites="report.suites"
-        :weights="report.weights"
-        :reference-scores="report.rows[0].suite_scores"
-      />
-      <div class="rows">
-      <div
-        v-for="(row, index) in report.rows"
-        :key="row.model_db_id"
-        class="row clickable"
-        role="button"
-        tabindex="0"
-        @click="emit('select', row)"
-        @keydown.enter="emit('select', row)"
-        @keydown.space.prevent="emit('select', row)"
-      >
-        <span class="rank" :class="{ 'rank-live': live }">{{ live ? '–' : index + 1 }}</span>
-        <span class="model" :title="row.model_id">{{ row.model_id }}</span>
-        <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
-        <ScoreStackBar
-          :suites="report.suites"
-          :weights="report.weights"
-          :suite-scores="row.suite_scores"
-          :cells="row.cells"
-          :live="live"
-          :highlight="highlightKey"
-        />
-        <span class="score">{{ formatScore(scoreOf(row)) }}</span>
-        <span v-if="!live && viewSuite === 'total'" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
-          <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
-          <template v-else>–</template>
-        </span>
+      <div class="lb-grid lb-header" :style="gridStyle">
+        <span class="h-rank">名次</span>
+        <span class="h-model">模型</span>
+        <span class="h-total">总分</span>
+        <span v-if="!live" class="h-delta">涨跌</span>
+        <span v-for="s in report.suites" :key="s.key" class="h-suite" :title="s.name">{{ s.name }}</span>
+        <span v-if="live" class="h-note" />
       </div>
-    </div>
+      <div class="rows">
+        <div
+          v-for="(row, index) in report.rows"
+          :key="row.model_db_id"
+          class="lb-grid row clickable"
+          role="button"
+          tabindex="0"
+          :style="gridStyle"
+          @click="emit('select', row)"
+          @keydown.enter="emit('select', row)"
+          @keydown.space.prevent="emit('select', row)"
+        >
+          <span class="rank" :class="{ 'rank-live': live, 'rank-top': !live && index < 3 }">{{
+            live ? '–' : index + 1
+          }}</span>
+          <span class="model">
+            <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
+            <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
+          </span>
+          <!-- Total column: xl ink number, NEVER band-colored — hierarchy
+               comes from size and the thicker 6px bar, not color. In live
+               mode the track stays empty and uncolored so a half-scored
+               total can never read as a bad grade (spec 0004 mirror). -->
+          <span class="total">
+            <span class="total-value">{{ formatScore(row.total_score) }}</span>
+            <span class="total-track">
+              <span
+                v-if="!live && row.total_score !== null"
+                class="total-fill"
+                :class="`band-${scoreBand(row.total_score)}`"
+                :style="{ width: totalWidth(row.total_score) }"
+              />
+            </span>
+          </span>
+          <!-- Delta column is always visible on settled batches; row-level
+               caliber unchanged (arrow on non-zero delta, dash otherwise). -->
+          <span v-if="!live" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
+            <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
+            <template v-else>–</template>
+          </span>
+          <ScoreCell
+            v-for="s in report.suites"
+            :key="s.key"
+            :name="s.name"
+            :score="row.suite_scores[s.key] ?? null"
+            :cell="cellOf(row, s.key)"
+            :live="live"
+          />
+          <span v-if="live" class="live-note">
+            <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
+            <span v-if="countsOf(row).failed > 0" class="live-failed"
+              >{{ countsOf(row).inFlight > 0 ? '· ' : '' }}{{ countsOf(row).failed }} 个失败</span
+            >
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- Share-image dialog; the snapshot freezes at open time so a report
@@ -109,28 +139,26 @@
 import { computed, ref } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
-import type { CampaignReport, EvalBoardView, ReportRow } from '@/api/types'
-import ScoreStackBar from '@/components/ScoreStackBar.vue'
-import SuiteLegend from '@/components/SuiteLegend.vue'
-import SuiteRuler from '@/components/SuiteRuler.vue'
+import type { CampaignReport, EvalBoardView, ReportCell, ReportRow } from '@/api/types'
+import ScoreCell from '@/components/ScoreCell.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
+import { scoreBand, liveCounts } from '@/utils/scoreTier'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText } from '@/utils/evalWording'
 
 // Leaderboard is the single ranking display of the eval board (registered in
 // ui-guidelines §5): one row per model — rank, truncated name, family tag,
-// the shared ScoreStackBar stacked bar (ticket 75), the 0-100 score, and the
-// total-score delta arrow versus the previous done campaign. Suite
-// switching, family filtering and ranking column live in the toolbar, never
-// inside cells. The parent fetches data; this component only re-emits query
-// changes.
+// the 0-100 total with its 6px band bar, the total-score delta arrow versus
+// the previous done campaign, and one ScoreCell per dimension. Family
+// filtering lives in the toolbar, never inside cells. The parent fetches
+// data; this component only re-emits query changes.
 //
 // Live mode (ticket 52, half-scored board of an unfinished batch): the rank
 // slot shows a placeholder dash (no rank badges pre-settle), rows keep the
-// backend's model-id lexicographic order, the sort select and suite switch
-// are disabled, and the delta column hides entirely. Scored suites stack
-// normally; unrun suites occupy no width and surface in the bar's
-// right-of-bar "N 个维度进行中 / N 个失败" note (ticket 75).
+// backend's model-id lexicographic order, the ranking controls are disabled,
+// and the delta column hides entirely. Scored suites render normally;
+// unscored cells are a dash over an empty track and surface in the row-end
+// "N 个维度进行中 / N 个失败" note.
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -180,22 +208,30 @@ function emitQuery() {
   emit('query', { family: family.value || undefined, sort: sortKey.value })
 }
 
-// Live mode pins the board to the total: the suite switch is disabled, so
-// the score slot always reads the (partial) weighted total.
-function scoreOf(row: ReportRow): number | null {
-  if (props.live) return row.total_score
-  if (viewSuite.value === 'total') return row.total_score
-  return row.suite_scores[viewSuite.value] ?? null
+// The grid template shared by the header and every row — the single source
+// of column x positions. Fixed widths: rank 32 / model 260 / total 96 /
+// delta 80; dimension columns split the rest equally (spec 0009: column
+// width is independent of suite weight). Live mode drops the delta column
+// and appends an auto-width column for the row-end note.
+const gridStyle = computed(() => {
+  const cols = ['32px', '260px', '96px']
+  if (!props.live) cols.push('80px')
+  for (let i = 0; i < props.report.suites.length; i += 1) cols.push('minmax(0, 1fr)')
+  if (props.live) cols.push('auto')
+  return { gridTemplateColumns: cols.join(' ') }
+})
+
+function cellOf(row: ReportRow, suiteKey: string): ReportCell | undefined {
+  return row.cells.find((c) => c.suite_key === suiteKey)
 }
 
-// Dimension switch highlight (ticket 75): the selected suite's segment
-// stays opaque while the rest dim to ~40%; the score slot already swaps to
-// that suite's score via scoreOf. Total view (and live mode, where the
-// switch is disabled) highlights nothing.
-const highlightKey = computed(() => {
-  if (props.live || viewSuite.value === 'total') return null
-  return viewSuite.value
-})
+function countsOf(row: ReportRow) {
+  return liveCounts(row.cells)
+}
+
+function totalWidth(score: number): string {
+  return `${Math.min(100, Math.max(0, score))}%`
+}
 
 // Empty-state copy distinguishes "nothing scored" from "filtered out" so a
 // fully-failed batch never reads as "deleted models don't rank". Live mode
@@ -272,15 +308,33 @@ function deltaTitle(row: ReportRow): string {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
+.lb-grid {
+  display: grid;
+  column-gap: 12px;
+  align-items: center;
+}
+.lb-header {
+  margin-bottom: 8px;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.h-rank {
+  text-align: right;
+}
+.h-model,
+.h-total,
+.h-suite {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.h-delta {
+  text-align: right;
+}
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 .row.clickable {
   cursor: pointer;
@@ -296,18 +350,27 @@ function deltaTitle(row: ReportRow): string {
   outline-offset: 1px;
 }
 .rank {
-  width: 24px;
   text-align: right;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-  flex-shrink: 0;
+}
+/* Top-3 emphasis (spec 0009): brand teal + 600; the rest stay secondary. */
+.rank-top {
+  color: var(--hs-brand);
+  font-weight: 600;
 }
 .rank-live {
   color: var(--hs-text-placeholder);
 }
 .model {
-  width: 220px;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.model-name {
+  flex: 1;
+  min-width: 0;
   font-size: var(--hs-text-md);
   color: var(--hs-text-primary);
   overflow: hidden;
@@ -317,21 +380,38 @@ function deltaTitle(row: ReportRow): string {
 .family-tag {
   flex-shrink: 0;
 }
-.score {
-  width: 56px;
-  text-align: right;
-  font-size: var(--hs-text-md);
+.total-value {
+  font-size: var(--hs-text-xl);
   font-weight: 600;
   line-height: 1.2;
   color: var(--hs-text-primary);
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.total-track {
+  display: block;
+  height: 6px;
+  margin-top: 2px;
+  background: var(--hs-brand-soft);
+  border-radius: var(--hs-radius-xs);
+  overflow: hidden;
+}
+.total-fill {
+  display: block;
+  height: 100%;
+}
+.total-fill.band-success {
+  background: var(--hs-success);
+}
+.total-fill.band-warning {
+  background: var(--hs-warning);
+}
+.total-fill.band-danger {
+  background: var(--hs-danger);
 }
 .delta {
-  width: 72px;
   text-align: right;
   font-size: var(--hs-text-sm);
   line-height: 1.2;
-  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 .delta-up {
@@ -342,5 +422,13 @@ function deltaTitle(row: ReportRow): string {
 }
 .delta-flat {
   color: var(--hs-text-placeholder);
+}
+.live-note {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+  white-space: nowrap;
+}
+.live-failed {
+  color: var(--hs-danger);
 }
 </style>
