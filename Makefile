@@ -1,5 +1,7 @@
 BINARY := bin/hubscope
 GO := go
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -X main.Version=$(VERSION)
 
 .PHONY: build test dev clean fmt lint package frontend-build frontend-test backend-build backend-test ensure-dist hooks install-test
 
@@ -35,7 +37,7 @@ package: build
 	tar -czf dist/hubscope-$$(git describe --tags --always --dirty 2>/dev/null || echo dev).tar.gz $(BINARY) Dockerfile docs/deployment.md scripts/install.sh
 
 backend-build: ensure-dist
-	$(GO) build -o $(BINARY) ./cmd/hubscope
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/hubscope
 
 backend-test: ensure-dist
 	$(GO) test ./...

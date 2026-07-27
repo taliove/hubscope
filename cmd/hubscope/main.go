@@ -23,6 +23,10 @@ import (
 	"github.com/taliove/hubscope/web"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=vX.Y.Z".
+// It defaults to "dev" when building without ldflags.
+var Version = "dev"
+
 // defaultAddr is the fallback listen address.
 const defaultAddr = ":8080"
 
@@ -40,6 +44,11 @@ const discoveryInterval = time.Hour
 const discoveryInitialDelay = 30 * time.Second
 
 func main() {
+	// 'hubscope --version' prints the version and exits.
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("hubscope", Version)
+		return
+	}
 	// 'hubscope admin <subcommand>' manages users out-of-band (the first
 	// super_admin has no way to be created via HTTP — auth is required to
 	// manage users, a chicken-and-egg). Routing here keeps the server path
@@ -89,7 +98,10 @@ func run() error {
 	// resolving client IPs (rate limiting, audit). Enable only behind a
 	// forwarding proxy that REPLACES (not appends to) any client-supplied
 	// X-Forwarded-For header; otherwise the leftmost hop is spoofable.
-	srv := server.New(db, server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"))
+	srv := server.New(db,
+		server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"),
+		server.WithVersion(Version),
+	)
 	if dist, err := fs.Sub(web.DistFS, "dist"); err == nil {
 		srv.SetStaticFS(dist)
 	}

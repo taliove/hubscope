@@ -48,6 +48,8 @@
             批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}
           </span>
         </el-button>
+        <!-- Version display -->
+        <span v-if="version" class="version" :title="`HubScope ${version}`">{{ version }}</span>
         <template v-if="user">
           <span class="user-name" :title="user.username">{{ user.username }}</span>
           <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
@@ -71,6 +73,7 @@ import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
+import { fetchVersion } from '@/api/version'
 import { roleLabel, roleTagType } from '@/utils/role'
 import { useTheme } from '@/utils/theme'
 import BrandMark from './BrandMark.vue'
@@ -101,6 +104,7 @@ const NAV_ITEMS: NavItem[] = [
 // `user` is null when unauthenticated; every authed-only branch reads it.
 const user = ref<AuthUser | null>(null)
 const loggingOut = ref(false)
+const version = ref<string>('')
 const { dark, toggleTheme } = useTheme()
 
 // Anonymous visitors only get the public nav entries; logout flips user
@@ -121,6 +125,17 @@ async function refreshAuth() {
     user.value = (await fetchAuthStatus()).user ?? null
   } catch {
     user.value = null
+  }
+}
+
+// Fetch version once on mount; it never changes during a session.
+async function loadVersion() {
+  try {
+    const res = await fetchVersion()
+    version.value = res.version
+  } catch {
+    // Silent failure: version display is non-critical.
+    version.value = ''
   }
 }
 
@@ -180,7 +195,10 @@ async function refreshHeaderState() {
   await refreshBatch()
 }
 
-onMounted(refreshHeaderState)
+onMounted(() => {
+  void refreshHeaderState()
+  void loadVersion()
+})
 watch(() => route.fullPath, refreshHeaderState)
 onBeforeUnmount(stopBatchPolling)
 </script>
@@ -251,6 +269,11 @@ onBeforeUnmount(stopBatchPolling)
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.version {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 .user-name {
   max-width: 120px;

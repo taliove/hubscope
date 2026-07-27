@@ -26,6 +26,7 @@ type Server struct {
 	router    chi.Router
 	staticFS  fs.FS
 	now       func() time.Time
+	version   string
 
 	// Rate-limit tiers; a nil limiter means its tier is unlimited.
 	loginLimiter *ipLimiter
@@ -77,6 +78,13 @@ func WithTrustProxy(trust bool) Option {
 func WithSessionSecret(secret []byte) Option {
 	return func(s *Server) {
 		s.sessionSecret = secret
+	}
+}
+
+// WithVersion sets the server version string (displayed in the UI footer).
+func WithVersion(version string) Option {
+	return func(s *Server) {
+		s.version = version
 	}
 }
 
@@ -143,6 +151,8 @@ func (s *Server) routes() chi.Router {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
+
+	r.Get("/api/version", s.handleVersion)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(s.rateLimit)
@@ -293,4 +303,13 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // writeNoContent writes a 204 with no body.
 func writeNoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleVersion returns the server version string.
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	version := s.version
+	if version == "" {
+		version = "unknown"
+	}
+	writeData(w, http.StatusOK, map[string]string{"version": version})
 }
