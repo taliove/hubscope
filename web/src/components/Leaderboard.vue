@@ -95,13 +95,14 @@
         <div
           v-for="(row, index) in report.rows"
           :key="row.model_db_id"
-          class="lb-grid row clickable"
-          role="button"
-          tabindex="0"
+          class="lb-grid row"
+          :class="{ clickable: selectable }"
+          :role="selectable ? 'button' : undefined"
+          :tabindex="selectable ? 0 : undefined"
           :style="gridStyle"
-          @click="emit('select', row)"
-          @keydown.enter="emit('select', row)"
-          @keydown.space.prevent="emit('select', row)"
+          @click="selectable && emit('select', row)"
+          @keydown.enter="selectable && emit('select', row)"
+          @keydown.space.prevent="selectable && emit('select', row)"
         >
           <span class="rank" :class="{ 'rank-live': live, 'rank-top': !live && index < 3 }">{{
             live ? '–' : index + 1
@@ -190,8 +191,11 @@ const props = withDefaults(
     // Shared report page (/report/:token): the share-image entry copy reads
     // "保存图片" for the recipient reader (ticket 76, ui-guidelines §5).
     shared?: boolean
+    // Public board (/board, ticket 81): rows are not clickable — the public
+    // page has no trend drill-down. Default true; /eval behavior unchanged.
+    selectable?: boolean
   }>(),
-  { live: false, view: 'grid', shared: false },
+  { live: false, view: 'grid', shared: false, selectable: true },
 )
 
 const emit = defineEmits<{

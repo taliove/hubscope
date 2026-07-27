@@ -1,6 +1,6 @@
 // Eval Campaign API calls (ticket 29).
 import { http } from './client'
-import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends } from './types'
+import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends, PublicEvalBoard } from './types'
 
 export async function listCampaigns(): Promise<Campaign[]> {
   return http.get<Campaign[]>('/campaigns')
@@ -29,4 +29,10 @@ export async function getCampaignReport(id: number, query: ReportQuery = {}): Pr
 // the probe-side hourly aggregate, fetched on demand when a row is clicked.
 export async function getCampaignTrends(id: number, modelDbId: number): Promise<CampaignTrends> {
   return http.get<CampaignTrends>(`/campaigns/${id}/trends?model=${modelDbId}`)
+}
+
+// Public eval board (ticket 81, spec 0010): anonymous read, no params — the
+// newest settled campaign's full report; the client ranks and filters it.
+export async function getPublicEvalBoard(): Promise<PublicEvalBoard> {
+  return http.get<PublicEvalBoard>('/public/eval/board')
 }

@@ -17,6 +17,15 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/board',
+      name: 'public-board',
+      component: () => import('@/views/BoardView.vue'),
+      // Public eval board (ticket 81, spec 0010): the newest settled batch,
+      // anonymous like the status board; /eval stays the session-gated
+      // full version.
+      meta: { public: true },
+    },
+    {
       path: '/eval',
       name: 'eval-leaderboard',
       component: () => import('@/views/EvalLeaderboardView.vue'),

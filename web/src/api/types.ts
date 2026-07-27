@@ -320,6 +320,16 @@ export interface CampaignReport extends Campaign {
   baseline: ReportBaseline | null // null when no earlier done campaign exists
 }
 
+// Public eval board (ticket 81, spec 0010): GET /api/public/eval/board —
+// the newest settled campaign's report (the exact shape of the session
+// report) plus a flag for in-flight batches; report is null when nothing
+// has settled yet. The endpoint takes no params: the client ranks and
+// filters the one full payload.
+export interface PublicEvalBoard {
+  report: CampaignReport | null
+  running: boolean
+}
+
 // Campaign trend types (ticket 32): the per-model drill-down of a report —
 // cross-campaign score trend with suite-version break markers, plus the
 // probe-side hourly aggregate over the same timeline.
