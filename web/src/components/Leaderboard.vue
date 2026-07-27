@@ -46,7 +46,9 @@
          Rows are clickable: a click emits select for the trend drill-down
          dialog (ticket 32, no inline row expansion per §4). Live mode keeps
          the row order the backend sent (model-id lexicographic) and swaps
-         the rank slot for a placeholder dash. -->
+         the rank slot for a placeholder dash. The bar is the shared
+         ScoreStackBar (ticket 75): per-suite segments stacked left to right,
+         bar length equal to the total score by construction. -->
     <div v-else class="rows">
       <div
         v-for="(row, index) in report.rows"
@@ -58,45 +60,20 @@
         @keydown.enter="emit('select', row)"
         @keydown.space.prevent="emit('select', row)"
       >
-        <div class="row-main">
-          <span class="rank" :class="{ 'rank-live': live }">{{ live ? '–' : index + 1 }}</span>
-          <span class="model" :title="row.model_id">{{ row.model_id }}</span>
-          <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
-          <div class="bar-track">
-            <div class="bar-fill" :style="{ width: barWidth(scoreOf(row)), background: barColor(scoreOf(row)) }" />
-          </div>
-          <span class="score">{{ formatScore(scoreOf(row)) }}</span>
-          <span v-if="!live && viewSuite === 'total'" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
-            <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
-            <template v-else>–</template>
-          </span>
-        </div>
-        <!-- Per-suite dimension strip (ticket 51, reusing the ticket-52
-             strip shape): every capability score side by side with the
-             total. In live mode an unrun suite keeps an empty bar and a
-             "进行中" score placeholder (never counted into the total); a
-             scored suite shows its bar plus the coverage watermark when not
-             every case was judged. Hovering an item reveals the confidence
-             detail (coverage + judged samples). -->
-        <div class="suite-strip">
-          <span v-for="s in report.suites" :key="s.key" class="suite-item" :title="confidenceOf(row, s.key)">
-            <span class="suite-name" :title="s.name">{{ s.name }}</span>
-            <span class="suite-bar-track">
-              <span class="suite-bar-fill" :style="suiteBarStyle(row, s.key)" />
-            </span>
-            <span class="suite-score">
-              <template v-if="suiteScoreOf(row, s.key) !== null">{{ formatScore(suiteScoreOf(row, s.key)) }}</template>
-              <template v-else-if="isSuiteFailed(row, s.key)">
-                <span class="suite-failed">失败</span>
-              </template>
-              <template v-else-if="isSuiteInFlight(row, s.key)">
-                <span class="suite-inflight">进行中</span>
-              </template>
-              <template v-else>-</template>
-            </span>
-            <span v-if="coverageOf(row, s.key)" class="coverage">{{ coverageOf(row, s.key) }}</span>
-          </span>
-        </div>
+        <span class="rank" :class="{ 'rank-live': live }">{{ live ? '–' : index + 1 }}</span>
+        <span class="model" :title="row.model_id">{{ row.model_id }}</span>
+        <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
+        <ScoreStackBar
+          :suites="report.suites"
+          :weights="report.weights"
+          :suite-scores="row.suite_scores"
+          :cells="row.cells"
+        />
+        <span class="score">{{ formatScore(scoreOf(row)) }}</span>
+        <span v-if="!live && viewSuite === 'total'" class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
+          <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
+          <template v-else>–</template>
+        </span>
       </div>
     </div>
   </el-card>
@@ -105,25 +82,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
-import type { CampaignReport, EvalBoardView, ReportCell, ReportRow } from '@/api/types'
+import type { CampaignReport, EvalBoardView, ReportRow } from '@/api/types'
+import ScoreStackBar from '@/components/ScoreStackBar.vue'
 
 // Leaderboard is the single ranking display of the eval board (registered in
-// ui-guidelines §5): one row per model — rank, truncated name, band-colored
-// bar, 0-100 score, and the total-score delta arrow versus the previous
-// done campaign. Suite switching, family filtering and ranking column live
-// in the toolbar, never inside cells. The parent fetches data; this
-// component only re-emits query changes.
+// ui-guidelines §5): one row per model — rank, truncated name, family tag,
+// the shared ScoreStackBar stacked bar (ticket 75), the 0-100 score, and the
+// total-score delta arrow versus the previous done campaign. Suite
+// switching, family filtering and ranking column live in the toolbar, never
+// inside cells. The parent fetches data; this component only re-emits query
+// changes.
 //
 // Live mode (ticket 52, half-scored board of an unfinished batch): the rank
 // slot shows a placeholder dash (no rank badges pre-settle), rows keep the
 // backend's model-id lexicographic order, the sort select and suite switch
-// are disabled, the delta column hides entirely, and unrun suites show a
-// "进行中" placeholder in the strip.
-//
-// Dimension strip (ticket 51): every row carries the per-suite strip in both
-// settled and live mode — the total never stands alone. Each score's
-// confidence marker is the coverage watermark ("X/Y 题", only when coverage
-// is incomplete) plus the judged-sample count on the hover tooltip.
+// are disabled, and the delta column hides entirely. Scored suites stack
+// normally; unrun suites occupy no width.
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -155,26 +129,12 @@ function emitQuery() {
   emit('query', { family: family.value || undefined, sort: sortKey.value })
 }
 
-// Live mode pins the main bar to the total: the suite switch is disabled
-// and per-suite detail lives in the strip below each row.
+// Live mode pins the board to the total: the suite switch is disabled, so
+// the score slot always reads the (partial) weighted total.
 function scoreOf(row: ReportRow): number | null {
   if (props.live) return row.total_score
   if (viewSuite.value === 'total') return row.total_score
   return row.suite_scores[viewSuite.value] ?? null
-}
-
-function barWidth(score: number | null): string {
-  if (score === null) return '0%'
-  return `${Math.min(100, Math.max(0, score))}%`
-}
-
-// Bar fill follows the score-band color mapping (ui-guidelines §3): green at
-// 80+, yellow at 50+, red below — the same bands as the score badge.
-function barColor(score: number | null): string {
-  if (score === null) return 'transparent'
-  if (score >= 80) return 'var(--hs-success)'
-  if (score >= 50) return 'var(--hs-warning)'
-  return 'var(--hs-danger)'
 }
 
 // Empty-state copy distinguishes "nothing scored" from "filtered out" so a
@@ -186,52 +146,6 @@ const emptyDescription = computed(() => {
   if (props.report.status === 'failed') return '暂无上榜模型:评估运行全部失败'
   return '暂无上榜模型:已删除模型不上榜'
 })
-
-// --- Live-mode per-suite strip helpers --------------------------------
-
-function cellOf(row: ReportRow, suiteKey: string): ReportCell | undefined {
-  return row.cells.find((c) => c.suite_key === suiteKey)
-}
-
-function suiteScoreOf(row: ReportRow, suiteKey: string): number | null {
-  return row.suite_scores[suiteKey] ?? null
-}
-
-// A suite is "in flight" only while its cell is waiting or running; a failed
-// cell reads as "失败" (batch/run status vocabulary, ui-guidelines §7) with
-// an empty bar, and only a done run without any judged case renders the bare
-// dash.
-function isSuiteInFlight(row: ReportRow, suiteKey: string): boolean {
-  const cell = cellOf(row, suiteKey)
-  return cell !== undefined && (cell.status === 'pending' || cell.status === 'running')
-}
-
-function isSuiteFailed(row: ReportRow, suiteKey: string): boolean {
-  return cellOf(row, suiteKey)?.status === 'failed'
-}
-
-function suiteBarStyle(row: ReportRow, suiteKey: string): { width: string; background: string } {
-  const score = suiteScoreOf(row, suiteKey)
-  return { width: barWidth(score), background: barColor(score) }
-}
-
-// Coverage watermark (ui-guidelines §5): "X/Y 题" next to a done suite's
-// score when not every case was judged; full coverage shows nothing.
-function coverageOf(row: ReportRow, suiteKey: string): string {
-  const cell = cellOf(row, suiteKey)
-  if (!cell || cell.status !== 'done') return ''
-  if (cell.expected_cases <= 0 || cell.judged_cases >= cell.expected_cases) return ''
-  return `${cell.judged_cases}/${cell.expected_cases} 题`
-}
-
-// Confidence detail (ticket 51) on the item's hover tooltip: judged-case
-// coverage plus the number of judged answer attempts behind the score.
-// Empty while the suite has judged nothing (nothing to be confident about).
-function confidenceOf(row: ReportRow, suiteKey: string): string {
-  const cell = cellOf(row, suiteKey)
-  if (!cell || cell.judged_cases <= 0) return ''
-  return `判分 ${cell.judged_cases}/${cell.expected_cases} 题 · 采样 ${cell.samples} 次`
-}
 
 // Baseline note next to the toolbar: names the comparison batch, or why the
 // comparison is impossible (ADR 0007 question-bank break / ADR 0008
@@ -307,11 +221,6 @@ function deltaTitle(row: ReportRow): string {
 }
 .row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.row-main {
-  display: flex;
   align-items: center;
   gap: 12px;
 }
@@ -350,18 +259,6 @@ function deltaTitle(row: ReportRow): string {
 .family-tag {
   flex-shrink: 0;
 }
-.bar-track {
-  flex: 1;
-  height: 20px;
-  background: var(--hs-brand-soft);
-  border-radius: var(--hs-radius-sm);
-  overflow: hidden;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: var(--hs-radius-sm);
-  transition: width 0.3s ease;
-}
 .score {
   width: 56px;
   text-align: right;
@@ -370,59 +267,6 @@ function deltaTitle(row: ReportRow): string {
   line-height: 1.2;
   color: var(--hs-text-primary);
   flex-shrink: 0;
-}
-.suite-strip {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding-left: 36px;
-}
-.suite-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.suite-name {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.suite-bar-track {
-  width: 64px;
-  height: 8px;
-  background: var(--hs-brand-soft);
-  border-radius: var(--hs-radius-xs);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.suite-bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--hs-radius-xs);
-}
-.suite-score {
-  font-size: var(--hs-text-xs);
-  line-height: 1.2;
-  color: var(--hs-text-primary);
-  font-variant-numeric: tabular-nums;
-}
-.suite-inflight {
-  color: var(--hs-text-placeholder);
-}
-/* Failed suite: the batch/run failure semantic color, same as the progress
-   grid's failed cell (ui-guidelines §3). */
-.suite-failed {
-  color: var(--hs-danger);
-}
-.coverage {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
-  white-space: nowrap;
 }
 .delta {
   width: 72px;
