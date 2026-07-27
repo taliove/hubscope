@@ -335,8 +335,13 @@ function deltaTitle(row: ReportRow): string {
   column-gap: 12px;
   align-items: center;
 }
+/* Table polish (ticket 82, spec 0010): a 1px hairline under the header and
+   between rows replaces the bare gap; rows breathe at a fixed 46px (the
+   fifteen-rows-per-viewport sweet spot). */
 .lb-header {
-  margin-bottom: 8px;
+  margin-bottom: 0;
+  padding-bottom: var(--hs-space-2);
+  border-bottom: 1px solid var(--hs-border);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
@@ -384,20 +389,27 @@ function deltaTitle(row: ReportRow): string {
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+}
+.row {
+  min-height: 46px;
+  /* The 3px left border is the top-3 ceremony rail (transparent for every
+     other rank so column x positions never shift); see .rank-top-rail. */
+  border-left: 3px solid transparent;
+}
+.row + .row {
+  border-top: 1px solid var(--hs-border-light);
 }
 .row.clickable {
   cursor: pointer;
-  border-radius: var(--hs-radius-lg);
-  padding: 2px 4px;
-  margin: -2px -4px;
 }
+/* Hover/focus fill the row's own box (table semantics): the hairlines and
+   the 46px row height define the click area, no negative-margin bleed. */
 .row.clickable:hover {
   background: var(--hs-brand-soft);
 }
 .row.clickable:focus-visible {
   outline: 2px solid var(--hs-brand);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 .rank {
   text-align: right;

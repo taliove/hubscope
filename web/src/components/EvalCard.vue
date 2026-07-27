@@ -228,17 +228,27 @@ function deltaTone(row: EvalCardRow): string {
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   margin-bottom: 24px;
+}
+/* Table polish (ticket 82, same rhythm as the page): header hairline,
+   inter-row hairlines, 46px rows. */
+.ec-header {
+  padding-bottom: var(--hs-space-2);
+  border-bottom: 1px solid var(--hs-border);
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.row {
+  min-height: 46px;
+  border-left: 3px solid transparent;
+}
+.row + .row {
+  border-top: 1px solid var(--hs-border-light);
 }
 .ec-grid {
   display: grid;
   column-gap: 8px;
   align-items: center;
-}
-.ec-header {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
 }
 .h-rank {
   text-align: right;
