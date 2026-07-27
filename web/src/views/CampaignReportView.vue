@@ -12,7 +12,9 @@
           <span class="meta-time">{{ formatTime(report.started_at) }}</span>
         </template>
         <span class="header-actions no-print">
-          <el-button v-if="!shared" size="small" :loading="sharing" @click="onShare">分享</el-button>
+          <!-- Link share (ADR 0006) renamed to disambiguate from the
+               leaderboard's image share (ticket 76); behavior unchanged. -->
+          <el-button v-if="!shared" size="small" :loading="sharing" @click="onShare">复制链接</el-button>
           <el-button size="small" @click="onPrint">导出 PDF</el-button>
         </span>
       </div>
@@ -70,7 +72,13 @@
           </template>
         </el-alert>
 
-        <Leaderboard :report="report" :family-options="familyOptions" @query="onQuery" @select="openTrend" />
+        <Leaderboard
+          :report="report"
+          :family-options="familyOptions"
+          :shared="shared"
+          @query="onQuery"
+          @select="openTrend"
+        />
       </template>
 
       <!-- Trend dialog mounts outside the status branches (same as /eval) so

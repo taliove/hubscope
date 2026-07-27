@@ -36,7 +36,17 @@
         <el-option label="按总分排序" value="total" />
         <el-option v-for="s in report.suites" :key="s.key" :label="`按${s.name}排序`" :value="s.key" />
       </el-select>
-      <span v-if="!live && viewSuite === 'total' && baselineNote" class="baseline-note">{{ baselineNote }}</span>
+      <span v-if="!live" class="toolbar-end">
+        <span v-if="viewSuite === 'total' && baselineNote" class="baseline-note">{{ baselineNote }}</span>
+        <!-- Share-image entry (ticket 76): settled batches only — the live
+             toolbar never renders this button, so running/pending batches
+             have no image-share entry on any of the three pages (spec 0004
+             half-baked-score boundary). -->
+        <el-button text size="small" class="share-btn" @click="openShare">
+          <el-icon><Share /></el-icon>
+          {{ shared ? '保存图片' : '分享图片' }}
+        </el-button>
+      </span>
     </div>
 
     <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
@@ -78,14 +88,21 @@
         </span>
       </div>
     </div>
+
+    <!-- Share-image dialog; the snapshot freezes at open time so a report
+         refresh cannot swap the data between preview and export. -->
+    <EvalShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" :shared="shared" />
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Share } from '@element-plus/icons-vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
 import type { CampaignReport, EvalBoardView, ReportRow } from '@/api/types'
 import ScoreStackBar from '@/components/ScoreStackBar.vue'
+import EvalShareDialog from '@/components/EvalShareDialog.vue'
+import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 
 // Leaderboard is the single ranking display of the eval board (registered in
 // ui-guidelines §5): one row per model — rank, truncated name, family tag,
@@ -109,8 +126,11 @@ const props = withDefaults(
     familyOptions: string[]
     live?: boolean
     view?: EvalBoardView
+    // Shared report page (/report/:token): the share-image entry copy reads
+    // "保存图片" for the recipient reader (ticket 76, ui-guidelines §5).
+    shared?: boolean
   }>(),
-  { live: false, view: 'grid' },
+  { live: false, view: 'grid', shared: false },
 )
 
 const emit = defineEmits<{
@@ -122,6 +142,21 @@ const emit = defineEmits<{
 const viewSuite = ref('total')
 const family = ref('')
 const sortKey = ref('total')
+
+// Share-image state (ticket 76): the snapshot freezes the currently
+// displayed batch + filters + view at open time; a report prop refresh
+// never rebuilds an open snapshot.
+const shareVisible = ref(false)
+const shareSnapshot = ref<EvalCardSnapshot | null>(null)
+
+function openShare() {
+  shareSnapshot.value = buildEvalCardSnapshot(
+    props.report,
+    { family: family.value || undefined, sort: sortKey.value },
+    viewSuite.value,
+  )
+  shareVisible.value = true
+}
 
 function onViewSuiteChange(value: string | number | boolean) {
   sortKey.value = String(value)
@@ -221,8 +256,13 @@ function deltaTitle(row: ReportRow): string {
 .sort-select {
   width: 160px;
 }
-.baseline-note {
+.toolbar-end {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.baseline-note {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
