@@ -363,7 +363,9 @@ var legacySuites = []seedSuite{
 }
 
 // builtinSuites is the full seed bank: the retired legacy suites plus the
-// capability suites of question-bank v3. Retirement is generation-tracked
+// capability suites of question-bank v3 plus the authoritative-benchmark
+// suites (spec 0014, ADR 0013). Retirement is generation-tracked
 // (retireAtGen), so the legacy suites seed their cases exactly once and then
-// leave the evaluation rotation without being deleted.
-var builtinSuites = append(legacySuites, capabilitySuites...)
+// leave the evaluation rotation without being deleted; benchmark suites use
+// the same mechanism to seed disabled until the cutover (ticket 99).
+var builtinSuites = append(append(legacySuites, capabilitySuites...), benchmarkSuites...)

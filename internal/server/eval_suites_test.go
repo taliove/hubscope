@@ -30,13 +30,14 @@ func fetchSuites(t *testing.T, base, query string) []map[string]interface{} {
 // no capability, nadir 0), and five capability suites join the rotation with
 // 8-12 first-issue cases each across three difficulty tiers, judge cases at
 // sample_count 3 and rule cases at 1, and the knowledge suite calibrated to
-// the multiple-choice nadir floor.
+// the multiple-choice nadir floor. The mmlu benchmark suite (ADR 0013) is
+// the tenth seed: listed but disabled until the ticket-99 cutover.
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 9 {
-		t.Fatalf("expected 9 suites (4 legacy retired + 5 capability), got %d", len(suites))
+	if len(suites) != 10 {
+		t.Fatalf("expected 10 suites (4 legacy retired + 5 capability + 1 benchmark disabled), got %d", len(suites))
 	}
 
 	byKey := map[string]map[string]interface{}{}
@@ -178,8 +179,9 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 		t.Errorf("capability=nosuch suites = %v, want empty", got)
 	}
 
-	// No parameter: every suite, retired legacy ones included.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 9 {
-		t.Errorf("unfiltered suites = %d, want 9", len(got))
+	// No parameter: every suite, retired legacy and disabled benchmark ones
+	// included.
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 10 {
+		t.Errorf("unfiltered suites = %d, want 10", len(got))
 	}
 }
