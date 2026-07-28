@@ -116,6 +116,21 @@ func TestTestLarkFailureRecorded(t *testing.T) {
 	if events[0]["sent_ok"].(bool) != false {
 		t.Error("expected sent_ok false on the recorded event")
 	}
+
+	// The audit trail records the action and outcome but never the webhook
+	// URL (W6) — the URL carries the bot token.
+	page := fetchAuditLogs(t, ts.URL, "?action=settings.test_lark")
+	items := auditItems(t, page)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 settings.test_lark audit entry, got %d", len(items))
+	}
+	blob, err := json.Marshal(items[0])
+	if err != nil {
+		t.Fatalf("marshal audit item: %v", err)
+	}
+	if strings.Contains(string(blob), lark.URL) {
+		t.Errorf("audit entry must never contain the webhook URL: %s", blob)
+	}
 }
 
 // TestTestLarkValidation rejects a missing, empty, or non-http(s) webhook
