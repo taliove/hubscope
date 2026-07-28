@@ -11,15 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/store"
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.
-// mcq (ADR 0013) and numeric (ticket 95) must stay listed or admins could
-// not curate benchmark cases through the case API (PATCH revalidates the
-// merged case).
+// mcq (ADR 0013), numeric (ticket 95) and output_match (ticket 98) must
+// stay listed or admins could not curate benchmark cases through the case
+// API (PATCH revalidates the merged case).
 var validVerdictTypes = map[string]bool{"rule": true, "judge": true}
-var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true, "numeric": true}
+var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true, "numeric": true, "output_match": true}
 
 // validDifficulties enumerates the accepted difficulty tiers.
 var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
@@ -283,7 +284,7 @@ func validateCase(c store.Case) error {
 	}
 	if c.VerdictType == "rule" {
 		if c.RuleMode == nil || !validRuleModes[*c.RuleMode] {
-			return fmt.Errorf("rule_config.mode must be exact, regex, contains, mcq or numeric")
+			return fmt.Errorf("rule_config.mode must be exact, regex, contains, mcq, numeric or output_match")
 		}
 		if c.RuleExpected == nil || *c.RuleExpected == "" {
 			return fmt.Errorf("rule_config.expected is required")
@@ -307,6 +308,14 @@ func validateCase(c store.Case) error {
 			// could never score a hit (ticket 95).
 			if !numericExpectationValid(*c.RuleExpected) {
 				return fmt.Errorf("rule_config.expected must be a number for numeric")
+			}
+		}
+		if *c.RuleMode == "output_match" {
+			// An output_match expectation is the precomputed standard output
+			// as a Python literal; anything else could never score a hit
+			// (ticket 98). Validation is pure parsing — no code execution.
+			if _, ok := evaluator.CanonicalPyLiteral(*c.RuleExpected); !ok {
+				return fmt.Errorf("rule_config.expected must be a Python literal for output_match")
 			}
 		}
 	}

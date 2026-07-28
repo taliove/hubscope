@@ -58,14 +58,14 @@ func TestSuitePurgeCascade(t *testing.T) {
 	// ever be listed.
 	ts, db := openSuitesServer(t, dbPath)
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 8 {
-		t.Fatalf("fresh bank suites = %d, want 5 capability suites + 3 benchmark disabled: %v", len(suites), suites)
+	if len(suites) != 9 {
+		t.Fatalf("fresh bank suites = %d, want 5 capability suites + 4 benchmark disabled: %v", len(suites), suites)
 	}
 	for _, s := range suites {
 		if s["capability"] == "" {
 			t.Errorf("legacy suite %v listed on a fresh bank, want purged/never seeded", s["key"])
 		}
-		if s["key"] == "mmlu" || s["key"] == "gsm8k" || s["key"] == "agieval_zh" {
+		if s["key"] == "mmlu" || s["key"] == "gsm8k" || s["key"] == "agieval_zh" || s["key"] == "cruxeval" {
 			if s["enabled"] != false {
 				t.Errorf("benchmark suite %v enabled = %v, want false until cutover", s["key"], s["enabled"])
 			}
@@ -126,8 +126,8 @@ func TestSuitePurgeCascade(t *testing.T) {
 	defer db2.Close()
 
 	after := fetchSuites(t, ts2.URL, "")
-	if len(after) != 7 {
-		t.Fatalf("suites after purge = %d, want 7 (4 capability + 3 benchmark exempt): %v", len(after), after)
+	if len(after) != 8 {
+		t.Fatalf("suites after purge = %d, want 8 (4 capability + 4 benchmark exempt): %v", len(after), after)
 	}
 	for _, s := range after {
 		if s["key"] == "cap_instruction" {
@@ -183,8 +183,8 @@ func TestSuitePurgeCascade(t *testing.T) {
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	again := fetchSuites(t, ts3.URL, "")
-	if len(again) != 7 {
-		t.Errorf("suites after third boot = %d, want still 7 (4 capability + 3 benchmark exempt)", len(again))
+	if len(again) != 8 {
+		t.Errorf("suites after third boot = %d, want still 8 (4 capability + 4 benchmark exempt)", len(again))
 	}
 	for _, s := range again {
 		if s["key"] == "cap_instruction" || s["capability"] == "" {

@@ -38,7 +38,7 @@ func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 8 {
+	if len(suites) != 9 {
 		t.Fatalf("expected 8 suites (5 capability + 2 benchmark disabled), got %d", len(suites))
 	}
 
@@ -182,7 +182,7 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 
 	// No parameter: every suite, the full capability bank plus the disabled
 	// benchmark suites.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 8 {
-		t.Errorf("unfiltered suites = %d, want 8", len(got))
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 9 {
+		t.Errorf("unfiltered suites = %d, want 9", len(got))
 	}
 }

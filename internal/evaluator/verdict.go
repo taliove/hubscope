@@ -35,6 +35,13 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 		return numericVerdict(expected, answer)
 	}
 
+	// output_match (ticket 98, CRUXEval-style output prediction) likewise
+	// has its own literal canonicalization caliber and never touches the
+	// generic normalization pipeline — and never executes any code.
+	if mode == "output_match" {
+		return outputMatchVerdict(expected, answer)
+	}
+
 	hit := false
 	switch mode {
 	case "exact":

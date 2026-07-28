@@ -4,7 +4,7 @@
 
 **Blocked by:** 94(权威题库管线首发:MMLU 知识套件端到端)
 
-**Status:** ready-for-agent
+**Status:** done(284099f,2026-07-28;merge 81ae524;选型终局:CMMLU/C-Eval 均 CC BY-NC-SA 拦截 → 用户裁决授权第三来源 → AGIEval 高考中文/历史/地理子集(MIT,ruixiangcui/AGIEval @ 84ab72d,logiqa-zh/jec-qa 按 license 排除)双通道核验 680/680 行一致;中文归一复用 mcq 共享一把尺子,票风险条 2「分 profile」作废,理由入 ADR 0013 附记)
 
 ## 验收清单
 

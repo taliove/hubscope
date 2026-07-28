@@ -103,6 +103,7 @@
               <el-option label="包含子串 (contains)" value="contains" />
               <el-option label="选项字母 (mcq)" value="mcq" />
               <el-option label="数值提取 (numeric)" value="numeric" />
+              <el-option label="输出匹配 (output_match)" value="output_match" />
             </el-select>
           </el-form-item>
           <el-form-item label="期望值" prop="ruleExpected">
@@ -207,7 +208,7 @@ onMounted(loadSuites)
 interface CaseForm {
   prompt: string
   verdict_type: VerdictType
-  ruleMode: 'exact' | 'regex' | 'contains' | 'mcq' | 'numeric'
+  ruleMode: 'exact' | 'regex' | 'contains' | 'mcq' | 'numeric' | 'output_match'
   ruleExpected: string
   rubric: string
   difficulty: Difficulty
