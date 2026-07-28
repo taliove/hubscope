@@ -52,6 +52,8 @@
       </span>
     </div>
 
+    <LatencySparkline :dots="entry.dots_24h" :baseline-ms="entry.baseline_p50_ms" />
+
     <div class="card-foot">最近探测:{{ formatTime(entry.last_probe_at) }}</div>
   </el-card>
 </template>
@@ -61,6 +63,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { OverviewEntry, OverviewDot } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
+import LatencySparkline from './LatencySparkline.vue'
 import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
@@ -206,12 +209,18 @@ function dotTooltip(dot: OverviewDot): string {
   margin-bottom: 10px;
 }
 .dots-label {
+  /* Fixed label width shared with LatencySparkline's 延迟 label so both
+     strips start at the same x. */
+  width: 26px;
+  flex: none;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
 .dots-strip {
   display: flex;
   align-items: center;
+  /* The 2px gap is the twin of SPARKLINE_GAP_PX in utils/latencySparkline.ts
+     (the sparkline derives its bucket centers from it) — keep them in sync. */
   gap: 2px;
   flex: 1;
   min-width: 0;

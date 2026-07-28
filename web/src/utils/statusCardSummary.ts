@@ -46,7 +46,10 @@ export function aggregateDots24h(entries: OverviewEntry[]): OverviewDot[] {
       total += dot.total
       failures += dot.failures
     }
-    out.push({ bucket_start: withDots?.dots_24h[i]?.bucket_start ?? '', total, failures })
+    // Aggregated dots carry counts only: a cross-endpoint P50 cannot be
+    // derived from per-bucket percentiles, so p50_ms stays null (the
+    // StatusCard material renders availability, never the sparkline).
+    out.push({ bucket_start: withDots?.dots_24h[i]?.bucket_start ?? '', total, failures, p50_ms: null })
   }
   return out
 }
