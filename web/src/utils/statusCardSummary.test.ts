@@ -30,6 +30,7 @@ function makeEntry(overrides: Partial<OverviewEntry> = {}): OverviewEntry {
     enabled: true,
     status: 'healthy',
     status_reason: '',
+    degrade_causes: [],
     success_rate_24h: null,
     p50_ms: null,
     p95_ms: null,
