@@ -46,7 +46,9 @@ func rowModelIDs(rows []map[string]interface{}) []string {
 // cap_instruction case set recorded (effectively done cells), gamma has zero
 // results anywhere — yet must already occupy a row with a pending cell.
 func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the mid-flight live board (gamma frozen on its
+	// first answer call); drained by releaseModel + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -102,7 +104,9 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 // unselected model never appears), no less (a selected model shows pending
 // before its first result).
 func TestManualRunMembersMatchSelection(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the mid-flight live board (gamma frozen on its
+	// first answer call); drained by releaseModel + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	alphaID := createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	gammaID := createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -140,7 +144,9 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 // a model deleted mid-batch must drop out of the live board (members join
 // the models table at read time) — the snapshot never resurrects it.
 func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: deletes a model mid-batch while gamma is frozen; drained by
+	// releaseModel + waitCampaignStatus(terminal).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	betaID := createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -169,6 +175,9 @@ func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
 	}
 
 	stub.releaseModel("gamma-model")
+	// Drain the released sweep: campaign-terminal covers every tail write
+	// (no webhook configured, so the alert hook only reads settings).
+	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone, store.CampaignStatusFailed)
 }
 
 // stagePreMembersDatabase writes a pre-ticket-53 database: the current

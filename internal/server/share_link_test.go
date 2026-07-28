@@ -329,7 +329,10 @@ func TestSharedReportRateLimited(t *testing.T) {
 // after three judge calls, catching the sweep mid-cap_language with results
 // already recorded; gamma is a discovered model retired mid-flight.
 func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the shared report while the sweep is frozen
+	// mid-flight (judge gate); drained by releaseModel +
+	// waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	stub.markBroken("alpha-model", true)

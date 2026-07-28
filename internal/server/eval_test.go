@@ -16,6 +16,10 @@ import (
 )
 
 // setupEvalEnv builds an isolated API server + stub Hub + real SQLite DB.
+// Eval and discovery triggers run synchronously (WithSyncEval +
+// WithSyncDiscovery, ticket 100): the POST that starts work returns only
+// after every tail write landed, so no goroutine can race TempDir cleanup.
+// Tests that must observe in-flight eval semantics use setupAsyncEvalEnv.
 func setupEvalEnv(t *testing.T) (*httptest.Server, *evalStubHub, *store.DB) {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -24,7 +28,42 @@ func setupEvalEnv(t *testing.T) (*httptest.Server, *evalStubHub, *store.DB) {
 	}
 	seedTestUser(t, db)
 	stub := newEvalStubHub()
-	ts := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{})))
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSyncEval(),
+		server.WithSyncDiscovery(),
+	))
+	t.Cleanup(func() {
+		ts.Close()
+		stub.Close()
+		db.Close()
+	})
+	return ts, stub, db
+}
+
+// setupAsyncEvalEnv is setupEvalEnv WITHOUT WithSyncEval: the eval trigger
+// stays asynchronous so the test can observe in-flight semantics (running
+// reports, live boards, mid-sweep progress) through the stub's call gates.
+// Discovery stays synchronous — no test needs in-flight discovery.
+//
+// Drain rule (ticket 100): after releasing the gate the test must wait for
+// the campaign's terminal status (waitCampaignStatus). With no webhook
+// configured, campaign-done covers every tail write: the task log and
+// settle precede it, and the AfterCampaign alert hook only reads settings
+// when no webhook is set. Every call site must carry a comment naming the
+// in-flight state it observes.
+func setupAsyncEvalEnv(t *testing.T) (*httptest.Server, *evalStubHub, *store.DB) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	seedTestUser(t, db)
+	stub := newEvalStubHub()
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSyncDiscovery(),
+	))
 	t.Cleanup(func() {
 		ts.Close()
 		stub.Close()
@@ -105,8 +144,11 @@ func triggerEval(t *testing.T, base string, suiteID int64, modelIDs ...int64) in
 		t.Fatalf("manual single-suite trigger: campaign runs = %v, want exactly 1", campaign["runs"])
 	}
 	run := runs[0].(map[string]interface{})
-	if run["status"] != "running" {
-		t.Errorf("new run status = %v, want running", run["status"])
+	// WithSyncEval servers answer 202 only after the run completed (status
+	// done); async servers answer while it is still running. Both are valid
+	// fresh-run states (ticket 100).
+	if s := run["status"]; s != "running" && s != "done" {
+		t.Errorf("new run status = %v, want running (async server) or done (WithSyncEval server)", s)
 	}
 	if run["trigger"] != "manual" {
 		t.Errorf("new run trigger = %v, want manual", run["trigger"])

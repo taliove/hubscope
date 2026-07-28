@@ -157,11 +157,21 @@ func openTempDB(t *testing.T) *store.DB {
 // The fixed session secret lets forgeSessionToken reproduce tokens without
 // reading the DB. The test user is seeded by openTempDB (or manually when
 // the DB is opened via store.Open).
+//
+// Eval and discovery triggers run synchronously (WithSyncEval +
+// WithSyncDiscovery, ticket 100): the structural seams guarantee no
+// goroutine outlives the request, so no tail write can race TempDir
+// cleanup. Tests that must observe in-flight semantics (sync conflicts,
+// running reports, mid-flight progress) build an explicit async server
+// instead and document their drain — see TestHubSyncEndpointConflictAndRerun
+// and setupAsyncEvalEnv.
 func newTestAPIServer(t *testing.T, db *store.DB) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{}),
 		server.WithSessionSecret(testSessionSecret),
+		server.WithSyncEval(),
+		server.WithSyncDiscovery(),
 	))
 	t.Cleanup(ts.Close)
 	return ts

@@ -348,7 +348,9 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 // TestCampaignReportProgressGrid), and once the batch settles the ranked
 // board replaces the live one.
 func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the running zero-result report (all calls
+	// blocked); drained by stub.release + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	stub.blockCalls()
 	t.Cleanup(stub.release)
