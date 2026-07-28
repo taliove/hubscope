@@ -357,8 +357,8 @@ func TestPreV3UpgradePurgesLegacySuites(t *testing.T) {
 
 	ts, db := serveSuites()
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 7 {
-		t.Fatalf("suites after upgrade = %d, want 5 capability suites + mmlu/gsm8k disabled: %v", len(suites), suites)
+	if len(suites) != 8 {
+		t.Fatalf("suites after upgrade = %d, want 5 capability suites + 3 benchmark disabled: %v", len(suites), suites)
 	}
 	for _, s := range suites {
 		for _, key := range legacyKeys {
@@ -369,7 +369,7 @@ func TestPreV3UpgradePurgesLegacySuites(t *testing.T) {
 		if s["capability"] == "" {
 			t.Errorf("suite %q has no capability after upgrade", s["key"])
 		}
-		if s["key"] == "mmlu" || s["key"] == "gsm8k" {
+		if s["key"] == "mmlu" || s["key"] == "gsm8k" || s["key"] == "agieval_zh" {
 			// Benchmark suites (ADR 0013): seeded disabled by design, exempt
 			// from the purge as in-bank suites; their 100-case frozen subsets
 			// are covered by the benchmark seed tests.
@@ -385,8 +385,8 @@ func TestPreV3UpgradePurgesLegacySuites(t *testing.T) {
 	ts2, db2 := serveSuites()
 	defer db2.Close()
 	again := fetchSuites(t, ts2.URL, "")
-	if len(again) != 7 {
-		t.Fatalf("suites after reopen = %d, want still 7 (5 capability + mmlu/gsm8k exempt)", len(again))
+	if len(again) != 8 {
+		t.Fatalf("suites after reopen = %d, want still 8 (5 capability + 3 benchmark exempt)", len(again))
 	}
 	for _, s := range again {
 		for _, key := range legacyKeys {

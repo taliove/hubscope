@@ -142,9 +142,20 @@ func TestRoleWriteMatrix(t *testing.T) {
 		"suite_id":  instructionSuiteID,
 		"model_ids": []int64{operModelID},
 	})
-	evalResp.Body.Close()
 	if evalResp.StatusCode == http.StatusForbidden {
 		t.Errorf("operator eval create: must not be 403 (hub-scoped write), got %d", evalResp.StatusCode)
+	}
+	// Drain the async eval run before the test ends: a goroutine still
+	// appending task logs at TempDir cleanup flakes RemoveAll with
+	// "directory not empty".
+	var evalEnv envelope
+	_ = json.NewDecoder(evalResp.Body).Decode(&evalEnv)
+	evalResp.Body.Close()
+	var evalCampaign map[string]interface{}
+	_ = json.Unmarshal(evalEnv.Data, &evalCampaign)
+	if runs, ok := evalCampaign["runs"].([]interface{}); ok && len(runs) == 1 {
+		runID := int64(runs[0].(map[string]interface{})["id"].(float64))
+		waitEvalDone(t, ts.URL, runID)
 	}
 
 	// Operator cannot create hubs (super_admin-only): POST /api/hubs -> 403.

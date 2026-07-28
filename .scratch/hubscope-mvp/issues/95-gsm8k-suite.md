@@ -4,7 +4,7 @@
 
 **Blocked by:** 94(权威题库管线首发:MMLU 知识套件端到端)
 
-**Status:** ready-for-agent
+**Status:** done(90c0d59+ce0212e+90135ca,2026-07-28;merge 344c7fb;GSM8K license 核对结论:MIT,来源 openai/gsm8k @ 740312ad,parquet 与 datasets-server 双通道互验一致;固定步长零随机子集,SHA-256 留痕,ATTRIBUTION 入仓;numeric RuleMode + 8 条黑盒用例全绿)
 
 ## 验收清单
 
