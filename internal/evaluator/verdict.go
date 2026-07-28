@@ -29,6 +29,11 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 	if mode == "mcq" {
 		return mcqVerdict(expected, answer)
 	}
+	// numeric likewise (ticket 95): ####-marker/last-line extraction with
+	// separator/sign/decimal normalization, conservative on failure.
+	if mode == "numeric" {
+		return numericVerdict(expected, answer)
+	}
 
 	hit := false
 	switch mode {
