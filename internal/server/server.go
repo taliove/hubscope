@@ -33,7 +33,7 @@ type Server struct {
 	writeLimiter *ipLimiter
 	readLimiter  *ipLimiter
 	// loginDelayer penalizes per-account repeated login failures with a
-	// progressive response delay (spec 0010 decision 3); nil disables it.
+	// progressive response delay (spec 0011 decision 3); nil disables it.
 	loginDelayer *loginDelayer
 	// trustProxy controls whether X-Forwarded-For is honored when resolving
 	// client IPs for rate limiting and auditing.
@@ -76,7 +76,7 @@ func WithTrustProxy(trust bool) Option {
 }
 
 // WithLoginDelay overrides the per-account progressive login-delay policy
-// (spec 0010 decision 3). A zero policy disables the delay; tests inject a
+// (spec 0011 decision 3). A zero policy disables the delay; tests inject a
 // millisecond-scale table so backoff stays observable without slowing the
 // suite (the WithRateLimits precedent).
 func WithLoginDelay(policy LoginDelayPolicy) Option {

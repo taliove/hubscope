@@ -11,7 +11,7 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// These tests cover spec 0010 decision 3 (per-account progressive login
+// These tests cover spec 0011 decision 3 (per-account progressive login
 // delay, ticket 81) at the W1 seam: they only observe HTTP behavior (status
 // codes, error messages, response-time magnitude) and never assert internal
 // counter state. The delay table is injected via WithLoginDelay at

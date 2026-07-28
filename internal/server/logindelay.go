@@ -7,7 +7,7 @@ import (
 )
 
 // LoginDelayPolicy configures the per-account progressive login delay
-// (spec 0010 decision 3): after Threshold failures for the same username
+// (spec 0011 decision 3): after Threshold failures for the same username
 // string within a sliding Window, subsequent failed responses are delayed by
 // the successive Backoff entries (the last entry repeats, capping the
 // penalty). MaxEntries hard-caps the username map (0 applies the built-in
@@ -39,7 +39,7 @@ const loginDelayMaxEntries = 100_000
 // loginDelayer counts failed logins per username string in memory (unknown
 // usernames count too, so behavior cannot leak account existence) and
 // penalizes failures past the threshold. State is process-local and lost on
-// restart — an accepted trade-off (spec 0010 decision 3).
+// restart — an accepted trade-off (spec 0011 decision 3).
 type loginDelayer struct {
 	mu         sync.Mutex
 	threshold  int

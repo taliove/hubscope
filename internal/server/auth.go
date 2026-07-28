@@ -190,7 +190,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // applies the per-account progressive delay, then answers the uniform 401.
 // Routing all three branches through one exit keeps status, message, and
 // delay band identical across them — no username-enumeration side channel
-// (spec 0010 decision 3). The delay runs after the audit insert, so the
+// (spec 0011 decision 3). The delay runs after the audit insert, so the
 // sleep never holds any DB resource (single-connection SQLite, W2).
 func (s *Server) failLogin(w http.ResponseWriter, r *http.Request, username, reason string) {
 	s.audit(r, "auth.login", "auth", username, reason, "failed")
