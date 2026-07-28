@@ -16,7 +16,11 @@
 - **prompt 模板:** 要求模型只回复选项字母的英文模板,随 Case 铸入即冻结(改模板 = 退役 + 铸新)。
 - **采样:** sample_count=1,题量(100 题)替代重复采样。
 - **nadir:** 暂按题型既有口径置值(四选一 MCQ 随机猜测下限 0.25),ticket 99 按测试线实测分布统一校准。
-- **维度映射(ADR 0010 五 capability 不变):** 知识→MMLU(mcq)、推理→GSM8K、指令遵循→IFEval、中文→CMMLU/C-Eval、代码→CRUXEval 式输出预测——后四者各配自己的 RuleMode/校验器,ticket 95–98 落地。
+- **维度映射(ADR 0010 五 capability 不变):** 知识→MMLU(mcq)、推理→GSM8K、指令遵循→IFEval、中文→AGIEval 高考中文子集(mcq,见下方附记)、代码→CRUXEval 式输出预测——后四者各配自己的 RuleMode/校验器,ticket 95–98 落地。
+
+## 附记:中文套件选型(ticket 96,2026-07-28)
+
+原计划的 CMMLU 与 C-Eval 经双通道(HuggingFace 数据集卡 + GitHub 官方仓库)核验,数据 license 均为 **CC BY-NC-SA 4.0**(CMMLU GitHub README 原文、C-Eval `LICENSE-DATA`),NonCommercial 条款不允许随 MIT 授权的 HubScope 二进制再分发,用户裁决后转向第三来源。**AGIEval**(microsoft/AGIEval 退役后的正本 github.com/ruixiangcui/AGIEval,commit `84ab72d9`)的高考中文子集(gaokao-chinese/history/geography)为 **MIT**(data/v1_1/LICENSE 首部「Gaokao, SAT MIT License, Copyright (c) Microsoft Corporation」),题量 680 题、答案完整公开、全部四选一单答案,与 lm-eval-harness HF 镜像(hails/agieval-gaokao-*)逐行互验一致;logiqa-zh(CC BY-NC-SA 4.0)与 jec-qa(仅限学术研究、禁止商用)按 license 排除。套件 key `agieval_zh`,判分复用 mcq(其提取模式已覆盖中文惯用语与全角字母,口径与英文套件同一把尺子),prompt 模板换为中文并随 Case 冻结。
 
 ## 理由与代价
 

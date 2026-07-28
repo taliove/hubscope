@@ -23,6 +23,9 @@ import (
 //go:embed benchmark/mmlu/subset.jsonl
 var mmluSubset string
 
+//go:embed benchmark/agieval_zh/subset.jsonl
+var agievalZhSubset string
+
 var benchmarkSuites = []seedSuite{
 	mustMCQSuite(mcqSuiteSpec{
 		key:        "mmlu",
@@ -31,44 +34,70 @@ var benchmarkSuites = []seedSuite{
 		// Four-option multiple choice throughout: the random-guess floor is
 		// 0.25, same caliber as cap_knowledge. Ticket 99 recalibrates nadirs
 		// from the observed score distribution before the cutover.
-		nadir: 0.25,
-		data:  mmluSubset,
+		nadir:          0.25,
+		data:           mmluSubset,
+		promptTemplate: mcqPromptTemplate,
+	}),
+	mustMCQSuite(mcqSuiteSpec{
+		key:        "agieval_zh",
+		name:       "中文（AGIEval）",
+		capability: CapabilityLanguage,
+		// Four-option Gaokao multiple choice throughout: the random-guess
+		// floor is 0.25, same caliber as mmlu. Ticket 99 recalibrates nadirs
+		// from the observed score distribution before the cutover.
+		nadir:          0.25,
+		data:           agievalZhSubset,
+		promptTemplate: mcqPromptTemplateZh,
 	}),
 }
 
 // mcqSuiteSpec describes one multiple-choice benchmark suite to seed.
 type mcqSuiteSpec struct {
-	key        string
-	name       string
-	capability string
-	nadir      float64
-	data       string // embedded JSONL subset
+	key            string
+	name           string
+	capability     string
+	nadir          float64
+	data           string // embedded JSONL subset
+	promptTemplate string // frozen into every case at seed time (W7)
 }
 
 // mcqQuestion is one row of an embedded multiple-choice subset file: the
 // question, its four choices, and the correct option letter. The subject
 // field documents the stratification of the frozen subset (see the
 // ATTRIBUTION file beside the data); it is metadata, not cast into cases.
+// passage is optional reading material (AGIEval gaokao-chinese); when
+// present it is composed into the prompt before the question.
 type mcqQuestion struct {
 	ID       string   `json:"id"`
 	Subject  string   `json:"subject"`
 	Question string   `json:"question"`
 	Choices  []string `json:"choices"`
 	Answer   string   `json:"answer"`
+	Passage  string   `json:"passage,omitempty"`
 }
 
-// mcqPromptTemplate is the prompt every MCQ benchmark case is cast with
-// (ADR 0013): the model is asked for exactly one option letter, and the mcq
-// rule verdict extracts that letter from its reply. The template is frozen
+// mcqPromptTemplate is the prompt every English MCQ benchmark case is cast
+// with (ADR 0013): the model is asked for exactly one option letter, and the
+// mcq rule verdict extracts that letter from its reply. The template is frozen
 // into each case at seed time — changing it means retiring the suite and
 // casting a new one (W7).
 const mcqPromptTemplate = "The following is a multiple-choice question. Reply with only the letter of the correct option (A, B, C, or D).\n\n%s\nA. %s\nB. %s\nC. %s\nD. %s"
+
+// mcqPromptTemplateZh is the Chinese counterpart cast into the agieval_zh
+// suite (ticket 96): same single-letter contract, frozen the same way. The
+// mcq rule verdict's extraction patterns already cover the Chinese answer
+// idioms this template invites (「答案是B」「选B」, full-width letters via
+// NFKC), so both suites share one scoring caliber.
+const mcqPromptTemplateZh = "以下是一道单项选择题，请只回复正确选项的字母（A、B、C 或 D）。\n\n%s\nA. %s\nB. %s\nC. %s\nD. %s"
 
 // mustMCQSuite parses an embedded MCQ subset and builds its seedSuite. The
 // data is compiled into the binary, so a malformed file is a build-time bug
 // and panics at init rather than failing at runtime. Cases carry generation
 // 1: each benchmark suite tracks its own seed generation lineage.
 func mustMCQSuite(spec mcqSuiteSpec) seedSuite {
+	if spec.promptTemplate == "" {
+		panic(fmt.Sprintf("benchmark %s: missing prompt template", spec.key))
+	}
 	suite := seedSuite{
 		key:         spec.key,
 		name:        spec.name,
@@ -96,13 +125,19 @@ func mustMCQSuite(spec mcqSuiteSpec) seedSuite {
 		if len(q.Answer) != 1 || !strings.Contains("ABCD", q.Answer) {
 			panic(fmt.Sprintf("benchmark %s: %s: answer %q, want one of A-D", spec.key, q.ID, q.Answer))
 		}
+		// Reading material precedes the question (AGIEval gaokao-chinese);
+		// the composition is part of the frozen prompt.
+		body := q.Question
+		if q.Passage != "" {
+			body = q.Passage + "\n\n" + q.Question
+		}
 		suite.cases = append(suite.cases, seedCase{
 			gen: 1,
 			// The source carries no per-item difficulty labels; the tier is
 			// a neutral placeholder, not a measurement.
 			difficulty:   "intermediate",
 			sampleCount:  intptr(1),
-			prompt:       fmt.Sprintf(mcqPromptTemplate, q.Question, q.Choices[0], q.Choices[1], q.Choices[2], q.Choices[3]),
+			prompt:       fmt.Sprintf(spec.promptTemplate, body, q.Choices[0], q.Choices[1], q.Choices[2], q.Choices[3]),
 			verdictType:  "rule",
 			ruleMode:     strptr("mcq"),
 			ruleExpected: strptr(q.Answer),
