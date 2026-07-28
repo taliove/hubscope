@@ -4,7 +4,7 @@
 
 **Blocked by:** 91(覆盖率门槛:后端报告口径)
 
-**Status:** ready-for-agent
+**Status:** done(f390e1a + 224c7e5;水印 N=missing_suites 按冻结契约,票正文「N=有分维度数」作废;水印位置经设计评审修订为模型列第二行,登记 ui-guidelines 附录 B 第 12 项)
 
 ## 验收清单
 
