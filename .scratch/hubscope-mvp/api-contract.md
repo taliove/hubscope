@@ -61,7 +61,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `failing`(闪烁):最近一次 Probe 失败但未达连续 3 次
 - `degraded`(黄):24h 成功率 <0.95,或 24h P95 延迟 > 该端点 7 天 P50 基线的 2 倍(基线数据不足时跳过此项);两条同时命中时并列——`degrade_causes` 同列 `["availability", "latency"]`(可用性在前),`status_reason` 为双片段
 - `healthy`(绿):其余
-`status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers");degraded 双命中时为两个原因片段,按「可用性片段;延迟片段」以中文分号「;」连接。`degrade_causes` 为结构化成因(可用性="availability",延迟="latency"),非降级状态恒为 `[]`(空数组,不为 null),前端展示副标签一律消费此字段,不解析 status_reason。
+`status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers");degraded 双命中时为两个原因片段,按「可用性片段；延迟片段」以中文全角分号「；」连接。`degrade_causes` 为结构化成因(可用性="availability",延迟="latency"),非降级状态恒为 `[]`(空数组,不为 null),前端展示副标签一律消费此字段,不解析 status_reason。
 
 ## Discovery(ticket 05)
 
