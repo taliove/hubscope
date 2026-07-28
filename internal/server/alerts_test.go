@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/taliove/hubscope/internal/server"
 	"github.com/taliove/hubscope/internal/store"
@@ -17,13 +18,15 @@ import (
 
 // stubLarkServer is a fake Lark group-bot webhook endpoint. It records the
 // text of every message received and can be switched to a failing mode that
-// answers HTTP 500.
+// answers HTTP 500, or to a slow mode that delays the answer (used to prove
+// senders never block their callers).
 type stubLarkServer struct {
 	*httptest.Server
 
 	mu     sync.Mutex
 	texts  []string
 	status int
+	delay  time.Duration
 }
 
 func newStubLarkServer(t *testing.T) *stubLarkServer {
@@ -43,7 +46,11 @@ func newStubLarkServer(t *testing.T) *stubLarkServer {
 			s.texts = append(s.texts, payload.Content.Text)
 		}
 		status := s.status
+		delay := s.delay
 		s.mu.Unlock()
+		if delay > 0 {
+			time.Sleep(delay)
+		}
 		w.WriteHeader(status)
 	}))
 	t.Cleanup(s.Close)
@@ -64,6 +71,14 @@ func (s *stubLarkServer) setStatus(status int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.status = status
+}
+
+// setDelay makes the stub hold each request for the given duration before
+// answering, simulating a slow webhook.
+func (s *stubLarkServer) setDelay(delay time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.delay = delay
 }
 
 // createProbedEndpoint registers a hub+model against the given base URL and

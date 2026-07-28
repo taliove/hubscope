@@ -35,6 +35,10 @@ type Server struct {
 	// loginDelayer penalizes per-account repeated login failures with a
 	// progressive response delay (spec 0011 decision 3); nil disables it.
 	loginDelayer *loginDelayer
+	// loginAlertTracker watches instance-wide login failures and fires one
+	// Lark alert per cooldown once the burst threshold is crossed (spec
+	// 0011 decision 4); nil disables it.
+	loginAlertTracker *loginAlertTracker
 	// trustProxy controls whether X-Forwarded-For is honored when resolving
 	// client IPs for rate limiting and auditing.
 	trustProxy bool
@@ -85,6 +89,16 @@ func WithLoginDelay(policy LoginDelayPolicy) Option {
 	}
 }
 
+// WithLoginAlert overrides the instance-level brute-force login-alert
+// policy (spec 0011 decision 4). A zero policy disables the mechanism;
+// tests inject a millisecond-scale window/cooldown so the debounce stays
+// observable without slowing the suite (the WithLoginDelay precedent).
+func WithLoginAlert(policy LoginAlertPolicy) Option {
+	return func(s *Server) {
+		s.loginAlertTracker = newLoginAlertTracker(policy, s.alerter.HandleLoginFailures)
+	}
+}
+
 // WithSessionSecret overrides the session signing key. Tests use it to
 // inject a fixed value so forged tokens can be reproduced without reading
 // the database.
@@ -124,6 +138,9 @@ func New(db *store.DB, opts ...Option) *Server {
 	// Score-drop checks hook into every settled eval campaign served by this
 	// evaluator; the weekly eval worker shares it via Evaluator().
 	s.evaluator.AfterCampaign = s.alerter.HandleCampaign
+	// Brute-force login alerts fire through the same single Evaluator
+	// instance (W5), throttled by the server-side tracker.
+	s.loginAlertTracker = newLoginAlertTracker(defaultLoginAlertPolicy(), s.alerter.HandleLoginFailures)
 	for _, opt := range opts {
 		opt(s)
 	}

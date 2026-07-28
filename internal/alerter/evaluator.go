@@ -27,10 +27,12 @@ type Evaluator struct {
 	db     *store.DB
 	sender *LarkSender
 
-	// mu serializes evaluation per process. Sends happen under the lock;
-	// they are rare (transitions only) and bounded by the sender timeout,
-	// and the store is single-connection anyway, so a global lock is the
-	// simplest correct choice.
+	// mu serializes evaluation per process. HandleRound/HandleCampaign
+	// sends happen under the lock; they are rare (transitions only) and
+	// bounded by the sender timeout, and the store is single-connection
+	// anyway, so a global lock is the simplest correct choice. The login
+	// brute-force path (login_alert.go) sends off-lock instead: it has no
+	// alerted state to protect and must never block the login request path.
 	mu      sync.Mutex
 	alerted map[int64]bool
 }

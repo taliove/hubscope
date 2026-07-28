@@ -187,13 +187,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // failLogin is the single exit for every failed login (unknown user,
 // disabled account, wrong password): it audits the specific reason, then
-// applies the per-account progressive delay, then answers the uniform 401.
-// Routing all three branches through one exit keeps status, message, and
-// delay band identical across them — no username-enumeration side channel
-// (spec 0011 decision 3). The delay runs after the audit insert, so the
-// sleep never holds any DB resource (single-connection SQLite, W2).
+// feeds the instance-level brute-force tracker, then applies the per-account
+// progressive delay, then answers the uniform 401. Routing all three
+// branches through one exit keeps status, message, and delay band identical
+// across them — no username-enumeration side channel (spec 0011 decision 3).
+// The delay runs after the audit insert, so the sleep never holds any DB
+// resource (single-connection SQLite, W2). The tracker step is a pure
+// in-memory count and runs before the delay: penalize's sleep must not
+// postpone the alert (spec 0011 decision 4).
 func (s *Server) failLogin(w http.ResponseWriter, r *http.Request, username, reason string) {
 	s.audit(r, "auth.login", "auth", username, reason, "failed")
+	if s.loginAlertTracker != nil {
+		s.loginAlertTracker.record(username, s.clientIP(r))
+	}
 	if s.loginDelayer != nil {
 		s.loginDelayer.penalize(r.Context(), username)
 	}
