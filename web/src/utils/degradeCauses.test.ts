@@ -1,4 +1,4 @@
-// Unit tests for the degraded-cause sub-label pure functions (spec 0011):
+// Unit tests for the degraded-cause sub-label pure functions (spec 0013):
 // the cause vocabulary and the badge suffix. The join separator, the '· '
 // prefix and the availability-first order are the load-bearing caliber
 // pinned here — they mirror the backend degrade_causes contract.

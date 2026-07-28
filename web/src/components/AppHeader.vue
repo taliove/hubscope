@@ -56,7 +56,7 @@
           <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
         </template>
         <el-button v-if="user" @click="router.push('/admin')">管理视图</el-button>
-        <!-- Login entry (ticket 84): no public page renders it — the button
+        <!-- Login entry (ticket 90): no public page renders it — the button
              reads "this content needs an account" to the anonymous reader,
              so the entry uniformly retreats to the shared PublicFooter. The
              check is the generic route meta.public, not a per-page special
@@ -125,7 +125,7 @@ const visibleNavItems = computed(() =>
   user.value ? NAV_ITEMS.filter((item) => !item.anonOnly) : NAV_ITEMS.filter((item) => item.public),
 )
 
-// No public page renders the header login button (ticket 84, superseding
+// No public page renders the header login button (ticket 90, superseding
 // the /board-only special case): the admin entry uniformly retreats to the
 // shared PublicFooter. Non-public pages bounce anonymous visitors to /login
 // via the route guard anyway, so the button effectively only ever renders

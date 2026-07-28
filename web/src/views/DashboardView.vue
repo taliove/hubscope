@@ -103,7 +103,7 @@
         <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
       </div>
 
-      <!-- Quiet admin entry (ticket 84): the shared PublicFooter. -->
+      <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
       <PublicFooter />
     </div>
   </div>

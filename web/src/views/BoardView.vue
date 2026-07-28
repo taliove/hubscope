@@ -32,7 +32,7 @@
       />
     </template>
 
-    <!-- Quiet admin entry (ticket 84): the shared PublicFooter, identical
+    <!-- Quiet admin entry (ticket 90): the shared PublicFooter, identical
          on every public page. -->
     <PublicFooter />
   </div>

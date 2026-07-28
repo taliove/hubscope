@@ -103,7 +103,7 @@
 
     <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
 
-    <!-- Quiet admin entry (ticket 84): the shared PublicFooter. -->
+    <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
     <PublicFooter />
   </div>
 </template>

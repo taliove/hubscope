@@ -1,4 +1,4 @@
-// Pure presentation logic for the degraded-cause sub-label (spec 0011):
+// Pure presentation logic for the degraded-cause sub-label (spec 0013):
 // the cause vocabulary and the suffix rendered after the status word in
 // StatusBadge. Single source of truth — components must never write the
 // cause wordings as literals.

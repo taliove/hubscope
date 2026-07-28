@@ -1,6 +1,6 @@
 <template>
   <!-- PublicFooter is the single quiet admin entry of every public page
-       (ticket 84, ui-guidelines §5): anonymous visitors get no login
+       (ticket 90, ui-guidelines §5): anonymous visitors get no login
        button in the header — the entry retreats to this hairline footer
        line, identical on the status board, endpoint detail and /board.
        Rendered regardless of session state (same as the /board precedent);

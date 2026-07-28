@@ -14,7 +14,7 @@ import { degradeCauseSuffix } from '@/utils/degradeCauses'
 
 // Colored status light with a Chinese label; the reason shows on hover.
 // The optional causes prop adds a plain-text degrade-cause sub-label after
-// the status word (spec 0011) — secondary text only, never a second status
+// the status word (spec 0013) — secondary text only, never a second status
 // light. Aggregates never pass causes.
 const props = defineProps<{ status: EndpointStatus; reason?: string; causes?: DegradeCause[] }>()
 
