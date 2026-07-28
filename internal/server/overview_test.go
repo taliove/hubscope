@@ -396,7 +396,7 @@ func TestOverviewDegradeCausesDoubleHit(t *testing.T) {
 	}
 
 	entry := findEntry(t, fetchOverview(t, ts.URL), ep)
-	expectStatus(t, entry, "degraded", "24h 成功率 90.0% 低于 95%;P95 延迟 3.0s 超过基线 2 倍(基线 1.0s)")
+	expectStatus(t, entry, "degraded", "24h 成功率 90.0% 低于 95%；P95 延迟 3.0s 超过基线 2 倍(基线 1.0s)")
 	expectCauses(t, entry, "availability", "latency")
 
 	// Non-degraded statuses must report an empty (never null) causes array.
