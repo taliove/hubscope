@@ -56,10 +56,12 @@
           <el-tag size="small" effect="light" :type="roleTagType(user.role)">{{ roleLabel(user.role) }}</el-tag>
         </template>
         <el-button v-if="user" @click="router.push('/admin')">管理视图</el-button>
-        <!-- Login entry: hidden on /board (spec 0010 — the public board is
-             the outward-facing page, the login entry retreats to its
-             footer); the status board keeps it as a high-frequency entry. -->
-        <el-button v-if="!user && !isPublicBoard" type="primary" @click="router.push('/login')">登录</el-button>
+        <!-- Login entry (ticket 84): no public page renders it — the button
+             reads "this content needs an account" to the anonymous reader,
+             so the entry uniformly retreats to the shared PublicFooter. The
+             check is the generic route meta.public, not a per-page special
+             case. -->
+        <el-button v-if="!user && !isPublicPage" type="primary" @click="router.push('/login')">登录</el-button>
         <el-button v-if="user" link type="primary" :loading="loggingOut" @click="onLogout">
           退出
         </el-button>
@@ -123,9 +125,12 @@ const visibleNavItems = computed(() =>
   user.value ? NAV_ITEMS.filter((item) => !item.anonOnly) : NAV_ITEMS.filter((item) => item.public),
 )
 
-// The public board hides the header login button (spec 0010): the page is
-// the outward-facing facade and carries a quiet "管理登录" footer instead.
-const isPublicBoard = computed(() => route.path === '/board')
+// No public page renders the header login button (ticket 84, superseding
+// the /board-only special case): the admin entry uniformly retreats to the
+// shared PublicFooter. Non-public pages bounce anonymous visitors to /login
+// via the route guard anyway, so the button effectively only ever renders
+// in the brief pre-auth-check window of a gated page.
+const isPublicPage = computed(() => Boolean(route.meta.public))
 
 // Short version: extract only the tag part (e.g., "v0.2.3" from "v0.2.3-4-g1adea03-dirty")
 const shortVersion = computed(() => {

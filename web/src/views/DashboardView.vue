@@ -102,6 +102,9 @@
         <EndpointCard v-for="entry in filteredEntries" :key="entry.endpoint_id" :entry="entry" />
         <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
       </div>
+
+      <!-- Quiet admin entry (ticket 84): the shared PublicFooter. -->
+      <PublicFooter />
     </div>
   </div>
 </template>
@@ -115,6 +118,7 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
+import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
