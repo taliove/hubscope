@@ -11,14 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/taliove/hubscope/internal/evaluator/ifeval"
 	"github.com/taliove/hubscope/internal/store"
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.
-// mcq (ADR 0013) must stay listed or admins could not curate benchmark
-// cases through the case API (PATCH revalidates the merged case).
+// mcq (ADR 0013) and ifeval (ticket 97) must stay listed or admins could not
+// curate benchmark cases through the case API (PATCH revalidates the merged
+// case).
 var validVerdictTypes = map[string]bool{"rule": true, "judge": true}
-var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true}
+var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true, "ifeval": true}
 
 // validDifficulties enumerates the accepted difficulty tiers.
 var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
@@ -168,6 +170,11 @@ func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 	if req.RuleConfig != nil {
 		merged.RuleMode = &req.RuleConfig.Mode
 		merged.RuleExpected = &req.RuleConfig.Expected
+		if req.RuleConfig.Mode != "ifeval" {
+			// check_params only applies to the ifeval mode; switching a case
+			// to another mode drops the params from the minted case.
+			merged.CheckParams = nil
+		}
 	}
 	if req.Rubric != nil {
 		merged.Rubric = req.Rubric
@@ -228,7 +235,8 @@ func sameCaseContent(a, b store.Case) bool {
 		strPtrEqual(a.RuleExpected, b.RuleExpected) &&
 		strPtrEqual(a.Rubric, b.Rubric) &&
 		a.Difficulty == b.Difficulty &&
-		intPtrEqual(a.SampleCount, b.SampleCount)
+		intPtrEqual(a.SampleCount, b.SampleCount) &&
+		strPtrEqual(a.CheckParams, b.CheckParams)
 }
 
 // strPtrEqual compares two nullable strings by value.
@@ -270,9 +278,21 @@ func validateCase(c store.Case) error {
 	}
 	if c.VerdictType == "rule" {
 		if c.RuleMode == nil || !validRuleModes[*c.RuleMode] {
-			return fmt.Errorf("rule_config.mode must be exact, regex, contains or mcq")
+			return fmt.Errorf("rule_config.mode must be exact, regex, contains, mcq or ifeval")
 		}
-		if c.RuleExpected == nil || *c.RuleExpected == "" {
+		if *c.RuleMode == "ifeval" {
+			// An ifeval case carries structured check parameters instead of
+			// an expected string (ticket 97). They are cast only by the
+			// benchmark seed — the admin API never authors check_params, so
+			// this branch is reachable only when editing an existing seeded
+			// case, and it revalidates the params fail-closed.
+			if c.CheckParams == nil {
+				return fmt.Errorf("rule_config.mode ifeval requires seeded check_params")
+			}
+			if err := ifeval.Validate(*c.CheckParams); err != nil {
+				return fmt.Errorf("check_params is not valid IFEval check parameters: %v", err)
+			}
+		} else if c.RuleExpected == nil || *c.RuleExpected == "" {
 			return fmt.Errorf("rule_config.expected is required")
 		}
 		if *c.RuleMode == "regex" {
