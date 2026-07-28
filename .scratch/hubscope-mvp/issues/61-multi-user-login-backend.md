@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:SESSION_SECRET + login 签发 + CLI admin create 均在,ADMIN_PASSWORD 已移除)
 
 - [ ] CLI `hubscope admin create --username X --password Y` 在库建 super_admin，`password_hash` 是 bcrypt（非明文），hub_id=NULL；重名建第二次失败
 - [ ] `SESSION_SECRET` env 设则用之；未设则首启在 settings 表生成 32 字节 hex 并落库，重启复用

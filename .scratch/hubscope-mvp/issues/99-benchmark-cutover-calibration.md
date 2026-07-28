@@ -4,7 +4,7 @@
 
 **Blocked by:** 93(停用套件硬删迁移)、94、95、96、97、98(五个权威套件全部就绪)
 
-**Status:** ready-for-agent
+**Status:** 已迁移至 GitHub issue #15(2026-07-28 全面切换 GitHub Issues;本地票只读存档)
 
 ## 验收清单
 

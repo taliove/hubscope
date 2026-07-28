@@ -4,7 +4,7 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** 已迁移至 GitHub issue #13(2026-07-28 全面切换 GitHub Issues;本地票只读存档)
 
 - [ ] 定位根因:在 Linux 容器/VM 复现至少一类失败(本地 Docker 或 CI debug 分支),确认 (a)/(b)/(c) 各自贡献
 - [ ] 修复 discovery.StartSync goroutine 生命周期(若证实):注入可等待的完成信号或改用测试可驱动时钟,黑盒不断言内部状态的前提下让测试能确定性等待 sync 收尾

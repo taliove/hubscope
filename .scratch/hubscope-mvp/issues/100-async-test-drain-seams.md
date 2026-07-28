@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工(与 ticket 99 无文件冲突时可并行)
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:WithSyncEval 2bcfc8d + WithSyncDiscovery f5eb010 已 merge 55958e8,10/10 连跑证据在票内)
 
 ## 验收清单
 

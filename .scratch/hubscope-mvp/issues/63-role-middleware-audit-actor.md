@@ -4,7 +4,7 @@
 
 **Blocked by:** 61
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:sessionUser ctx 注入 + role 中间件 + 审计 actor 均在,role_test.go 覆盖)
 
 - [ ] `requireSession` 放行后将 `{userID,role,hubID,username}` 注入请求 ctx；新增 `sessionUser(r)` helper
 - [ ] 新增 `requireRole(roles ...string)` 中间件叠在 `requireSession` 上，不匹配 → 403

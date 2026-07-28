@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately(题目内容生产可与 49 并行)
 
-**Status:** pending(机制部分已完成 2026-07-23:能力点 Suite + gen 3 seed + nadir 存储 + 首发题 + 管理台能力点浏览;题目大批量生产与审题流转待续)
+**Status:** done(2026-07-28 核对销账:已取代——spec 0014 权威 benchmark 路线,tickets 93-99;v3 套件由 ticket 93 硬删迁移清除)
 
 - [ ] 能力点清单与权重定稿(过 design-owner + 评审)——机制已按五能力点(instruction/reasoning/coding/language/knowledge)落地,权重仍等权,定稿待评审
 - [x] gen 3 seed 幂等入库:旧题停用不删、管理员编辑不被回滚
