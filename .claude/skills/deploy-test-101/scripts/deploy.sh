@@ -203,6 +203,13 @@ fix_permissions() {
 # Start new container
 start_container() {
   log_info "Starting new container..."
+  # TRUST_PROXY is deliberately NOT set (spec 0011 decision 2): this line
+  # exposes the container directly on the LAN (bound to the host IP below)
+  # with no reverse proxy in front — verified 2026-07-27: no 80/443 listener
+  # on the host, nginx absent/inactive, and /healthz answers with HubScope's
+  # own security headers (no Via / Server: nginx). Trusting X-Forwarded-For
+  # without a proxy would let any client forge the rate-limit key and the
+  # audit IP — strictly worse than not trusting it. Do not "helpfully" add it.
   docker run -d --name $CONTAINER_NAME \
     -p "$HOST_IP:$PORT:$PORT" \
     -v "$DATA_DIR/hubscope:/data" \
@@ -434,6 +441,9 @@ rollback() {
 
   # Start old version
   stop_container
+  # No TRUST_PROXY here either — same reason as start_container: no reverse
+  # proxy in front of this line (verified 2026-07-27), so trusting
+  # X-Forwarded-For would make the rate-limit key and audit IP client-forgeable.
   docker run -d --name $CONTAINER_NAME \
     -p "$HOST_IP:$PORT:$PORT" \
     -v "$DATA_DIR/hubscope:/data" \
