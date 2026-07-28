@@ -287,15 +287,18 @@ async function onSubmit() {
   display: flex;
   gap: var(--hs-space-2);
 }
-/* 160×48 is the backend contract size (internal/server/captcha.go
-   NewDriverDigit(48, 160, …)); the px literals are exempt per §6 位图物料
-   渲染纪律. The container holds this size across loading/error states to
-   prevent layout shift. The bitmap renders as-is (no token mapping, no
-   dark-theme adaptation, no CSS filters); the border makes it read as a
-   bounded image. */
+/* 108×32 is the backend contract size (internal/server/captcha.go
+   NewDriverDigit(32, 108, …)); the px literals are exempt per §6 位图物料
+   渲染纪律. 32px matches the EP default input height so the captcha row
+   aligns with the username/password rows (2026-07-28 user feedback: the
+   original 160×48 row stood taller than the rest of the form). The
+   container holds this size across loading/error states to prevent layout
+   shift. The bitmap renders as-is (no token mapping, no dark-theme
+   adaptation, no CSS filters); the border makes it read as a bounded
+   image. */
 .captcha-image {
-  width: 160px;
-  height: 48px;
+  width: 108px;
+  height: 32px;
   flex: none;
   display: flex;
   align-items: center;
@@ -309,8 +312,8 @@ async function onSubmit() {
 }
 .captcha-image img {
   display: block;
-  width: 160px;
-  height: 48px;
+  width: 108px;
+  height: 32px;
 }
 .captcha-image-note {
   padding: 0 var(--hs-space-1);

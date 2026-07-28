@@ -330,7 +330,7 @@ func (s *Server) handleCaptcha(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "验证码服务暂不可用,请稍后重试")
 		return
 	}
-	item, err := base64Captcha.NewDriverDigit(48, 160, 6, 0.6, 40).DrawCaptcha(answer)
+	item, err := base64Captcha.NewDriverDigit(32, 108, 6, 0.6, 20).DrawCaptcha(answer)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "验证码服务暂不可用,请稍后重试")
 		return
