@@ -104,6 +104,9 @@ export interface OverviewDot {
   bucket_start: string // RFC3339, hour-aligned
   total: number
   failures: number
+  // P50 of the bucket's SUCCESSFUL probes only (failed-probe latency is
+  // time-to-failure and never counted); null when the bucket has no success.
+  p50_ms: number | null
 }
 
 export interface OverviewEntry {
@@ -126,6 +129,9 @@ export interface OverviewEntry {
   score_reasons: string[] // Chinese deduction explanations, empty when none
   dots_24h: OverviewDot[] // always 24 elements, oldest hour first
   eval_score: number | null // 0-100 eval total score, null when no eval data
+  // The status machine's own 7-day P50 baseline (same value the latency
+  // degradation rule compares against); null below the sample minimum.
+  baseline_p50_ms: number | null
 }
 
 // Health aggregate of one classification group: status distribution

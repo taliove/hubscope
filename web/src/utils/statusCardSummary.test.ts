@@ -41,6 +41,7 @@ function makeEntry(overrides: Partial<OverviewEntry> = {}): OverviewEntry {
     score_reasons: [],
     dots_24h: emptyDots(),
     eval_score: null,
+    baseline_p50_ms: null,
     ...overrides,
   }
 }
@@ -50,6 +51,7 @@ function emptyDots(): OverviewDot[] {
     bucket_start: `2026-07-23T${String(i).padStart(2, '0')}:00:00Z`,
     total: 0,
     failures: 0,
+    p50_ms: null,
   }))
 }
 
