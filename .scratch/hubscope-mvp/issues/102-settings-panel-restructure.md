@@ -4,7 +4,9 @@
 
 **Blocked by:** 无 — 可立即开工(设计评审先行)
 
-**Status:** in_progress(2026-07-28 开工;待 plan agent 设计评审)
+**Status:** done(a87294f,2026-07-28;check 三维度 PASS,无 CRITICAL/HIGH/MEDIUM;LOW ShareLinksPanel .state-block 存量 12px 字面量登记,随后续批次迁移;④ 事件表裁列定论为截图框选裁切(算术上不可能溢出),待用户最终确认,若复现另票排查 EP 隐藏 tab 表格布局)
+
+**设计方案(评审定稿):** 单组件两卡片(div.settings-stack, gap --hs-space-4)——卡 1「告警设置」(webhook 560px 限宽 + 测试按钮同行 flex:none、两开关、divider + 事件表),卡 2「评估设置」(裁判模型 320px、采样次数、每周计划、权重 flex-wrap 横排、尾部保存按钮);两 el-form 共享同一 reactive form,label-width 160→120px;事件表内容列补 min-width=240(全表最小宽 600px 可算术核对);ShareLinksPanel 状态/操作列收窄。行为零变更:onSave/onTestLark/数据源一字不改。
 
 ## 验收清单
 

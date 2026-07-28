@@ -10,7 +10,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** in_progress(2026-07-28 开工;形态与范围已经用户确认)
+**Status:** done(19dd12d,2026-07-28;check 三维度 PASS;MEDIUM 单 commit 10 文件超 8 上限经 main 裁决豁免并写入 commit message,ticket 93 先例;LOW score_drop text/detail 行格式串登记观察,格式再分化时抽单行渲染函数)
 
 ## 验收清单
 
