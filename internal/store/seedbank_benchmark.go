@@ -23,6 +23,9 @@ import (
 //go:embed benchmark/mmlu/subset.jsonl
 var mmluSubset string
 
+//go:embed benchmark/cruxeval/subset.jsonl
+var cruxevalSubset string
+
 var benchmarkSuites = []seedSuite{
 	mustMCQSuite(mcqSuiteSpec{
 		key:        "mmlu",
@@ -33,6 +36,15 @@ var benchmarkSuites = []seedSuite{
 		// from the observed score distribution before the cutover.
 		nadir: 0.25,
 		data:  mmluSubset,
+	}),
+	mustCruxEvalSuite(cruxevalSuiteSpec{
+		key:        "cruxeval",
+		name:       "代码（CRUXEval）",
+		capability: CapabilityCoding,
+		// Output prediction has no random-guess floor; nadir stays 0 until
+		// ticket 99 recalibrates from the observed score distribution.
+		nadir: 0,
+		data:  cruxevalSubset,
 	}),
 }
 
@@ -106,6 +118,85 @@ func mustMCQSuite(spec mcqSuiteSpec) seedSuite {
 			verdictType:  "rule",
 			ruleMode:     strptr("mcq"),
 			ruleExpected: strptr(q.Answer),
+		})
+	}
+	if len(suite.cases) == 0 {
+		panic(fmt.Sprintf("benchmark %s: empty subset", spec.key))
+	}
+	return suite
+}
+
+// cruxevalSuiteSpec describes one CRUXEval-style output-prediction benchmark
+// suite to seed.
+type cruxevalSuiteSpec struct {
+	key        string
+	name       string
+	capability string
+	nadir      float64
+	data       string // embedded JSONL subset
+}
+
+// cruxevalQuestion is one row of the embedded output-prediction subset: the
+// function under test, the call input, and the standard output precomputed
+// offline (scripts/cruxeval_subset.py). source_id documents the upstream row
+// (see the ATTRIBUTION file beside the data); it is metadata, not cast into
+// cases.
+type cruxevalQuestion struct {
+	ID       string `json:"id"`
+	SourceID string `json:"source_id"`
+	Code     string `json:"code"`
+	Input    string `json:"input"`
+	Output   string `json:"output"`
+}
+
+// cruxevalPromptTemplate is the prompt every output-prediction case is cast
+// with (ticket 98): the official CRUXEval direct-output caliber adapted for
+// chat models — predict the literal output, nothing else. The template is
+// frozen into each case at seed time — changing it means retiring the suite
+// and casting a new one (W7).
+const cruxevalPromptTemplate = "You are given a Python function and an assertion containing an input to the function. Determine the output when executing the provided code on the given input, even if the function is incorrect or incomplete. Reply with only the output as a single Python literal (no unsimplified expressions, no function calls, no explanation, no code fences).\n\n%s\nassert f(%s) == ??"
+
+// mustCruxEvalSuite parses the embedded CRUXEval subset and builds its
+// seedSuite. The data is compiled into the binary, so a malformed file is a
+// build-time bug and panics at init rather than failing at runtime. The
+// standard answers were verified offline against actual execution by the
+// authoring script, so the seed only checks structural invariants; the
+// output_match rule validates literals again at case-creation time.
+func mustCruxEvalSuite(spec cruxevalSuiteSpec) seedSuite {
+	suite := seedSuite{
+		key:         spec.key,
+		name:        spec.name,
+		capability:  spec.capability,
+		nadir:       spec.nadir,
+		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+	}
+	seen := map[string]bool{}
+	for lineNo, line := range strings.Split(spec.data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var q cruxevalQuestion
+		if err := json.Unmarshal([]byte(line), &q); err != nil {
+			panic(fmt.Sprintf("benchmark %s: line %d: invalid JSON: %v", spec.key, lineNo+1, err))
+		}
+		if q.ID == "" || seen[q.ID] {
+			panic(fmt.Sprintf("benchmark %s: line %d: missing or duplicate id %q", spec.key, lineNo+1, q.ID))
+		}
+		seen[q.ID] = true
+		if q.Code == "" || q.Input == "" || q.Output == "" {
+			panic(fmt.Sprintf("benchmark %s: %s: code/input/output must all be non-empty", spec.key, q.ID))
+		}
+		suite.cases = append(suite.cases, seedCase{
+			gen: 1,
+			// The source carries no per-item difficulty labels; the tier is
+			// a neutral placeholder, not a measurement.
+			difficulty:   "intermediate",
+			sampleCount:  intptr(1),
+			prompt:       fmt.Sprintf(cruxevalPromptTemplate, q.Code, q.Input),
+			verdictType:  "rule",
+			ruleMode:     strptr("output_match"),
+			ruleExpected: strptr(q.Output),
 		})
 	}
 	if len(suite.cases) == 0 {
