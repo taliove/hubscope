@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工(与 85 并行)
 
-**Status:** done(3 commit:09aa0ec → 2cc40ad → d407672;bash -n 双脚本通过;零应用代码改动;check 由 main 统一派,待验)
+**Status:** done(3 commit:09aa0ec → 2cc40ad → d407672;bash -n 双脚本通过;零应用代码改动;check 三维度 PASS 2026-07-28,2 项 LOW 观察登记不处理:迁移判定为文件级 grep 未限定站点块内、caddy validate 以 root 落残留存储目录)
 
 ## 执行顺序(单 commit ≤8 文件)
 

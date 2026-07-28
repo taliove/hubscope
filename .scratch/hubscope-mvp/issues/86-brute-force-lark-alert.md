@@ -4,7 +4,7 @@
 
 **Blocked by:** 85(登录失败观察点与 option 注入模式先行,两票同改 handleLogin 失败路径,串行避免冲突)
 
-**Status:** done(实现 TDD 合入,2026-07-28;make test 全绿;决策点 3 项由 main 裁决:沿用 alert_enabled 总开关、不落 alert_events、MaxEntries 满时丢最旧)
+**Status:** done(实现 TDD 合入 8741daa,2026-07-28;make test 全绿;check 三维度 PASS 2026-07-28;决策点 3 项由 main 裁决:沿用 alert_enabled 总开关、不落 alert_events、MaxEntries 满时丢最旧)
 
 ## 执行顺序(TDD,小步)
 
@@ -19,7 +19,7 @@
 - [x] 告警文本:失败次数 + 窗口 + Top3 用户名 + Top3 IP;grep 断言不含密码、不含 webhook 地址
 - [x] 复用唯一 Evaluator 实例,无第二条告警链路;端点/评估告警既有用例回归通过
 - [x] 发送失败只记应用日志,不重试、不阻塞登录响应路径(告警发送不得拖慢登录)
-- [x] `make test` 全绿;check 三维度 PASS(check 由 main 统一派,结果待回填)
+- [x] `make test` 全绿;check 三维度 PASS(2026-07-28 check PASS,3 项观察登记不处理:弱断言 Contains "3"、CI 慢机理论 flake 余量充足、异步 goroutine 无 shutdown 挂钩=已登记接受界)
 
 ## 风险登记
 
