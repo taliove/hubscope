@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** implemented(bc96575,2026-07-28;TDD 先红后绿,9 条新用例全绿;spec 0011 回归 + `make test` 全绿;待 check 三维度验证——由 main 统一派)
+**Status:** done(bc96575,2026-07-28;TDD 先红后绿,9 条新用例全绿;spec 0011 回归 + `make test` 全绿;check 三维度 PASS 2026-07-28)
 
 ## 执行顺序(TDD,小步)
 
@@ -21,7 +21,7 @@
 - [x] 登录成功后该用户名与该 IP 不再要求验证码(直至再次失败累计)(TestCaptchaSuccessResetsBothDimensions)
 - [x] 签发接口独立限流档(20/min burst 10)生效,超限 429;store 上限触达拒发 fail-closed(TestCaptchaIssueRateLimited / TestCaptchaStoreFullFailsClosed,503 冻结文案)
 - [x] 图形码纯 Go 生成,运行时零外部字体文件依赖(需要则 go:embed)(base64Captcha DriverDigit 硬编码位图字体,实证见备注节;裁决 B 接受 +约 7MB)
-- [ ] spec 0011 用例回归(允许最小适配:存量构造点注入零值 WithCaptchaPolicy 禁用,行为语义不变——裁决 A)(已做:login_delay/loginAlert 两基建各一行,`make test` 全绿);check 三维度 PASS(待 main 统一派 check)
+- [x] spec 0011 用例回归(允许最小适配:存量构造点注入零值 WithCaptchaPolicy 禁用,行为语义不变——裁决 A)(已做:login_delay/loginAlert 两基建各一行,`make test` 全绿);check 三维度 PASS(2026-07-28,4 个高危点专项核对全部排除;备注:新用例实为 9 条非 10 条,以 9 为准)
 
 ## 备注(阶段 1 影响分析裁决登记,2026-07-28)
 
