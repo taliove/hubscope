@@ -157,8 +157,8 @@ func TestCampaignReportDeltaSuiteMissingBaseline(t *testing.T) {
 	waitCampaignStatus(t, ts.URL, int64(full["id"].(float64)), store.CampaignStatusDone)
 
 	// A manual single-suite campaign lands between the two sweeps.
-	basicID := suiteIDByKey(t, ts.URL, "basic")
-	runID := triggerEval(t, ts.URL, basicID, modelID)
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	waitCampaignStatus(t, ts.URL, int64(run["campaign_id"].(float64)), store.CampaignStatusDone)
 

@@ -206,9 +206,9 @@ export interface EvalCase {
   enabled: boolean
 }
 
-// Capability dimension of question-bank v3 (ADR 0010); '' marks pre-v3
-// legacy suites (retired but still listed for history).
-export type Capability = 'instruction' | 'reasoning' | 'coding' | 'language' | 'knowledge' | ''
+// Capability dimension of question-bank v3 (ADR 0010). Pre-v3 legacy suites
+// no longer exist: disabled suites are hard-deleted server-side (ADR 0012).
+export type Capability = 'instruction' | 'reasoning' | 'coding' | 'language' | 'knowledge'
 
 export interface Suite {
   id: number
@@ -217,7 +217,7 @@ export interface Suite {
   version: number // question-bank version, bumps on every case mutation
   capability: Capability
   nadir: number // normalization constant (ADR 0009); 0 = legacy raw-mean caliber
-  enabled: boolean // false = retired: excluded from sweeps/weekly batches, still listed
+  enabled: boolean // false = retired; retired suites are purged server-side and never returned
   cases: EvalCase[]
 }
 

@@ -61,6 +61,13 @@ const judgeRubricSuffix = "只输出 JSON：{\"score\": 0到1之间的数字, \"
 func (db *DB) seedSuites() error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, suite := range builtinSuites {
+		// A tombstoned suite was hard-deleted by the disabled-suite purge
+		// (ADR 0012); the bank must never re-seed it back to life.
+		if purged, err := db.GetSetting(purgedSuiteKey(suite.key), ""); err != nil {
+			return err
+		} else if purged != "" {
+			continue
+		}
 		if _, err := db.conn.Exec(
 			"INSERT OR IGNORE INTO suites (key, name, capability, nadir) VALUES (?, ?, ?, ?)",
 			suite.key, suite.name, suite.capability, suite.nadir,
@@ -121,6 +128,12 @@ func (db *DB) seedSuites() error {
 // seedGenerationKey is the settings key recording a suite's seed generation.
 func seedGenerationKey(suiteKey string) string {
 	return "seed_gen_" + suiteKey
+}
+
+// purgedSuiteKey is the settings key tombstoning a suite hard-deleted by the
+// disabled-suite purge (ADR 0012): seedSuites skips bank entries carrying it.
+func purgedSuiteKey(suiteKey string) string {
+	return "purged_suite_" + suiteKey
 }
 
 // seedGeneration returns the highest seed generation a suite has received. A

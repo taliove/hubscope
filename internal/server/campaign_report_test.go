@@ -248,8 +248,8 @@ func TestCampaignReportHidesDeletedModels(t *testing.T) {
 	}
 	vanishID := int64(vanish["id"].(float64))
 
-	basicID := suiteIDByKey(t, ts.URL, "basic")
-	runID := triggerEval(t, ts.URL, basicID, keepID, vanishID)
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	runID := triggerEval(t, ts.URL, instructionID, keepID, vanishID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
@@ -302,9 +302,9 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	// Unknown suite keys and non-positive or absurd weights are rejected.
 	for _, body := range []map[string]interface{}{
 		{"suite_weights": map[string]interface{}{"nosuch": 1}},
-		{"suite_weights": map[string]interface{}{"basic": 0}},
-		{"suite_weights": map[string]interface{}{"basic": -2}},
-		{"suite_weights": map[string]interface{}{"basic": 1e308}},
+		{"suite_weights": map[string]interface{}{"cap_instruction": 0}},
+		{"suite_weights": map[string]interface{}{"cap_instruction": -2}},
+		{"suite_weights": map[string]interface{}{"cap_instruction": 1e308}},
 	} {
 		resp := doPut(t, ts.URL+"/api/settings", body)
 		resp.Body.Close()
@@ -315,7 +315,7 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 
 	// A valid map round-trips through the settings API.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"suite_weights": map[string]interface{}{"basic": 2, "reasoning": 0.5},
+		"suite_weights": map[string]interface{}{"cap_instruction": 2, "cap_reasoning": 0.5},
 	})
 	putResp.Body.Close()
 	if putResp.StatusCode != http.StatusOK {
@@ -327,8 +327,8 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	settings = nil
 	_ = json.Unmarshal(env.Data, &settings)
 	saved, _ := settings["suite_weights"].(map[string]interface{})
-	if saved["basic"] != 2.0 || saved["reasoning"] != 0.5 {
-		t.Errorf("saved suite_weights = %v, want basic=2 reasoning=0.5", saved)
+	if saved["cap_instruction"] != 2.0 || saved["cap_reasoning"] != 0.5 {
+		t.Errorf("saved suite_weights = %v, want cap_instruction=2 cap_reasoning=0.5", saved)
 	}
 
 	// Unknown campaign: report is a 404, like the campaign detail.
@@ -353,9 +353,9 @@ func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
 	stub.blockCalls()
 	t.Cleanup(stub.release)
 
-	basicID := suiteIDByKey(t, ts.URL, "basic")
-	enabledCases := enabledCaseCount(t, ts.URL, basicID)
-	runID := triggerEval(t, ts.URL, basicID, modelID)
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	enabledCases := enabledCaseCount(t, ts.URL, instructionID)
+	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	waitFor(t, "eval call reaching the stub", func() bool {
 		return stub.sawModel("smart-model")
 	})
@@ -370,7 +370,7 @@ func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
 	if len(rows) != 1 || rows[0]["model_id"] != "smart-model" {
 		t.Fatalf("running campaign rows = %v, want the single member smart-model pending", rows)
 	}
-	assertCell(t, rows[0], "basic", "pending", 0, enabledCases)
+	assertCell(t, rows[0], "cap_instruction", "pending", 0, enabledCases)
 	progress := campaignProgress(t, report)
 	if int(progress["total"].(float64)) != 1 {
 		t.Errorf("running campaign progress.total = %v, want 1", progress)

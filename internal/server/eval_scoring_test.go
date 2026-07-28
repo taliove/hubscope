@@ -13,14 +13,14 @@ import (
 func TestEvalExactMode(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "reasoning")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_reasoning")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 12 {
-		t.Fatalf("got %d results, want 12", len(results))
+	if len(results) != 10 {
+		t.Fatalf("got %d results, want 10", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -35,20 +35,24 @@ func TestEvalExactMode(t *testing.T) {
 	}
 }
 
-// TestEvalJudge covers the judge verdict path: eleven cases get a parsed
-// score and reason, one case gets judge garbage back and must stay unscored
-// (score null). The aggregate must average only the scored cases.
+// TestEvalJudge covers the judge verdict path on the language suite (6 rule
+// cases + 4 judge cases): judge cases get a parsed score and reason, except
+// one whose judge replies are scripted to garbage and which must stay
+// unscored (score null). The aggregate must average only the scored cases.
 func TestEvalJudge(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "chinese")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
+
+	// The product-intro judge case gets unparseable verdicts on every sample.
+	stub.setJudgeSeq("保温杯", "I cannot produce a score for this.")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 12 {
-		t.Fatalf("got %d results, want 12", len(results))
+	if len(results) != 10 {
+		t.Fatalf("got %d results, want 10", len(results))
 	}
 
 	var scored, unscored int
@@ -62,23 +66,29 @@ func TestEvalJudge(t *testing.T) {
 			continue
 		}
 		scored++
-		if r["score"] != 0.75 {
-			t.Errorf("judge score = %v, want 0.75", r["score"])
-		}
-		if !strings.Contains(detail, "meets the rubric") {
-			t.Errorf("verdict_detail should carry the judge reason: %q", detail)
-		}
 		if r["answer_text"] == nil || r["answer_text"] == "" {
 			t.Error("answer_text should still be stored when the judge ran")
 		}
+		switch {
+		case strings.Contains(detail, "meets the rubric"):
+			if r["score"] != 0.75 {
+				t.Errorf("judge score = %v, want 0.75", r["score"])
+			}
+		default:
+			// Rule cases score 1 for the smart model.
+			if r["score"] != 1.0 {
+				t.Errorf("rule score = %v, want 1 (detail: %q)", r["score"], detail)
+			}
+		}
 	}
-	if scored != 11 || unscored != 1 {
-		t.Errorf("scored/unscored = %d/%d, want 11/1", scored, unscored)
+	if scored != 9 || unscored != 1 {
+		t.Errorf("scored/unscored = %d/%d, want 9/1", scored, unscored)
 	}
 
-	// Aggregate averages only non-null scores: (11 x 0.75) / 11 = 0.75.
-	if score, ok := run["score"].(float64); !ok || score != 0.75 {
-		t.Errorf("run score = %v, want 0.75 (nulls excluded)", run["score"])
+	// Aggregate averages only non-null scores: (6 x 1 + 3 x 0.75) / 9.
+	want := (6.0 + 3.0*0.75) / 9.0
+	if score, ok := run["score"].(float64); !ok || score < want-1e-9 || score > want+1e-9 {
+		t.Errorf("run score = %v, want %v (nulls excluded)", run["score"], want)
 	}
 }
 
@@ -90,7 +100,7 @@ func TestEvalModelFailure(t *testing.T) {
 	// the model: every eval call 503s from here on.
 	modelID := createEvalModel(t, ts.URL, stub.URL, "flaky-model")
 	stub.markBroken("flaky-model", true)
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -100,8 +110,8 @@ func TestEvalModelFailure(t *testing.T) {
 	}
 
 	results := resultsByModel(run, "flaky-model")
-	if len(results) != 12 {
-		t.Fatalf("got %d results, want 12", len(results))
+	if len(results) != 10 {
+		t.Fatalf("got %d results, want 10", len(results))
 	}
 	for _, r := range results {
 		if r["answer_text"] != nil {
@@ -124,7 +134,7 @@ func TestEvalModelFailure(t *testing.T) {
 func TestEvalValidation(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	post := func(body map[string]interface{}) *http.Response {
 		return doPost(t, ts.URL+"/api/evals", body)
@@ -214,13 +224,13 @@ func TestEvalProtocolFallback(t *testing.T) {
 	patchResp.Body.Close()
 	stub.resetCalls()
 
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 12 {
-		t.Fatalf("got %d results, want 12", len(results))
+	if len(results) != 10 {
+		t.Fatalf("got %d results, want 10", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -256,7 +266,7 @@ func patchSampleCount(t *testing.T, base string, id int64, value interface{}) ma
 
 func TestCaseCreatePatch(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Create a new rule case.
 	createResp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
@@ -322,7 +332,7 @@ func TestCaseCreatePatch(t *testing.T) {
 	_ = json.Unmarshal(env.Data, &suites)
 	var oldRow, newRow map[string]interface{}
 	for _, s := range suites {
-		if s["key"] != "basic" {
+		if s["key"] != "cap_instruction" {
 			continue
 		}
 		for _, c := range s["cases"].([]interface{}) {

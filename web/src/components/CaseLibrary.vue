@@ -33,7 +33,6 @@
             <el-tag v-if="suite.nadir > 0" size="small" effect="plain" class="suite-tag">
               nadir {{ suite.nadir }}
             </el-tag>
-            <el-tag v-if="!suite.enabled" size="small" type="info" class="suite-tag">已停用</el-tag>
           </template>
           <div class="suite-actions">
             <el-button size="small" type="primary" plain @click="openCreate(suite)">新增 Case</el-button>
@@ -146,14 +145,15 @@ import type { Capability, Difficulty, EvalCase, Suite, VerdictType } from '@/api
 // session, so write forms are always shown; the server still re-validates.
 // Cases are immutable server-side: a content edit returns a new case id and
 // retires the old row, which stays visible as disabled after the refresh.
-// Retired suites (enabled=false) stay listed — history must keep rendering
-// them — but carry the 已停用 badge. The panel loads its own suite data.
+// Retired suites never reach this panel: disabled suites are hard-deleted
+// server-side at Open (ADR 0012). The panel loads its own suite data.
 const suites = ref<Suite[]>([])
 const loading = ref(false)
 const error = ref('')
 
-// Capability filter: 'all' lists every suite (retired legacy included);
-// 'legacy' narrows to the pre-v3 suites (capability '').
+// Capability filter: 'all' lists every suite; the other options narrow to
+// one capability dimension. Pre-v3 legacy suites no longer exist (hard-deleted
+// server-side at Open, ADR 0012), so there is no legacy option.
 const capabilityFilter = ref('all')
 
 const CAPABILITY_LABELS: Record<Capability, string> = {
@@ -162,7 +162,6 @@ const CAPABILITY_LABELS: Record<Capability, string> = {
   coding: '代码',
   language: '语言理解与生成',
   knowledge: '知识问答',
-  '': '旧版套件',
 }
 
 const capabilityOptions = computed(() => [
@@ -172,12 +171,10 @@ const capabilityOptions = computed(() => [
   { value: 'coding', label: CAPABILITY_LABELS.coding },
   { value: 'language', label: CAPABILITY_LABELS.language },
   { value: 'knowledge', label: CAPABILITY_LABELS.knowledge },
-  { value: 'legacy', label: CAPABILITY_LABELS[''] },
 ])
 
 const filteredSuites = computed(() => {
   if (capabilityFilter.value === 'all') return suites.value
-  if (capabilityFilter.value === 'legacy') return suites.value.filter(s => s.capability === '')
   return suites.value.filter(s => s.capability === capabilityFilter.value)
 })
 

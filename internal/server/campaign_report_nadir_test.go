@@ -248,7 +248,7 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 func TestCampaignReportDeltaProfileChanged(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Batch 1 scores under what history calls the v1 caliber.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
