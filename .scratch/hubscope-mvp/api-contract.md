@@ -71,7 +71,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 ## Eval(ticket 08)
 
 - `GET /api/suites` → `{"data": [Suite]}`;`Suite = {"id": number, "key": string, "name": string, "cases": [Case]}`
-- `Case = {"id": number, "suite_id": number, "prompt": string, "verdict_type": "rule"|"judge", "rule_config": {"mode": "exact"|"regex"|"contains", "expected": string}|null, "rubric": string|null, "enabled": boolean}`
+- `Case = {"id": number, "suite_id": number, "prompt": string, "verdict_type": "rule"|"judge", "rule_config": {"mode": "exact"|"regex"|"contains"|"mcq"|"output_match", "expected": string}|null, "rubric": string|null, "enabled": boolean}`
 - `POST /api/cases` → 201。Body 同 Case(无 id)。`PATCH /api/cases/{id}` → `{"data": Case}`(字段均可选)。
 - `POST /api/evals` → 202 `{"data": EvalRun}`。Body: `{"suite_id": number, "model_ids": [number,...]}`(model 的数据库 id;含 non_chat 模型 → 400)。异步执行。
 - `GET /api/evals` → `{"data": [EvalRun]}`(倒序)

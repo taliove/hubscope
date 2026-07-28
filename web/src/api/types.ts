@@ -187,7 +187,7 @@ export type VerdictType = 'rule' | 'judge'
 export type Difficulty = 'basic' | 'intermediate' | 'hard'
 
 export interface RuleConfig {
-  mode: 'exact' | 'regex' | 'contains' | 'mcq'
+  mode: 'exact' | 'regex' | 'contains' | 'mcq' | 'output_match'
   expected: string
 }
 
