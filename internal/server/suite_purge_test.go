@@ -52,21 +52,21 @@ func TestSuitePurgeCascade(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "purge.db")
 
 	// First boot: the seeded bank holds the five capability suites plus the
-	// mmlu benchmark suite (ADR 0013), which seeds disabled by design until
-	// the ticket-99 cutover and is exempt from the purge as an in-bank suite —
-	// no pre-v3 legacy suite (capability "") may ever be listed.
+	// mmlu/gsm8k benchmark suites (ADR 0013), which seed disabled by design
+	// until the ticket-99 cutover and are exempt from the purge as in-bank
+	// suites — no pre-v3 legacy suite (capability "") may ever be listed.
 	ts, db := openSuitesServer(t, dbPath)
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 6 {
-		t.Fatalf("fresh bank suites = %d, want 5 capability suites + mmlu disabled: %v", len(suites), suites)
+	if len(suites) != 7 {
+		t.Fatalf("fresh bank suites = %d, want 5 capability suites + mmlu/gsm8k disabled: %v", len(suites), suites)
 	}
 	for _, s := range suites {
 		if s["capability"] == "" {
 			t.Errorf("legacy suite %v listed on a fresh bank, want purged/never seeded", s["key"])
 		}
-		if s["key"] == "mmlu" {
+		if s["key"] == "mmlu" || s["key"] == "gsm8k" {
 			if s["enabled"] != false {
-				t.Errorf("mmlu benchmark suite enabled = %v, want false until cutover", s["enabled"])
+				t.Errorf("benchmark suite %v enabled = %v, want false until cutover", s["key"], s["enabled"])
 			}
 			continue
 		}
@@ -125,8 +125,8 @@ func TestSuitePurgeCascade(t *testing.T) {
 	defer db2.Close()
 
 	after := fetchSuites(t, ts2.URL, "")
-	if len(after) != 5 {
-		t.Fatalf("suites after purge = %d, want 5 (4 capability + mmlu exempt): %v", len(after), after)
+	if len(after) != 6 {
+		t.Fatalf("suites after purge = %d, want 6 (4 capability + mmlu/gsm8k exempt): %v", len(after), after)
 	}
 	for _, s := range after {
 		if s["key"] == "cap_instruction" {
@@ -182,8 +182,8 @@ func TestSuitePurgeCascade(t *testing.T) {
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	again := fetchSuites(t, ts3.URL, "")
-	if len(again) != 5 {
-		t.Errorf("suites after third boot = %d, want still 5 (4 capability + mmlu exempt)", len(again))
+	if len(again) != 6 {
+		t.Errorf("suites after third boot = %d, want still 6 (4 capability + mmlu/gsm8k exempt)", len(again))
 	}
 	for _, s := range again {
 		if s["key"] == "cap_instruction" || s["capability"] == "" {
