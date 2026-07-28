@@ -9,7 +9,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** in_progress(2026-07-28 开工;三条决策已经用户确认:测输入框地址 / test 事件落库 / 不受开关影响)
+**Status:** done(2026-07-28;实现随并行会话 merge 入 38974e6,audit 断言补强 64d770e;check 三维度 PASS;LOW-1 audit 无 URL 断言已随票补上,LOW-2 LarkSender 错误带响应体 snippet 登记知悉、非本票引入;偏离登记:失败时 HTTP 恒 200 + sent_ok=false,与契约 {sent_ok, error} 形态一致)
 
 ## 验收清单
 
