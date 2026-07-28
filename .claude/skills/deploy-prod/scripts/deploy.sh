@@ -247,21 +247,61 @@ EOF
 # tag — tag deploy (the only production deploy mode)
 # =============================================================================
 
+# XFF trust contract (spec 0011 decision 2): the app reads X-Forwarded-For's
+# first hop as clientIP, so the edge proxy MUST replace the client-supplied
+# value. header_up (no +/- prefix) overwrites any existing value — including a
+# spoofed leftmost hop — with the direct peer IP. (Since Caddy v2.7 the
+# default already strips client-supplied XFF; the explicit header_up pins the
+# replace contract regardless of version and guards against future
+# trusted_proxies drift.)
+# Future trap: if a CDN is ever placed in front of Caddy and trusted_proxies
+# is configured, switch to {client_ip} — {remote_host} would then hard-
+# overwrite the chain with the CDN node IP.
 ensure_caddy_site() {
-  if prod_ssh "grep -q '$PROD_DOMAIN' '$PROD_CADDYFILE' 2>/dev/null"; then
-    log_info "Caddy 站点块已存在"
-  else
+  if ! prod_ssh "grep -q '$PROD_DOMAIN' '$PROD_CADDYFILE' 2>/dev/null"; then
     log_info "写入 Caddy 站点块($PROD_DOMAIN → 127.0.0.1:$PROD_PORT)..."
     prod_ssh "bash -s" <<EOF
 set -e
 cat > '$PROD_CADDYFILE' <<'CADDY'
 $PROD_DOMAIN {
-	reverse_proxy 127.0.0.1:$PROD_PORT
+	reverse_proxy 127.0.0.1:$PROD_PORT {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 CADDY
 systemctl reload caddy
 EOF
     log_success "Caddy 站点块已生效(首次证书申请约 15-30s)"
+  elif prod_ssh "grep -q 'header_up X-Forwarded-For' '$PROD_CADDYFILE' 2>/dev/null"; then
+    log_info "Caddy 站点块已存在且 XFF 替换语义已就位,跳过"
+  else
+    # Migration (spec 0011 decision 2): the existing site block predates the
+    # XFF fix. Back up → rewrite → validate → auto-restore on failure. The
+    # rewrite is a full-file write, same as the create path (this script owns
+    # the file). Idempotent: a successful migration lands in the skip branch
+    # above; a failed validation restores the backup and the next run retries.
+    log_info "存量 Caddy 站点块缺少 XFF 替换(header_up),执行迁移(先备份)..."
+    prod_ssh "bash -s" <<EOF
+set -e
+backup='$PROD_CADDYFILE.bak-'\$(date +%Y%m%d-%H%M%S)
+cp -a '$PROD_CADDYFILE' "\$backup"
+cat > '$PROD_CADDYFILE' <<'CADDY'
+$PROD_DOMAIN {
+	reverse_proxy 127.0.0.1:$PROD_PORT {
+		header_up X-Forwarded-For {remote_host}
+	}
+}
+CADDY
+if ! caddy validate --config '$PROD_CADDYFILE' >/dev/null 2>&1; then
+  cp -a "\$backup" '$PROD_CADDYFILE'
+  systemctl reload caddy || true
+  echo "Caddyfile 校验失败,已还原备份: \$backup" >&2
+  exit 1
+fi
+systemctl reload caddy
+echo "原配置备份: \$backup"
+EOF
+    log_success "存量站点块已迁移(XFF 替换语义就位)"
   fi
 }
 
@@ -316,8 +356,11 @@ set -e
 chown -R 10001:10001 '$PROD_DATA_DIR'
 docker stop $CONTAINER_NAME 2>/dev/null || true
 docker rm $CONTAINER_NAME 2>/dev/null || true
+# TRUST_PROXY=true: production sits behind Caddy, whose site block replaces
+# X-Forwarded-For with the direct peer IP (spec 0011 decision 2)
 docker run -d --name $CONTAINER_NAME --restart unless-stopped \
   -p 127.0.0.1:$PROD_PORT:$PROD_PORT \
+  -e TRUST_PROXY=true \
   -v '$PROD_DATA_DIR':/data \
   $CONTAINER_NAME:$version
 EOF
@@ -396,8 +439,11 @@ cmd_rollback() {
 set -e
 chown -R 10001:10001 '$PROD_DATA_DIR'
 docker stop $CONTAINER_NAME && docker rm $CONTAINER_NAME
+# TRUST_PROXY=true: production sits behind Caddy, whose site block replaces
+# X-Forwarded-For with the direct peer IP (spec 0011 decision 2)
 docker run -d --name $CONTAINER_NAME --restart unless-stopped \
   -p 127.0.0.1:$PROD_PORT:$PROD_PORT \
+  -e TRUST_PROXY=true \
   -v '$PROD_DATA_DIR':/data \
   $prev_image
 EOF
