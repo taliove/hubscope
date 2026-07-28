@@ -108,3 +108,13 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `Task = {"id": number, "type": "eval_run", "source": "manual"|"scheduled", "status": "pending"|"running"|"success"|"failed", "entity_type": "eval_run", "entity_id": number, "started_at": string|null, "finished_at": string|null, "duration_ms": number|null(终态才有), "created_at": string}`
 - `TaskLog = {"id": number, "at": string, "level": "info"|"warn"|"error", "message": string}`
 - 每次 Eval Run(手动 POST /api/evals 或每周定时)执行时注册一个 Task:开始 → running,逐 Case 写进度日志(完成带分数、裁判失败 warn),Run 终态映射 success/failed;进程重启时遗留 pending/running 的 Task 启动即置 failed。探测轮次不是 Task。
+
+## Eval Campaign Report 覆盖率门槛(ticket 91,spec 0014 决策 A)
+
+- 三个端点共用同一报告形状与排名口径:`GET /api/campaigns/{id}/report`(session)、`GET /api/public/eval/board`(公开,report 字段即最新 settle 批次报告)、`GET /api/shared-reports/{token}`(token 门控)。
+- 报告行 ReportRow 新增两个字段(ticket 92 前端按此消费,**定稿即冻结**):
+  - `complete: boolean` — 完整性判定,**仅 settle(done/failed)批次的行出现**;运行中/等待中批次的 live 行不含此键。`true` ⟺ 该模型在批次覆盖且当前仍有启用 case 的全部 suite 上 AVG(score) 非 null(每个有题维度至少判上 1 题;W7「裁判失败计 null 不计 0」口径不变,维度分本身不受门槛影响)。
+  - `missing_suites: number` — **仅 `complete=false` 时出现**,值为未判上分的 suite 数(前端「判分不完整 N/M 维度」水印的 N;**M = 批次覆盖且当前有启用 case 的 suite 数**,即门槛分母,而非报告 suites 数组长度——零启用 case 的 suite 不参与判定,见下方边界)。
+- 排名口径(settle 批次):`complete=false` 的行 `total_score=null`、`total_delta=null`,排在全部 `complete=true` 行之后——**与 sort 参数(总分或任一 suite 列)无关**;不完整组内按 `model_id` 字典序。完整组内部口径不变(所选列降序、null 沉底、`model_id` 字典序 tiebreak)。全部模型不完整时正常 200 返回(行保留、全体 total/rank 为 null),不空态、不报错。
+- 涨跌口径:不完整模型无 delta(无总分即无 delta);baseline 批次侧同一门槛——模型在 baseline 批次不完整时其 baseline 总分视为不存在,当前批次同样不给 delta。
+- 边界:零启用 case 的 suite 不参与完整性判定(无题维度是题库配置而非判分缺口,其分数仍照常展示、照常从总分剔除——既有「未判分维度从分子分母剔除」口径不变);live(运行中批次)语义零改动,门槛只对 settle 批次生效。
