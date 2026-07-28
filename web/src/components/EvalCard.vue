@@ -46,11 +46,19 @@
           v-for="row in snapshot.rows"
           :key="row.modelId"
           class="ec-grid row"
-          :class="{ 'rank-top-rail': row.rank <= 3 }"
+          :class="{ 'rank-top-rail': row.rank !== null && row.rank <= 3 }"
           :style="gridStyle"
         >
-          <span class="rank" :class="{ 'rank-top': row.rank <= 3 }">{{ row.rank }}</span>
-          <span class="model">{{ row.modelId }}</span>
+          <span class="rank" :class="{ 'rank-top': row.rank !== null && row.rank <= 3, 'rank-dash': row.rank === null }">{{
+            row.rank ?? '–'
+          }}</span>
+          <span class="model">
+            <span class="model-name">{{ row.modelId }}</span>
+            <!-- Judged-incomplete watermark (ticket 92): same wording and
+                 position as the page, fully visible — the static material
+                 has no tooltip fallback. -->
+            <span v-if="row.incompleteNote" class="model-watermark">{{ row.incompleteNote }}</span>
+          </span>
           <span class="total">
             <span class="total-value">{{ formatScore(row.score) }}</span>
             <span class="total-track">
@@ -278,7 +286,8 @@ function deltaTone(row: EvalCardRow): string {
   color: var(--hs-text-secondary);
 }
 /* Top-3 ceremony (ticket 82, same as the page): 3px brand rail + the rank
-   number one size up at 600. */
+   number one size up at 600. Judged-incomplete rows (ticket 92, rank null)
+   render the placeholder dash and never take the rail. */
 .rank-top-rail {
   border-left-color: var(--hs-brand);
 }
@@ -287,12 +296,32 @@ function deltaTone(row: EvalCardRow): string {
   font-size: var(--hs-text-lg);
   font-weight: 600;
 }
+.rank-dash {
+  color: var(--hs-text-placeholder);
+}
 .model {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--hs-space-1);
+  min-width: 0;
   font-size: var(--hs-text-md);
   color: var(--hs-text-primary);
+}
+.model-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Same reduced-emphasis spec as the page watermark (weight 400 + opacity
+   0.85); wraps naturally if the N/M ever outgrows the 150px column. */
+.model-watermark {
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--hs-text-secondary);
+  opacity: 0.85;
+  white-space: normal;
 }
 .total-value {
   font-size: var(--hs-text-xl);
