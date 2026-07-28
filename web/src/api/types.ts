@@ -187,8 +187,16 @@ export type VerdictType = 'rule' | 'judge'
 export type Difficulty = 'basic' | 'intermediate' | 'hard'
 
 export interface RuleConfig {
-  mode: 'exact' | 'regex' | 'contains' | 'mcq'
+  mode: 'exact' | 'regex' | 'contains' | 'mcq' | 'ifeval'
   expected: string
+}
+
+// One IFEval verifiable instruction (ticket 97): the official instruction id
+// plus its kwargs, as cast into check_params by the benchmark seed. Seed-cast
+// data — the admin case API never authors it, only preserves it on edits.
+export interface IFEvalInstruction {
+  instruction_id: string
+  kwargs: Record<string, unknown>
 }
 
 // Named EvalCase to avoid clashing with the JS reserved-word flavor of "Case".
@@ -203,6 +211,7 @@ export interface EvalCase {
   rubric: string | null // only for verdict_type "judge"
   difficulty: Difficulty
   sample_count: number | null // null = inherit the global default
+  check_params: IFEvalInstruction[] | null // only for rule mode "ifeval"
   enabled: boolean
 }
 
