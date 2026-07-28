@@ -15,10 +15,11 @@ import (
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.
-// mcq (ADR 0013) must stay listed or admins could not curate benchmark
-// cases through the case API (PATCH revalidates the merged case).
+// mcq (ADR 0013) and numeric (ticket 95) must stay listed or admins could
+// not curate benchmark cases through the case API (PATCH revalidates the
+// merged case).
 var validVerdictTypes = map[string]bool{"rule": true, "judge": true}
-var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true}
+var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true, "numeric": true}
 
 // validDifficulties enumerates the accepted difficulty tiers.
 var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
@@ -260,6 +261,18 @@ func parseSampleCountPatch(raw json.RawMessage) (*int, error) {
 	return &n, nil
 }
 
+// numericExpectationPattern accepts the spellings a numeric expectation may
+// use: optional leading "$", optional sign, integer part either plain or
+// with correctly placed comma thousands separators, optional decimal part.
+// "1,000" and "14000" pass; "1,2,3" does not (misplaced separators).
+var numericExpectationPattern = regexp.MustCompile(`^\$?-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$`)
+
+// numericExpectationValid reports whether s canonicalizes to a plain number
+// the numeric verdict could ever match.
+func numericExpectationValid(s string) bool {
+	return numericExpectationPattern.MatchString(strings.TrimSpace(s))
+}
+
 // validateCase checks a fully-populated case for consistency.
 func validateCase(c store.Case) error {
 	if c.Prompt == "" {
@@ -270,7 +283,7 @@ func validateCase(c store.Case) error {
 	}
 	if c.VerdictType == "rule" {
 		if c.RuleMode == nil || !validRuleModes[*c.RuleMode] {
-			return fmt.Errorf("rule_config.mode must be exact, regex, contains or mcq")
+			return fmt.Errorf("rule_config.mode must be exact, regex, contains, mcq or numeric")
 		}
 		if c.RuleExpected == nil || *c.RuleExpected == "" {
 			return fmt.Errorf("rule_config.expected is required")
@@ -286,6 +299,14 @@ func validateCase(c store.Case) error {
 			exp := strings.ToUpper(strings.TrimSpace(*c.RuleExpected))
 			if len(exp) != 1 || !strings.Contains("ABCD", exp) {
 				return fmt.Errorf("rule_config.expected must be a single option letter A-D for mcq")
+			}
+		}
+		if *c.RuleMode == "numeric" {
+			// A numeric expectation must canonicalize to a plain number
+			// (sign, decimals, thousands separators allowed); anything else
+			// could never score a hit (ticket 95).
+			if !numericExpectationValid(*c.RuleExpected) {
+				return fmt.Errorf("rule_config.expected must be a number for numeric")
 			}
 		}
 	}

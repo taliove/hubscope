@@ -23,6 +23,9 @@ import (
 //go:embed benchmark/mmlu/subset.jsonl
 var mmluSubset string
 
+//go:embed benchmark/gsm8k/subset.jsonl
+var gsm8kSubset string
+
 var benchmarkSuites = []seedSuite{
 	mustMCQSuite(mcqSuiteSpec{
 		key:        "mmlu",
@@ -33,6 +36,16 @@ var benchmarkSuites = []seedSuite{
 		// from the observed score distribution before the cutover.
 		nadir: 0.25,
 		data:  mmluSubset,
+	}),
+	mustNumericSuite(numericSuiteSpec{
+		key:        "gsm8k",
+		name:       "推理（GSM8K）",
+		capability: CapabilityReasoning,
+		// Open-ended numeric answers have no meaningful random-guess floor;
+		// nadir stays 0. Ticket 99 recalibrates nadirs from the observed
+		// score distribution before the cutover.
+		nadir: 0,
+		data:  gsm8kSubset,
 	}),
 }
 
@@ -105,6 +118,80 @@ func mustMCQSuite(spec mcqSuiteSpec) seedSuite {
 			prompt:       fmt.Sprintf(mcqPromptTemplate, q.Question, q.Choices[0], q.Choices[1], q.Choices[2], q.Choices[3]),
 			verdictType:  "rule",
 			ruleMode:     strptr("mcq"),
+			ruleExpected: strptr(q.Answer),
+		})
+	}
+	if len(suite.cases) == 0 {
+		panic(fmt.Sprintf("benchmark %s: empty subset", spec.key))
+	}
+	return suite
+}
+
+// numericSuiteSpec describes one numeric-answer benchmark suite to seed.
+type numericSuiteSpec struct {
+	key        string
+	name       string
+	capability string
+	nadir      float64
+	data       string // embedded JSONL subset
+}
+
+// numericQuestion is one row of an embedded numeric-answer subset file: the
+// question and its expected final numeric answer (canonical form: no
+// thousands separators). The source_index field records the upstream row
+// index for audit (see the ATTRIBUTION file beside the data); it is
+// metadata, not cast into cases.
+type numericQuestion struct {
+	ID          string `json:"id"`
+	SourceIndex int    `json:"source_index"`
+	Question    string `json:"question"`
+	Answer      string `json:"answer"`
+}
+
+// numericPromptTemplate is the prompt every GSM8K-style benchmark case is
+// cast with (ADR 0013): the model is asked to end its reply with the
+// official '#### N' marker, and the numeric rule verdict extracts that
+// final number from its reply. The template is frozen into each case at
+// seed time — changing it means retiring the suite and casting a new one
+// (W7).
+const numericPromptTemplate = "Solve the following grade school math word problem. Think step by step, then end your reply with a line containing only '#### N', where N is the final numeric answer.\n\n%s"
+
+// mustNumericSuite parses an embedded numeric subset and builds its
+// seedSuite, under the same compile-time-data contract as mustMCQSuite.
+func mustNumericSuite(spec numericSuiteSpec) seedSuite {
+	suite := seedSuite{
+		key:         spec.key,
+		name:        spec.name,
+		capability:  spec.capability,
+		nadir:       spec.nadir,
+		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+	}
+	seen := map[string]bool{}
+	for lineNo, line := range strings.Split(spec.data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var q numericQuestion
+		if err := json.Unmarshal([]byte(line), &q); err != nil {
+			panic(fmt.Sprintf("benchmark %s: line %d: invalid JSON: %v", spec.key, lineNo+1, err))
+		}
+		if q.ID == "" || seen[q.ID] {
+			panic(fmt.Sprintf("benchmark %s: line %d: missing or duplicate id %q", spec.key, lineNo+1, q.ID))
+		}
+		seen[q.ID] = true
+		if q.Question == "" || q.Answer == "" {
+			panic(fmt.Sprintf("benchmark %s: %s: empty question or answer", spec.key, q.ID))
+		}
+		suite.cases = append(suite.cases, seedCase{
+			gen: 1,
+			// The source carries no per-item difficulty labels; the tier is
+			// a neutral placeholder, not a measurement.
+			difficulty:   "intermediate",
+			sampleCount:  intptr(1),
+			prompt:       fmt.Sprintf(numericPromptTemplate, q.Question),
+			verdictType:  "rule",
+			ruleMode:     strptr("numeric"),
 			ruleExpected: strptr(q.Answer),
 		})
 	}

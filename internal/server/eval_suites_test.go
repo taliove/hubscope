@@ -31,14 +31,15 @@ func fetchSuites(t *testing.T, base, query string) []map[string]interface{} {
 // and rule cases at 1, and the knowledge suite calibrated to the
 // multiple-choice nadir floor. Pre-v3 legacy suites never appear (spec 0014
 // decision B, ADR 0012): disabled suites are hard-deleted at Open and the
-// legacy bank is no longer seeded. The mmlu benchmark suite (ADR 0013) is
-// the sixth seed: listed but disabled until the ticket-99 cutover.
+// legacy bank is no longer seeded. The mmlu and gsm8k benchmark suites
+// (ADR 0013, tickets 94-95) are the sixth and seventh seeds: listed but
+// disabled until the ticket-99 cutover.
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 6 {
-		t.Fatalf("expected 6 suites (5 capability + 1 benchmark disabled), got %d", len(suites))
+	if len(suites) != 7 {
+		t.Fatalf("expected 7 suites (5 capability + 2 benchmark disabled), got %d", len(suites))
 	}
 
 	byKey := map[string]map[string]interface{}{}
@@ -160,11 +161,18 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	filtered := fetchSuites(t, ts.URL, "?capability=reasoning")
-	if len(filtered) != 1 || filtered[0]["key"] != "cap_reasoning" {
-		t.Fatalf("capability=reasoning suites = %v, want only cap_reasoning", filtered)
+	if len(filtered) != 2 {
+		t.Fatalf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
 	}
-	if filtered[0]["capability"] != "reasoning" {
-		t.Errorf("filtered suite capability = %v, want reasoning", filtered[0]["capability"])
+	byKey := map[string]map[string]interface{}{}
+	for _, s := range filtered {
+		byKey[s["key"].(string)] = s
+		if s["capability"] != "reasoning" {
+			t.Errorf("filtered suite capability = %v, want reasoning", s["capability"])
+		}
+	}
+	if byKey["cap_reasoning"] == nil || byKey["gsm8k"] == nil {
+		t.Errorf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
 	}
 
 	// An unknown capability yields an empty list, not an error.
@@ -173,8 +181,8 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 	}
 
 	// No parameter: every suite, the full capability bank plus the disabled
-	// benchmark suite.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 6 {
-		t.Errorf("unfiltered suites = %d, want 6", len(got))
+	// benchmark suites.
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 7 {
+		t.Errorf("unfiltered suites = %d, want 7", len(got))
 	}
 }
