@@ -8,6 +8,9 @@
 // `gap: 2px` in EndpointCard.vue and LatencySparkline.vue (comments cross-
 // reference this constant).
 
+import type { OverviewDot } from '@/api/types'
+import { formatBucketTime, formatMs } from '@/utils/format'
+
 export const SPARKLINE_BUCKETS = 24
 export const SPARKLINE_GAP_PX = 2 // see module header — the dots CSS gap twin
 
@@ -97,6 +100,21 @@ export function buildLatencyAreaPath(points: SparklinePoint[], height: number): 
   const last = points[points.length - 1]
   const line = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L ')
   return `M ${line} L ${last.x.toFixed(2)},${height} L ${first.x.toFixed(2)},${height} Z`
+}
+
+// Per-bucket hover wording, split by bucket fact (plan ruling): a bucket
+// with no probes at all has no data; a bucket whose probes ALL failed has
+// probes but no latency sample (a failed probe's latency is time-to-failure,
+// never a service latency) — say so instead of the blanket "无数据". The
+// baseline clause always carries the 1x baseline value: it is the fallback
+// when the dashed threshold line does not fit the y range (thresholdVisible).
+export function latencyBucketTooltip(dot: OverviewDot, baselineMs: number | null): string {
+  const label = `${formatBucketTime(dot.bucket_start)} 时段`
+  if (dot.p50_ms === null) {
+    return dot.total > 0 ? `${label} · 探测全部失败,无延迟样本` : `${label} · 无数据`
+  }
+  const baseline = baselineMs !== null ? ` · 基线 ${formatMs(baselineMs)}` : ''
+  return `${label} · P50 ${formatMs(dot.p50_ms)}${baseline}`
 }
 
 // Split the 24 bucket values into polyline segments, breaking the line (and

@@ -50,9 +50,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { OverviewDot } from '@/api/types'
-import { formatBucketTime, formatMs } from '@/utils/format'
 import {
   buildLatencySegments,
+  latencyBucketTooltip,
   sparklineYMax,
   thresholdVisible,
   thresholdY,
@@ -106,16 +106,10 @@ function polylinePoints(segment: SparklineSegment): string {
   return segment.points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')
 }
 
-// "HH:mm 时段 · P50 X · 基线 Y"; a bucket without successful probes has no
-// latency data at all, and the baseline clause is omitted only when the
-// status machine has no baseline. The tooltip ALWAYS carries the 1x
-// baseline value — it is the fallback when the dashed threshold line does
-// not fit the y range (thresholdVisible).
+// Wording lives in utils/latencySparkline.ts (latencyBucketTooltip): the
+// null-p50 case splits by bucket fact — no probes vs. all probes failed.
 function bucketTooltip(dot: OverviewDot): string {
-  const label = `${formatBucketTime(dot.bucket_start)} 时段`
-  if (dot.p50_ms === null) return `${label} · 无数据`
-  const baseline = props.baselineMs !== null ? ` · 基线 ${formatMs(props.baselineMs)}` : ''
-  return `${label} · P50 ${formatMs(dot.p50_ms)}${baseline}`
+  return latencyBucketTooltip(dot, props.baselineMs)
 }
 </script>
 
