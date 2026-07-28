@@ -24,6 +24,12 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 		expected = *c.RuleExpected
 	}
 
+	// mcq has its own extraction-and-match caliber (ADR 0013) and reports
+	// extraction failures distinctly, so it bypasses the generic switch.
+	if mode == "mcq" {
+		return mcqVerdict(expected, answer)
+	}
+
 	hit := false
 	switch mode {
 	case "exact":
