@@ -52,14 +52,14 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 - `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
 
-`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null}`
+`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null}`
 
 状态判定规则(优先级从高到低):
 - `down`(红):最近连续 3 次 Probe 失败
 - `failing`(闪烁):最近一次 Probe 失败但未达连续 3 次
-- `degraded`(黄):24h 成功率 <0.95,或 24h P95 延迟 > 该端点 7 天 P50 基线的 2 倍(基线数据不足时跳过此项)
+- `degraded`(黄):24h 成功率 <0.95,或 24h P95 延迟 > 该端点 7 天 P50 基线的 2 倍(基线数据不足时跳过此项);两条同时命中时并列——`degrade_causes` 同列 `["availability", "latency"]`(可用性在前),`status_reason` 为双片段
 - `healthy`(绿):其余
-`status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers")。
+`status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers");degraded 双命中时为两个原因片段,按「可用性片段;延迟片段」以中文分号「;」连接。`degrade_causes` 为结构化成因(可用性="availability",延迟="latency"),非降级状态恒为 `[]`(空数组,不为 null),前端展示副标签一律消费此字段,不解析 status_reason。
 
 ## Discovery(ticket 05)
 
@@ -87,7 +87,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Endpoint Detail & Series(ticket 04)
 
-- `GET /api/endpoints/{id}` → `{"data": EndpointDetail}`。`EndpointDetail = Endpoint + {"model_id_str": string, "hub_name": string, "status": string, "status_reason": string}`(status 判定与 Overview 同规则)。
+- `GET /api/endpoints/{id}` → `{"data": EndpointDetail}`。`EndpointDetail = Endpoint + {"model_id_str": string, "hub_name": string, "status": string, "status_reason": string}`(status 判定与 Overview 同规则;degraded 双命中时 status_reason 同规则变双片段,但 detail 不提供 degrade_causes 字段,详情页不显示成因副标签)。
 - `GET /api/endpoints/{id}/series?hours=24&streaming=all` → `{"data": [SeriesBucket]}`。hours 默认 24、范围 1~2160(90 天);streaming ∈ all|streaming|non_streaming,默认 all(合并统计)。`SeriesBucket = {"bucket_start": string(RFC3339,整点), "total": number, "failures": number, "p50_ms": number|null, "p95_ms": number|null, "avg_ttft_ms": number|null}`,按时间正序,无数据的桶可省略。
 - `GET /api/endpoints/{id}/probes` 增加可选参数 `ok=true|false` 过滤(与 limit 组合,用于"近期失败"列表)。
 - 数据生命周期:每小时把 1 小时前的原始 probes 聚合进 probe_rollups(endpoint_id, streaming, bucket_start, total, failures, p50_ms, p95_ms, avg_ttft_ms,幂等 INSERT OR REPLACE);每天删除 90 天前的原始 probes;series 查询 = rollups + 未聚合的原始尾部合并,保证 rollup/清理后历史曲线完整可查。
