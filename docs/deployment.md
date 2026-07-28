@@ -53,7 +53,7 @@ ADR-0001).
 | `ADDR`           | `:8080`          | Listen address                            |
 | `DATA_PATH`      | `./data/app.db`  | SQLite file location                      |
 | `LOG_LEVEL`      | `info`           | Log verbosity: `debug` / `info` / `warn` / `error` |
-| `TRUST_PROXY`    | `false`          | Set `true` only behind a reverse proxy that **replaces** `X-Forwarded-For` |
+| `TRUST_PROXY`    | `false`          | Set `true` only behind a reverse proxy that **replaces** `X-Forwarded-For` (never appends). Actual values per line (spec 0011 decision 2): production = `true` (Caddy site block carries `header_up X-Forwarded-For {remote_host}`, injected by `deploy-prod`'s `docker run`); test line = `false` (container binds the LAN IP directly with no proxy in front — verified 2026-07-27). **Never enable it on a directly exposed instance**: a client could then forge the login rate-limit key and the audit IP, which is worse than not trusting the header. |
 | `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` | *(empty)* | Outbound proxy for hub traffic (standard Go behavior). **Required on machines running fake-ip local proxies** (e.g. Clash enhanced mode): direct DNS answers like `198.18.x.x` are unroutable and probes fail with `can't assign requested address`. Example: `HTTPS_PROXY=http://127.0.0.1:7890`. The effective proxy is logged at startup (credentials masked). |
 
 The first admin user is **not** configured via an environment variable. After
@@ -94,10 +94,18 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        # Replace (not append) any client-supplied X-Forwarded-For — required
+        # before setting TRUST_PROXY=true on the HubScope process.
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
+
+The `X-Forwarded-For` line must use `$remote_addr` (replace semantics).
+Do **not** use `$proxy_add_x_forwarded_for`: it appends to the
+client-supplied value, so a forged leftmost hop would become the
+authoritative client IP for rate limiting and audit records.
 
 ## Docker (alternative)
 
