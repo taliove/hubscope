@@ -1,22 +1,25 @@
-<div align="center">
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="HubScope" width="128" />
+</p>
 
-<img src="docs/assets/logo.svg" alt="HubScope" width="56">
+<h1 align="center">HubScope</h1>
 
-# HubScope
+<p align="center">
+  <strong>Availability monitoring and quality evaluation for AI hubs (model gateways).</strong><br>
+  One Go binary. Embedded Vue dashboard with light and dark themes. Embedded SQLite. No runtime dependencies.
+</p>
 
-**Availability monitoring and quality evaluation for AI hubs (model gateways).**
+<p align="center">
+  <a href="https://github.com/taliove/hubscope/actions/workflows/ci.yml"><img src="https://github.com/taliove/hubscope/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/taliove/hubscope" alt="Go Version" /></a>
+  <a href="https://goreportcard.com/report/github.com/taliove/hubscope"><img src="https://goreportcard.com/badge/github.com/taliove/hubscope" alt="Go Report Card" /></a>
+  <a href="https://github.com/taliove/hubscope/releases"><img src="https://img.shields.io/github/v/release/taliove/hubscope" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+</p>
 
-One Go binary. Embedded Vue dashboard with light and dark themes. Embedded SQLite. No runtime dependencies.
-
-[![CI](https://github.com/taliove/hubscope/actions/workflows/ci.yml/badge.svg)](https://github.com/taliove/hubscope/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/taliove/hubscope)](go.mod)
-[![Go Report Card](https://goreportcard.com/badge/github.com/taliove/hubscope)](https://goreportcard.com/report/github.com/taliove/hubscope)
-[![Release](https://img.shields.io/github/v/release/taliove/hubscope)](https://github.com/taliove/hubscope/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-**[简体中文](README.zh-CN.md)**
-
-</div>
+<p align="center">
+  <strong><a href="README.zh-CN.md">简体中文</a></strong>
+</p>
 
 ---
 
