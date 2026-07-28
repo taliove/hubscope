@@ -52,7 +52,9 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 - `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
 
-`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null}`
+`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
+
+`OverviewDot = {"bucket_start": string(RFC3339,整点), "total": number, "failures": number, "p50_ms": number|null(桶内仅成功探测的 P50;失败探测的延迟是失败耗时、绝不计入,无成功探测为 null)}`
 
 状态判定规则(优先级从高到低):
 - `down`(红):最近连续 3 次 Probe 失败

@@ -40,13 +40,15 @@ type overviewEntry struct {
 	ScoreReasons   []string      `json:"score_reasons"`
 	Dots24h        []overviewDot `json:"dots_24h"`
 	EvalScore      *float64      `json:"eval_score"`
+	BaselineP50Ms  *float64      `json:"baseline_p50_ms"`
 }
 
 // overviewDot mirrors one hourly bucket of the dots_24h array.
 type overviewDot struct {
-	BucketStart string `json:"bucket_start"`
-	Total       int    `json:"total"`
-	Failures    int    `json:"failures"`
+	BucketStart string   `json:"bucket_start"`
+	Total       int      `json:"total"`
+	Failures    int      `json:"failures"`
+	P50Ms       *float64 `json:"p50_ms"`
 }
 
 // switchStubHub is a stub Hub whose success/failure behavior can be flipped
@@ -411,4 +413,94 @@ func TestOverviewDegradeCausesDoubleHit(t *testing.T) {
 	entry = findEntry(t, fetchOverview(t, ts.URL), ep)
 	expectStatus(t, entry, "down", "连续 3 次失败,最近错误: HTTP 500: boom")
 	expectCauses(t, entry)
+}
+
+// TestOverviewDotP50AndBaseline asserts the latency-sparkline payload through
+// the API (ticket: EndpointCard sparkline):
+//   - a bucket's p50_ms is the P50 of its SUCCESSFUL probes only — a failed
+//     probe with a huge latency in the same bucket must not move it,
+//   - buckets with zero successful probes (all-failed or empty) report null
+//     p50_ms while staying present and hour-aligned,
+//   - baseline_p50_ms passes through the status machine's 7-day P50 (null
+//     when the baseline sample count is below the minimum).
+func TestOverviewDotP50AndBaseline(t *testing.T) {
+	db := openTempDB(t)
+
+	fakeNow := time.Date(2026, 7, 20, 12, 30, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-dot-p50")
+	ep := int64(ids[0])
+	thinEp := int64(ids[1])
+
+	// 7-day baseline for ep: 20 probes at 1s spread over the past days
+	// (outside the 24h window, +1h to stay clear of the inclusive boundary).
+	for i := 0; i < 20; i++ {
+		at := fakeNow.Add(-time.Duration(24*(i%5+1)+1) * time.Hour)
+		seedProbe(t, db, ep, true, 1000, nil, at)
+	}
+
+	// Current-hour bucket (dots[23]): 2 successes (100ms, 300ms) plus a
+	// failure with a huge latency. Successful-only P50 of {100,300} is 100
+	// under nearest-rank; if the failure leaked in it would be 300.
+	failErr := "HTTP 503: No available providers"
+	seedProbe(t, db, ep, false, 99999, &failErr, fakeNow.Add(-25*time.Minute))
+	seedProbe(t, db, ep, true, 100, nil, fakeNow.Add(-20*time.Minute))
+	seedProbe(t, db, ep, true, 300, nil, fakeNow.Add(-10*time.Minute))
+
+	// Previous bucket (dots[22]): all-failed — p50_ms must be null.
+	seedProbe(t, db, ep, false, 500, &failErr, fakeNow.Add(-80*time.Minute))
+	seedProbe(t, db, ep, false, 500, &failErr, fakeNow.Add(-70*time.Minute))
+
+	// dots[20]: a single success at 250ms (isolated single-point segment).
+	seedProbe(t, db, ep, true, 250, nil, fakeNow.Add(-3*time.Hour-15*time.Minute))
+
+	entry := findEntry(t, fetchOverview(t, ts.URL), ep)
+	if len(entry.Dots24h) != 24 {
+		t.Fatalf("expected 24 dots, got %d", len(entry.Dots24h))
+	}
+	if entry.Dots24h[23].BucketStart != "2026-07-20T12:00:00Z" {
+		t.Fatalf("last bucket must be the current hour, got %s", entry.Dots24h[23].BucketStart)
+	}
+	dot := entry.Dots24h[23]
+	if dot.Total != 3 || dot.Failures != 1 {
+		t.Fatalf("expected mixed bucket 3 total / 1 failure, got %+v", dot)
+	}
+	if dot.P50Ms == nil || *dot.P50Ms != 100 {
+		t.Fatalf("failed probes must not pollute bucket p50: expected 100, got %v", dot.P50Ms)
+	}
+	if d := entry.Dots24h[22]; d.Total != 2 || d.Failures != 2 || d.P50Ms != nil {
+		t.Fatalf("all-failed bucket must report null p50, got %+v", d)
+	}
+	if d := entry.Dots24h[21]; d.Total != 0 || d.P50Ms != nil {
+		t.Fatalf("empty bucket must report null p50, got %+v", d)
+	}
+	if d := entry.Dots24h[20]; d.Total != 1 || d.P50Ms == nil || *d.P50Ms != 250 {
+		t.Fatalf("single-success bucket must report its latency, got %+v", d)
+	}
+
+	// Baseline: the status machine's 7-day P50 (26 samples: 20x1000 old plus
+	// the in-window 100/250/300/500/500/99999) is 1000 — the exact value the
+	// latency degradation rule compares against.
+	if entry.BaselineP50Ms == nil || *entry.BaselineP50Ms != 1000 {
+		t.Fatalf("expected baseline_p50_ms 1000, got %v", entry.BaselineP50Ms)
+	}
+
+	// thinEp has only 3 probes ever — below the baseline minimum, so no
+	// baseline is exposed.
+	for i := 0; i < 3; i++ {
+		seedProbe(t, db, thinEp, true, 500, nil, fakeNow.Add(-time.Duration(48+i)*time.Hour))
+	}
+	thin := findEntry(t, fetchOverview(t, ts.URL), thinEp)
+	if thin.BaselineP50Ms != nil {
+		t.Fatalf("expected null baseline_p50_ms below the sample minimum, got %v", *thin.BaselineP50Ms)
+	}
+	for i, d := range thin.Dots24h {
+		if d.P50Ms != nil {
+			t.Fatalf("never-probed-in-window endpoint must report null bucket p50 (bucket %d: %+v)", i, d)
+		}
+	}
 }

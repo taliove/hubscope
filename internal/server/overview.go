@@ -53,14 +53,22 @@ type overviewEntryDTO struct {
 	ScoreReasons   []string         `json:"score_reasons"`
 	Dots24h        []overviewDotDTO `json:"dots_24h"`
 	EvalScore      *float64         `json:"eval_score"`
+	// BaselineP50Ms passes through the status machine's own 7-day P50
+	// baseline (the value the latency degradation rule compares against);
+	// null when the baseline has too few samples. Never recomputed here.
+	BaselineP50Ms *float64 `json:"baseline_p50_ms"`
 }
 
 // overviewDotDTO is one hourly bucket of the 24h stability dots: how many
-// probes ran in that hour and how many of them failed.
+// probes ran in that hour and how many of them failed, plus the P50 latency
+// of the bucket's SUCCESSFUL probes only — a failed probe's latency is
+// time-to-failure, not service latency, so it must never pollute the
+// sparkline (null when the bucket has no successful probe).
 type overviewDotDTO struct {
-	BucketStart string `json:"bucket_start"`
-	Total       int    `json:"total"`
-	Failures    int    `json:"failures"`
+	BucketStart string   `json:"bucket_start"`
+	Total       int      `json:"total"`
+	Failures    int      `json:"failures"`
+	P50Ms       *float64 `json:"p50_ms"`
 }
 
 // overviewGroupDTO is the health aggregate of one classification group
@@ -344,6 +352,12 @@ func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats win
 		entry.DegradeCauses = append(entry.DegradeCauses, string(c))
 	}
 
+	// Expose the same baseline the status machine used — a recomputed value
+	// could disagree with the degradation verdict on the same card.
+	if stats.hasBaseline {
+		entry.BaselineP50Ms = &stats.baselineP50
+	}
+
 	// Deterministic score over the same inputs; null when never probed.
 	score := status.Score(stats.statusInput())
 	if score.HasScore {
@@ -356,12 +370,16 @@ func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats win
 
 // buildDots24h buckets the 24h probe samples into exactly 24 hour-aligned
 // buckets ending at the current hour. Empty buckets stay present with zero
-// counts; samples older than the first bucket are dropped.
+// counts; samples older than the first bucket are dropped. Each bucket's
+// p50_ms is the P50 of its successful probes' latencies (collected in the
+// same bucketing pass — no second bucketing), null when the bucket has no
+// successful probe.
 func buildDots24h(samples []store.ProbeSample, now time.Time) []overviewDotDTO {
 	last := now.UTC().Truncate(time.Hour)
 	first := last.Add(-23 * time.Hour)
 
 	dots := make([]overviewDotDTO, 24)
+	okLatencies := make([][]int, 24)
 	index := make(map[time.Time]int, 24)
 	for i := range dots {
 		start := first.Add(time.Duration(i) * time.Hour)
@@ -377,6 +395,14 @@ func buildDots24h(samples []store.ProbeSample, now time.Time) []overviewDotDTO {
 		dots[i].Total++
 		if !s.OK {
 			dots[i].Failures++
+		} else {
+			okLatencies[i] = append(okLatencies[i], s.LatencyMs)
+		}
+	}
+	for i := range dots {
+		if len(okLatencies[i]) > 0 {
+			p50 := status.Percentile(okLatencies[i], 50)
+			dots[i].P50Ms = &p50
 		}
 	}
 	return dots
