@@ -29,6 +29,7 @@ type overviewEntry struct {
 	Enabled        bool          `json:"enabled"`
 	Status         string        `json:"status"`
 	StatusReason   string        `json:"status_reason"`
+	DegradeCauses  []string      `json:"degrade_causes"`
 	SuccessRate24h *float64      `json:"success_rate_24h"`
 	P50Ms          *float64      `json:"p50_ms"`
 	P95Ms          *float64      `json:"p95_ms"`
@@ -144,6 +145,24 @@ func expectStatus(t *testing.T, entry overviewEntry, wantStatus, wantReason stri
 	}
 	if entry.StatusReason != wantReason {
 		t.Fatalf("expected reason %q, got %q", wantReason, entry.StatusReason)
+	}
+}
+
+// expectCauses asserts the structured degrade causes of an entry. An empty
+// want means the field must be a non-null empty array (degrade_causes is
+// always [], never null, for non-degraded statuses).
+func expectCauses(t *testing.T, entry overviewEntry, want ...string) {
+	t.Helper()
+	if entry.DegradeCauses == nil {
+		t.Fatalf("degrade_causes must serialize as [] (not null) for status %q", entry.Status)
+	}
+	if len(entry.DegradeCauses) != len(want) {
+		t.Fatalf("expected degrade_causes %v, got %v", want, entry.DegradeCauses)
+	}
+	for i, c := range want {
+		if entry.DegradeCauses[i] != c {
+			t.Fatalf("expected degrade_causes %v, got %v", want, entry.DegradeCauses)
+		}
 	}
 }
 
@@ -299,6 +318,7 @@ func TestOverviewWindowStats(t *testing.T) {
 	}
 	entry := findEntry(t, fetchOverview(t, ts.URL), rateEp)
 	expectStatus(t, entry, "degraded", "24h 成功率 80.0% 低于 95%")
+	expectCauses(t, entry, "availability")
 	if entry.SuccessRate24h == nil || *entry.SuccessRate24h != 0.8 {
 		t.Fatalf("expected 24h success rate 0.8, got %v", entry.SuccessRate24h)
 	}
@@ -321,6 +341,7 @@ func TestOverviewWindowStats(t *testing.T) {
 	}
 	entry = findEntry(t, fetchOverview(t, ts.URL), latEp)
 	expectStatus(t, entry, "degraded", "P95 延迟 3.0s 超过基线 2 倍(基线 1.0s)")
+	expectCauses(t, entry, "latency")
 
 	// Endpoint C would fail the latency check but has too few probes for a
 	// baseline, so the check is skipped and it stays healthy.
@@ -333,4 +354,61 @@ func TestOverviewWindowStats(t *testing.T) {
 	}
 	entry = findEntry(t, fetchOverview(t, ts.URL), thinEp)
 	expectStatus(t, entry, "healthy", "运行正常")
+	expectCauses(t, entry)
+}
+
+// TestOverviewDegradeCausesDoubleHit drives an endpoint into degraded via
+// both rules at once (low 24h success rate AND latency above baseline) and
+// asserts the structured causes list both, while status_reason carries both
+// reason fragments joined by a Chinese semicolon, availability first.
+func TestOverviewDegradeCausesDoubleHit(t *testing.T) {
+	db := openTempDB(t)
+
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-double-hit")
+	ep := int64(ids[0])
+
+	// 7-day baseline: 20 probes at ~1s spread over the past days (outside
+	// the 24h window, +1h to stay clear of the inclusive window boundary),
+	// so the P50 baseline is 1s.
+	for i := 0; i < 20; i++ {
+		at := fakeNow.Add(-time.Duration(24*(i%5+1)+1) * time.Hour)
+		seedProbe(t, db, ep, true, 1000, nil, at)
+	}
+	// 24h window: 20 probes at 3s with 2 failures. Failures are seeded first
+	// so the streak is broken and the degraded rules decide. Rate 18/20 = 0.9
+	// (< 0.95, availability hit) and P95 3s > 2x baseline 1s (latency hit).
+	failErr := "HTTP 500: boom"
+	for i := 1; i <= 20; i++ {
+		ok := i > 2
+		var errSummary *string
+		if !ok {
+			errSummary = &failErr
+		}
+		seedProbe(t, db, ep, ok, 3000, errSummary, fakeNow.Add(-time.Duration(21-i)*time.Minute))
+	}
+
+	entry := findEntry(t, fetchOverview(t, ts.URL), ep)
+	expectStatus(t, entry, "degraded", "24h 成功率 90.0% 低于 95%;P95 延迟 3.0s 超过基线 2 倍(基线 1.0s)")
+	expectCauses(t, entry, "availability", "latency")
+
+	// Non-degraded statuses must report an empty (never null) causes array.
+	// Failing: one fresh failure after the history above (strictly newer
+	// than the last success, so the consecutive count sees it).
+	seedProbe(t, db, ep, false, 3000, &failErr, fakeNow.Add(-30*time.Second))
+	entry = findEntry(t, fetchOverview(t, ts.URL), ep)
+	expectStatus(t, entry, "failing", "连续 1 次失败,最近错误: HTTP 500: boom")
+	expectCauses(t, entry)
+
+	// Down: two more failures push the streak past the threshold.
+	seedProbe(t, db, ep, false, 3000, &failErr, fakeNow.Add(-20*time.Second))
+	seedProbe(t, db, ep, false, 3000, &failErr, fakeNow.Add(-10*time.Second))
+	entry = findEntry(t, fetchOverview(t, ts.URL), ep)
+	expectStatus(t, entry, "down", "连续 3 次失败,最近错误: HTTP 500: boom")
+	expectCauses(t, entry)
 }

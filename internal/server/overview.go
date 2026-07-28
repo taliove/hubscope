@@ -34,12 +34,15 @@ type overviewDTO struct {
 // overviewEntryDTO is the per-endpoint status summary. Field names follow
 // the api-contract.md Overview section exactly.
 type overviewEntryDTO struct {
-	EndpointID     int64            `json:"endpoint_id"`
-	ModelID        string           `json:"model_id"`
-	Protocol       string           `json:"protocol"`
-	Enabled        bool             `json:"enabled"`
-	Status         string           `json:"status"`
-	StatusReason   string           `json:"status_reason"`
+	EndpointID   int64  `json:"endpoint_id"`
+	ModelID      string `json:"model_id"`
+	Protocol     string `json:"protocol"`
+	Enabled      bool   `json:"enabled"`
+	Status       string `json:"status"`
+	StatusReason string `json:"status_reason"`
+	// DegradeCauses lists the structured degrade causes ("availability",
+	// "latency"); always serialized as an array, empty unless degraded.
+	DegradeCauses  []string         `json:"degrade_causes"`
 	SuccessRate24h *float64         `json:"success_rate_24h"`
 	P50Ms          *float64         `json:"p50_ms"`
 	P95Ms          *float64         `json:"p95_ms"`
@@ -304,14 +307,15 @@ func toStatusSamples(in []store.ProbeSample) []status.Sample {
 // single endpoint from already-gathered window stats.
 func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats windowStats, now time.Time) overviewEntryDTO {
 	entry := overviewEntryDTO{
-		EndpointID:   ep.ID,
-		ModelID:      model.ModelID,
-		Protocol:     ep.Protocol,
-		Enabled:      ep.Enabled,
-		Family:       model.Family,
-		Capability:   model.Capability,
-		ScoreReasons: []string{},
-		Dots24h:      buildDots24h(stats.samples24h, now),
+		EndpointID:    ep.ID,
+		ModelID:       model.ModelID,
+		Protocol:      ep.Protocol,
+		Enabled:       ep.Enabled,
+		Family:        model.Family,
+		Capability:    model.Capability,
+		DegradeCauses: []string{},
+		ScoreReasons:  []string{},
+		Dots24h:       buildDots24h(stats.samples24h, now),
 	}
 
 	if stats.latest != nil {
@@ -336,6 +340,9 @@ func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats win
 	result := stats.evaluate()
 	entry.Status = string(result.Kind)
 	entry.StatusReason = result.Reason
+	for _, c := range result.Causes {
+		entry.DegradeCauses = append(entry.DegradeCauses, string(c))
+	}
 
 	// Deterministic score over the same inputs; null when never probed.
 	score := status.Score(stats.statusInput())

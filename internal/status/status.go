@@ -6,7 +6,8 @@
 //	down     — the last 3 consecutive probes failed
 //	failing  — the latest probe failed but fewer than 3 in a row
 //	degraded — 24h success rate < 0.95, or 24h P95 latency exceeds 2x the
-//	           7-day P50 baseline (skipped when the baseline is too small)
+//	           7-day P50 baseline (skipped when the baseline is too small);
+//	           when both hit, Result.Causes lists both (availability first)
 //	healthy  — everything else
 package status
 
@@ -14,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 // Kind is one of the four endpoint health states.
@@ -24,6 +26,19 @@ const (
 	KindDegraded Kind = "degraded"
 	KindDown     Kind = "down"
 	KindFailing  Kind = "failing"
+)
+
+// Cause is a structured degrade cause, surfaced via the overview API so
+// clients can label a degraded endpoint without parsing the reason text.
+type Cause string
+
+const (
+	// CauseAvailability: the 24h success rate fell below the threshold
+	// (rule 3a) — the endpoint fails intermittently.
+	CauseAvailability Cause = "availability"
+	// CauseLatency: the 24h P95 exceeds twice the 7-day P50 baseline
+	// (rule 3b) — the endpoint answers but has become slow.
+	CauseLatency Cause = "latency"
 )
 
 // DownThreshold is the number of consecutive failures that marks an
@@ -66,9 +81,12 @@ type Input struct {
 }
 
 // Result is the evaluated state plus its human-readable justification.
+// Causes lists the structured degrade causes; it is empty unless Kind is
+// KindDegraded (availability first, then latency, when both rules hit).
 type Result struct {
 	Kind   Kind
 	Reason string
+	Causes []Cause
 }
 
 // Percentile returns the nearest-rank percentile of the given latencies.
@@ -134,23 +152,34 @@ func Evaluate(in Input) Result {
 		}
 	}
 
+	// Rules 3a and 3b are evaluated in parallel: either hit degrades the
+	// endpoint, and a double hit reports both causes (availability first)
+	// with both reason fragments joined by a Chinese semicolon. Single-hit
+	// reasons stay byte-identical to the previous short-circuit behavior.
+	var causes []Cause
+	var fragments []string
+
 	// Rule 3a: 24h success rate below the threshold.
 	if rate, ok := SuccessRate(in.Samples24h); ok && rate < minSuccessRate {
-		return Result{
-			Kind:   KindDegraded,
-			Reason: fmt.Sprintf("24h 成功率 %.1f%% 低于 %.0f%%", rate*100, minSuccessRate*100),
-		}
+		causes = append(causes, CauseAvailability)
+		fragments = append(fragments, fmt.Sprintf("24h 成功率 %.1f%% 低于 %.0f%%", rate*100, minSuccessRate*100))
 	}
 
 	// Rule 3b: 24h P95 latency above twice the 7-day P50 baseline.
 	if in.HasBaseline && len(in.Samples24h) > 0 {
 		p95 := Percentile(Latencies(in.Samples24h), 95)
 		if p95 > latencyDegradeFactor*in.BaselineP50Ms {
-			return Result{
-				Kind: KindDegraded,
-				Reason: fmt.Sprintf("P95 延迟 %.1fs 超过基线 2 倍(基线 %.1fs)",
-					p95/1000, in.BaselineP50Ms/1000),
-			}
+			causes = append(causes, CauseLatency)
+			fragments = append(fragments, fmt.Sprintf("P95 延迟 %.1fs 超过基线 2 倍(基线 %.1fs)",
+				p95/1000, in.BaselineP50Ms/1000))
+		}
+	}
+
+	if len(causes) > 0 {
+		return Result{
+			Kind:   KindDegraded,
+			Reason: strings.Join(fragments, ";"),
+			Causes: causes,
 		}
 	}
 
