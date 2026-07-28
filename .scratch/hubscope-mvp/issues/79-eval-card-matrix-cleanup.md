@@ -4,7 +4,7 @@
 
 **Blocked by:** 78(ScoreCell 共享接缝与矩阵行先行)
 
-**Status:** pending
+**Status:** done(4 commit:6af4ebb → 86682ab → d26a0c3 → 989345f;check 三维度 PASS,3 条文档级 LOW 修复中,待用户实机验收分享卡)
 
 ## 执行顺序(票内多 commit 拆分,单 commit ≤8 文件)
 
