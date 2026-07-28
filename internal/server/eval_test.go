@@ -152,13 +152,14 @@ func resultsByModel(run map[string]interface{}, modelID string) []map[string]int
 	return out
 }
 
-// TestEvalRuleVerdicts runs the basic suite (contains + regex modes) against
-// a smart and a dumb model and asserts per-case scores plus the aggregate.
+// TestEvalRuleVerdicts runs the instruction suite (exact + regex modes)
+// against a smart and a dumb model and asserts per-case scores plus the
+// aggregate.
 func TestEvalRuleVerdicts(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	dumbID := createEvalModel(t, ts.URL, stub.URL, "dumb-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID, dumbID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -171,8 +172,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "smart-model")
-	if len(smart) != 12 {
-		t.Fatalf("smart model has %d results, want 12", len(smart))
+	if len(smart) != 10 {
+		t.Fatalf("smart model has %d results, want 10", len(smart))
 	}
 	for _, r := range smart {
 		if r["score"] != 1.0 {
@@ -190,8 +191,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "dumb-model")
-	if len(dumb) != 12 {
-		t.Fatalf("dumb model has %d results, want 12", len(dumb))
+	if len(dumb) != 10 {
+		t.Fatalf("dumb model has %d results, want 10", len(dumb))
 	}
 	for _, r := range dumb {
 		if r["score"] != 0.0 {

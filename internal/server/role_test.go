@@ -137,9 +137,9 @@ func TestRoleWriteMatrix(t *testing.T) {
 	// Operator can start an eval (hub-scoped write, not global): POST
 	// /api/evals must not be 403. It uses the global case library without
 	// writing it, so it is a hub-scoped operation, not super_admin-only.
-	basicSuiteID := suiteIDByKey(t, ts.URL, "basic")
+	instructionSuiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	evalResp := postAs(t, operClient, ts.URL+"/api/evals", map[string]interface{}{
-		"suite_id":  basicSuiteID,
+		"suite_id":  instructionSuiteID,
 		"model_ids": []int64{operModelID},
 	})
 	evalResp.Body.Close()
@@ -252,7 +252,7 @@ func TestShareLinkCreatedByIsLoginUsername(t *testing.T) {
 	bobClient := loginAsClient(t, ts.URL, "bob")
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "share-model")
-	basicID := suiteIDByKey(t, ts.URL, "basic")
+	basicID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	runID := triggerEval(t, ts.URL, basicID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))

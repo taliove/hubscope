@@ -16,9 +16,9 @@ func TestEvalLatestHidesDeletedModels(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	keepID := createEvalModel(t, ts.URL, stub.URL, "keep-model")
 	dropID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
-	basicID := suiteIDByKey(t, ts.URL, "basic")
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
-	runID := triggerEval(t, ts.URL, basicID, keepID, dropID)
+	runID := triggerEval(t, ts.URL, instructionID, keepID, dropID)
 	waitEvalDone(t, ts.URL, runID)
 
 	// Baseline: both models show up in the comparison feed.
@@ -26,8 +26,8 @@ func TestEvalLatestHidesDeletedModels(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("before delete: expected 2 latest rows, got %v", rows)
 	}
-	findLatest(t, rows, "basic", "keep-model")
-	findLatest(t, rows, "basic", "drop-model")
+	findLatest(t, rows, "cap_instruction", "keep-model")
+	findLatest(t, rows, "cap_instruction", "drop-model")
 
 	resp := doDelete(t, fmt.Sprintf("%s/api/models/%d", ts.URL, dropID))
 	resp.Body.Close()
@@ -40,7 +40,7 @@ func TestEvalLatestHidesDeletedModels(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("after delete: expected 1 latest row, got %v", rows)
 	}
-	keep := findLatest(t, rows, "basic", "keep-model")
+	keep := findLatest(t, rows, "cap_instruction", "keep-model")
 	if keep["score"] != 1.0 {
 		t.Errorf("keep-model score = %v, want 1", keep["score"])
 	}

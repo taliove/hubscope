@@ -176,6 +176,9 @@ func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
 // run recorded results for two models. It hand-copies the schema as of
 // ticket 53 (2026-07-23); later migrations do not need to be mirrored here —
 // the fixture only has to look like a database that predates campaign_models.
+// The staged suite carries a non-empty capability so the ticket-93
+// disabled-suite purge (which retires and deletes pre-v3 capability=”
+// suites) leaves the fixture's run history intact.
 func stagePreMembersDatabase(t *testing.T, path string) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", path)
@@ -207,7 +210,8 @@ func stagePreMembersDatabase(t *testing.T, path string) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
-			version INTEGER NOT NULL DEFAULT 1
+			version INTEGER NOT NULL DEFAULT 1,
+			capability TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE cases (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +265,7 @@ func stagePreMembersDatabase(t *testing.T, path string) {
 		`INSERT INTO hubs (name, base_url, token, created_at) VALUES ('legacy hub', 'http://hub', 'tok', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO models (hub_id, model_id, family, created_at) VALUES (1, 'legacy-alpha', 'gpt', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO models (hub_id, model_id, family, created_at) VALUES (1, 'legacy-beta', 'gpt', '2026-07-01T00:00:00Z')`,
-		`INSERT INTO suites (key, name) VALUES ('legacy_basic', '遗留基础')`,
+		`INSERT INTO suites (key, name, capability) VALUES ('legacy_basic', '遗留基础', 'instruction')`,
 		`INSERT INTO cases (suite_id, prompt, verdict_type, created_at) VALUES (1, '1+1=?', 'rule', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO campaigns ("trigger", status, started_at, finished_at, created_at) VALUES ('manual', 'done', '2026-07-01T01:00:00Z', '2026-07-01T01:05:00Z', '2026-07-01T01:00:00Z')`,
 		`INSERT INTO eval_runs (campaign_id, suite_id, "trigger", judge_model, status, started_at, finished_at) VALUES (1, 1, 'manual', 'fake-judge', 'done', '2026-07-01T01:00:00Z', '2026-07-01T01:05:00Z')`,

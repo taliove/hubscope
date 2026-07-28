@@ -130,10 +130,10 @@ func probeEndpointOnce(t *testing.T, base string, endpointID int64, wantOK bool)
 func TestCampaignTrends(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	basicID := suiteIDByKey(t, ts.URL, "basic")
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Campaign 1 on suite v1: the smart model scores 100.
-	run1 := triggerEval(t, ts.URL, basicID, modelID)
+	run1 := triggerEval(t, ts.URL, instructionID, modelID)
 	waitEvalDone(t, ts.URL, run1)
 	c1 := int64(getEvalRun(t, ts.URL, run1)["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, c1, store.CampaignStatusDone)
@@ -148,7 +148,7 @@ func TestCampaignTrends(t *testing.T) {
 	// Campaign 2 on v2 with the model broken: answers fail, scores stay
 	// unjudged (null) — the trend point must remain visible, not vanish.
 	stub.markBroken("smart-model", true)
-	run2 := triggerEval(t, ts.URL, basicID, modelID)
+	run2 := triggerEval(t, ts.URL, instructionID, modelID)
 	waitEvalDone(t, ts.URL, run2)
 	c2 := int64(getEvalRun(t, ts.URL, run2)["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, c2, store.CampaignStatusDone)
@@ -168,12 +168,12 @@ func TestCampaignTrends(t *testing.T) {
 	}
 
 	suites := trendSuites(t, trends)
-	if len(suites) != 1 || suites[0]["key"] != "basic" {
-		t.Fatalf("trend suites = %v, want exactly the basic suite", suites)
+	if len(suites) != 1 || suites[0]["key"] != "cap_instruction" {
+		t.Fatalf("trend suites = %v, want exactly the instruction suite", suites)
 	}
 	points, ok := suites[0]["points"].([]interface{})
 	if !ok || len(points) != 2 {
-		t.Fatalf("basic trend points = %v, want 2 (one per campaign)", suites[0]["points"])
+		t.Fatalf("instruction trend points = %v, want 2 (one per campaign)", suites[0]["points"])
 	}
 	p0 := points[0].(map[string]interface{})
 	p1 := points[1].(map[string]interface{})
@@ -266,8 +266,8 @@ func TestCampaignTrendsValidation(t *testing.T) {
 	// A real campaign is needed for the parameter checks: run one quick eval.
 	ts2, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts2.URL, stub.URL, "smart-model")
-	basicID := suiteIDByKey(t, ts2.URL, "basic")
-	runID := triggerEval(t, ts2.URL, basicID, modelID)
+	instructionID := suiteIDByKey(t, ts2.URL, "cap_instruction")
+	runID := triggerEval(t, ts2.URL, instructionID, modelID)
 	waitEvalDone(t, ts2.URL, runID)
 	campaignID := int64(getEvalRun(t, ts2.URL, runID)["campaign_id"].(float64))
 	waitCampaignStatus(t, ts2.URL, campaignID, store.CampaignStatusDone)

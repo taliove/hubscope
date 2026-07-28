@@ -67,7 +67,7 @@ func TestScoreDropAlert(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Campaign 1: everything correct (aggregate 1.0); no baseline, no alert.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -88,7 +88,7 @@ func TestScoreDropAlert(t *testing.T) {
 		return len(lark.messages()) == 1
 	})
 	msg := lark.messages()[0]
-	for _, want := range []string{"drop-model", "基础指令遵循", "1.00", "0.00"} {
+	for _, want := range []string{"drop-model", "指令遵循", "1.00", "0.00"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("score_drop message should contain %q, got: %s", want, msg)
 		}
@@ -197,7 +197,7 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "ver-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Campaign 1 at suite version 1.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -287,12 +287,12 @@ func TestScoreDropAlertCaseDetails(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "detail-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Replace the seeded case set with three scripted judge cases so the test
 	// controls every score. Disabling bumps the version; both campaigns then
 	// run at the same one.
-	for _, c := range suiteByKey(t, ts.URL, "basic")["cases"].([]interface{}) {
+	for _, c := range suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{}) {
 		cm := c.(map[string]interface{})
 		if enabled, _ := cm["enabled"].(bool); !enabled {
 			continue
