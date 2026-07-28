@@ -3,17 +3,23 @@
 const BASE = '/api'
 
 // Error carrying the server-provided message so the UI can surface it.
+// captchaRequired mirrors the frozen login contract (spec 0012 decision 3):
+// the `captcha_required` key exists only on the two captcha 401 responses,
+// so its presence — not the message wording — is the unfold signal for the
+// LoginView captcha section.
 export class ApiError extends Error {
   readonly status: number
-  constructor(message: string, status: number) {
+  readonly captchaRequired: boolean
+  constructor(message: string, status: number, captchaRequired = false) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.captchaRequired = captchaRequired
   }
 }
 
 interface EnvelopeError {
-  error?: { message?: string }
+  error?: { message?: string; captcha_required?: boolean }
 }
 
 interface EnvelopeData<T> {
@@ -37,6 +43,11 @@ function extractErrorMessage(body: unknown, status: number): string {
   return `请求失败(HTTP ${status})`
 }
 
+function extractCaptchaRequired(body: unknown): boolean {
+  const envelope = body as EnvelopeError | null
+  return envelope?.error?.captcha_required === true
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -51,7 +62,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const redirect = encodeURIComponent(window.location.pathname + window.location.search)
       window.location.href = `/login?redirect=${redirect}`
     }
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractCaptchaRequired(body))
   }
   // 204 and other empty successful responses carry no envelope.
   if (body === undefined) return undefined as T

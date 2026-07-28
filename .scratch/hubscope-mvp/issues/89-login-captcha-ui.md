@@ -4,7 +4,7 @@
 
 **Blocked by:** 88(登录契约与签发端点先行,前端只消费稳定接口)
 
-**Status:** ready-for-agent
+**Status:** implemented(2026-07-28;设计评审有条件通过并完成,§6 两条新约定已回写;typecheck/build 绿;本地起 dev 联调契约逐字符合:2 次失败后第 3 次 captcha_required、签发/一次性/两条错误文案全对;两个决策点(401/429 中文映射)已纳入实现;check 三维度待 main 统一派)
 
 ## 执行顺序
 
@@ -14,13 +14,13 @@
 
 ## 验收清单
 
-- [ ] 默认登录页与现状像素级一致(无验证码区残留占位)
-- [ ] 收到 `captcha_required` 后展开验证码区;「请完成验证码」与「验证码错误或已过期」内联展示不弹窗
-- [ ] 点击图形刷新(新 id 新图);提交携带 `captcha_id` + `captcha_answer`
-- [ ] 登录成功后验证码区回到隐藏态(后续会话默认无码)
-- [ ] 图形加载失败有重试入口;提交期间 loading;无闪烁/布局跳动
-- [ ] 设计评审结论落地;如涉及新约定已回写 ui-guidelines.md
-- [ ] typecheck/build 通过;check 三维度 PASS
+- [x] 默认登录页与现状像素级一致(无验证码区残留占位)
+- [x] 收到 `captcha_required` 后展开验证码区;「请完成验证码」与「验证码错误或已过期」内联展示不弹窗
+- [x] 点击图形刷新(新 id 新图);提交携带 `captcha_id` + `captcha_answer`
+- [x] 登录成功后验证码区回到隐藏态(后续会话默认无码)
+- [x] 图形加载失败有重试入口;提交期间 loading;无闪烁/布局跳动
+- [x] 设计评审结论落地;如涉及新约定已回写 ui-guidelines.md
+- [ ] typecheck/build 通过(已通过 2026-07-28);check 三维度 PASS(待 main 统一派)
 
 ## 风险登记
 
