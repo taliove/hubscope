@@ -2,6 +2,7 @@
 // The x-slot formula is the load-bearing piece: it must reproduce the dots
 // strip's flex+gap layout exactly, or the curve drifts off the dots above.
 import { describe, it, expect } from 'vitest'
+import type { OverviewDot } from '@/api/types'
 import {
   LATENCY_DEGRADE_FACTOR,
   MIN_Y_RANGE_MS,
@@ -10,6 +11,7 @@ import {
   bucketSlotWidth,
   buildLatencyAreaPath,
   buildLatencySegments,
+  latencyBucketTooltip,
   latencyThresholdMs,
   latencyY,
   sparklineYMax,
@@ -200,5 +202,35 @@ describe('buildLatencyAreaPath', () => {
     expect(segments[0].areaPath).not.toBe(segments[1].areaPath)
     expect(segments[0].areaPath).toContain(`L ${bucketCenterX(3, EXACT_WIDTH).toFixed(2)},${HEIGHT}`)
     expect(segments[1].areaPath).toContain(`L ${bucketCenterX(11, EXACT_WIDTH).toFixed(2)},${HEIGHT}`)
+  })
+})
+
+describe('latencyBucketTooltip', () => {
+  const dot = (overrides: Partial<OverviewDot>): OverviewDot => ({
+    bucket_start: '2026-07-28T12:00:00Z',
+    total: 0,
+    failures: 0,
+    p50_ms: null,
+    ...overrides,
+  })
+
+  it('reports 无数据 for a bucket with no probes at all', () => {
+    expect(latencyBucketTooltip(dot({ total: 0 }), 500)).toContain('无数据')
+    expect(latencyBucketTooltip(dot({ total: 0 }), 500)).not.toContain('探测全部失败')
+  })
+
+  it('reports 探测全部失败,无延迟样本 for an all-failed bucket', () => {
+    expect(latencyBucketTooltip(dot({ total: 3, failures: 3 }), 500)).toContain('探测全部失败,无延迟样本')
+    expect(latencyBucketTooltip(dot({ total: 3, failures: 3 }), 500)).not.toContain('无数据')
+  })
+
+  it('reports P50 and the 1x baseline for a bucket with data', () => {
+    const text = latencyBucketTooltip(dot({ total: 2, p50_ms: 250 }), 500)
+    expect(text).toContain('P50 250ms')
+    expect(text).toContain('基线 500ms')
+  })
+
+  it('omits the baseline clause when there is no baseline', () => {
+    expect(latencyBucketTooltip(dot({ total: 2, p50_ms: 250 }), null)).not.toContain('基线')
   })
 })
