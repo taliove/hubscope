@@ -319,7 +319,10 @@ func TestWeeklyBatchProducesOneCampaign(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -365,7 +368,9 @@ func TestWeeklyBatchProducesOneCampaign(t *testing.T) {
 // campaign reports running with live run progress, then settles to done once
 // released.
 func TestCampaignStatusWhileRunning(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes mid-sweep running status and live progress (all
+	// calls blocked); drained by stub.release + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	stub.resetCalls()
 	stub.blockCalls()
@@ -405,7 +410,10 @@ func TestCampaignFailedWhenBatchAborted(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 

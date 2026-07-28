@@ -96,6 +96,7 @@ func TestRoleWriteMatrix(t *testing.T) {
 		server.WithRateLimits(server.RateLimits{}),
 		server.WithSessionSecret(testSessionSecret),
 		server.WithSyncEval(),
+		server.WithSyncDiscovery(),
 	))
 	t.Cleanup(ts.Close)
 	stubHub := newStubHubServer()

@@ -237,6 +237,9 @@ func TestRateLimitWrites(t *testing.T) {
 		server.WithRateLimits(server.RateLimits{
 			Write: server.RateTier{PerMinute: 2, Burst: 2},
 		}),
+		// Hub creation below fires the discovery auto-sync; keep it inline
+		// so its tail writes cannot race TempDir cleanup (ticket 100).
+		server.WithSyncDiscovery(),
 	))
 	t.Cleanup(ts.Close)
 

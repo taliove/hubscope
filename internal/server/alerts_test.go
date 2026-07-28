@@ -351,7 +351,8 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 	defer stubHub.Close()
 
 	// First process: configure the webhook and drive the endpoint down.
-	ts1 := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{})))
+	// WithSyncDiscovery keeps the hub-creation auto-sync inline (ticket 100).
+	ts1 := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery()))
 	putResp := doPut(t, ts1.URL+"/api/settings", map[string]interface{}{
 		"lark_webhook_url": lark.URL,
 		"alert_enabled":    true,
@@ -368,7 +369,7 @@ func TestAlertRestartDoesNotRepeat(t *testing.T) {
 
 	// "Restart": a brand-new server (fresh alert evaluator) over the same
 	// database. Another failing round must not re-send the down alert.
-	ts2 := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{})))
+	ts2 := httptest.NewServer(server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery()))
 	defer ts2.Close()
 	runProbeRound(t, ts2, endpointID)
 	if got := len(lark.messages()); got != 1 {

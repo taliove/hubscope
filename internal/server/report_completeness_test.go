@@ -153,7 +153,9 @@ func getSharedReportByToken(t *testing.T, base, token string) map[string]interfa
 // endpoints, leave its real per-suite scores visible, keep the complete
 // models' relative order untouched, and never leak into the live board.
 func TestReportCompletenessGateSettledBoard(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: batch 3 observes the live half-scored board (all calls
+	// blocked); drained by stub.release + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -269,23 +271,45 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 // lexicographic order, each carrying its own missing-suite count, and every
 // complete model — even the lexicographically last one — outranks them.
 func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	// delta-model is created last so it executes last inside each run,
-	// which keeps the mid-sweep unbreak windows wide.
+	// Async eval: steps the sweep through mid-flight unbreak windows. The
+	// windows are gated, not polled: foxtrot (first model in every run) is
+	// frozen at the next suite's first case, so echo/delta cannot advance
+	// past the boundary while their broken flags flip (ticket 100). Drained
+	// by releaseModel + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
+	// delta-model is created last so it executes last inside each run.
 	createEvalModel(t, ts.URL, stub.URL, "foxtrot-model")
 	createEvalModel(t, ts.URL, stub.URL, "echo-model")
 	createEvalModel(t, ts.URL, stub.URL, "delta-model")
+
+	// Rule cases are answered exactly once (sample_count=1), so foxtrot's
+	// call count per rule suite equals its enabled case count.
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	reasoningID := suiteIDByKey(t, ts.URL, "cap_reasoning")
+	instructionCalls := enabledCaseCount(t, ts.URL, instructionID)
+	reasoningCalls := enabledCaseCount(t, ts.URL, reasoningID)
 
 	// delta-model misses two suites (cap_instruction + cap_reasoning),
 	// echo-model misses one (cap_instruction); foxtrot-model is complete.
 	stub.markBroken("delta-model", true)
 	stub.markBroken("echo-model", true)
+	stub.resetCalls()
+	// Freeze foxtrot at cap_reasoning's first case: cap_instruction is fully
+	// done for every model, and echo/delta have not started cap_reasoning
+	// (models execute sequentially inside a run).
+	stub.blockModelAfter("foxtrot-model", instructionCalls)
+	t.Cleanup(func() { stub.releaseModel("foxtrot-model") })
+
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
 	waitForSuiteRunStatus(t, ts.URL, campaignID, "cap_instruction", "done")
 	stub.markBroken("echo-model", false)
+	// Atomic handoff: release foxtrot and re-freeze it at the third suite's
+	// first case in one locked step — no call can slip through between.
+	stub.moveModelGateAfter("foxtrot-model", instructionCalls+reasoningCalls)
 	waitForSuiteRunStatus(t, ts.URL, campaignID, "cap_reasoning", "done")
 	stub.markBroken("delta-model", false)
+	stub.releaseModel("foxtrot-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
 
 	rows := reportRows(t, getCampaignReport(t, ts.URL, campaignID, ""))

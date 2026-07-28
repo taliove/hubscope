@@ -50,6 +50,9 @@ func TestWalkingSkeleton(t *testing.T) {
 	apiServer := server.New(db,
 		server.WithRateLimits(server.RateLimits{}),
 		server.WithSessionSecret(testSessionSecret),
+		// Hub creation fires the discovery auto-sync; keep it inline so its
+		// tail writes cannot race TempDir cleanup (ticket 100).
+		server.WithSyncDiscovery(),
 	)
 	ts := httptest.NewServer(apiServer)
 	defer ts.Close()

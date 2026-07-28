@@ -28,6 +28,9 @@ type Server struct {
 	now       func() time.Time
 	version   string
 	syncEval  bool
+	// syncDiscovery makes hub model-sync triggers run inline (ticket 100
+	// test seam, sibling of syncEval); see WithSyncDiscovery.
+	syncDiscovery bool
 
 	// Rate-limit tiers; a nil limiter means its tier is unlimited.
 	loginLimiter *ipLimiter
@@ -155,6 +158,21 @@ func WithVersion(version string) Option {
 func WithSyncEval() Option {
 	return func(s *Server) {
 		s.syncEval = true
+	}
+}
+
+// WithSyncDiscovery makes hub model-sync triggers (the auto-sync on hub
+// creation and POST /api/hubs/{id}/sync) execute synchronously in the
+// request instead of on a detached goroutine. Tests use it as a structural
+// synchronization point (ticket 100, sibling of WithSyncEval): polling the
+// hub's sync_status observes SetHubSyncResult, which precedes the sync's
+// task-log tail write, so draining on status still races TempDir cleanup.
+// It is a separate option from WithSyncEval because some tests must keep
+// eval asynchronous (in-flight observation) while discovery can always run
+// inline. Production never sets this.
+func WithSyncDiscovery() Option {
+	return func(s *Server) {
+		s.syncDiscovery = true
 	}
 }
 
