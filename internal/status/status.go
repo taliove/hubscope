@@ -178,7 +178,7 @@ func Evaluate(in Input) Result {
 	if len(causes) > 0 {
 		return Result{
 			Kind:   KindDegraded,
-			Reason: strings.Join(fragments, ";"),
+			Reason: strings.Join(fragments, "；"),
 			Causes: causes,
 		}
 	}
