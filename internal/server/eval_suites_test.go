@@ -31,13 +31,14 @@ func fetchSuites(t *testing.T, base, query string) []map[string]interface{} {
 // and rule cases at 1, and the knowledge suite calibrated to the
 // multiple-choice nadir floor. Pre-v3 legacy suites never appear (spec 0014
 // decision B, ADR 0012): disabled suites are hard-deleted at Open and the
-// legacy bank is no longer seeded.
+// legacy bank is no longer seeded. The mmlu benchmark suite (ADR 0013) is
+// the sixth seed: listed but disabled until the ticket-99 cutover.
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 5 {
-		t.Fatalf("expected 5 suites (capability bank only), got %d", len(suites))
+	if len(suites) != 6 {
+		t.Fatalf("expected 6 suites (5 capability + 1 benchmark disabled), got %d", len(suites))
 	}
 
 	byKey := map[string]map[string]interface{}{}
@@ -171,8 +172,9 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 		t.Errorf("capability=nosuch suites = %v, want empty", got)
 	}
 
-	// No parameter: every suite, the full capability bank.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 5 {
-		t.Errorf("unfiltered suites = %d, want 5", len(got))
+	// No parameter: every suite, the full capability bank plus the disabled
+	// benchmark suite.
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 6 {
+		t.Errorf("unfiltered suites = %d, want 6", len(got))
 	}
 }

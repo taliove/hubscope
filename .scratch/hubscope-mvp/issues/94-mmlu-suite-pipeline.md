@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** ready-for-agent
+**Status:** done(424c841+b8fbac5+6cf2d2b,2026-07-28;MMLU license 核对结论:MIT,允许随二进制再分发子集,署名与许可声明已随数据文件入仓 internal/store/benchmark/mmlu/ATTRIBUTION.md;来源 cais/mmlu @ c30699e,parquet 与 datasets-server 双通道逐行互验一致;子集固定步长法零随机,SHA-256 留痕;check 三维度 PASS)
 
 ## 验收清单
 

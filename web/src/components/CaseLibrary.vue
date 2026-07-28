@@ -101,6 +101,7 @@
               <el-option label="完全相等 (exact)" value="exact" />
               <el-option label="正则匹配 (regex)" value="regex" />
               <el-option label="包含子串 (contains)" value="contains" />
+              <el-option label="选项字母 (mcq)" value="mcq" />
             </el-select>
           </el-form-item>
           <el-form-item label="期望值" prop="ruleExpected">
@@ -205,7 +206,7 @@ onMounted(loadSuites)
 interface CaseForm {
   prompt: string
   verdict_type: VerdictType
-  ruleMode: 'exact' | 'regex' | 'contains'
+  ruleMode: 'exact' | 'regex' | 'contains' | 'mcq'
   ruleExpected: string
   rubric: string
   difficulty: Difficulty

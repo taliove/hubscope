@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** ready-for-agent
+**Status:** done(381e7d5,2026-07-28;merge d8c962e;ADR 0012 落盘;单事务 7 语句级联 + tombstone 防复活 + legacy seed bank 移除;2 条新黑盒用例 + 17 个既有测试迁至 cap_* 套件全绿,check 三维度 PASS;偏离登记:seed bank 移除与 tombstone 为幂等/防复活必要条件已入 ADR 决策 3;单 commit 29 文件超纪律上限,原子性豁免已写 commit message)
 
 ## 验收清单
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开工
 
-**Status:** ready-for-agent
+**Status:** done(c362bed,2026-07-28;merge 423d4c6;契约冻结:`complete: bool` 仅 settle 批次行出现 + `missing_suites: number` 仅 complete=false 时出现,M=有启用 case 的 suite 数;TDD 3 条黑盒用例全绿,check 三维度 PASS;偏离登记:门槛分母=有启用 case 的 suite、baseline 批次侧同套门槛;遗留观察:一轮 internal/server 整包 FAIL 未复现,ticket 83 同类 flake)
 
 ## 验收清单
 

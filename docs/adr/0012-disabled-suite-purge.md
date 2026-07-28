@@ -117,3 +117,16 @@ data. This ADR registers the one sanctioned exception and its guardrails.
 Per spec 0014: deleting individually disabled cases inside enabled suites;
 the benchmark cutover itself (ticket 99, reuses this mechanism); any other
 row-level deletion (requires its own ADR).
+
+## Addendum (2026-07-28, ticket 94 merge integration)
+
+The generic rule "enabled = 0 means delete" collided with ADR 0013: benchmark
+suites are seeded DISABLED by design pending the ticket-99 cutover, and an
+unguarded purge erased them at the same Open that seeded them. Resolution:
+the purge exempts exactly the suites the bank seeds disabled by design
+(`retireAtGen == 1`). Admin-disabled suites are NOT exempt — an admin
+disabling any enabled suite (including a benchmark suite after the cutover)
+hands it to this purge at the next Open, tombstoned against resurrection;
+that is the ticket-93 semantics the operator approved ("disabled means
+gone"). The v3 capability suites at the cutover need no second code path:
+disable them and this purge removes them.
