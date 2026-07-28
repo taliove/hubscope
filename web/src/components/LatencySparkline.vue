@@ -11,7 +11,7 @@
           aria-hidden="true"
         >
           <line
-            v-if="baselineMs !== null"
+            v-if="showThreshold"
             class="baseline-line"
             x1="0"
             :x2="stripWidth"
@@ -19,6 +19,7 @@
             :y2="baselineLineY"
           />
           <template v-for="(segment, index) in segments" :key="index">
+            <path v-if="segment.areaPath !== null" class="spark-area" :d="segment.areaPath" />
             <circle
               v-if="segment.isolated"
               class="spark-point"
@@ -53,16 +54,19 @@ import { formatBucketTime, formatMs } from '@/utils/format'
 import {
   buildLatencySegments,
   sparklineYMax,
+  thresholdVisible,
   thresholdY,
   type SparklineSegment,
 } from '@/utils/latencySparkline'
 
 // Per-card 24h latency sparkline (design review final form): a neutral P50
-// curve under the dots strip, hour-aligned with it by construction (same
-// 24-slot flex + 2px gap geometry, see utils/latencySparkline.ts). The curve
-// carries NO status semantics — coloring stays with the dots; the dashed
-// line marks the latency degradation threshold at 2x the status machine's
-// 7-day P50 baseline (the factor the machine itself degrades on).
+// curve with a light area fill under the dots strip, hour-aligned with it by
+// construction (same 24-slot flex + 2px gap geometry, see
+// utils/latencySparkline.ts). The curve carries NO status semantics —
+// coloring stays with the dots. The y range is data-driven (peak x 1.25,
+// floored at 1s); the dashed line marks the latency degradation threshold
+// (2x the status machine's 7-day P50 baseline) and appears only when it fits
+// the range — otherwise the tooltip's baseline value carries the number.
 const props = defineProps<{ dots: OverviewDot[]; baselineMs: number | null }>()
 
 const ROW_HEIGHT = 28
@@ -88,11 +92,12 @@ onBeforeUnmount(() => {
 })
 
 const hasData = computed(() => props.dots.some(d => d.p50_ms !== null))
-const yMax = computed(() => sparklineYMax(props.dots.map(d => d.p50_ms), props.baselineMs))
+const yMax = computed(() => sparklineYMax(props.dots.map(d => d.p50_ms)))
 const segments = computed<SparklineSegment[]>(() => {
   if (!hasData.value || stripWidth.value <= 0) return []
   return buildLatencySegments(props.dots.map(d => d.p50_ms), stripWidth.value, ROW_HEIGHT, yMax.value)
 })
+const showThreshold = computed(() => thresholdVisible(props.baselineMs, yMax.value))
 const baselineLineY = computed(() =>
   props.baselineMs !== null ? thresholdY(props.baselineMs, ROW_HEIGHT, yMax.value) : 0,
 )
@@ -102,8 +107,10 @@ function polylinePoints(segment: SparklineSegment): string {
 }
 
 // "HH:mm 时段 · P50 X · 基线 Y"; a bucket without successful probes has no
-// latency data at all, and the baseline clause is omitted when the status
-// machine has no baseline (same condition as the dashed line).
+// latency data at all, and the baseline clause is omitted only when the
+// status machine has no baseline. The tooltip ALWAYS carries the 1x
+// baseline value — it is the fallback when the dashed threshold line does
+// not fit the y range (thresholdVisible).
 function bucketTooltip(dot: OverviewDot): string {
   const label = `${formatBucketTime(dot.bucket_start)} 时段`
   if (dot.p50_ms === null) return `${label} · 无数据`
@@ -149,6 +156,11 @@ function bucketTooltip(dot: OverviewDot): string {
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+.spark-area {
+  /* Light area fill under the curve: solid surface token, no opacity
+     stacking; breaks at null buckets together with the polyline. */
+  fill: var(--hs-bg-hover);
 }
 .spark-point {
   fill: var(--hs-text-secondary);

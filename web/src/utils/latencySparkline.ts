@@ -17,6 +17,13 @@ export const SPARKLINE_GAP_PX = 2 // see module header — the dots CSS gap twin
 // the sparkline's dashed threshold line sits at 2x baseline — never 1x.
 export const LATENCY_DEGRADE_FACTOR = 2
 
+// MIN_Y_RANGE_MS is the floor of the y scale (design ruling): the range is
+// data-driven (peak x 1.25) but never narrower than 1s, otherwise sub-second
+// jitter on a healthy endpoint would stretch into a fake "shape" that reads
+// as instability. The curve's semantics come from the threshold line, not
+// from how full the strip looks.
+export const MIN_Y_RANGE_MS = 1000
+
 export interface SparklinePoint {
   x: number
   y: number
@@ -27,6 +34,9 @@ export interface SparklineSegment {
   // A lone non-null bucket (both neighbors null, or a window edge) has no
   // line to draw; the component renders it as a small dot instead.
   isolated: boolean
+  // Closed SVG path filling the area under the polyline down to the strip
+  // bottom; null for isolated single-point segments (dot only, no fill).
+  areaPath: string | null
 }
 
 // Width of one slot given the measured pixel width of the strip.
@@ -47,15 +57,24 @@ export function latencyThresholdMs(baselineMs: number): number {
   return baselineMs * LATENCY_DEGRADE_FACTOR
 }
 
-// Upper bound of the y scale: max(2x baseline threshold, peak bucket value)
-// with 10% headroom so the curve and the threshold line never touch the top
-// edge.
-export function sparklineYMax(values: (number | null)[], baselineMs: number | null): number {
-  let max = baselineMs !== null ? latencyThresholdMs(baselineMs) : 0
+// Upper bound of the y scale (design ruling): data-driven — peak bucket
+// value with 25% headroom, floored at MIN_Y_RANGE_MS so sub-second jitter
+// never inflates into a fake shape. The 2x baseline threshold does NOT
+// participate in the range; it appears on demand (see thresholdVisible).
+export function sparklineYMax(values: (number | null)[]): number {
+  let peak = 0
   for (const v of values) {
-    if (v !== null && v > max) max = v
+    if (v !== null && v > peak) peak = v
   }
-  return max * 1.1
+  return Math.max(peak * 1.25, MIN_Y_RANGE_MS)
+}
+
+// The threshold line is rendered exactly when its 2x value fits the range
+// (equivalently the peak reaches 0.8x the threshold). When it does not fit
+// there is zero residual indication — the tooltip's baseline value carries
+// the information instead. No baseline, no line; no hysteresis.
+export function thresholdVisible(baselineMs: number | null, yMax: number): boolean {
+  return baselineMs !== null && latencyThresholdMs(baselineMs) <= yMax
 }
 
 // Map a latency onto the strip height (0 at the bottom). yMax <= 0 only
@@ -70,9 +89,20 @@ export function thresholdY(baselineMs: number, height: number, yMax: number): nu
   return latencyY(latencyThresholdMs(baselineMs), height, yMax)
 }
 
-// Split the 24 bucket values into polyline segments, breaking the line at
-// null buckets. Segments of a single point are flagged isolated so the
-// component can render a dot instead of an invisible one-point line.
+// Closed SVG path filling the area under a polyline down to the strip
+// bottom: along the line, drop at the last point, run the bottom edge back
+// to the first point, close. Requires at least two points.
+export function buildLatencyAreaPath(points: SparklinePoint[], height: number): string {
+  const first = points[0]
+  const last = points[points.length - 1]
+  const line = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L ')
+  return `M ${line} L ${last.x.toFixed(2)},${height} L ${first.x.toFixed(2)},${height} Z`
+}
+
+// Split the 24 bucket values into polyline segments, breaking the line (and
+// the area fill with it) at null buckets. Segments of a single point are
+// flagged isolated so the component renders a dot instead of an invisible
+// one-point line, and carry no area path.
 export function buildLatencySegments(
   values: (number | null)[],
   stripWidth: number,
@@ -83,7 +113,12 @@ export function buildLatencySegments(
   let current: SparklinePoint[] = []
   const flush = () => {
     if (current.length === 0) return
-    segments.push({ points: current, isolated: current.length === 1 })
+    const isolated = current.length === 1
+    segments.push({
+      points: current,
+      isolated,
+      areaPath: isolated ? null : buildLatencyAreaPath(current, height),
+    })
     current = []
   }
   values.forEach((value, i) => {

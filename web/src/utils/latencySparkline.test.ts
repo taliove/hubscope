@@ -4,13 +4,16 @@
 import { describe, it, expect } from 'vitest'
 import {
   LATENCY_DEGRADE_FACTOR,
+  MIN_Y_RANGE_MS,
   SPARKLINE_GAP_PX,
   bucketCenterX,
   bucketSlotWidth,
+  buildLatencyAreaPath,
   buildLatencySegments,
   latencyThresholdMs,
   latencyY,
   sparklineYMax,
+  thresholdVisible,
   thresholdY,
 } from '@/utils/latencySparkline'
 
@@ -42,22 +45,23 @@ describe('bucket slot geometry', () => {
 })
 
 describe('sparklineYMax', () => {
-  it('is the peak bucket value with 10% headroom when no baseline', () => {
-    expect(sparklineYMax([null, 100, 200, null], null)).toBeCloseTo(220, 6)
+  it('is peak-driven with 25% headroom above the floor', () => {
+    expect(sparklineYMax([null, 1000, 2000, null])).toBe(2500)
   })
 
-  it('uses the 2x baseline threshold when it exceeds the peak', () => {
-    // baseline 500 -> threshold 1000 -> yMax 1100
-    expect(sparklineYMax([100, 200], 500)).toBeCloseTo(1100, 6)
+  it('floors at MIN_Y_RANGE_MS so sub-second jitter never inflates', () => {
+    expect(MIN_Y_RANGE_MS).toBe(1000)
+    expect(sparklineYMax([100, 200])).toBe(1000)
+    expect(sparklineYMax([799])).toBe(1000) // 799 x 1.25 = 998.75 < floor
   })
 
-  it('keeps the peak when it exceeds the 2x baseline threshold', () => {
-    // baseline 500 -> threshold 1000 < peak 2000 -> yMax 2200
-    expect(sparklineYMax([100, 2000], 500)).toBeCloseTo(2200, 6)
+  it('leaves the floor exactly at the boundary peak', () => {
+    expect(sparklineYMax([800])).toBe(1000) // 800 x 1.25 = 1000
   })
 
-  it('is zero when there is no data and no baseline', () => {
-    expect(sparklineYMax([null, null], null)).toBe(0)
+  it('falls back to the floor when there is no data', () => {
+    expect(sparklineYMax([null, null])).toBe(1000)
+    expect(sparklineYMax([])).toBe(1000)
   })
 })
 
@@ -80,19 +84,40 @@ describe('threshold line', () => {
   })
 
   it('draws the threshold at 2x the baseline, never 1x', () => {
-    // baseline 500, peak 200 -> yMax 1100; the line sits at latencyY(1000),
-    // not latencyY(500).
-    const yMax = sparklineYMax([100, 200], 500)
+    // baseline 500 -> threshold 1000; peak 2000 -> yMax 2500. The line sits
+    // at latencyY(1000), not latencyY(500).
+    const yMax = sparklineYMax([100, 2000])
     const y = thresholdY(500, 28, yMax)
     expect(y).toBeCloseTo(latencyY(1000, 28, yMax), 6)
     expect(y).not.toBeCloseTo(latencyY(500, 28, yMax), 6)
-    expect(y).toBeCloseTo(28 / 11, 6)
+    expect(y).toBeCloseTo(28 * 0.6, 6)
+  })
+
+  it('appears when the 2x threshold fits the range (peak >= 0.8x threshold)', () => {
+    // baseline 500 -> threshold 1000; peak 800 -> yMax 1000: boundary, shown.
+    expect(thresholdVisible(500, sparklineYMax([800]))).toBe(true)
+    // Comfortably above the threshold.
+    expect(thresholdVisible(500, sparklineYMax([2000]))).toBe(true)
+  })
+
+  it('stays hidden when the threshold falls outside the range', () => {
+    // baseline 600 -> threshold 1200; peak 700 -> yMax = max(875, 1000
+    // floor) = 1000 < 1200: hidden, the floor alone never reveals it.
+    expect(thresholdVisible(600, sparklineYMax([700]))).toBe(false)
+    expect(thresholdVisible(600, sparklineYMax([100]))).toBe(false)
+    // A threshold exactly at the floor boundary does show (T <= yMax).
+    expect(thresholdVisible(500, sparklineYMax([700]))).toBe(true)
+  })
+
+  it('stays hidden without a baseline, regardless of the range', () => {
+    expect(thresholdVisible(null, sparklineYMax([99999]))).toBe(false)
   })
 
   it('aligns a bucket at exactly 2x baseline with the threshold line', () => {
     const values: (number | null)[] = Array(24).fill(null)
     values[7] = 1000 // exactly 2x the 500 baseline
-    const yMax = sparklineYMax(values, 500)
+    const yMax = sparklineYMax(values)
+    expect(thresholdVisible(500, yMax)).toBe(true)
     const segments = buildLatencySegments(values, EXACT_WIDTH, 28, yMax)
     expect(segments[0].points[0].y).toBeCloseTo(thresholdY(500, 28, yMax), 6)
   })
@@ -118,13 +143,14 @@ describe('buildLatencySegments', () => {
     expect(segments[0].points.map(p => p.x)).toEqual([bucketCenterX(2, EXACT_WIDTH), bucketCenterX(3, EXACT_WIDTH)])
   })
 
-  it('flags a lone bucket with null neighbors as isolated', () => {
+  it('flags a lone bucket with null neighbors as isolated, without a fill', () => {
     const values: (number | null)[] = Array(24).fill(null)
     values[5] = 250
     const segments = buildLatencySegments(values, EXACT_WIDTH, HEIGHT, 275)
     expect(segments).toHaveLength(1)
     expect(segments[0].isolated).toBe(true)
     expect(segments[0].points).toHaveLength(1)
+    expect(segments[0].areaPath).toBeNull()
   })
 
   it('flags a lone bucket at the window edge as isolated', () => {
@@ -141,5 +167,38 @@ describe('buildLatencySegments', () => {
     const segments = buildLatencySegments(values, EXACT_WIDTH, HEIGHT, 286)
     expect(segments).toHaveLength(1)
     expect(segments[0].isolated).toBe(false)
+    expect(segments[0].areaPath).not.toBeNull()
+  })
+})
+
+describe('buildLatencyAreaPath', () => {
+  const HEIGHT = 28
+
+  it('closes along the strip bottom: line, drop at the last point, back to the first', () => {
+    const points = [
+      { x: 5, y: 10 },
+      { x: 17, y: 6 },
+      { x: 29, y: 12 },
+    ]
+    expect(buildLatencyAreaPath(points, HEIGHT)).toBe('M 5.00,10.00 L 17.00,6.00 L 29.00,12.00 L 29.00,28 L 5.00,28 Z')
+  })
+
+  it('breaks the fill at null buckets together with the line', () => {
+    const values: (number | null)[] = Array(24).fill(null)
+    values[2] = 100
+    values[3] = 200
+    values[10] = 300
+    values[11] = 400
+    const segments = buildLatencySegments(values, EXACT_WIDTH, HEIGHT, 500)
+    expect(segments).toHaveLength(2)
+    for (const segment of segments) {
+      expect(segment.areaPath).not.toBeNull()
+      expect(segment.areaPath).toMatch(/^M /)
+      expect(segment.areaPath).toMatch(/ Z$/)
+    }
+    // Two independent closed shapes, not one bridged fill.
+    expect(segments[0].areaPath).not.toBe(segments[1].areaPath)
+    expect(segments[0].areaPath).toContain(`L ${bucketCenterX(3, EXACT_WIDTH).toFixed(2)},${HEIGHT}`)
+    expect(segments[1].areaPath).toContain(`L ${bucketCenterX(11, EXACT_WIDTH).toFixed(2)},${HEIGHT}`)
   })
 })
