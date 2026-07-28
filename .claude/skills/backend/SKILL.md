@@ -17,6 +17,6 @@ description: 后端开发流程:契约先行 → 影响分析(调 plan)→ 黑�
 
 4. **实现**:dto 进 `dto.go`(或对应领域文件),handler 进领域文件,路由注册进 `server.go`;三态可选字段用 `json.RawMessage` 区分 absent/null(既有惯例)。
 5. **安全自查**:输入边界校验;错误信息不泄漏内部细节;写接口过鉴权中间件;敏感字段(token、webhook)不回明文。测试数据一律假值(假 token、假口令),触发凭证扫描的值要含 test/fake/example 字样。
-6. **前端同步**:更新 `web/src/api/types.ts` 与对应 api 模块,交 check agent 前端维度。
+6. **前端同步**:更新 `web/src/api/types.ts` 与对应 api 模块,交 check agent 前端维度。规则类常量(阈值/系数/档界)若被前端镜像(阈值线、档色等),契约中写明口径与出处,改动时检索前端 utils 同步(数字语义双端同源,见 frontend skill)。
 7. **三层测试**:当前功能层(新增黑盒测试全绿)→ 关联功能层(触及模块及调用方包回测)→ 核心闭环层(`make test` 全量:后端全部测试 + 前端 typecheck + build)。
 8. **审查**:交 check agent(规范双轴 + 测试三层 + 沉淀建议)后英文 Conventional Commits commit。
