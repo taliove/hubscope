@@ -96,6 +96,9 @@ export interface ProbeRunResult {
 // Endpoint health states produced by the status machine.
 export type EndpointStatus = 'healthy' | 'degraded' | 'down' | 'failing'
 
+// Structured degrade causes reported by the status machine (spec 0011).
+export type DegradeCause = 'availability' | 'latency'
+
 // One hour-aligned bucket of probe counts for the 24h stability dots.
 export interface OverviewDot {
   bucket_start: string // RFC3339, hour-aligned
@@ -110,6 +113,9 @@ export interface OverviewEntry {
   enabled: boolean
   status: EndpointStatus
   status_reason: string
+  // Structured degrade causes; always an array, empty unless degraded
+  // (availability first when both rules hit).
+  degrade_causes: DegradeCause[]
   success_rate_24h: number | null // 0~1, null when the window has no data
   p50_ms: number | null
   p95_ms: number | null

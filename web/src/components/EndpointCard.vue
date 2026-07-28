@@ -10,7 +10,7 @@
     <div class="card-status">
       <el-tooltip :content="entry.status_reason" placement="top" :show-after="200">
         <span class="status-wrap">
-          <StatusBadge :status="entry.status" />
+          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" />
         </span>
       </el-tooltip>
       <el-tooltip placement="top" :show-after="200">
