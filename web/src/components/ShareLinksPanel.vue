@@ -30,7 +30,7 @@
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="160">
+      <el-table-column label="状态" width="120">
         <template #default="{ row }">
           <el-tag v-if="row.revoked_at" size="small" type="info" :title="formatTime(row.revoked_at)">
             已撤销
@@ -38,7 +38,7 @@
           <el-tag v-else size="small" type="success">有效</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="170">
+      <el-table-column label="操作" width="130">
         <template #default="{ row }">
           <el-button size="small" link type="primary" :disabled="!!row.revoked_at" @click="onCopy(row)">复制链接</el-button>
           <el-button
