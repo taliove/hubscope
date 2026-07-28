@@ -3,12 +3,15 @@
 // strip's flex+gap layout exactly, or the curve drifts off the dots above.
 import { describe, it, expect } from 'vitest'
 import {
+  LATENCY_DEGRADE_FACTOR,
   SPARKLINE_GAP_PX,
   bucketCenterX,
   bucketSlotWidth,
   buildLatencySegments,
+  latencyThresholdMs,
   latencyY,
   sparklineYMax,
+  thresholdY,
 } from '@/utils/latencySparkline'
 
 // A strip that divides exactly: 24 slots of 10px + 23 gaps of 2px.
@@ -43,8 +46,14 @@ describe('sparklineYMax', () => {
     expect(sparklineYMax([null, 100, 200, null], null)).toBeCloseTo(220, 6)
   })
 
-  it('uses the baseline when it exceeds the peak', () => {
-    expect(sparklineYMax([100, 200], 500)).toBe(550)
+  it('uses the 2x baseline threshold when it exceeds the peak', () => {
+    // baseline 500 -> threshold 1000 -> yMax 1100
+    expect(sparklineYMax([100, 200], 500)).toBeCloseTo(1100, 6)
+  })
+
+  it('keeps the peak when it exceeds the 2x baseline threshold', () => {
+    // baseline 500 -> threshold 1000 < peak 2000 -> yMax 2200
+    expect(sparklineYMax([100, 2000], 500)).toBeCloseTo(2200, 6)
   })
 
   it('is zero when there is no data and no baseline', () => {
@@ -61,6 +70,31 @@ describe('latencyY', () => {
 
   it('never divides by zero on an empty scale', () => {
     expect(latencyY(5, 28, 0)).toBe(28)
+  })
+})
+
+describe('threshold line', () => {
+  it('matches the status machine degradation factor of 2', () => {
+    expect(LATENCY_DEGRADE_FACTOR).toBe(2)
+    expect(latencyThresholdMs(500)).toBe(1000)
+  })
+
+  it('draws the threshold at 2x the baseline, never 1x', () => {
+    // baseline 500, peak 200 -> yMax 1100; the line sits at latencyY(1000),
+    // not latencyY(500).
+    const yMax = sparklineYMax([100, 200], 500)
+    const y = thresholdY(500, 28, yMax)
+    expect(y).toBeCloseTo(latencyY(1000, 28, yMax), 6)
+    expect(y).not.toBeCloseTo(latencyY(500, 28, yMax), 6)
+    expect(y).toBeCloseTo(28 / 11, 6)
+  })
+
+  it('aligns a bucket at exactly 2x baseline with the threshold line', () => {
+    const values: (number | null)[] = Array(24).fill(null)
+    values[7] = 1000 // exactly 2x the 500 baseline
+    const yMax = sparklineYMax(values, 500)
+    const segments = buildLatencySegments(values, EXACT_WIDTH, 28, yMax)
+    expect(segments[0].points[0].y).toBeCloseTo(thresholdY(500, 28, yMax), 6)
   })
 })
 
