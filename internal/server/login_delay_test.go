@@ -20,12 +20,17 @@ import (
 // before the delay mechanism can act.
 
 // delayTestServer starts the API server with per-IP rate limits disabled and
-// the given millisecond-scale login-delay policy.
+// the given millisecond-scale login-delay policy. The adaptive captcha
+// trigger is disabled (zero policy — the WithRateLimits precedent): it arms
+// after 2 failures and would intercept attempts from the 3rd on, changing
+// what these delay tests measure (ticket 88 decision: spec 0011 tests keep
+// their behavior semantics, they just opt the new layer out).
 func delayTestServer(t *testing.T, db *store.DB, policy server.LoginDelayPolicy) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(server.New(db,
 		server.WithRateLimits(server.RateLimits{}),
 		server.WithLoginDelay(policy),
+		server.WithCaptchaPolicy(server.CaptchaPolicy{}),
 	))
 	t.Cleanup(ts.Close)
 	return ts

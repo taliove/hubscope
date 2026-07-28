@@ -32,6 +32,10 @@ type Server struct {
 	loginLimiter *ipLimiter
 	writeLimiter *ipLimiter
 	readLimiter  *ipLimiter
+	// captchaLimiter is the independent tier for the captcha issue endpoint
+	// (spec 0012 decision 4: 20/min burst 10 — the login tier is too strict
+	// for image-load retries, the read tier would be a free solving range).
+	captchaLimiter *ipLimiter
 	// loginDelayer penalizes per-account repeated login failures with a
 	// progressive response delay (spec 0011 decision 3); nil disables it.
 	loginDelayer *loginDelayer
@@ -39,6 +43,12 @@ type Server struct {
 	// Lark alert per cooldown once the burst threshold is crossed (spec
 	// 0011 decision 4); nil disables it.
 	loginAlertTracker *loginAlertTracker
+	// captchaTrigger arms the adaptive captcha requirement per source IP
+	// and per username (spec 0012 decision 1); nil disables it.
+	captchaTrigger *captchaTrigger
+	// captchaStore holds issued captcha answers in memory (one-time use,
+	// TTL, fail-closed cap — spec 0012 decision 2).
+	captchaStore *CaptchaStore
 	// trustProxy controls whether X-Forwarded-For is honored when resolving
 	// client IPs for rate limiting and auditing.
 	trustProxy bool
@@ -68,6 +78,7 @@ func WithRateLimits(limits RateLimits) Option {
 		s.loginLimiter = newIPLimiter(limits.Login.PerMinute, limits.Login.Burst, limits.MaxEntriesPerTier)
 		s.writeLimiter = newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, limits.MaxEntriesPerTier)
 		s.readLimiter = newIPLimiter(limits.Read.PerMinute, limits.Read.Burst, limits.MaxEntriesPerTier)
+		s.captchaLimiter = newIPLimiter(limits.Captcha.PerMinute, limits.Captcha.Burst, limits.MaxEntriesPerTier)
 	}
 }
 
@@ -108,6 +119,25 @@ func WithSessionSecret(secret []byte) Option {
 	}
 }
 
+// WithCaptchaPolicy overrides the adaptive captcha trigger policy (spec 0012
+// decision 1). A zero policy disables the trigger; tests inject a
+// small-threshold policy so the requirement is observable within a few
+// attempts (the WithLoginDelay precedent).
+func WithCaptchaPolicy(policy CaptchaPolicy) Option {
+	return func(s *Server) {
+		s.captchaTrigger = newCaptchaTrigger(policy)
+	}
+}
+
+// WithCaptchaStore overrides the captcha answer store. Tests inject a store
+// with a short TTL / small cap and seed known answers through its Seed seam
+// (the WithLoginDelay precedent).
+func WithCaptchaStore(store *CaptchaStore) Option {
+	return func(s *Server) {
+		s.captchaStore = store
+	}
+}
+
 // WithVersion sets the server version string (displayed in the UI footer).
 func WithVersion(version string) Option {
 	return func(s *Server) {
@@ -131,6 +161,11 @@ func New(db *store.DB, opts ...Option) *Server {
 		writeLimiter:  newIPLimiter(limits.Write.PerMinute, limits.Write.Burst, 0),
 		readLimiter:   newIPLimiter(limits.Read.PerMinute, limits.Read.Burst, 0),
 		loginDelayer:  newLoginDelayer(defaultLoginDelayPolicy()),
+		// Adaptive captcha (spec 0012): production trigger + answer store;
+		// the issue tier below comes from the same limits bundle.
+		captchaLimiter: newIPLimiter(limits.Captcha.PerMinute, limits.Captcha.Burst, 0),
+		captchaTrigger: newCaptchaTrigger(defaultCaptchaPolicy()),
+		captchaStore:   NewCaptchaStore(CaptchaStorePolicy{}),
 	}
 	// Alert evaluation hooks into every probe round served by this prober.
 	// main hooks the scheduler's prober into the same evaluator via Alerter().
@@ -193,6 +228,8 @@ func (s *Server) routes() chi.Router {
 			r.Post("/login", s.handleLogin)
 			r.Post("/logout", s.handleLogout)
 			r.Get("/me", s.handleAuthMe)
+			// Captcha issue is public (pre-login) on its own rate tier.
+			r.Get("/captcha", s.handleCaptcha)
 		})
 
 		// All other API routes require a session, except the read paths

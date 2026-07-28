@@ -27,12 +27,18 @@ import (
 const bruteTestPassword = "s3cr3t-brute-password"
 
 // loginAlertTestServer starts the API server with rate limits and the login
-// delay disabled and the given millisecond-scale login-alert policy.
+// delay disabled and the given millisecond-scale login-alert policy. The
+// adaptive captcha trigger is disabled too (zero policy — the WithRateLimits
+// precedent): from the 3rd failure on it would answer with the
+// captcha_required wording instead of the uniform message this file asserts
+// (ticket 88 decision: spec 0011 tests keep their behavior semantics, they
+// just opt the new layer out).
 func loginAlertTestServer(t *testing.T, db *store.DB, policy server.LoginAlertPolicy, extra ...server.Option) *httptest.Server {
 	t.Helper()
 	opts := append([]server.Option{
 		server.WithRateLimits(server.RateLimits{}),
 		server.WithLoginDelay(server.LoginDelayPolicy{}),
+		server.WithCaptchaPolicy(server.CaptchaPolicy{}),
 		server.WithLoginAlert(policy),
 	}, extra...)
 	ts := httptest.NewServer(server.New(db, opts...))

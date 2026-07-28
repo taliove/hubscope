@@ -17,25 +17,29 @@ type RateTier struct {
 	Burst     int
 }
 
-// RateLimits bundles the three tiers: the login endpoint (strict, against
-// password brute force), writes and manual triggers (moderate), and public
-// reads (generous). MaxEntriesPerTier caps each tier's per-IP bucket map
-// (0 applies the built-in default); it exists so tests can exercise the cap
-// without spraying 100k IPs.
+// RateLimits bundles the four tiers: the login endpoint (strict, against
+// password brute force), the captcha issue endpoint (moderate — the login
+// tier is too strict for image-load retries, the read tier would be a free
+// solving range; spec 0012 decision 4), writes and manual triggers
+// (moderate), and public reads (generous). MaxEntriesPerTier caps each
+// tier's per-IP bucket map (0 applies the built-in default); it exists so
+// tests can exercise the cap without spraying 100k IPs.
 type RateLimits struct {
 	Login             RateTier
+	Captcha           RateTier
 	Write             RateTier
 	Read              RateTier
 	MaxEntriesPerTier int
 }
 
-// defaultRateLimits are the production tiers: 5 logins/min, 30 writes/min,
-// 20 reads/sec per client IP.
+// defaultRateLimits are the production tiers: 5 logins/min, 20 captcha
+// issues/min (burst 10), 30 writes/min, 20 reads/sec per client IP.
 func defaultRateLimits() RateLimits {
 	return RateLimits{
-		Login: RateTier{PerMinute: 5, Burst: 5},
-		Write: RateTier{PerMinute: 30, Burst: 10},
-		Read:  RateTier{PerMinute: 1200, Burst: 40},
+		Login:   RateTier{PerMinute: 5, Burst: 5},
+		Captcha: RateTier{PerMinute: 20, Burst: 10},
+		Write:   RateTier{PerMinute: 30, Burst: 10},
+		Read:    RateTier{PerMinute: 1200, Burst: 40},
 	}
 }
 
@@ -116,11 +120,15 @@ func (l *ipLimiter) allow(ip string) bool {
 }
 
 // tierFor picks the limiter tier for a request: login attempts first (they
-// are POSTs but get the strict bucket), reads (GET/HEAD) second, everything
-// else is a write.
+// are POSTs but get the strict bucket), the captcha issue endpoint next
+// (its own moderate tier), reads (GET/HEAD) third, everything else is a
+// write.
 func (s *Server) tierFor(r *http.Request) *ipLimiter {
 	if r.Method == http.MethodPost && r.URL.Path == "/api/auth/login" {
 		return s.loginLimiter
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/api/auth/captcha" {
+		return s.captchaLimiter
 	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return s.readLimiter

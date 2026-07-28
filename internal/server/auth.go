@@ -143,12 +143,45 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 // enumeration; the audit log records the specific failure reason.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		CaptchaID     string `json:"captcha_id"`
+		CaptchaAnswer string `json:"captcha_answer"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	// Adaptive captcha (spec 0012): when either the source IP or the
+	// username dimension is armed, the attempt must carry a valid captcha
+	// BEFORE any account lookup or password work. The verification runs
+	// ahead of the progressive-delay penalize sleep, so captcha-stage
+	// rejections never make the user wait 2-8s; they also never count
+	// toward the delay (no password was attempted) — but they do feed the
+	// audit trail and the instance-level brute-force tracker, same as any
+	// failed login (spec 0012 decision 7). Captcha fields on an attempt
+	// that is not required are ignored outright (old clients unaffected).
+	ip := s.clientIP(r)
+	if s.captchaTrigger != nil && s.captchaTrigger.required(ip, req.Username) {
+		if req.CaptchaID == "" || req.CaptchaAnswer == "" {
+			s.audit(r, "auth.login", "auth", req.Username, "captcha required", "failed")
+			if s.loginAlertTracker != nil {
+				s.loginAlertTracker.record(req.Username, ip)
+			}
+			writeCaptchaError(w, http.StatusUnauthorized, "请完成验证码")
+			return
+		}
+		if s.captchaStore == nil || !s.captchaStore.verify(req.CaptchaID, req.CaptchaAnswer) {
+			s.audit(r, "auth.login", "auth", req.Username, "captcha wrong", "failed")
+			if s.loginAlertTracker != nil {
+				s.loginAlertTracker.record(req.Username, ip)
+			}
+			writeCaptchaError(w, http.StatusUnauthorized, "验证码错误或已过期")
+			return
+		}
+		// Captcha passed (and is destroyed — one-time use). Fall through to
+		// the normal password path; the frontend re-issues after every
+		// attempt.
 	}
 	user, err := s.db.GetUserByUsername(req.Username)
 	if err != nil {
@@ -180,6 +213,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.loginDelayer != nil {
 		s.loginDelayer.reset(req.Username)
 	}
+	// A successful login also disarms the captcha trigger for both the
+	// username and the source IP (spec 0012 decision 1); the two counters
+	// reset independently of each other.
+	if s.captchaTrigger != nil {
+		s.captchaTrigger.reset(ip, req.Username)
+	}
 	setSessionCookie(w, r, signSession(s.sessionSecret, user.ID, time.Now()))
 	s.audit(r, "auth.login", "auth", req.Username, "", "success")
 	writeData(w, http.StatusOK, map[string]bool{"authenticated": true})
@@ -199,6 +238,13 @@ func (s *Server) failLogin(w http.ResponseWriter, r *http.Request, username, rea
 	s.audit(r, "auth.login", "auth", username, reason, "failed")
 	if s.loginAlertTracker != nil {
 		s.loginAlertTracker.record(username, s.clientIP(r))
+	}
+	// Feed the adaptive captcha trigger (spec 0012 decision 1) on the same
+	// failure observation point: pure in-memory count, before the penalize
+	// sleep. Captcha-stage failures never reach this exit — they are
+	// rejected in handleLogin and deliberately do not count here.
+	if s.captchaTrigger != nil {
+		s.captchaTrigger.recordFailure(s.clientIP(r), username)
 	}
 	if s.loginDelayer != nil {
 		s.loginDelayer.penalize(r.Context(), username)
