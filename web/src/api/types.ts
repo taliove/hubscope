@@ -296,6 +296,14 @@ export interface ReportRow {
   total_delta: number | null // total vs the baseline campaign, null when not comparable
   suite_scores: Record<string, number | null> // per suite key
   cells: ReportCell[] // per-suite progress detail, one per campaign suite
+  // Coverage gate (ticket 91 contract, spec 0014 decision A): settled
+  // (done/failed) batches only — live rows never carry the key. false means
+  // judging is incomplete: the row forfeits total/rank/delta and sinks below
+  // every complete row; the per-suite scores stay as judged.
+  complete?: boolean
+  // Present only when complete === false: how many gating suites (covered
+  // suites with enabled cases) went unjudged — the watermark's N.
+  missing_suites?: number
 }
 
 // View switch of the unfinished-batch board (ticket 52): the progress grid

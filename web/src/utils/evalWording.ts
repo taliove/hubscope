@@ -7,7 +7,7 @@
 // baseline chip) for the baseline note. Wordings NOT shared on purpose:
 // the settle-transition ElMessage ("批次 #N 已结束:…") and the delta-arrow
 // hover titles use different sentence shapes and stay local.
-import type { ReportBaseline } from '@/api/types'
+import type { ReportBaseline, ReportRow } from '@/api/types'
 
 // Failed-batch warning, identical to the page alert title (ui-guidelines §5
 // EvalCard entry: the card line carries the same wording and caliber).
@@ -34,4 +34,22 @@ export function baselineChipText(baseline: ReportBaseline | null): string | null
   if (!baseline) return null
   if (baseline.comparable) return `较批次 #${baseline.campaign_id}`
   return baselineNoteText(baseline)
+}
+
+// Judged-incomplete watermark (ticket 92, spec 0014 decision A; ui-guidelines
+// §5「Leaderboard 判分不完整模式」): rendered on the second line under the
+// model name. N is the contract's missing_suites (gating suites that went
+// unjudged); M is derived row-locally as missing + the row's non-null suite
+// scores, so the denominator always matches the scores visible in the row
+// (the contract's gate denominator has no response field; this derivation is
+// exact whenever no suite was emptied after judging, and stays consistent
+// with the visible row otherwise). The 「缺」 is load-bearing: a bare "N/M"
+// would read as "judged N of M" against the ScoreCell coverage watermark's
+// judged-numerator caliber (·8/10). '' for complete rows and for live rows
+// (which never carry the key).
+export function incompleteWatermark(row: ReportRow): string {
+  if (row.complete !== false) return ''
+  const missing = row.missing_suites ?? 0
+  const judged = Object.values(row.suite_scores).filter((s) => s !== null && s !== undefined).length
+  return `判分不完整,缺 ${missing}/${missing + judged} 维度`
 }

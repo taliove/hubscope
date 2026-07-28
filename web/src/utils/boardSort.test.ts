@@ -55,6 +55,56 @@ describe('sortRows', () => {
     sortRows(rows, 'total')
     expect(rows.map((r) => r.model_id)).toEqual(['b', 'a'])
   })
+
+  // Coverage gate (ticket 92, spec 0014 decision A): judged-incomplete rows
+  // sink below every complete row under ANY sort column — their real suite
+  // scores must never buy them a mid-board spot — and order among
+  // themselves by model_id. Rows without the key (live / pre-gate backend)
+  // count as complete, mirroring the server's rankable().
+  it('sinks judged-incomplete rows below every complete row on the total column', () => {
+    const rows = [
+      makeRow('inc-a', null, { complete: false, missing_suites: 1, suite_scores: { reasoning: 95 } }),
+      makeRow('b', 50, { complete: true }),
+      makeRow('a', 90, { complete: true }),
+    ]
+    expect(sortRows(rows, 'total').map((r) => r.model_id)).toEqual(['a', 'b', 'inc-a'])
+  })
+
+  it('sinks judged-incomplete rows even when they top the sorted suite column', () => {
+    const rows = [
+      makeRow('inc-a', null, { complete: false, missing_suites: 1, suite_scores: { reasoning: 99, coding: 99 } }),
+      makeRow('a', 90, { complete: true, suite_scores: { reasoning: 90, coding: 10 } }),
+      makeRow('b', 70, { complete: true, suite_scores: { reasoning: 70, coding: 50 } }),
+    ]
+    expect(sortRows(rows, 'coding').map((r) => r.model_id)).toEqual(['b', 'a', 'inc-a'])
+    expect(sortRows(rows, 'reasoning').map((r) => r.model_id)).toEqual(['a', 'b', 'inc-a'])
+  })
+
+  it('orders the incomplete group by model_id, not by their scores or input order', () => {
+    const rows = [
+      makeRow('inc-z', null, { complete: false, missing_suites: 2, suite_scores: { reasoning: 10 } }),
+      makeRow('a', 60, { complete: true }),
+      makeRow('inc-a', null, { complete: false, missing_suites: 1, suite_scores: { reasoning: 99 } }),
+    ]
+    expect(sortRows(rows, 'reasoning').map((r) => r.model_id)).toEqual(['a', 'inc-a', 'inc-z'])
+  })
+
+  it('treats rows without the complete key as complete (live / pre-gate backend)', () => {
+    const rows = [
+      makeRow('inc', null, { complete: false, missing_suites: 1, suite_scores: { reasoning: 99 } }),
+      makeRow('legacy', 40),
+      makeRow('a', 90, { complete: true }),
+    ]
+    expect(sortRows(rows, 'total').map((r) => r.model_id)).toEqual(['a', 'legacy', 'inc'])
+  })
+
+  it('renders an all-incomplete board in model_id order without an empty state', () => {
+    const rows = [
+      makeRow('inc-b', null, { complete: false, missing_suites: 1 }),
+      makeRow('inc-a', null, { complete: false, missing_suites: 2 }),
+    ]
+    expect(sortRows(rows, 'total').map((r) => r.model_id)).toEqual(['inc-a', 'inc-b'])
+  })
 })
 
 describe('filterRowsByFamily', () => {
