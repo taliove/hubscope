@@ -65,6 +65,19 @@ func TestTestLarkSuccessSendsAndRecords(t *testing.T) {
 		t.Errorf("test message should carry the fixed wording, got: %s", msgs[0])
 	}
 
+	// The test message goes out as a turquoise-header interactive card
+	// (ticket 101) while the recorded event below stays plain text.
+	cards := lark.cards()
+	if len(cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(cards))
+	}
+	if cards[0].Template != "turquoise" {
+		t.Errorf("test card template: expected turquoise, got %q", cards[0].Template)
+	}
+	if cards[0].Title != "测试消息 · HubScope" {
+		t.Errorf("test card title: got %q", cards[0].Title)
+	}
+
 	events := listAlerts(t, ts, "")
 	if len(events) != 1 {
 		t.Fatalf("expected 1 alert event, got %d", len(events))

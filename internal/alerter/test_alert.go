@@ -12,6 +12,18 @@ import (
 // sender at any http(s) URL) limited to one known payload.
 const TestMessage = "【HubScope】测试消息:告警通道配置成功。"
 
+// testMessage renders the fixed test message as a turquoise-header card
+// (ticket 101); the Text member stays TestMessage verbatim so the recorded
+// event is unchanged.
+func testMessage() Message {
+	return Message{
+		Text:     TestMessage,
+		Title:    "测试消息",
+		Template: templateTurquoise,
+		Fields:   []Field{{Label: "内容", Value: "告警通道配置成功。"}},
+	}
+}
+
 // SendTest delivers the fixed test message to the given webhook URL and
 // records the attempt as an alert event with kind="test" (endpoint_id NULL)
 // so the admin can see the channel check in the alert history — the failure
@@ -26,7 +38,7 @@ const TestMessage = "【HubScope】测试消息:告警通道配置成功。"
 // exists precisely to verify an address before saving or enabling it.
 func (e *Evaluator) SendTest(ctx context.Context, webhookURL string) error {
 	sentOK := true
-	sendErr := e.sender.Send(ctx, webhookURL, TestMessage)
+	sendErr := e.sender.Send(ctx, webhookURL, testMessage())
 	if sendErr != nil {
 		slog.Error("alerter: send test message", "error", sendErr)
 		sentOK = false
