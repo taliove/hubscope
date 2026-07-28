@@ -22,6 +22,10 @@ type seedCase struct {
 	ruleExpected *string
 	rubric       *string
 	sampleCount  *int
+	// checkParams carries the IFEval structured check parameters (JSON array
+	// of {instruction_id, kwargs}) for rule mode "ifeval" (ticket 97); nil
+	// for every other verdict shape.
+	checkParams *string
 }
 
 // seedSuite is a built-in evaluation suite with its cases. capability is the
@@ -110,9 +114,9 @@ func (db *DB) seedSuites() error {
 				continue
 			}
 			if _, err := db.conn.Exec(`
-				INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-			`, suiteID, c.prompt, c.verdictType, c.ruleMode, c.ruleExpected, c.rubric, c.difficulty, c.sampleCount, now); err != nil {
+				INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, check_params, enabled, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			`, suiteID, c.prompt, c.verdictType, c.ruleMode, c.ruleExpected, c.rubric, c.difficulty, c.sampleCount, c.checkParams, now); err != nil {
 				return err
 			}
 		}
