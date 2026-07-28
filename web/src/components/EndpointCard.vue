@@ -143,6 +143,7 @@ function dotTooltip(dot: OverviewDot): string {
 .card-status {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }
