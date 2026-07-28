@@ -37,7 +37,10 @@ type Suite struct {
 // Case is a single evaluation question with its verdict configuration.
 // RuleMode/RuleExpected are set for verdict_type="rule"; Rubric for "judge".
 // Difficulty is one of basic/intermediate/hard. SampleCount is nil when the
-// case inherits the global default sample count.
+// case inherits the global default sample count. CheckParams carries the
+// IFEval structured check parameters (a JSON array of
+// {instruction_id, kwargs}) for rule mode "ifeval" (ticket 97, spec 0014);
+// it is nil for every other verdict shape.
 type Case struct {
 	ID           int64
 	SuiteID      int64
@@ -48,6 +51,7 @@ type Case struct {
 	Rubric       *string
 	Difficulty   string
 	SampleCount  *int
+	CheckParams  *string
 	Enabled      bool
 	CreatedAt    time.Time
 }
@@ -56,7 +60,7 @@ type Case struct {
 const suiteColumns = `id, key, name, version, capability, nadir, enabled`
 
 // caseColumns is the canonical cases column list.
-const caseColumns = `id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at`
+const caseColumns = `id, suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, check_params, enabled, created_at`
 
 // scanSuite scans one suites row.
 func scanSuite(s rowScanner) (Suite, error) {
@@ -75,7 +79,7 @@ func scanCase(s rowScanner) (Case, error) {
 	var enabled int
 	var createdAt string
 	if err := s.Scan(&c.ID, &c.SuiteID, &c.Prompt, &c.VerdictType,
-		&c.RuleMode, &c.RuleExpected, &c.Rubric, &c.Difficulty, &c.SampleCount, &enabled, &createdAt); err != nil {
+		&c.RuleMode, &c.RuleExpected, &c.Rubric, &c.Difficulty, &c.SampleCount, &c.CheckParams, &enabled, &createdAt); err != nil {
 		return Case{}, err
 	}
 	c.Enabled = enabled == 1
@@ -181,9 +185,9 @@ func insertCase(tx *sql.Tx, c Case, now time.Time) (int64, error) {
 		difficulty = "basic"
 	}
 	result, err := tx.Exec(`
-		INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.SuiteID, c.Prompt, c.VerdictType, c.RuleMode, c.RuleExpected, c.Rubric, difficulty, c.SampleCount, enabled, now.Format(time.RFC3339))
+		INSERT INTO cases (suite_id, prompt, verdict_type, rule_mode, rule_expected, rubric, difficulty, sample_count, check_params, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.SuiteID, c.Prompt, c.VerdictType, c.RuleMode, c.RuleExpected, c.Rubric, difficulty, c.SampleCount, c.CheckParams, enabled, now.Format(time.RFC3339))
 	if err != nil {
 		return 0, err
 	}

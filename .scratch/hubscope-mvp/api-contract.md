@@ -85,7 +85,8 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 - `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
 - `PUT /api/settings` → `{"data": ...同上}`(字段均可选)
-- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop", "message": string, "sent_ok": boolean, "created_at": string}`
+- `POST /api/settings/test-lark`(super_admin,ticket 100)→ body `{"webhook_url": string}`(必填,绝对 http/https URL,否则 400)→ `{"data": {"sent_ok": boolean, "error": string|null}}`。测试目标是 body 里的地址(非已保存设置),不受 alert_enabled 开关影响;每次尝试(成功/失败)落 alert_events(kind="test", endpoint_id=null);error 不含 webhook URL(W6)。
+- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test", "message": string, "sent_ok": boolean, "created_at": string}`
 
 ## Endpoint Detail & Series(ticket 04)
 

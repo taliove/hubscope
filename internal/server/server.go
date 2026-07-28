@@ -261,6 +261,7 @@ func (s *Server) routes() chi.Router {
 				r.Patch("/cases/{id}", s.handlePatchCase)
 
 				r.Put("/settings", s.handlePutSettings)
+				r.Post("/settings/test-lark", s.handleTestLark)
 			})
 
 			// Hub-scoped writes: super_admin + admin + operator. These act on

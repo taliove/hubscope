@@ -42,6 +42,14 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 		return outputMatchVerdict(expected, answer)
 	}
 
+	// ifeval scores all-or-nothing against the case's structured check
+	// params (check_params column, ticket 97) and is never normalized (spec
+	// 0014: IFEval 免归一化 — case/whitespace/punctuation-sensitive checkers
+	// must see the raw answer), so it bypasses the generic switch too.
+	if mode == "ifeval" {
+		return ifevalVerdict(c.CheckParams, answer)
+	}
+
 	hit := false
 	switch mode {
 	case "exact":

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/taliove/hubscope/internal/evaluator/ifeval"
 )
 
 // benchmarkSuites is the authoritative-benchmark seed bank (spec 0014
@@ -31,6 +33,9 @@ var agievalZhSubset string
 
 //go:embed benchmark/cruxeval/subset.jsonl
 var cruxevalSubset string
+
+//go:embed benchmark/ifeval/subset.jsonl
+var ifevalSubset string
 
 var benchmarkSuites = []seedSuite{
 	mustMCQSuite(mcqSuiteSpec{
@@ -73,6 +78,16 @@ var benchmarkSuites = []seedSuite{
 		// ticket 99 recalibrates from the observed score distribution.
 		nadir: 0,
 		data:  cruxevalSubset,
+	}),
+	mustIFEvalSuite(ifevalSuiteSpec{
+		key:        "ifeval",
+		name:       "指令遵循（IFEval）",
+		capability: CapabilityInstruction,
+		// Free-form instruction following has no random-guess floor: nadir 0
+		// keeps the raw-mean caliber until ticket 99 recalibrates from the
+		// observed score distribution.
+		nadir: 0,
+		data:  ifevalSubset,
 	}),
 }
 
@@ -319,6 +334,95 @@ func mustCruxEvalSuite(spec cruxevalSuiteSpec) seedSuite {
 			verdictType:  "rule",
 			ruleMode:     strptr("output_match"),
 			ruleExpected: strptr(q.Output),
+		})
+	}
+	if len(suite.cases) == 0 {
+		panic(fmt.Sprintf("benchmark %s: empty subset", spec.key))
+	}
+	return suite
+}
+
+// ifevalSuiteSpec describes one IFEval-style instruction-following benchmark
+// suite to seed (ticket 97, spec 0014 decision C).
+type ifevalSuiteSpec struct {
+	key        string
+	name       string
+	capability string
+	nadir      float64
+	data       string // embedded JSONL subset
+}
+
+// ifevalQuestion is one row of the embedded IFEval subset file: the prompt
+// plus its verifiable instructions (instruction id + kwargs), exactly as
+// selected from the upstream dataset (see the ATTRIBUTION file beside the
+// data). id/key document the frozen subset's lineage; they are metadata,
+// not cast into cases.
+type ifevalQuestion struct {
+	ID           string `json:"id"`
+	Key          int    `json:"key"`
+	Prompt       string `json:"prompt"`
+	Instructions []struct {
+		InstructionID string         `json:"instruction_id"`
+		Kwargs        map[string]any `json:"kwargs"`
+	} `json:"instructions"`
+}
+
+// mustIFEvalSuite parses the embedded IFEval subset and builds its
+// seedSuite. Every case carries its structured check parameters in
+// check_params (the JSON array of {instruction_id, kwargs}) and scores via
+// the "ifeval" rule mode (evaluator/ifeval_verdict.go). The seed is
+// fail-closed like mustMCQSuite: a malformed file, a duplicate id, or an
+// instruction type the checker library does not port panics at init —
+// unportable types must never enter the bank (ticket 97 risk 2).
+func mustIFEvalSuite(spec ifevalSuiteSpec) seedSuite {
+	suite := seedSuite{
+		key:         spec.key,
+		name:        spec.name,
+		capability:  spec.capability,
+		nadir:       spec.nadir,
+		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+	}
+	seen := map[string]bool{}
+	for lineNo, line := range strings.Split(spec.data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var q ifevalQuestion
+		if err := json.Unmarshal([]byte(line), &q); err != nil {
+			panic(fmt.Sprintf("benchmark %s: line %d: invalid JSON: %v", spec.key, lineNo+1, err))
+		}
+		if q.ID == "" || seen[q.ID] {
+			panic(fmt.Sprintf("benchmark %s: line %d: missing or duplicate id %q", spec.key, lineNo+1, q.ID))
+		}
+		seen[q.ID] = true
+		if q.Prompt == "" {
+			panic(fmt.Sprintf("benchmark %s: %s: empty prompt", spec.key, q.ID))
+		}
+		if len(q.Instructions) == 0 {
+			panic(fmt.Sprintf("benchmark %s: %s: no instructions", spec.key, q.ID))
+		}
+		// Marshal back to the canonical check_params form (sorted kwarg
+		// keys, deterministic) and validate against the ported checker set:
+		// unsupported instruction ids or out-of-range kwargs are build-time
+		// bugs, never runtime surprises.
+		checkParams, err := json.Marshal(q.Instructions)
+		if err != nil {
+			panic(fmt.Sprintf("benchmark %s: %s: marshal check_params: %v", spec.key, q.ID, err))
+		}
+		if err := ifeval.Validate(string(checkParams)); err != nil {
+			panic(fmt.Sprintf("benchmark %s: %s: %v", spec.key, q.ID, err))
+		}
+		suite.cases = append(suite.cases, seedCase{
+			gen: 1,
+			// The source carries no per-item difficulty labels; the tier is
+			// a neutral placeholder, not a measurement.
+			difficulty:  "intermediate",
+			sampleCount: intptr(1),
+			prompt:      q.Prompt,
+			verdictType: "rule",
+			ruleMode:    strptr("ifeval"),
+			checkParams: strptr(string(checkParams)),
 		})
 	}
 	if len(suite.cases) == 0 {

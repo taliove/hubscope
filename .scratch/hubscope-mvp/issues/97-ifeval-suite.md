@@ -4,7 +4,7 @@
 
 **Blocked by:** 94(权威题库管线首发:MMLU 知识套件端到端)
 
-**Status:** ready-for-agent
+**Status:** done(1ad8c89+4816e34+b99f6eb+05d9ab0+b9e73cb,2026-07-28;IFEval license 核对结论:Apache-2.0(dataset card YAML),允许随二进制再分发子集,署名与许可声明入仓 internal/store/benchmark/ifeval/ATTRIBUTION.md;来源 google/IFEval @ 966cd895,原始 JSONL 与 datasets-server 双通道逐行互验一致(541/541);子集固定步长法零随机、按首指令类型分层 22 类,SHA-256 b64e35fa 留痕;移植 22 类校验器,官方 Python 对照差分 108/108 一致 + 句切分器 13/13 一致;3 类 langdetect 依赖型未移植,子集与 seed 双层 fail-closed 排除;偏离两处(number_sentences 用官方 split_into_sentences 近似 Punkt、capital_word_frequency 空白分词近似 word_tokenize)均有注释与 ATTRIBUTION 登记;check 三维度 PASS)
 
 ## 验收清单
 

@@ -11,6 +11,7 @@
           placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
           clearable
         />
+        <el-button class="test-lark-btn" :loading="testing" @click="onTestLark">发送测试</el-button>
       </el-form-item>
       <el-form-item label="端点告警">
         <el-switch v-model="form.alert_enabled" active-text="开" inactive-text="关" />
@@ -80,6 +81,7 @@ import {
   getSettings,
   updateSettings,
   listAlerts,
+  testLark,
   type AlertEvent,
   type AppSettings,
 } from '@/api/settings'
@@ -98,21 +100,26 @@ const form = reactive<AppSettings>({
 const suites = ref<Suite[]>([])
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
+const testing = ref(false)
 
 const KIND_LABELS: Record<AlertEvent['kind'], string> = {
   down: '故障',
   recovered: '恢复',
   score_drop: '分数大跌',
   score_drop_skipped: '对比跳过',
+  test: '测试',
 }
 
 function kindLabel(kind: AlertEvent['kind']): string {
   return KIND_LABELS[kind] ?? kind
 }
 
-function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning' {
+// The manual channel check is not a health signal: it takes the neutral
+// info tone rather than a status color.
+function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning' | 'info' {
   if (kind === 'down') return 'danger'
   if (kind === 'recovered') return 'success'
+  if (kind === 'test') return 'info'
   return 'warning'
 }
 
@@ -142,6 +149,31 @@ async function onSave() {
     ElMessage.error((err as Error).message)
   } finally {
     saving.value = false
+  }
+}
+
+// Sends the test message to the address currently in the input (not the
+// saved setting). Success or failure, the attempt lands in the alert history
+// as kind="test", so the table refreshes after every try.
+async function onTestLark() {
+  const url = form.lark_webhook_url.trim()
+  if (!url) {
+    ElMessage.warning('请先填写飞书 Webhook 地址')
+    return
+  }
+  testing.value = true
+  try {
+    const result = await testLark(url)
+    if (result.sent_ok) {
+      ElMessage.success('测试消息已发送,请到飞书群确认收到')
+    } else {
+      ElMessage.error(`测试消息发送失败:${result.error ?? '未知原因'}`)
+    }
+    alerts.value = await listAlerts()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    testing.value = false
   }
 }
 
@@ -177,6 +209,10 @@ onMounted(async () => {
   margin-left: 12px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+}
+.test-lark-btn {
+  margin-left: var(--hs-space-2);
+  flex: none;
 }
 .weights-block .field-hint {
   margin-left: 0;
