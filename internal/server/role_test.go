@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/taliove/hubscope/internal/server"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -87,7 +89,15 @@ func putAs(t *testing.T, client *http.Client, url string, body interface{}) *htt
 // not create hubs; super_admin may do everything.
 func TestRoleWriteMatrix(t *testing.T) {
 	db := openTempDB(t) // seeds super_admin "admin"
-	ts := newTestAPIServer(t, db)
+	// Synchronous eval execution: the operator-eval trigger below otherwise
+	// leaves a detached goroutine whose tail writes (task log, campaign
+	// settle, alert hook) race TempDir cleanup even after the run polls done.
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSessionSecret(testSessionSecret),
+		server.WithSyncEval(),
+	))
+	t.Cleanup(ts.Close)
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
 	stubHub.SetMode("success")

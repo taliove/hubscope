@@ -426,11 +426,18 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 
 	// Single-instance async execution: detached context so the run survives
 	// the request; state is persisted in the store for polling. Settling goes
-	// through the evaluator so a done campaign fires the alert hook.
-	go func() {
+	// through the evaluator so a done campaign fires the alert hook. Tests
+	// may force synchronous execution via WithSyncEval (structural
+	// synchronization point — state polling precedes the tail writes).
+	exec := func() {
 		_ = s.evaluator.RunEval(context.Background(), run.ID, req.ModelIDs)
 		s.evaluator.SettleCampaign(context.Background(), campaign.ID)
-	}()
+	}
+	if s.syncEval {
+		exec()
+	} else {
+		go exec()
+	}
 
 	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("suite_id=%d models=%d judge=%q", req.SuiteID, len(req.ModelIDs), judgeModel), "accepted")

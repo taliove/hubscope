@@ -27,6 +27,7 @@ type Server struct {
 	staticFS  fs.FS
 	now       func() time.Time
 	version   string
+	syncEval  bool
 
 	// Rate-limit tiers; a nil limiter means its tier is unlimited.
 	loginLimiter *ipLimiter
@@ -142,6 +143,18 @@ func WithCaptchaStore(store *CaptchaStore) Option {
 func WithVersion(version string) Option {
 	return func(s *Server) {
 		s.version = version
+	}
+}
+
+// WithSyncEval makes eval triggers execute synchronously in the request
+// instead of on a detached goroutine. Tests use it as a structural
+// synchronization point: a poller can only observe persisted state (run
+// done), which precedes the goroutine's tail writes (task log, campaign
+// settle, alert hook), so draining on state still races TempDir cleanup.
+// Production never sets this.
+func WithSyncEval() Option {
+	return func(s *Server) {
+		s.syncEval = true
 	}
 }
 

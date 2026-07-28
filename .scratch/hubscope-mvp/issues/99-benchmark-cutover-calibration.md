@@ -9,6 +9,7 @@
 ## 验收清单
 
 - [ ] v3 套件全部停用;store.Open 后 v3 套件及其 cases/runs/results 被迁移清除(题库列表只剩五个权威套件)
+- [ ] **切换机制(check 终审 MEDIUM-1 登记,两个耦合点):** ① benchmark 五套件的 seed 定义 `retireAtGen` 从 1 改为 0(不再铸入即停用;改 1→0 后 seed 的「启用」须走显式迁移——seed 机制只有停用路径没有启用路径,seeds.go:104 只清 enabled,切换必须带一个「启用 benchmark 套件」的迁移步骤,否则套件永远停用);② v3 套件的 retirement generation 必须设为 **>3**(若设成 1,seeds.go:104 的 `1 > received(3)` 永不触发,且 retireAtGen==1 会撞进 purge 豁免规则,双重失效);切换后管理员停用 benchmark 套件须被 purge 清除(ADR 0012 Addendum 语义回归验证)
 - [ ] 历史 v3 批次报告正常渲染(失去 v3 维度列,不 500)——决策内后果回归确认
 - [ ] 测试线完整批次(五套件 × 全模型)跑通,五维度分布抽查合理(非全员 0/100、有区分度)
 - [ ] 各 suite nadir 与档色阈值按实测分布校准,校准值 + 依据(批次号 + 分布摘要)入票备注;档色变动经 plan 登记 ui-guidelines

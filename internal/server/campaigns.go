@@ -40,7 +40,12 @@ func (s *Server) handleFullSweep(w http.ResponseWriter, r *http.Request, judgeMo
 	}
 
 	// Detached context: the sweep outlives the request; state is polled.
-	go s.evaluator.RunCampaign(context.Background(), campaign.ID, "manual", suites, modelIDs, judgeModel)
+	// Tests may force synchronous execution via WithSyncEval.
+	if s.syncEval {
+		s.evaluator.RunCampaign(context.Background(), campaign.ID, "manual", suites, modelIDs, judgeModel)
+	} else {
+		go s.evaluator.RunCampaign(context.Background(), campaign.ID, "manual", suites, modelIDs, judgeModel)
+	}
 
 	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("full sweep suites=%d models=%d judge=%q", len(suites), len(modelIDs), judgeModel), "accepted")
