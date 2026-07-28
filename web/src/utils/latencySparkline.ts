@@ -11,6 +11,12 @@
 export const SPARKLINE_BUCKETS = 24
 export const SPARKLINE_GAP_PX = 2 // see module header — the dots CSS gap twin
 
+// LATENCY_DEGRADE_FACTOR mirrors the status machine's latency degradation
+// threshold (internal/status/status.go:54, latencyDegradeFactor = 2.0): an
+// endpoint degrades when its 24h P95 exceeds 2x the 7-day P50 baseline, so
+// the sparkline's dashed threshold line sits at 2x baseline — never 1x.
+export const LATENCY_DEGRADE_FACTOR = 2
+
 export interface SparklinePoint {
   x: number
   y: number
@@ -35,10 +41,17 @@ export function bucketCenterX(index: number, stripWidth: number): number {
   return index * (slot + SPARKLINE_GAP_PX) + slot / 2
 }
 
-// Upper bound of the y scale: max(baseline, peak bucket value) with 10%
-// headroom so the curve and the threshold line never touch the top edge.
+// The latency value of the dashed threshold line: 2x the baseline, the same
+// factor the status machine degrades on (see LATENCY_DEGRADE_FACTOR).
+export function latencyThresholdMs(baselineMs: number): number {
+  return baselineMs * LATENCY_DEGRADE_FACTOR
+}
+
+// Upper bound of the y scale: max(2x baseline threshold, peak bucket value)
+// with 10% headroom so the curve and the threshold line never touch the top
+// edge.
 export function sparklineYMax(values: (number | null)[], baselineMs: number | null): number {
-  let max = baselineMs ?? 0
+  let max = baselineMs !== null ? latencyThresholdMs(baselineMs) : 0
   for (const v of values) {
     if (v !== null && v > max) max = v
   }
@@ -50,6 +63,11 @@ export function sparklineYMax(values: (number | null)[], baselineMs: number | nu
 export function latencyY(value: number, height: number, yMax: number): number {
   if (yMax <= 0) return height
   return height - (value / yMax) * height
+}
+
+// Y coordinate of the dashed threshold line (2x baseline).
+export function thresholdY(baselineMs: number, height: number, yMax: number): number {
+  return latencyY(latencyThresholdMs(baselineMs), height, yMax)
 }
 
 // Split the 24 bucket values into polyline segments, breaking the line at

@@ -52,8 +52,8 @@ import type { OverviewDot } from '@/api/types'
 import { formatBucketTime, formatMs } from '@/utils/format'
 import {
   buildLatencySegments,
-  latencyY,
   sparklineYMax,
+  thresholdY,
   type SparklineSegment,
 } from '@/utils/latencySparkline'
 
@@ -61,7 +61,8 @@ import {
 // curve under the dots strip, hour-aligned with it by construction (same
 // 24-slot flex + 2px gap geometry, see utils/latencySparkline.ts). The curve
 // carries NO status semantics — coloring stays with the dots; the dashed
-// line marks the status machine's own 7-day P50 baseline.
+// line marks the latency degradation threshold at 2x the status machine's
+// 7-day P50 baseline (the factor the machine itself degrades on).
 const props = defineProps<{ dots: OverviewDot[]; baselineMs: number | null }>()
 
 const ROW_HEIGHT = 28
@@ -93,7 +94,7 @@ const segments = computed<SparklineSegment[]>(() => {
   return buildLatencySegments(props.dots.map(d => d.p50_ms), stripWidth.value, ROW_HEIGHT, yMax.value)
 })
 const baselineLineY = computed(() =>
-  props.baselineMs !== null ? latencyY(props.baselineMs, ROW_HEIGHT, yMax.value) : 0,
+  props.baselineMs !== null ? thresholdY(props.baselineMs, ROW_HEIGHT, yMax.value) : 0,
 )
 
 function polylinePoints(segment: SparklineSegment): string {
