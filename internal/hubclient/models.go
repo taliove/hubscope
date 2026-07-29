@@ -14,8 +14,13 @@ const modelsResponseLimit = 4 << 20 // 4 MiB
 
 // ListModels fetches the model ID list from the hub's openai-style
 // GET /v1/models endpoint. It authenticates with the same Bearer header used
-// by openai-protocol probes.
+// by openai-protocol probes. Like every public method it carries the chat
+// timeout budget, so a hung hub can never park the discovery sync (whose
+// in-flight guard and syncing mark would otherwise never be released).
 func (c *Client) ListModels(ctx context.Context, baseURL, token string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	url := strings.TrimRight(baseURL, "/") + "/v1/models"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

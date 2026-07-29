@@ -250,8 +250,12 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 			return created, err
 		} else if isNew {
+			// A defaults-write failure leaves the endpoint on the global
+			// interval: costly but recoverable via PATCH, and not worth
+			// aborting the whole sync over (same policy as model trial).
 			if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
-				return created, err
+				slog.Error("discovery: apply creation defaults",
+					"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol, "error", err)
 			}
 			created++
 		}

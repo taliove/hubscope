@@ -79,6 +79,9 @@ func NewWithTimeout(d time.Duration) *Client {
 // callTimeout returns the per-call budget: image protocols always get
 // ImageRequestTimeout (the client-level timeout would cut a healthy
 // generation off at 60s), chat protocols use the client's configured value.
+// Every public method wraps its context with this budget — "no unbounded
+// exit" is a construction property of the Client, so a hung hub can never
+// park a caller (e.g. the discovery in-flight guard) forever.
 func (c *Client) callTimeout(protocol string) time.Duration {
 	if IsImageProtocol(protocol) {
 		return ImageRequestTimeout
@@ -109,6 +112,8 @@ func probeTransport() *http.Transport {
 // measures TTFT. Probe semantics (fixed prompt, tiny token budget) are
 // unchanged; it simply delegates to call with the probe constants.
 func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool) Result {
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
+	defer cancel()
 	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming)
 }
 
@@ -117,15 +122,14 @@ func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID st
 // complete (unlike the 16-token probe). The per-request timeout comes from
 // the client construction (see NewWithTimeout).
 func (c *Client) Complete(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int) Result {
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
+	defer cancel()
 	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false)
 }
 
-// call dispatches to the protocol-specific implementation. The per-call
-// timeout is applied here so every entry point (Probe, Complete) and every
-// client construction gets the protocol-family budget.
+// call dispatches to the protocol-specific implementation. Callers (Probe,
+// Complete) apply the protocol-family timeout budget before reaching it.
 func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool) Result {
-	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
-	defer cancel()
 	switch protocol {
 	case "anthropic":
 		return c.callAnthropic(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
