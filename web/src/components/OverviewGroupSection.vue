@@ -1,41 +1,51 @@
 <template>
   <el-card shadow="never" class="group-section">
-    <div class="group-header" @click="collapsed = !collapsed">
-      <el-icon class="group-arrow"><ArrowRight v-if="collapsed" /><ArrowDown v-else /></el-icon>
-      <span class="group-key">{{ group.key }}</span>
-      <span class="group-count">{{ group.endpoint_count }} 端点</span>
-      <!-- Uniform-protocol collapse (GH #54): when every filtered entry in
-           the group shares one protocol, one tag in the header replaces the
-           per-card tags. Skipped when grouping by protocol — the group key
-           already names it. -->
-      <el-tag
-        v-if="uniformProtocol && grouping !== 'protocol'"
-        :type="protocolTagType(uniformProtocol)"
-        size="small"
+    <!-- Header row (a11y harden 2026-07-29): the collapse hot zone is a real
+         full-width <button> with aria-expanded; the share button moves OUT
+         to a sibling — a <button> must never nest another <button>. -->
+    <div class="group-header-row">
+      <button
+        type="button"
+        class="group-header"
+        :aria-expanded="!collapsed"
+        @click="collapsed = !collapsed"
       >
-        {{ uniformProtocol }}
-      </el-tag>
-
-      <span class="group-stats">
-        <template v-for="s in presentStatuses" :key="s">
-          <StatusBadge :status="s" />
-          <span class="stat-num">{{ group.status_counts[s] }}</span>
-        </template>
-        <el-tag v-if="group.status_counts['disabled']" type="info" size="small">
-          禁用 {{ group.status_counts['disabled'] }}
+        <el-icon class="group-arrow"><ArrowRight v-if="collapsed" /><ArrowDown v-else /></el-icon>
+        <span class="group-key">{{ group.key }}</span>
+        <span class="group-count">{{ group.endpoint_count }} 端点</span>
+        <!-- Uniform-protocol collapse (GH #54): when every filtered entry in
+             the group shares one protocol, one tag in the header replaces the
+             per-card tags. Skipped when grouping by protocol — the group key
+             already names it. -->
+        <el-tag
+          v-if="uniformProtocol && grouping !== 'protocol'"
+          :type="protocolTagType(uniformProtocol)"
+          size="small"
+        >
+          {{ uniformProtocol }}
         </el-tag>
-      </span>
 
-      <!-- "本组:" prefix (GH #55): one container-level scope marker for both
-           metrics, so the group's availability/latency can never be read as
-           the global figures the banner carries. -->
-      <span class="group-metrics">
-        本组:24h 可用率 {{ formatPercent(group.availability_24h) }} · 均延 {{ formatMs(group.avg_latency_ms) }}
-      </span>
+        <span class="group-stats">
+          <template v-for="s in presentStatuses" :key="s">
+            <StatusBadge :status="s" />
+            <span class="stat-num">{{ group.status_counts[s] }}</span>
+          </template>
+          <el-tag v-if="group.status_counts['disabled']" type="info" size="small">
+            禁用 {{ group.status_counts['disabled'] }}
+          </el-tag>
+        </span>
+
+        <!-- "本组:" prefix (GH #55): one container-level scope marker for both
+             metrics, so the group's availability/latency can never be read as
+             the global figures the banner carries. -->
+        <span class="group-metrics">
+          本组:24h 可用率 {{ formatPercent(group.availability_24h) }} · 均延 {{ formatMs(group.avg_latency_ms) }}
+        </span>
+      </button>
 
       <!-- Per-group share (ticket 59): text button so it never competes with
-           the StatusBadge colors; stop propagation — the whole header row is
-           the collapse hot zone. -->
+           the StatusBadge colors; sibling of the collapse button, never
+           nested inside it. -->
       <el-button text class="group-share" @click.stop="emit('share')">
         <el-icon><Share /></el-icon>
         分享
@@ -117,14 +127,35 @@ const collapseCardProtocolTag = computed(
 .group-section {
   margin-bottom: var(--hs-space-3);
 }
+.group-header-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
 .group-header {
+  /* Full-width button reset (a11y harden 2026-07-29): the collapse hot zone
+     is a real <button> — strip UA chrome, inherit card typography. */
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: var(--hs-radius-sm);
   cursor: pointer;
   user-select: none;
-  margin-bottom: 10px;
   flex-wrap: wrap;
+}
+/* Keyboard focus = the board's single focus language: 1px brand inset ring. */
+.group-header:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--hs-brand);
 }
 .group-arrow {
   color: var(--hs-text-placeholder);
@@ -155,7 +186,9 @@ const collapseCardProtocolTag = computed(
   color: var(--hs-text-secondary);
 }
 .group-share {
-  margin-left: 4px;
+  /* Sibling of the collapse button; the header row's 4px gap carries the
+     spacing (was margin-left: 4px while nested in the old header div). */
+  flex: none;
 }
 .card-grid {
   display: grid;

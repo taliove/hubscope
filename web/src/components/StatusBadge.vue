@@ -59,7 +59,8 @@ const causeSuffix = computed(() =>
 }
 .status-failing .dot {
   background: var(--hs-status-failing);
-  animation: hs-blink 0.8s ease-in-out infinite;
+  /* --hs-blink (semantics.css) goes still under prefers-reduced-motion. */
+  animation: var(--hs-blink);
 }
 /* md stop (GH #54): the status word steps up to the card-primary scale; the
    dot grows to match. The cause sub-label stays sm/secondary — it is

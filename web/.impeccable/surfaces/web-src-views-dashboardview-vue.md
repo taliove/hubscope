@@ -61,9 +61,19 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 - **「本组」前缀(GH #55):** 组头 group-metrics 以「本组:」容器级前缀一次统领 24h 可用率与均延两项,与 HealthBanner 的全局口径区分归属,两个可用率不再裸名并列。
 - **筛选行下拉内联 label(GH #55,Dashboard 局部约定,不推广):** 协议/状态两个 select 前置内联 label(sm/secondary「协议:」「状态:」,与 select 同行),不再以 placeholder 兼任 label;关键词输入框与分组 select 不动。
 
+## 可访问性(2026-07-29 harden 批)
+- **四处主交互键盘可达(audit P1/P2,WCAG 2.1.1):**
+  - **stats strip 可点项(总数 + 四状态项)** → 真 `<button type="button">`(font/color inherit、background/border none,padding 不变);`:focus-visible` = 1px brand inset ring(与 stat-active 同语言)。点击过滤/再点取消行为不变。
+  - **组头折叠(OverviewGroupSection)** → 全宽 `<button type="button">`(text-align:left)+ `aria-expanded`;**分享按钮移出为兄弟节点**——`<button>` 内不得嵌套 `<button>`(原结构里 group-share 嵌在组头内,button 化必须拆出,视觉位置不变)。`:focus-visible` 同上 ring。
+  - **HealthBanner 整卡** → 仅 abnormal 可点态根节点挂 `role="button" tabindex="0"` + Enter/Space 触发同一 inspect;非可点态无 role 不进 tab 序。`:focus-visible` = brand inset ring + shadow-md(与 chips 同语言)。chips 已是真 button。
+  - **EndpointCard 整卡下钻** → el-card 根 `role="link" tabindex="0"` + Enter/Space 触发 goDetail;`:focus-visible` = 1px brand inset ring(box-shadow,与 3px 状态左边条共存,零布局位移)。卡内无嵌套交互(仅 tooltip),link role 安全。
+- **焦点语言全板统一:** 1px brand inset ring(`box-shadow: inset 0 0 0 1px var(--hs-brand)` + `outline: none`),不引入第二种焦点样式;ring 只在焦点态出现,不改变任何静态视觉。
+- **语义 h1:** DashboardView 挂视觉隐藏 h1「HubScope 服务状态总览」(标准 sr-only 模式:absolute 1px + clip,禁 display:none——那会把它从 a11y 树里删掉),零视觉变化。
+- **reduced-motion 替代(WCAG 2.3.3,前庭敏感):** failing 闪烁动画令牌化为 `--hs-blink`(semantics.css 唯一定义,StatusBadge failing 点与 HealthBanner alert-dot 两处消费);`@media (prefers-reduced-motion: reduce)` 下 `--hs-blink: none`——**闪烁在 reduced-motion 下静止,状态由实心橙 + 状态词双编码承载(动画是增强,从不是唯一通道)**。HealthBanner skeleton 的 pulse 动画沿用组件内既有 reduced-motion 豁免,保持不动。
+
 ## 体检基线与已排改进
 - critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
 - 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构(**已完成 2026-07-29**,约定见「组件规格」HealthBanner 节)/ #54 卡片层级重构(**已完成 2026-07-29**,约定见「组件规格」EndpointCard 节)/ #55 一致性批(**已完成 2026-07-29**,约定见「数据与行为约束」状态排序口径/双控/「本组」前缀/下拉 label 各条)。
 
 ## 未决(另立批次)
-- a11y(click-only 主交互键盘可达、dots aria 等价)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。
+- dots aria 等价(24h 分段条的屏幕阅读器等价信息)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。a11y harden 批(键盘可达/h1/reduced-motion)已完成 2026-07-29,约定见「可访问性」节。

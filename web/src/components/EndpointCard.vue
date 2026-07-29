@@ -1,5 +1,18 @@
 <template>
-  <el-card shadow="never" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
+  <!-- Whole-card drill-down (a11y harden 2026-07-29): the card navigates, so
+       it exposes role="link" + tabindex; Enter/Space run the same goDetail
+       as click. The card holds no nested interactive controls (tooltips
+       only), so the link role is safe. -->
+  <el-card
+    shadow="never"
+    class="endpoint-card"
+    :class="`card-${entry.status}`"
+    role="link"
+    tabindex="0"
+    @click="goDetail"
+    @keydown.enter="goDetail"
+    @keydown.space.prevent="goDetail"
+  >
     <div class="card-head">
       <span class="model-id" :title="entry.model_id">
         <span class="model-head">{{ modelSplit.head }}</span>
@@ -132,6 +145,12 @@ function dotTooltip(dot: OverviewDot): string {
 }
 .endpoint-card:hover {
   box-shadow: var(--hs-shadow-md);
+}
+/* Keyboard focus = the board's single focus language (1px brand inset ring);
+   box-shadow coexists with the 3px status border-left, no layout shift. */
+.endpoint-card:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--hs-brand), var(--hs-shadow-md);
 }
 .card-healthy {
   border-left-color: var(--hs-success);

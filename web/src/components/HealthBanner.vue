@@ -1,8 +1,16 @@
 <template>
+  <!-- Whole-card activation (a11y harden 2026-07-29): only the abnormal
+       state is clickable — then the root exposes role="button" + tabindex
+       and Enter/Space trigger the same inspect path as click. Non-clickable
+       states carry no role and stay out of the tab order. -->
   <div
     class="health-banner"
     :class="[isInitialLoading || isEmpty ? 'banner-loading' : `banner-${tone}`, { 'banner-clickable': clickable }]"
+    :role="clickable ? 'button' : undefined"
+    :tabindex="clickable ? 0 : undefined"
     @click="onClick"
+    @keydown.enter.prevent="onClick"
+    @keydown.space.prevent="onClick"
   >
     <!-- Fixed-height skeleton for the first load so the banner never jumps. -->
     <div v-if="isInitialLoading" class="banner-skeleton" aria-hidden="true">
@@ -158,6 +166,12 @@ function onChipInspect(status: EndpointStatus) {
 .banner-clickable:hover {
   box-shadow: var(--hs-shadow-md);
 }
+/* Keyboard focus = the board's single focus language (1px brand inset ring);
+   paired with shadow-md like the chips below. */
+.banner-clickable:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--hs-brand), var(--hs-shadow-md);
+}
 /* Initial-load skeleton sits on a neutral ground (spec 0003 §5.1), never on
    a status tint — green would falsely signal "all healthy" before data. */
 .banner-loading {
@@ -192,14 +206,15 @@ function onChipInspect(status: EndpointStatus) {
   font-weight: 600;
   line-height: 1.5;
 }
-/* Same pulse as StatusBadge's failing dot (sole animated state, §3). */
+/* Same pulse as StatusBadge's failing dot (sole animated state, §3);
+   --hs-blink (semantics.css) goes still under prefers-reduced-motion. */
 .alert-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
   background: var(--hs-status-failing);
-  animation: hs-blink 0.8s ease-in-out infinite;
+  animation: var(--hs-blink);
 }
 /* Meta area: right end of row 1. The cadence segment truncates first. */
 .meta {

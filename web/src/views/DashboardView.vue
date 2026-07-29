@@ -1,5 +1,8 @@
 <template>
   <div class="dashboard">
+    <!-- Semantic page heading (a11y harden 2026-07-29): screen readers get a
+         real h1; visually hidden — zero visual change. -->
+    <h1 class="visually-hidden">HubScope 服务状态总览</h1>
     <!-- First screen: one-sentence global health conclusion. The banner
          always reflects the unfiltered global picture. -->
     <HealthBanner
@@ -13,25 +16,29 @@
     <!-- Stats strip (replaces the old summary cards): one slim row of counts.
          Status items keep the click-to-filter / click-again-to-clear toggle;
          the active item gets a 1px brand inset ring on a transparent ground
-         (user feedback 2026-07-29 — no fill block fighting the status dots). -->
+         (user feedback 2026-07-29 — no fill block fighting the status dots).
+         Items are real <button>s (a11y harden 2026-07-29): keyboard-focusable
+         and activatable with Enter/Space, behavior unchanged. -->
     <div class="stats-strip">
-      <span
+      <button
+        type="button"
         class="stat-item stat-clickable"
         :class="{ 'stat-active': statusFilter === '' }"
         @click="statusFilter = ''"
       >
         总数 <span class="stat-num">{{ entries.length }}</span>
-      </span>
-      <span
+      </button>
+      <button
         v-for="status in SEVERITY_ORDER"
         :key="status"
+        type="button"
         class="stat-item stat-clickable"
         :class="{ 'stat-active': statusFilter === status }"
         @click="toggleStatusFilter(status)"
       >
         <StatusBadge :status="status" />
         <span class="stat-num">{{ statusCounts[status] }}</span>
-      </span>
+      </button>
       <span v-if="disabledCount > 0" class="stat-item stat-disabled">
         已停用 <span class="stat-num">{{ disabledCount }}</span>
       </span>
@@ -232,6 +239,20 @@ onMounted(start)
 </script>
 
 <style scoped>
+/* Visually hidden but present for assistive tech (standard sr-only pattern;
+   never display:none — that would drop it from the a11y tree). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
@@ -252,6 +273,12 @@ onMounted(start)
   gap: 6px;
 }
 .stat-clickable {
+  /* Button reset (a11y harden 2026-07-29): the clickable items are real
+     buttons now — strip the UA button chrome, inherit strip typography. */
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
   cursor: pointer;
   padding: var(--hs-space-1) var(--hs-space-2);
   border-radius: var(--hs-radius-sm);
@@ -267,6 +294,12 @@ onMounted(start)
 .stat-active {
   color: var(--hs-brand);
   background-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--hs-brand);
+}
+/* Keyboard focus mirrors the selected ring (a11y harden 2026-07-29) — the
+   single focus language of the board: 1px brand inset ring. */
+.stat-clickable:focus-visible {
+  outline: none;
   box-shadow: inset 0 0 0 1px var(--hs-brand);
 }
 .stat-num {
