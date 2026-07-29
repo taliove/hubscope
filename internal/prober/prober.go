@@ -25,9 +25,10 @@ func New(db *store.DB, client *hubclient.Client) *Prober {
 	return &Prober{db: db, client: client}
 }
 
-// RunRound executes one probe round for a single endpoint: a non-streaming
-// request followed by a streaming request (serially). Both probe records are
-// persisted and returned in order.
+// RunRound executes one probe round for a single endpoint. Chat protocols run
+// a non-streaming request followed by a streaming request (serially), image
+// protocols run a single call — they have no streaming mode or TTFT concept
+// (spec 0014). All probe records are persisted and returned in order.
 func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe, error) {
 	endpoint, err := p.db.GetEndpoint(endpointID)
 	if err != nil {
@@ -44,11 +45,15 @@ func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe,
 		return nil, err
 	}
 
-	// Non-streaming first, then streaming.
-	nonStream := p.probeAndStore(ctx, hub, model, endpoint, false)
-	stream := p.probeAndStore(ctx, hub, model, endpoint, true)
-
-	probes := []store.Probe{nonStream, stream}
+	var probes []store.Probe
+	if hubclient.IsImageProtocol(endpoint.Protocol) {
+		probes = []store.Probe{p.probeAndStore(ctx, hub, model, endpoint, false)}
+	} else {
+		// Non-streaming first, then streaming.
+		nonStream := p.probeAndStore(ctx, hub, model, endpoint, false)
+		stream := p.probeAndStore(ctx, hub, model, endpoint, true)
+		probes = []store.Probe{nonStream, stream}
+	}
 	if p.AfterRound != nil {
 		// A misbehaving hook must never take down probing.
 		func() {

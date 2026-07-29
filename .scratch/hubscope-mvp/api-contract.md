@@ -22,11 +22,11 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Models
 
-- `POST /api/models` → 201 `{"data": Model}`。Body: `{"hub_id": number, "model_id": string}`。服务端自动创建两条 Endpoint(anthropic + openai,均 enabled)。同一 Hub 下 model_id 重复 → 409。
+- `POST /api/models` → 201 `{"data": Model}`。Body: `{"hub_id": number, "model_id": string}`。服务端按试通结果自动创建 Endpoint(chat 双协议 anthropic + openai;capability=image 的模型追加 images_generation 试通,试通成功才建,spec 0014)。同一 Hub 下 model_id 重复 → 409。
 - `GET /api/models` → `{"data": [Model]}`
 
 `Model = {"id": number, "hub_id": number, "model_id": string, "origin": "manual", "status": "active", "capability": "chat", "endpoints": [Endpoint]}`
-`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai", "enabled": boolean, "interval_seconds": number|null}`(`interval_seconds` 为 null 表示用全局默认 300)
+`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai"|"images_generation", "enabled": boolean, "interval_seconds": number|null}`(`interval_seconds` 为 null 表示用全局默认 300;images_generation 端点创建时默认落 1800,spec 0014;images_edit 为后续票)
 
 ## Endpoints
 
@@ -34,7 +34,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Probes
 
-- `POST /api/endpoints/{id}/probe` → `{"data": {"endpoint_id": number, "results": [ProbeRecord, ProbeRecord]}}`。同步执行一轮 Probe:先非流式、后流式,两条记录都返回。
+- `POST /api/endpoints/{id}/probe` → `{"data": {"endpoint_id": number, "results": [ProbeRecord, ...]}}`。同步执行一轮 Probe:chat 协议先非流式、后流式,两条记录都返回;images_generation 协议单条记录(无流式/TTFT 概念,spec 0014)。
 - `GET /api/endpoints/{id}/probes?limit=50` → `{"data": [ProbeRecord]}`(按时间倒序,limit 默认 50、最大 200)
 
 `ProbeRecord = {"id": number, "endpoint_id": number, "streaming": boolean, "ok": boolean, "http_status": number, "error_summary": string|null, "latency_ms": number, "ttft_ms": number|null, "input_tokens": number|null, "output_tokens": number|null, "created_at": string(RFC3339)}`
@@ -42,17 +42,18 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## 探测语义(后端实现约定)
 
-- Prompt 固定:user message `"Reply with the single word: pong"`,`max_tokens` 16,单请求超时 60s。
+- Prompt 固定:user message `"Reply with the single word: pong"`,`max_tokens` 16,单请求超时 60s(chat 协议)。
 - anthropic 协议:`POST {base_url}/v1/messages`,headers `x-api-key`, `anthropic-version: 2023-06-01`;流式加 `"stream": true`。
 - openai 协议:`POST {base_url}/v1/chat/completions`,header `Authorization: Bearer <token>`;流式加 `"stream": true` 与 `"stream_options": {"include_usage": true}`。
-- `ok` = HTTP 200 且响应可解析为正常完成;`error_summary` = HTTP 状态 + 上游错误消息,截断 500 字符。网络层失败 `http_status` 记 0。
+- images_generation 协议(spec 0014):`POST {base_url}/v1/images/generations`,header `Authorization: Bearer <token>`;请求体最小形态 `{"model", "prompt", "n": 1}`(prompt 为固定简单生成指令;按模型名追加省钱参数是后续票);单请求超时 180s;`ok` = HTTP 2xx 且响应 `data` 数组非空、每项含 `b64_json` 或 `url`(200 空 data / 错体判失败);上游返回 `usage` 时 `input_tokens`/`output_tokens` 照常落库;每轮单条探测记录,`streaming=false`、`ttft_ms` 恒为 null。
+- `ok`(chat 协议)= HTTP 200 且响应可解析为正常完成;`error_summary` = HTTP 状态 + 上游错误消息,截断 500 字符。网络层失败 `http_status` 记 0。
 - 流式 `ttft_ms` = 发出请求到收到第一个含内容的 SSE 事件;token 用量尽量从响应/流末取得,取不到为 null。
 
 ## Overview(ticket 03)
 
 - `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
 
-`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
+`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai"|"images_generation", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
 
 `OverviewDot = {"bucket_start": string(RFC3339,整点), "total": number, "failures": number, "p50_ms": number|null(桶内仅成功探测的 P50;失败探测的延迟是失败耗时、绝不计入,无成功探测为 null)}`
 
@@ -66,7 +67,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 ## Discovery(ticket 05)
 
 - `POST /api/discovery/run` → `{"data": {"added": number, "retired": number, "endpoints_created": number}}`。立即对所有 Hub 执行一次同步(定时任务每小时也会自动跑)。
-- 同步语义:拉每个 Hub 的 `/v1/models`;新 model_id → 建 Model(origin="discovered", capability 按名单判断:含 "image"/"embedding"/"tts"/"dall" 等非对话关键词 → "non_chat",否则 "chat")并对双协议各发一次极简请求试通,通的建 enabled Endpoint,不通的建 disabled Endpoint;列表中消失且 origin="discovered" 的 Model → status="retired"(其 Endpoint 停止调度,历史保留);重新出现 → 恢复 "active"。手工添加的 Model(origin="manual")不受下线影响。
+- 同步语义:拉每个 Hub 的 `/v1/models`;新 model_id → 建 Model(origin="discovered",capability/family 按分类规则判定)并试通建端点——chat 双协议(anthropic/openai)对全模型试通,capability=image 的模型追加 images_generation 试通(spec 0014);试通成功的协议建 enabled Endpoint(images_generation 端点默认 interval_seconds=1800),试通失败不留占位端点(ticket 17);列表中消失且 origin="discovered" 的 Model → status="retired"(其 Endpoint 停止调度,历史保留);重新出现 → 恢复 "active"。手工添加的 Model(origin="manual")不受下线影响。
 
 ## Eval(ticket 08)
 

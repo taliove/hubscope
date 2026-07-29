@@ -330,8 +330,12 @@ func (e *Evaluator) storeResult(r store.EvalResult) {
 	}
 }
 
-// selectProtocol picks the protocol used to call a model: anthropic when its
-// endpoint is enabled, otherwise any enabled endpoint's protocol.
+// selectProtocol picks the chat protocol used to call a model: anthropic
+// when its endpoint is enabled, otherwise openai. Image-protocol endpoints
+// are never selected (spec 0014, R1 guard): an evaluation prompt sent to an
+// image endpoint would burn a paid generation per case and pollute scoring
+// with non-answers, so a model without an enabled chat endpoint reports "no
+// enabled endpoint" instead.
 func selectProtocol(endpoints []store.Endpoint) (string, bool) {
 	for _, ep := range endpoints {
 		if ep.Enabled && ep.Protocol == "anthropic" {
@@ -339,8 +343,8 @@ func selectProtocol(endpoints []store.Endpoint) (string, bool) {
 		}
 	}
 	for _, ep := range endpoints {
-		if ep.Enabled {
-			return ep.Protocol, true
+		if ep.Enabled && ep.Protocol == "openai" {
+			return "openai", true
 		}
 	}
 	return "", false

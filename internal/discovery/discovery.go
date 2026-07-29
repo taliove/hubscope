@@ -17,8 +17,24 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// protocols lists both hub API protocols in canonical endpoint order.
+// protocols lists the chat hub API protocols in canonical endpoint order.
+// Every model is trialed on them; image-capable models additionally trial
+// the image protocol (see trialProtocolsFor).
 var protocols = []string{"anthropic", "openai"}
+
+// trialProtocolsFor returns the protocols a model is trial-probed on: chat
+// protocols for every model, plus images_generation for image-capable models
+// only (spec 0014 / ADR 0012) — a wrong image trial would burn money per
+// call and produce upstream noise, so the gate stays strict. The image trial
+// runs after the chat trials: a fast-failing chat path costs nothing, and an
+// image trial only happens for models that classify as image anyway.
+func trialProtocolsFor(capability string) []string {
+	list := append([]string(nil), protocols...)
+	if capability == "image" {
+		list = append(list, hubclient.ProtocolImagesGeneration)
+	}
+	return list
+}
 
 // Stats summarizes one sync run across all hubs.
 type Stats struct {
@@ -220,7 +236,7 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 	}
 
 	created := 0
-	for _, protocol := range protocols {
+	for _, protocol := range trialProtocolsFor(model.Capability) {
 		if have[protocol] {
 			continue
 		}
@@ -231,9 +247,12 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 				"http_status", result.HTTPStatus, "error", errSummary(result.ErrorSummary))
 			continue
 		}
-		if _, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+		if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 			return created, err
 		} else if isNew {
+			if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
+				return created, err
+			}
 			created++
 		}
 	}

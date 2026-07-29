@@ -22,17 +22,51 @@ type discoveryStubHub struct {
 	lastListAuth string                     // Authorization header of the last /v1/models call
 	listFails    bool                       // /v1/models answers HTTP 500
 	hold         chan struct{}              // non-nil: /v1/models blocks until released
+	// imageModes controls the /v1/images/generations answer per model:
+	// "success" / "empty_data" / "bad_shape"; an absent entry answers 503
+	// (spec 0014: the image trial must default to failure so existing
+	// assertions on chat-only endpoint sets keep holding).
+	imageModes map[string]string
+	// imageReqs records every /v1/images/generations request body per model,
+	// so tests can assert the wire shape and that no image traffic happened.
+	imageReqs map[string][]imageRequest
+}
+
+// imageRequest is the recorded body of one /v1/images/generations call.
+type imageRequest struct {
+	Model  string
+	Prompt string
+	N      int
 }
 
 func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 	t.Helper()
 	stub := &discoveryStubHub{
-		modelIDs: modelIDs,
-		failing:  map[string]map[string]bool{},
+		modelIDs:   modelIDs,
+		failing:    map[string]map[string]bool{},
+		imageModes: map[string]string{},
+		imageReqs:  map[string][]imageRequest{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	t.Cleanup(stub.Close)
 	return stub
+}
+
+// setImageMode makes /v1/images/generations for the model answer per mode
+// ("success" / "empty_data" / "bad_shape"); any other value (including the
+// zero value) answers 503.
+func (s *discoveryStubHub) setImageMode(modelID, mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.imageModes[modelID] = mode
+}
+
+// imageRequests returns the recorded /v1/images/generations request bodies
+// for the model, in arrival order.
+func (s *discoveryStubHub) imageRequests(modelID string) []imageRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]imageRequest(nil), s.imageReqs[modelID]...)
 }
 
 // setModels replaces the model list returned by /v1/models.
@@ -123,6 +157,11 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasSuffix(r.URL.Path, "/v1/images/generations") {
+		s.handleImageGeneration(w, r)
+		return
+	}
+
 	isAnthropic := strings.HasSuffix(r.URL.Path, "/v1/messages")
 	protocol := "openai"
 	if isAnthropic {
@@ -151,6 +190,52 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeStubNonStream(w, isAnthropic)
+}
+
+// handleImageGeneration answers POST /v1/images/generations. The request is
+// always recorded, then validated against the minimal probe contract
+// {model, prompt, n:1} (spec 0014): a malformed body answers 400 so a
+// hardcoded-field implementation bug fails the trial instead of passing it.
+// The response shape is controlled per model via setImageMode and defaults
+// to 503.
+func (s *discoveryStubHub) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+		N      int    `json:"n"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	s.mu.Lock()
+	s.imageReqs[req.Model] = append(s.imageReqs[req.Model], imageRequest{
+		Model: req.Model, Prompt: req.Prompt, N: req.N,
+	})
+	mode := s.imageModes[req.Model]
+	fail := s.failing[req.Model]["images_generation"]
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if req.Model == "" || req.Prompt == "" || req.N != 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"invalid image generation request"}}`)
+		return
+	}
+	if fail {
+		mode = ""
+	}
+	switch mode {
+	case "success":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"b64_json":"aGVsbG8="}],`+
+			`"usage":{"total_tokens":15,"input_tokens":12,"output_tokens":3}}`)
+	case "empty_data":
+		fmt.Fprint(w, `{"created":1720000000,"data":[]}`)
+	case "bad_shape":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"revised_prompt":"painted square"}]}`)
+	default:
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
+	}
 }
 
 // createHubViaAPI registers a hub pointing at hubURL and returns its ID.

@@ -7,7 +7,14 @@ import (
 	"time"
 
 	"github.com/taliove/hubscope/internal/classifier"
+	"github.com/taliove/hubscope/internal/hubclient"
 )
+
+// DefaultImageProtocolIntervalSeconds is the creation-time interval override
+// for image-protocol endpoints (spec 0014 / ADR 0012): every image probe
+// generates a real image and costs money, so the 300s global default would
+// burn roughly $95/month/endpoint; 30 minutes brings it to about $16.
+const DefaultImageProtocolIntervalSeconds = 1800
 
 // Model represents a model registered on a hub
 type Model struct {
@@ -117,11 +124,20 @@ func (db *DB) CreateModel(hubID int64, modelID string, protocols []string) (*Mod
 		return nil, err
 	}
 
-	// Create one endpoint per working protocol
+	// Create one endpoint per working protocol. Image-protocol endpoints
+	// carry the 30-minute interval override from birth (see
+	// DefaultImageProtocolIntervalSeconds); chat endpoints keep a NULL
+	// override (global default). The override is written inline because the
+	// single connection is held by this transaction — a follow-up
+	// UpdateEndpoint call would deadlock.
 	for _, protocol := range protocols {
+		var interval interface{}
+		if hubclient.IsImageProtocol(protocol) {
+			interval = DefaultImageProtocolIntervalSeconds
+		}
 		_, err = tx.Exec(
-			"INSERT INTO endpoints (model_id, protocol, enabled, created_at) VALUES (?, ?, 1, ?)",
-			modelDBID, protocol, now.Format(time.RFC3339),
+			"INSERT INTO endpoints (model_id, protocol, enabled, interval_seconds, created_at) VALUES (?, ?, 1, ?, ?)",
+			modelDBID, protocol, interval, now.Format(time.RFC3339),
 		)
 		if err != nil {
 			return nil, err

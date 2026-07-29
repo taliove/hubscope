@@ -1,6 +1,8 @@
 // Domain types mirroring api-contract.md exactly. Field names must not drift.
 
-export type Protocol = 'anthropic' | 'openai'
+// images_generation joined in spec 0014; its tag color mapping is ticket #34
+// (until then image endpoints fall into the non-anthropic warning tag).
+export type Protocol = 'anthropic' | 'openai' | 'images_generation'
 
 export interface Hub {
   id: number
