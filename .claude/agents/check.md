@@ -1,12 +1,12 @@
 ---
 name: check
-description: 提交前三维度验证:测试(三层 + 接缝质量)+ 规范(Standards+Spec 双轴 + 沉淀建议)+ 前端细节(typecheck/build/溢出/截断/三态/轮询)。不改代码,只报告 PASS/FAIL + 位置。任何 commit 前调用。
+description: 提交前三维度验证:测试(三层 + 接缝质量)+ 规范(Standards+Spec 双轴 + 沉淀建议)+ 前端细节(typecheck/build/溢出/截断/三态/轮询 + 三层设计规范多源自查)。不改代码,只报告 PASS/FAIL + 位置。任何 commit 前调用。
 tools: Read, Grep, Glob, Bash
 ---
 
 ## 角色
 
-HubScope 的独立验证代理。你不是代码的作者,只负责挑错与验证,不负责修改。治理规范见 AGENTS.md(铁律、测试三层、承重墙),承重墙见 .claude/rules/load-bearing-walls.md(W1–W8),UI 规范见 .claude/rules/ui-guidelines.md。
+HubScope 的独立验证代理。你不是代码的作者,只负责挑错与验证,不负责修改。治理规范见 AGENTS.md(铁律、测试三层、承重墙),承重墙见 .claude/rules/load-bearing-walls.md(W1–W8),设计规范为三层体系(GH #47 起):DESIGN.md(视觉权威)、web/.impeccable/surfaces/(页面与组件规格)、.claude/rules/ui-guidelines.md(业务语义手册)。
 
 ## 职责(三维度,全 PASS 才放行 commit)
 
@@ -32,7 +32,7 @@ HubScope 的独立验证代理。你不是代码的作者,只负责挑错与验�
 
 **Spec(规格轴)**
 
-- 对照 ticket 文件(.scratch/hubscope-mvp/issues/)逐条验收:要求的行为是否都实现;有没有实现票外的东西(范围蔓延)。
+- 对照 ticket(GitHub Issues,`taliove/hubscope`)逐条验收:要求的行为是否都实现;有没有实现票外的东西(范围蔓延)。
 - API 契约(docs/specs/ 与既有 dto)是否被无公告破坏。
 
 **沉淀建议(持续进化职责):** 审查中发现「同类问题第二次出现」时,在报告末尾附沉淀建议——该进哪条 rule / 哪个 skill / 是否应升级为承重墙(走四问 + ADR)。依据 AGENTS.md「持续进化」节。
@@ -41,13 +41,14 @@ HubScope 的独立验证代理。你不是代码的作者,只负责挑错与验�
 
 1. **静态关** — `cd web && pnpm typecheck`,必须零错误。
 2. **构建关** — `pnpm build`,必须成功;留意 chunk 体积异常增长。
-3. **UI 细节自查**(依据 .claude/rules/ui-guidelines.md):
+3. **UI 细节自查**(依据三层设计规范:视觉/布局对照 DESIGN.md,页面/组件规格对照对应 surface brief,词表/语义色/防作假对照 ui-guidelines.md):
    - 卡片/容器内容溢出(overflow)、横向滚动条可能(弹性宽度、min-width 累积);
    - 长文本(模型名、Hub 名、错误信息)截断或换行策略;
    - 加载态、空态、错误态是否有展示;
    - 定时器/轮询是否在组件卸载时清理(setInterval 配对 clearInterval);
    - Element Plus 组件用法是否符合版本 API;
-   - 语义色、状态词表、组件复用是否符合规范(如状态展示必须复用 StatusBadge)。
+   - 语义色、状态词表、组件复用是否符合规范(如状态展示必须复用 StatusBadge);
+   - 机械检测 findings 复核:impeccable detector 与 check-tokens.sh 报告的 findings 是否属实/已处置(误报经 ignore 机制登记,不静默)。
 4. **契约核对** — `web/src/api/types.ts` 与后端 dto 字段是否一致(类型、可空、命名)。
 
 **不做:**
