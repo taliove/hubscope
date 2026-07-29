@@ -1,0 +1,59 @@
+---
+version: 1
+slug: "web-src-views-dashboardview-vue"
+primary_target: "web/src/views/DashboardView.vue"
+related_targets: ["web/src/components/HealthBanner.vue","web/src/components/OverviewGroupSection.vue","web/src/components/EndpointCard.vue","web/src/components/StatusBadge.vue","web/src/components/LatencySparkline.vue","web/src/components/AppHeader.vue","web/src/components/PublicFooter.vue"]
+---
+
+# 状态板 Dashboard — 表面简报
+
+## 范围与模式
+- 模式:**Operate**(公开只读监控面);route `/`,未登录可达。
+- 读者:状态板读者(3 秒看懂,可能投屏/路过/远距)。任务:一眼判断「健不健康、谁异常、多严重」。
+- 全球约定见 PRODUCT.md(读者模型)与 DESIGN.md(令牌/布局/暗色);本简报只登记页面级构成与组件规格。
+
+## 页面构成(自上而下)
+1. **AppHeader**(公开侧形态,见组件规格)
+2. **HealthBanner** 全局健康横幅
+3. **stats strip + 筛选行**(计数快捷过滤 + 关键词/协议/状态/分组控件 + 分享状态按钮)
+4. **分组 sections**(OverviewGroupSection 标题行 + EndpointCard 矩阵)
+5. **PublicFooter**
+
+## 组件规格
+
+### StatusBadge(唯一状态灯,迁自 ui-guidelines §5)
+全站唯一 endpoint 状态展示组件,需要展示状态处一律复用,禁止第二个状态灯实现。四态圆点 + 状态词双编码;failing 为唯一动画(hs-blink)。**降级成因副标签**(ticket #7,spec 0013):可选 prop `causes?: DegradeCause[]`,非空且 status=degraded 时在状态词后行内渲染「· 可用性」「· 延迟」,双命中「· 可用性 + 延迟」(顺序固定,与后端 degrade_causes 一致)。副标签是 Badge 文字一部分:无独立圆点/图标/底色/动画;字号同档 sm,颜色 secondary。防御:causes 非空但 status≠degraded 不渲染;聚合场景(Dashboard 汇总条、分组头部、HealthBanner)永不传 causes——成因是端点粒度信息,聚合层不下钻。
+
+### 24h 分段条(批 59 口径)
+24 格填满式时间条:格 = 一小时,xs(2px)圆角,2px 间距。三档着色:≥95% success、<95% warning、0%(有探测且全失败)danger、无探测数据 border 灰;阈值同时适用于单元格、聚合可用率数字与明细行可用率列,不为任何单一场景另定分界线。聚合口径 = 按小时对齐求和 total/failures(探测加权,与后端一致),禁止按端点简单平均。
+
+### LatencySparkline(EndpointCard 延迟曲线唯一组件,迁自 ui-guidelines §5)
+24h 分段条下方同构曲线行,按小时桶 P50 绘制(仅统计成功探测;全失败桶分段条显红、曲线断线)。形态:纯 SVG polyline,不引 ECharts;行高 28px,每卡恒渲染(无数据时同高灰轨道占位)。**x 轴与分段条构造性对齐(硬约束):** 两行标签统一固定宽 26px、flex:none;SVG 经 ResizeObserver 实测 strip 像素宽,桶中心 x 由几何纯函数按 flex+gap 公式计算(slot=(W−23×GAP)/24);**GAP=2px 是 dots CSS 与 sparkline 几何的唯一共享常量,改动必须同步**;禁止固定比例 viewBox + preserveAspectRatio="none"。曲线:stroke secondary 1.5px round,孤立单点段渲染 r=1.5 圆点;null 桶断线分段;曲线下方面积浅填充 bg-hover 实心(填充随段断,孤立点不填);曲线中性色不承载状态语义。**量程:** 数据驱动 yMax = max(峰值×1.25, 1000ms 下限);降级阈值虚线(2×7天 P50 基线,warning 1px dasharray 4 3)**按需出现** ⟺ 阈值 ≤ yMax,不出现零残余指示,tooltip 恒兜底,不加迟滞。hover:strip 顶层 24 列透明 overlay 分列 tooltip;p50 null 桶按事实二分措辞(无探测→「无数据」;全失败→「探测全部失败,无延迟样本」)。几何抽 utils/latencySparkline.ts 纯函数(vitest 覆盖),组件只渲染。
+
+### HealthBanner(全局健康横幅)
+四态:全部正常 / N 个端点降级 / N 个端点异常(含告警闪烁)/ 加载 skeleton。数据只反映全局,永不受页面过滤器影响。仅异常态可点(应用状态过滤并滚动定位)。大字结论用 display 档。其他页面不得复刻其结论文案模式。**GH #53 将重构:异常端点 chips + display 可用率大数字 + 计数归 strip,届时以回写后的本节为准。**
+
+### EndpointCard(端点卡)
+矩阵卡片,每卡:状态左边条 + 模型名(截断 + title hover)+ 协议 tag(集中映射 utils/protocol.ts,色语义=契约家族区分非健康度,GH #34)+ 评分徽章 + 三指标(24h 成功率/P50/P95)+ 24h 分段条 + LatencySparkline + 最近探测时间。整卡可点下钻 EndpointDetail。**GH #54 将重构卡内层级(状态行升格、P50 主/P95 次、middleTruncate 保后缀、评分徽章标签、同值 tag 收敛),届时以回写后的本节为准。**
+
+### OverviewGroupSection(分组 section)
+标题行:折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 组聚合指标(24h 可用率/均延)+ 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组头「均延」探测加权值可能略异,卡片内部自洽优先)。
+
+### AppHeader(公开侧形态)
+导航按登录态过滤:未登录只渲染公开页项(状态总览 + 评估榜单→/board);登录态 = 状态总览 + 评估榜单(→/eval)+ 任务中心,随路由切换重检。**未登录 header 一律不渲染登录按钮**(ticket 90 裁决:醒目登录按钮传递「内容要账号」错误信号;判定走 route meta.public),登录入口统一由 PublicFooter 承担。右栏:亮/暗切换(未登录可用,localStorage `hs:dark`,默认亮不跟随系统)+ 登录态时批次进度入口(仅存在未完成批次时渲染,3s 轮询 settle 即停,「批次运行中 X/Y」点击跳 /eval;禁用橙与闪烁)+ 角色 tag(集中映射 utils/role.ts,primary=管理权/info=非管理,语义=权限层级非健康度)。
+
+### PublicFooter(公开页管理入口唯一组件)
+hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs placeholder,链接 hover brand)。状态总览、EndpointDetail、/board 三页一律复用;/login 页不渲染;登录态照常渲染。豁免:/report/:token 分享页不挂页脚。
+
+## 数据与行为约束
+- **防作假:** 任何汇总结论必须标注统计范围;筛选快照不得引用未筛选聚合字段;空态中性,永不读作「全部正常」。
+- **轮询:** overview 走 utils/visibilityPoll.ts(10s,标签页隐藏降频 60s,回前台立即刷新),卸载必清理。
+- **状态排序口径:** stats strip 与组头共享同一严重度秩(failing>down>degraded>healthy);**GH #55 统一为重→轻,届时以回写为准。**
+- **首屏组织:** **GH #52 severitySort——组间按组内最高严重度降序、组内严重度前置,届时以回写为准。**
+
+## 体检基线与已排改进
+- critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
+- 已排票:#52 severitySort / #53 HealthBanner 重构 / #54 卡片层级 / #55 一致性批。
+
+## 未决(另立批次)
+- a11y(click-only 主交互键盘可达、dots aria 等价)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。
