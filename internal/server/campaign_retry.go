@@ -11,11 +11,16 @@ import (
 // done/failed campaigns with at least one null-score result qualify —
 // anything else conflicts; the preconditions are re-checked under the store's
 // state guard (ReopenCampaignForRetry) so a concurrent duplicate request
-// loses the race instead of double-firing a retry. Execution is asynchronous
-// (synchronous under WithSyncEval in tests), runs through the same bounded
-// (run × model) cell pool as a normal batch, and settles through the shared
-// SettleCampaign path — the progress grid, live feed and settle transition
-// need no retry-specific handling.
+// loses the race instead of double-firing a retry. The reopen also migrates
+// every run holding failed results back to running in the same transaction,
+// and the executor finishes each of them done/failed when its retried cells
+// complete (GH #39) — the progress grid therefore shows the in-flight retry
+// instead of the stale terminal state, and the batch re-settles from the
+// runs' fresh statuses. Execution is asynchronous (synchronous under
+// WithSyncEval in tests), runs through the same bounded (run × model) cell
+// pool as a normal batch, and settles through the shared SettleCampaign
+// path — the progress grid, live feed and settle transition need no
+// retry-specific handling.
 func (s *Server) handleRetryCampaignFailed(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {

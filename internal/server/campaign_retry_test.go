@@ -2,13 +2,20 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/taliove/hubscope/internal/server"
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // postRetryFailed calls POST /api/campaigns/{id}/retry-failed (GH #28).
@@ -99,6 +106,14 @@ func TestRetryFailedRefillsNullScoresOnly(t *testing.T) {
 	}
 	waitCampaignStatus(t, ts.URL, campaignID, "done")
 	mid := runDetail(t, ts.URL, runID)
+	if mid["status"] != "done" {
+		t.Errorf("run status after a retry that failed again = %v, want done "+
+			"(null scores are results, not run failure — GH #39)", mid["status"])
+	}
+	if report := campaignReport(t, ts.URL, campaignID); int(report["failed_results"].(float64)) != len(brokenBefore) {
+		t.Errorf("failed_results after a retry that failed again = %v, want %d remaining",
+			report["failed_results"], len(brokenBefore))
+	}
 	if !reflect.DeepEqual(smartBefore, resultsByModel(mid, "smart-model")) {
 		t.Error("scored results must stay byte-identical across a retry (W7)")
 	}
@@ -290,5 +305,263 @@ func TestRetryFailedCoversSetupFailureCells(t *testing.T) {
 		if r["score"] != nil {
 			t.Errorf("ghost case %v score = %v, want still null", r["case_id"], r["score"])
 		}
+	}
+}
+
+// stageNullResult records one null-score (failed) result for the model — a
+// staged retry unit (GH #28) in the production shape of GH #39.
+func stageNullResult(t *testing.T, db *store.DB, runID, modelDBID int64, modelID string, caseID int64) {
+	t.Helper()
+	if _, err := db.CreateEvalResult(store.EvalResult{
+		EvalRunID: runID, ModelDBID: modelDBID, ModelID: modelID,
+		CaseID: caseID, LatencyMs: 10,
+	}); err != nil {
+		t.Fatalf("create null result: %v", err)
+	}
+}
+
+// TestRetryFailedMigratesFailedRunThroughStateChain covers GH #39: a
+// settled-failed batch's retry must move the failed run through the real
+// state machine — failed → running at reopen (the grid stops showing the
+// stale failure), running → done once its failed cells are re-judged, so the
+// campaign re-settles to done. The clean sibling done run is never touched.
+func TestRetryFailedMigratesFailedRunThroughStateChain(t *testing.T) {
+	// Async eval: observes the mid-retry state chain (reopened run running,
+	// clean sibling untouched) while the stub gate holds the first retried
+	// call; drained by stub.release + waitCampaignStatus(done).
+	ts, stub, db := setupAsyncEvalEnv(t)
+	modelDBID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
+
+	instruction := suiteByKey(t, ts.URL, "cap_instruction")
+	reasoning := suiteByKey(t, ts.URL, "cap_reasoning")
+	instructionID := int64(instruction["id"].(float64))
+	reasoningID := int64(reasoning["id"].(float64))
+	icases := instruction["cases"].([]interface{})
+	case1 := int64(icases[0].(map[string]interface{})["id"].(float64))
+	case2 := int64(icases[1].(map[string]interface{})["id"].(float64))
+
+	// Stage the production shape of GH #39: a failed batch whose failed run
+	// holds two null-score results, next to a clean done run.
+	now := time.Now()
+	campaign, err := db.CreateCampaign("manual", []int64{modelDBID}, now)
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+	runA, err := db.CreateEvalRun(campaign.ID, instructionID, "manual", store.DefaultJudgeModel)
+	if err != nil {
+		t.Fatalf("create failed run: %v", err)
+	}
+	stageNullResult(t, db, runA.ID, modelDBID, "smart-model", case1)
+	stageNullResult(t, db, runA.ID, modelDBID, "smart-model", case2)
+	if err := db.FinishEvalRun(runA.ID, "failed", now); err != nil {
+		t.Fatalf("finish run A failed: %v", err)
+	}
+	runBID := presetScoredRun(t, db, campaign.ID, reasoningID, modelDBID, "smart-model", firstCaseID(t, reasoning), 0.8)
+	if err := db.SettleCampaign(campaign.ID, now); err != nil {
+		t.Fatalf("settle campaign: %v", err)
+	}
+
+	// Sanity: the batch settled failed, carrying two failed results.
+	if got := getCampaign(t, ts.URL, campaign.ID)["status"]; got != "failed" {
+		t.Fatalf("staged campaign status = %v, want failed", got)
+	}
+	report := campaignReport(t, ts.URL, campaign.ID)
+	if got := int(report["failed_results"].(float64)); got != 2 {
+		t.Fatalf("staged failed_results = %d, want 2", got)
+	}
+	runBBefore := runDetail(t, ts.URL, runBID)
+
+	stub.resetCalls()
+	stub.blockCalls()
+	t.Cleanup(stub.release)
+
+	resp := postRetryFailed(t, ts.URL, campaign.ID)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("retry-failed: expected 202, got %d", resp.StatusCode)
+	}
+
+	// Mid-retry: the retried run rejoined execution (no stale failure on the
+	// grid), the clean sibling kept its terminal state byte-for-byte.
+	mid := getCampaign(t, ts.URL, campaign.ID)
+	if mid["status"] != "running" {
+		t.Errorf("campaign status mid-retry = %v, want running", mid["status"])
+	}
+	progress := campaignProgress(t, mid)
+	if got := int(progress["running"].(float64)); got != 1 {
+		t.Errorf("mid-retry running runs = %d, want 1 (the retried run)", got)
+	}
+	if got := runDetail(t, ts.URL, runA.ID)["status"]; got != "running" {
+		t.Errorf("retried run status mid-retry = %v, want running", got)
+	}
+	if runBMid := runDetail(t, ts.URL, runBID); !reflect.DeepEqual(runBBefore, runBMid) {
+		t.Error("clean done run must stay byte-identical through the retry (GH #39 guard)")
+	}
+
+	stub.release()
+	waitCampaignStatus(t, ts.URL, campaign.ID, "done")
+
+	// Settled: the retried run finished done, every failed cell re-judged.
+	runAAfter := runDetail(t, ts.URL, runA.ID)
+	if runAAfter["status"] != "done" {
+		t.Errorf("retried run status after settle = %v, want done", runAAfter["status"])
+	}
+	for _, r := range resultsByModel(runAAfter, "smart-model") {
+		if r["score"] != 1.0 {
+			t.Errorf("retried case %v score = %v, want 1", r["case_id"], r["score"])
+		}
+	}
+	if runBAfter := runDetail(t, ts.URL, runBID); !reflect.DeepEqual(runBBefore, runBAfter) {
+		t.Error("clean done run must stay byte-identical after the retry (GH #39 guard)")
+	}
+	report = campaignReport(t, ts.URL, campaign.ID)
+	if got := report["failed_results"].(float64); got != 0 {
+		t.Errorf("failed_results after refill = %v, want 0", got)
+	}
+}
+
+// TestRetryFailedCancelFailsRunKeepsUntouchedNulls covers GH #39's
+// cancellation semantics, mirroring the normal executor (GH #26): a retry
+// whose context is canceled finishes the runs of every cell that never
+// started as failed — the campaign re-settles failed — while cases the
+// interrupted cell never reached keep their null rows and stay retryable.
+// The HTTP handler passes context.Background() (never canceled), so the test
+// drives the executor with an injected context, the same pattern as
+// TestCampaignFailedWhenBatchAborted; every observation stays on the HTTP
+// surface.
+func TestRetryFailedCancelFailsRunKeepsUntouchedNulls(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "retry-cancel.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	seedTestUser(t, db)
+
+	stub := newEvalStubHub()
+	t.Cleanup(stub.Close)
+	// The retry executor is driven directly (asynchronous by design);
+	// drain = cancel + wait for the executor, inside which RetryFailedResults
+	// runs synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	// One worker: the first cell blocks inside its second case, so cancelling
+	// before release makes the second model's cell observe the canceled
+	// context deterministically (the batch-abort freeze point).
+	if err := db.SetSettingInt(store.SettingEvalConcurrency, 1); err != nil {
+		t.Fatalf("set eval_concurrency: %v", err)
+	}
+	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
+	twoID := createEvalModel(t, ts.URL, stub.URL, "chat-two")
+
+	instruction := suiteByKey(t, ts.URL, "cap_instruction")
+	instructionID := int64(instruction["id"].(float64))
+	icases := instruction["cases"].([]interface{})
+	case1 := int64(icases[0].(map[string]interface{})["id"].(float64))
+	case2 := int64(icases[1].(map[string]interface{})["id"].(float64))
+
+	now := time.Now()
+	campaign, err := db.CreateCampaign("manual", []int64{smartID, twoID}, now)
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+	run, err := db.CreateEvalRun(campaign.ID, instructionID, "manual", store.DefaultJudgeModel)
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	for _, m := range []struct {
+		dbID int64
+		id   string
+	}{{smartID, "smart-model"}, {twoID, "chat-two"}} {
+		stageNullResult(t, db, run.ID, m.dbID, m.id, case1)
+		stageNullResult(t, db, run.ID, m.dbID, m.id, case2)
+	}
+	if err := db.FinishEvalRun(run.ID, "failed", now); err != nil {
+		t.Fatalf("finish run failed: %v", err)
+	}
+	if err := db.SettleCampaign(campaign.ID, now); err != nil {
+		t.Fatalf("settle campaign: %v", err)
+	}
+
+	// Reopen exactly as the HTTP handler does, then drive the executor with
+	// the cancelable context.
+	reopened, err := db.ReopenCampaignForRetry(campaign.ID)
+	if err != nil || !reopened {
+		t.Fatalf("reopen staged campaign: reopened=%v err=%v", reopened, err)
+	}
+
+	stub.resetCalls()
+	stub.blockCallsAfter(1) // the first retried case answers; the second blocks
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.Evaluator().RetryFailedResults(ctx, campaign.ID)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		stub.releaseGlobal()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("retry executor did not stop within 10s of cancellation")
+		}
+	})
+
+	waitFor(t, "second retried call reaching the stub", func() bool {
+		return stub.grandTotalCalls() >= 2
+	})
+	cancel()
+	stub.releaseGlobal()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("retry executor did not finish after cancellation")
+	}
+
+	// The interrupted run failed (the second model's cell never started) and
+	// the campaign re-settles failed; work completed before the cancel kept
+	// its score, everything untouched kept its null row.
+	if got := runDetail(t, ts.URL, run.ID)["status"]; got != "failed" {
+		t.Errorf("run status after canceled retry = %v, want failed", got)
+	}
+	if got := getCampaign(t, ts.URL, campaign.ID)["status"]; got != "failed" {
+		t.Errorf("campaign status after canceled retry = %v, want failed", got)
+	}
+	detail := runDetail(t, ts.URL, run.ID)
+	smart := map[int64]interface{}{}
+	for _, r := range resultsByModel(detail, "smart-model") {
+		smart[int64(r["case_id"].(float64))] = r["score"]
+	}
+	if smart[case1] != 1.0 {
+		t.Errorf("case judged before cancel: score = %v, want 1", smart[case1])
+	}
+	if smart[case2] != nil {
+		t.Errorf("case interrupted by cancel: score = %v, want null", smart[case2])
+	}
+	for _, r := range resultsByModel(detail, "chat-two") {
+		if r["score"] != nil {
+			t.Errorf("never-started cell case %v score = %v, want null (untouched)", r["case_id"], r["score"])
+		}
+	}
+	report := campaignReport(t, ts.URL, campaign.ID)
+	if got := int(report["failed_results"].(float64)); got != 3 {
+		t.Errorf("failed_results after canceled retry = %d, want 3", got)
+	}
+
+	// The interrupted retry stays retryable: a second pass heals the batch.
+	resp := postRetryFailed(t, ts.URL, campaign.ID)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("second retry-failed: expected 202, got %d", resp.StatusCode)
+	}
+	waitCampaignStatus(t, ts.URL, campaign.ID, "done")
+	if got := runDetail(t, ts.URL, run.ID)["status"]; got != "done" {
+		t.Errorf("run status after healing retry = %v, want done", got)
+	}
+	report = campaignReport(t, ts.URL, campaign.ID)
+	if got := report["failed_results"].(float64); got != 0 {
+		t.Errorf("failed_results after healing retry = %v, want 0", got)
 	}
 }
