@@ -3,10 +3,15 @@
 import { ref, computed, onBeforeUnmount, type Ref } from 'vue'
 import { fetchOverview } from '@/api/overview'
 import type { OverviewEntry, OverviewGroup, EndpointStatus } from '@/api/types'
+import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 
 // How often the dashboard refreshes, in milliseconds. Exported so the health
 // banner can state the interval in its subtext without duplicating the value.
 export const POLL_INTERVAL_MS = 10_000
+// Hidden-tab cadence (spec 0015 decision 5, ui-guidelines §6): a dashboard
+// left on a wall screen keeps refreshing, just six times slower; returning
+// to the tab triggers an immediate refresh.
+export const HIDDEN_POLL_INTERVAL_MS = 60_000
 
 export function useOverview() {
   const entries: Ref<OverviewEntry[]> = ref([])
@@ -22,7 +27,7 @@ export function useOverview() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  let timer: ReturnType<typeof setInterval> | null = null
+  let poll: VisibilityPollHandle | null = null
 
   async function reload() {
     loading.value = true
@@ -47,14 +52,15 @@ export function useOverview() {
   // Start polling; safe to call once per view mount.
   function start() {
     void reload()
-    timer = setInterval(() => void reload(), POLL_INTERVAL_MS)
+    poll = createVisibilityPoll(() => void reload(), {
+      intervalMs: POLL_INTERVAL_MS,
+      hiddenIntervalMs: HIDDEN_POLL_INTERVAL_MS,
+    })
   }
 
   function stop() {
-    if (timer !== null) {
-      clearInterval(timer)
-      timer = null
-    }
+    poll?.clear()
+    poll = null
   }
 
   onBeforeUnmount(stop)

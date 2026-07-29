@@ -216,6 +216,7 @@
 - **三态必备:** 加载态(skeleton 或 loading)、空态(空数据说明 + 引导操作)、错误态(错误原因 + 重试入口),任何数据区块缺一不可。
 - **长文本:** 模型名/Hub 名/错误信息一律截断 + `title` hover 全显。
 - **轮询:** `setInterval` 必配对清理(组件卸载时);可点汇总卡有反馈态且可再点取消(fix fc8bdb6)。
+- **轮询可见性感知(GH #22 登记,spec 0015 决策 5):** 所有页面轮询一律走共享封装 `utils/visibilityPoll.ts` 的 `createVisibilityPoll`,禁止各处自造 `visibilitychange` 监听、禁止第三套轮询实现。口径:标签页隐藏时——状态板 overview 轮询 10s 降频为 60s(`useOverview.HIDDEN_POLL_INTERVAL_MS`;挂大屏/后台标签页场景降频不停摆,读者切回时数据不至长时间陈旧);批次类轮询(AppHeader 批次进度 3s、/eval 3s、报告页 3s、EvalOpsPanel 批次追踪 1.5s)整段暂停;`visibilitychange` 回前台立即触发一次刷新再恢复原周期(`refreshOnVisible` 默认开)。settle 转场口径不变:批次在隐藏期间 settle 时,回前台的立即刷新即「观察到 settle 的那次响应」,照常停轮询并走 ElMessage 提示。清理纪律不变:卸载时调 `handle.clear()`(替代原 `clearInterval` 对),封装内部同时停表并移除 visibility 监听。
 - **即时反馈:** 点击类操作在请求期间给 loading 或禁用态,不静默等待。
 - **榜单/报告类消费页三态与轮询:** 批次切换器空态(无任何批次 → 空态 + 引导文案)、榜单空态、下钻趋势加载态缺一不可;选中等待中/运行中批次时榜单区呈现进度态(进度 + 批次状态词),不显示半成品名次,失败批次给错误态 + 原因;仅当选中未完成批次时才轮询进度,完成后停轮询并刷新榜单,卸载必清理。
 - **导出物料的复制降级(批 56):** 「复制图片」依赖 `navigator.clipboard.write`,非安全上下文(HTTP 裸 IP)必须置灰 + 提示降级路径(「当前环境不支持复制图片,请使用下载」);下载能力不得受安全上下文影响,永远可用。

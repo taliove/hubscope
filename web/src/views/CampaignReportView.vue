@@ -102,6 +102,7 @@ import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
 import { failedBatchWarning } from '@/utils/evalWording'
+import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done
@@ -160,16 +161,19 @@ function isUnfinished(status: CampaignStatus): boolean {
 
 // Poll while the batch is unfinished so progress feels live (ui-guidelines:
 // every setInterval pairs with cleanup). The tick that observes a settled
-// batch re-arms into nothing, so polling stops on its own.
-let pollTimer: ReturnType<typeof setInterval> | undefined
+// batch re-arms into nothing, so polling stops on its own. The poll pauses
+// in a hidden tab and refreshes immediately on return (ui-guidelines §6);
+// a batch that settles while hidden is observed by that return refresh, so
+// the settle transition semantics are unchanged.
+let poll: VisibilityPollHandle | null = null
 function armPolling() {
-  clearInterval(pollTimer)
-  pollTimer = undefined
+  poll?.clear()
+  poll = null
   if (report.value && isUnfinished(report.value.status)) {
-    pollTimer = setInterval(reload, 3000)
+    poll = createVisibilityPoll(() => void reload(), { intervalMs: 3000 })
   }
 }
-onBeforeUnmount(() => clearInterval(pollTimer))
+onBeforeUnmount(() => poll?.clear())
 
 // Trend drill-down (ticket 32): the row under inspection; null = dialog closed.
 const trendModel = ref<ReportRow | null>(null)
