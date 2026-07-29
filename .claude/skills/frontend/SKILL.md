@@ -8,7 +8,7 @@ description: 前端开发流程:设计评审(按需调 plan 的 UI 评审子能�
 0. **设计评审(按需)**:若属新增视图/新交互模式/新复用组件/改动语义色或状态表达,先调 `plan` agent 的 UI/UX 设计评审子能力(对照 .claude/rules/ui-guidelines.md),评审意见作为实现约束;其余改动跳过本步。
 1. **契约核对**:先确认后端 dto,更新 `web/src/api/types.ts`(单一事实源),再动视图;字段命名/可空与后端严格一致。
    - **数字语义双端同源(ticket #8 CRITICAL 教训):** 前端绘制任何承载后端规则语义的阈值/档位线/分界线时,系数必须以命名常量落到 `utils/` 并在注释中引用后端常量出处(文件:行,如 `internal/status/status.go` 的 `latencyDegradeFactor`),组合值必须进 vitest;禁止把系数口头翻译进组件字面量。
-2. **改动约束**:沿用既有结构(views / components / api / router);Element Plus 组件优先,不引入新 UI 库;样式 scoped,色板与组件用法遵循 .claude/rules/ui-guidelines.md(语义令牌三层架构 tokens/semantics/ep-theme,页面只消费 semantics 层)。
+2. **改动约束**:沿用既有结构(views / components / api / router);Element Plus 组件优先,不引入新 UI 库;样式 scoped,色板与组件用法遵循 .claude/rules/ui-guidelines.md(语义令牌三层架构 tokens/semantics/ep-theme,页面只消费 semantics 层)。**枚举词表单一来源模式(GH #38 check 沉淀):** 枚举类词表(协议、角色、状态等)的选项列表一律从 `Record<UnionType, ...>` 全键映射经 `Object.keys` 导出(先例 `web/src/utils/protocol.ts` 的 `PROTOCOL_TAG_TYPES` → `PROTOCOLS`)——TS 强制映射与 union 同步,union 新增成员时 typecheck 自动倒逼全部消费点,过滤器/下拉永不漏项;禁止各组件手抄选项数组。
 3. **UI 细节清单**(用户对此敏感,逐项过):
    - 卡片内容溢出与横向滚动条(历史 bug:24h 小点需弹性宽度);
    - 长文本(模型名/Hub 名/错误)截断与 hover 全显;
