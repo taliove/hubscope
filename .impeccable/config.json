@@ -5,5 +5,21 @@
       "maxFindings": 5,
       "maxChars": 8000
     }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "32px",
+        "files": [
+          "web/src/components/EvalCard.vue",
+          "web/src/components/StatusCard.vue"
+        ],
+        "createdAt": "2026-07-29T09:59:36.550Z",
+        "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines s2b 既定机制(导出物料不受令牌字阶约束)"
+      }
+    ]
   }
 }
