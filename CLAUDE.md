@@ -9,11 +9,13 @@
 | `.claude/agents/` | 项目级代理(3 个,扁平无 Lead):`plan`(开工前影响分析 + UI 评审)/ `write`(ticket 实现)/ `check`(提交前三维度验证)。调用网与派发协议见 [.claude/rules/collaboration.md](./.claude/rules/collaboration.md) |
 | `.claude/skills/` | 5 个领域 skill,write agent 按任务组合使用:`product`(产品形态/读者/防作假/README 门面)/ `frontend`(前端开发流程)/ `backend`(后端开发流程)/ `database`(数据库变更)/ `ops`(发布与部署) |
 | `.claude/rules/` | 规则正文:load-bearing-walls.md(承重墙 W1–W8)、ui-guidelines.md(设计规范,由 `plan` agent 维护)、collaboration.md(协作协议 + 调用网)、graph-tools.md(graph 使用纪律) |
-| `.claude/hooks/` | 自动化钩子:block-no-verify.sh(PreToolUse 拦 `--no-verify`)、format-go.sh(PostToolUse 格式化 Go)、format-web.sh(PostToolUse 格式化 `web/src`) |
+| `.claude/hooks/` | 自动化钩子:block-no-verify.sh(PreToolUse 拦 `--no-verify`)、format-go.sh(PostToolUse 格式化 Go)、format-web.sh(PostToolUse 格式化 `web/src`)、check-tokens.sh(PostToolUse 令牌纪律:禁硬编码色值 / 禁 `--el-*`,豁免 styles 层、BrandMark、chartColors、`--el-card-padding`,只报不拦) |
 
 ## 硬门禁
 
-clone 后跑一次 `make hooks` 启用 `.githooks/`:pre-commit(凭证扫描 + `make test`)、commit-msg(Conventional Commits 校验)、pre-push(保护 main + `make test`)。`.claude/settings.json` 接线上表 hooks(PreToolUse 接 block-no-verify;PostToolUse `Edit|Write` 接 format-go 与 format-web)。
+clone 后跑一次 `make hooks` 启用 `.githooks/`:pre-commit(凭证扫描 + `make test`)、commit-msg(Conventional Commits 校验)、pre-push(保护 main + `make test`)。`.claude/settings.json` 接线上表 hooks(PreToolUse 接 block-no-verify;PostToolUse `Edit|Write` 接 format-go、format-web 与 check-tokens)。
+
+**impeccable 设计检测(GH #51 起):** 两层——① detector hook(impeccable 自带,immediate 层 per-edit + Stop 深扫全规则),机器本地启用:manifest 写在 gitignore 的 `.claude/settings.local.json`,需本机存在 `.claude/skills/impeccable/` 后运行 `/impeccable hooks on`;② check-tokens.sh(上表,全仓共享,补 detect.mjs 不覆盖的令牌纪律盲区)。降噪:impeccable findings 经 `/impeccable hooks ignore-value|ignore-file|ignore-rule` 登记豁免(只读配置走 `.impeccable/config.json`,不改脚本);check-tokens 的新豁免需先在规范登记再加进脚本豁免表。
 
 ## 设计规范
 
