@@ -17,6 +17,13 @@ const PROTOCOL_TAG_TYPES: Record<Protocol, TagProps['type']> = {
   images_edit: 'info',
 }
 
+// PROTOCOLS lists every protocol in the union — the keys of the exhaustive
+// Record above, so the type system keeps this list in sync with the Protocol
+// type automatically. Consumers needing protocol options (e.g. the dashboard
+// protocol filter, GH #38) render from this single source instead of
+// hand-listing values.
+export const PROTOCOLS = Object.keys(PROTOCOL_TAG_TYPES) as Protocol[]
+
 // protocolTagType returns the el-tag `type` for a protocol. Unknown/null
 // protocols fall back to 'info' (neutral) — defensive, and automatically
 // compatible with future protocols (e.g. images_edit landed before its
