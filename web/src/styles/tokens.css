@@ -37,7 +37,13 @@
 
   /* Functional base colors (mid-tone, same lightness system as primary). */
   --hs-success-base: #059669;
-  --hs-warning-base: #d97706;
+  /* Warning: yellow-700 (2026-07-29 ruling, appendix B #14) — the old amber-600
+     #d97706 measured only 3.19:1 on white (AA needs 4.5). Yellow-700 passes
+     at 4.92:1 AND shifts hue away from failing orange (bigger hue gap than
+     the old value). Dark theme keeps the old #d97706 (5.5+ on dark grounds)
+     via --hs-warning-dark; see semantics.css html.dark. */
+  --hs-warning-base: #a16207;
+  --hs-warning-dark: #d97706;
   --hs-danger-base: #dc2626;
   --hs-info-base: #45565c; /* gray-600 */
 

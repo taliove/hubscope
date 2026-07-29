@@ -60,8 +60,11 @@
   --hs-brand-active: var(--hs-teal-600);
 
   /* Functional colors keep the same values (status dot + label double
-     encoding stays legible); info steps up one gray level for readability. */
+     encoding stays legible); info steps up one gray level for readability.
+     Warning splits (appendix B #14): light takes yellow-700 for AA on white,
+     dark keeps amber-600 (5.5+ on dark grounds, no benefit in changing). */
   --hs-info: var(--hs-gray-500);
+  --hs-warning: var(--hs-warning-dark);
 
   /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
   --hs-status-failing: var(--hs-orange-400);
@@ -98,7 +101,8 @@
 
 /* Shared alert blink for the failing status (W5 semantics). Sole definition —
    StatusBadge and HealthBanner both consume it; never copy it into a
-   component's scoped styles. */
+   component's scoped styles. Consumers animate via the --hs-blink token
+   below so the reduced-motion override lives in exactly one place. */
 @keyframes hs-blink {
   0%,
   100% {
@@ -106,5 +110,19 @@
   }
   50% {
     opacity: 0.2;
+  }
+}
+
+:root {
+  /* The single failing-blink animation token (a11y harden 2026-07-29). */
+  --hs-blink: hs-blink 0.8s ease-in-out infinite;
+}
+
+/* prefers-reduced-motion (WCAG 2.3.3, vestibular safety): the failing blink
+   goes still — the solid failing orange + status word already double-encode
+   the state, so animation is an enhancement, never the only channel. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hs-blink: none;
   }
 }

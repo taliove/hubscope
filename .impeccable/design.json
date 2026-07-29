@@ -37,8 +37,8 @@
       },
       "warning": {
         "role": "functional",
-        "displayName": "Warning 黄",
-        "canonical": "#d97706",
+        "displayName": "Warning 黄(yellow-700,2026-07-29 修订)",
+        "canonical": "#a16207",
         "tonalRamp": [
           "#78350f",
           "#92400e",
@@ -48,7 +48,8 @@
           "#fbbf24",
           "#fde68a",
           "#fffbeb"
-        ]
+        ],
+        "darkValue": "#d97706"
       },
       "danger": {
         "role": "functional",
@@ -205,14 +206,14 @@
       "kind": "chip",
       "refersTo": "tag",
       "description": "全站唯一 endpoint 状态展示:语义色圆点 + 状态词双编码;告警态橙 + 闪烁。",
-      "html": "<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-degraded\"></span><span class=\"ds-word\" style=\"color:#d97706\">降级</span><span class=\"ds-cause\">· 可用性 + 延迟</span></span>&nbsp;&nbsp;<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-failing\"></span><span class=\"ds-word\" style=\"color:#c2410c\">告警</span></span>",
-      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; } .ds-dot-degraded { background: #d97706; } .ds-dot-failing { background: #c2410c; animation: ds-blink 1.2s infinite; } .ds-word { font-weight: 400; } .ds-cause { color: var(--hs-text-secondary, #617379); } @keyframes ds-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }"
+      "html": "<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-degraded\"></span><span class=\"ds-word\" style=\"color:#a16207\">降级</span><span class=\"ds-cause\">· 可用性 + 延迟</span></span>&nbsp;&nbsp;<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-failing\"></span><span class=\"ds-word\" style=\"color:#c2410c\">告警</span></span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; } .ds-dot-degraded { background: #a16207; } .ds-dot-failing { background: #c2410c; animation: ds-blink 1.2s infinite; } .ds-word { font-weight: 400; } .ds-cause { color: var(--hs-text-secondary, #617379); } @keyframes ds-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }"
     },
     {
       "name": "24h 分段条",
       "kind": "custom",
       "description": "24 格填满式时间条,格=一小时,三档着色 + 无数据灰;xs(2px)圆角专属。",
-      "html": "<div class=\"ds-strip\"><i style=\"background:#059669\"></i><i style=\"background:#059669\"></i><i style=\"background:#d97706\"></i><i style=\"background:#059669\"></i><i style=\"background:#dc2626\"></i><i style=\"background:#059669\"></i><i style=\"background:#e0e8ea\"></i><i style=\"background:#059669\"></i></div>",
+      "html": "<div class=\"ds-strip\"><i style=\"background:#059669\"></i><i style=\"background:#059669\"></i><i style=\"background:#a16207\"></i><i style=\"background:#059669\"></i><i style=\"background:#dc2626\"></i><i style=\"background:#059669\"></i><i style=\"background:#e0e8ea\"></i><i style=\"background:#059669\"></i></div>",
       "css": ".ds-strip { display: flex; gap: 2px; } .ds-strip i { flex: 1; height: 16px; border-radius: 2px; display: block; }"
     },
     {
@@ -227,7 +228,7 @@
       "kind": "chip",
       "refersTo": "tag",
       "description": "full(999px)圆角胶囊,计数/汇总入口;可点,再点取消。",
-      "html": "<span class=\"ds-chip\"><i style=\"background:#059669\"></i>正常 8</span> <span class=\"ds-chip\"><i style=\"background:#d97706\"></i>降级 15</span> <span class=\"ds-chip ds-chip-active\"><i style=\"background:#c2410c\"></i>告警 1</span>",
+      "html": "<span class=\"ds-chip\"><i style=\"background:#059669\"></i>正常 8</span> <span class=\"ds-chip\"><i style=\"background:#a16207\"></i>降级 15</span> <span class=\"ds-chip ds-chip-active\"><i style=\"background:#c2410c\"></i>告警 1</span>",
       "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 12px; border-radius: 999px; background: var(--hs-bg-hover, #eff4f5); font-size: 13px; color: var(--hs-text-regular, #324249); cursor: pointer; border: 1px solid transparent; } .ds-chip i { width: 8px; height: 8px; border-radius: 50%; } .ds-chip:hover { border-color: var(--hs-border, #e0e8ea); } .ds-chip-active { border-color: var(--hs-brand, #0c8078); }"
     }
   ],

@@ -22,7 +22,7 @@ export interface ChartColors {
 export const CHART_COLORS_LIGHT: ChartColors = {
   brand: '#0c8078', // --hs-brand (teal-600)
   success: '#059669', // --hs-success
-  warning: '#d97706', // --hs-warning
+  warning: '#a16207', // --hs-warning
   danger: '#dc2626', // --hs-danger
   failing: '#c2410c', // --hs-status-failing (orange-700)
   textRegular: '#324249', // --hs-text-regular (gray-700)
