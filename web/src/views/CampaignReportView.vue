@@ -12,6 +12,12 @@
           <span class="meta-time">{{ formatTime(report.started_at) }}</span>
         </template>
         <span class="header-actions no-print">
+          <!-- Retry-failed (GH #28): settled batches with failed (null-score)
+               results only; confirm first, then the batch returns to the
+               running view with its usual polling. Scored results never move. -->
+          <el-button v-if="retryFailedVisible" size="small" :loading="retrying" @click="onRetryFailed">
+            重跑失败项
+          </el-button>
           <!-- Link share (ADR 0006) renamed to disambiguate from the
                leaderboard's image share (ticket 76); behavior unchanged. -->
           <el-button v-if="!shared" size="small" :loading="sharing" @click="onShare">复制链接</el-button>
@@ -98,7 +104,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/client'
-import { getCampaignReport } from '@/api/campaigns'
+import { getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -136,6 +142,42 @@ const loading = ref(false)
 const error = ref('')
 const errorStatus = ref(0)
 const sharing = ref(false)
+const retrying = ref(false)
+
+// Retry-failed entry (GH #28): console-only, settled batches with failed
+// (null-score) results; the shared view never mutates anything.
+const retryFailedVisible = computed(
+  () => !shared && report.value !== null && !isUnfinished(report.value.status) && report.value.failed_results > 0,
+)
+
+// Re-run the batch's failed cells after an explicit confirm (ui-guidelines
+// feedback trio: confirm for the consequential action, message for the
+// outcome). The accepted retry reverts the batch to running — the reload
+// below lands on the progress view and re-arms the usual polling.
+async function onRetryFailed() {
+  if (!report.value) return
+  const campaignID = report.value.id
+  const failures = report.value.failed_results
+  try {
+    await ElMessageBox.confirm(
+      `将重新评估批次 #${campaignID} 的 ${failures} 个失败项(只补未判分的题目,已判分结果不变),期间批次回到运行中。`,
+      '重跑失败项',
+      { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // cancelled — no feedback needed
+  }
+  retrying.value = true
+  try {
+    await retryCampaignFailed(campaignID)
+    ElMessage.success(`已发起批次 #${campaignID} 的失败项重跑`)
+    await reload()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    retrying.value = false
+  }
+}
 
 // In shared mode only a 404 means the link is dead; server/network failures
 // get a retry instead of a misleading "link gone" message.

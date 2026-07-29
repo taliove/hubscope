@@ -50,6 +50,17 @@
             <span v-if="selected.finished_at" class="meta-time">
               结束于 {{ formatTime(selected.finished_at) }}
             </span>
+            <!-- Retry-failed (GH #28): settled batches with failed
+                 (null-score) results; the batch returns to the running view
+                 with its usual polling after the confirm. -->
+            <el-button
+              v-if="retryFailedVisible"
+              size="small"
+              :loading="retrying"
+              @click="onRetryFailed"
+            >
+              重跑失败项
+            </el-button>
           </template>
         </div>
       </el-card>
@@ -129,8 +140,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { listCampaigns, getCampaignLiveFeed, getCampaignReport } from '@/api/campaigns'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -175,6 +186,39 @@ const query = ref<{ family?: string; sort: string }>({ sort: 'total' })
 const familyOptions = ref<string[]>([])
 
 const selected = computed(() => campaigns.value.find((c) => c.id === selectedId.value) ?? null)
+
+// Retry-failed entry (GH #28): settled selected batch with failed
+// (null-score) results. Lives in the switcher row so it is visible in every
+// view mode; the confirm wording matches the report page's entry.
+const retrying = ref(false)
+const retryFailedVisible = computed(
+  () => report.value !== null && !isUnfinished(report.value.status) && report.value.failed_results > 0,
+)
+
+async function onRetryFailed() {
+  if (!report.value) return
+  const campaignID = report.value.id
+  const failures = report.value.failed_results
+  try {
+    await ElMessageBox.confirm(
+      `将重新评估批次 #${campaignID} 的 ${failures} 个失败项(只补未判分的题目,已判分结果不变),期间批次回到运行中。`,
+      '重跑失败项',
+      { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // cancelled — no feedback needed
+  }
+  retrying.value = true
+  try {
+    await retryCampaignFailed(campaignID)
+    ElMessage.success(`已发起批次 #${campaignID} 的失败项重跑`)
+    await reload()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    retrying.value = false
+  }
+}
 
 // Trend drill-down (ticket 32): the row under inspection; null = dialog closed.
 const trendModel = ref<ReportRow | null>(null)

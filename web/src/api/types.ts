@@ -354,6 +354,9 @@ export interface CampaignReport extends Campaign {
   weights: Record<string, number> // effective weight per suite key
   rows: ReportRow[]
   baseline: ReportBaseline | null // null when no earlier done campaign exists
+  // Null-score (failed) result rows of the batch (GH #28); on a settled
+  // batch, failed_results > 0 renders the「重跑失败项」entry.
+  failed_results: number
 }
 
 // Public eval board (ticket 81, spec 0010): GET /api/public/eval/board —

@@ -44,3 +44,9 @@ export async function getPublicEvalBoard(): Promise<PublicEvalBoard> {
 export async function getCampaignLiveFeed(id: number, sinceId = 0, limit = 200): Promise<LiveFeedEntry[]> {
   return http.get<LiveFeedEntry[]>(`/campaigns/${id}/live-feed?since_id=${sinceId}&limit=${limit}`)
 }
+
+// Retry-failed (GH #28): re-evaluate a settled batch's failed (null-score)
+// results. The batch returns to running; scored results are never touched.
+export async function retryCampaignFailed(id: number): Promise<CampaignDetail> {
+  return http.post<CampaignDetail>(`/campaigns/${id}/retry-failed`)
+}

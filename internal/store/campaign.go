@@ -235,6 +235,37 @@ func (db *DB) CampaignVisibleToHub(campaignID, hubID int64) (bool, error) {
 	return n > 0, err
 }
 
+// ReopenCampaignForRetry moves a settled (done/failed) campaign back to
+// running so its failed (null-score) results can be re-evaluated (GH #28).
+// This is the only path that reverses a terminal campaign transition — the
+// WHERE clause makes the done/failed → running migration impossible from any
+// other state, so a concurrent retry loses the race instead of double-firing.
+// It returns false when the campaign was not settled.
+func (db *DB) ReopenCampaignForRetry(id int64) (bool, error) {
+	res, err := db.conn.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// CountCampaignNullScoreResults counts the campaign's failed results — the
+// eval_results rows whose score IS NULL across every member run (GH #28). It
+// is the retry-failed precondition and the report's failed_results field.
+func (db *DB) CountCampaignNullScoreResults(campaignID int64) (int, error) {
+	var n int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		WHERE r.campaign_id = ? AND res.score IS NULL
+	`, campaignID).Scan(&n)
+	return n, err
+}
+
 // PreviousDoneCampaign returns the most recent done campaign strictly before
 // the given one, or nil when there is none. Only settled ("done") campaigns
 // serve as report baselines. Note this differs from the score-drop alert's

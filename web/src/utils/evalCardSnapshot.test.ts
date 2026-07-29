@@ -38,6 +38,7 @@ function makeReport(overrides: Partial<CampaignReport> = {}): CampaignReport {
     weights: { reasoning: 1, coding: 1 },
     rows: [makeRow('model-a'), makeRow('model-b')],
     baseline: null,
+    failed_results: 0,
     ...overrides,
   }
 }

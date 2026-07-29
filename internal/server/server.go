@@ -320,6 +320,7 @@ func (s *Server) routes() chi.Router {
 				// classification_rules/suites/cases, not evals).
 				r.Post("/evals", s.handleCreateEval)
 
+				r.Post("/campaigns/{id}/retry-failed", s.handleRetryCampaignFailed)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})
