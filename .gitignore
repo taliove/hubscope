@@ -51,3 +51,4 @@ opencode.jsonc
 .mcp.json
 .vscode/
 .github/code-review-graph.instruction.md
+web/.impeccable/hook.cache.json
