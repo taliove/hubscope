@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/taliove/hubscope/internal/server"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -87,7 +89,16 @@ func putAs(t *testing.T, client *http.Client, url string, body interface{}) *htt
 // not create hubs; super_admin may do everything.
 func TestRoleWriteMatrix(t *testing.T) {
 	db := openTempDB(t) // seeds super_admin "admin"
-	ts := newTestAPIServer(t, db)
+	// Synchronous eval execution: the operator-eval trigger below otherwise
+	// leaves a detached goroutine whose tail writes (task log, campaign
+	// settle, alert hook) race TempDir cleanup even after the run polls done.
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSessionSecret(testSessionSecret),
+		server.WithSyncEval(),
+		server.WithSyncDiscovery(),
+	))
+	t.Cleanup(ts.Close)
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
 	stubHub.SetMode("success")
@@ -137,14 +148,25 @@ func TestRoleWriteMatrix(t *testing.T) {
 	// Operator can start an eval (hub-scoped write, not global): POST
 	// /api/evals must not be 403. It uses the global case library without
 	// writing it, so it is a hub-scoped operation, not super_admin-only.
-	basicSuiteID := suiteIDByKey(t, ts.URL, "basic")
+	instructionSuiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	evalResp := postAs(t, operClient, ts.URL+"/api/evals", map[string]interface{}{
-		"suite_id":  basicSuiteID,
+		"suite_id":  instructionSuiteID,
 		"model_ids": []int64{operModelID},
 	})
-	evalResp.Body.Close()
 	if evalResp.StatusCode == http.StatusForbidden {
 		t.Errorf("operator eval create: must not be 403 (hub-scoped write), got %d", evalResp.StatusCode)
+	}
+	// Drain the async eval run before the test ends: a goroutine still
+	// appending task logs at TempDir cleanup flakes RemoveAll with
+	// "directory not empty".
+	var evalEnv envelope
+	_ = json.NewDecoder(evalResp.Body).Decode(&evalEnv)
+	evalResp.Body.Close()
+	var evalCampaign map[string]interface{}
+	_ = json.Unmarshal(evalEnv.Data, &evalCampaign)
+	if runs, ok := evalCampaign["runs"].([]interface{}); ok && len(runs) == 1 {
+		runID := int64(runs[0].(map[string]interface{})["id"].(float64))
+		waitEvalDone(t, ts.URL, runID)
 	}
 
 	// Operator cannot create hubs (super_admin-only): POST /api/hubs -> 403.
@@ -252,7 +274,7 @@ func TestShareLinkCreatedByIsLoginUsername(t *testing.T) {
 	bobClient := loginAsClient(t, ts.URL, "bob")
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "share-model")
-	basicID := suiteIDByKey(t, ts.URL, "basic")
+	basicID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	runID := triggerEval(t, ts.URL, basicID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))

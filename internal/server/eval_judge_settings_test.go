@@ -11,7 +11,7 @@ import (
 func TestJudgeModelFromSettings(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "chinese")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
 
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
 		"judge_model": "alt-judge-model",

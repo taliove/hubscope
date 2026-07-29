@@ -70,9 +70,9 @@ func patchCase(t *testing.T, base string, id int64, body map[string]interface{})
 func TestSuiteVersioning(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
-	if v := suiteByKey(t, ts.URL, "basic")["version"]; v != 1.0 {
+	if v := suiteByKey(t, ts.URL, "cap_instruction")["version"]; v != 1.0 {
 		t.Fatalf("initial version = %v, want 1", v)
 	}
 
@@ -85,16 +85,16 @@ func TestSuiteVersioning(t *testing.T) {
 	}
 
 	// Content patch on a seed case: new case id, old case disabled, version 2.
-	seed := caseByID(t, suiteByKey(t, ts.URL, "basic"), 1)
+	seed := caseByID(t, suiteByKey(t, ts.URL, "cap_instruction"), 1)
 	patched := patchCase(t, ts.URL, 1, map[string]interface{}{"prompt": "只回复 pong，别的什么都不要说"})
 	newID := int64(patched["id"].(float64))
 	if newID == 1 {
 		t.Fatalf("content patch should mint a new case id, still got %d", newID)
 	}
-	if v := suiteByKey(t, ts.URL, "basic")["version"]; v != 2.0 {
+	if v := suiteByKey(t, ts.URL, "cap_instruction")["version"]; v != 2.0 {
 		t.Errorf("after content patch version = %v, want 2", v)
 	}
-	listed := suiteByKey(t, ts.URL, "basic")
+	listed := suiteByKey(t, ts.URL, "cap_instruction")
 	old := caseByID(t, listed, 1)
 	if old["enabled"] != false || old["prompt"] != seed["prompt"] {
 		t.Errorf("old case should be disabled with its original prompt: %v", old)
@@ -134,13 +134,13 @@ func TestSuiteVersioning(t *testing.T) {
 	if createResp.StatusCode != http.StatusCreated {
 		t.Fatalf("create case: expected 201, got %d", createResp.StatusCode)
 	}
-	if v := suiteByKey(t, ts.URL, "basic")["version"]; v != 3.0 {
+	if v := suiteByKey(t, ts.URL, "cap_instruction")["version"]; v != 3.0 {
 		t.Errorf("after create version = %v, want 3", v)
 	}
 
 	// Enabled-only patch bumps to 4.
 	patchCase(t, ts.URL, newID, map[string]interface{}{"enabled": false})
-	if v := suiteByKey(t, ts.URL, "basic")["version"]; v != 4.0 {
+	if v := suiteByKey(t, ts.URL, "cap_instruction")["version"]; v != 4.0 {
 		t.Errorf("after disable version = %v, want 4", v)
 	}
 
@@ -149,7 +149,7 @@ func TestSuiteVersioning(t *testing.T) {
 	if int64(noop["id"].(float64)) != 1 {
 		t.Errorf("no-op patch should return the same case, got %v", noop["id"])
 	}
-	if v := suiteByKey(t, ts.URL, "basic")["version"]; v != 4.0 {
+	if v := suiteByKey(t, ts.URL, "cap_instruction")["version"]; v != 4.0 {
 		t.Errorf("after no-op patch version = %v, want still 4", v)
 	}
 }
@@ -175,9 +175,9 @@ func getEvalRun(t *testing.T, base string, id int64) map[string]interface{} {
 func TestCaseImmutabilityKeepsHistory(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
-	target := caseByID(t, suiteByKey(t, ts.URL, "basic"), 2)
+	target := caseByID(t, suiteByKey(t, ts.URL, "cap_instruction"), 2)
 	oldPrompt := target["prompt"].(string)
 
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -198,7 +198,7 @@ func TestCaseImmutabilityKeepsHistory(t *testing.T) {
 	if !found {
 		t.Error("run1 should still reference the retired case id")
 	}
-	oldRow := caseByID(t, suiteByKey(t, ts.URL, "basic"), 2)
+	oldRow := caseByID(t, suiteByKey(t, ts.URL, "cap_instruction"), 2)
 	if oldRow["prompt"] != oldPrompt || oldRow["enabled"] != false {
 		t.Errorf("retired case lost its original prompt: %v", oldRow)
 	}
@@ -224,7 +224,7 @@ func TestCaseImmutabilityKeepsHistory(t *testing.T) {
 func TestEvalSampling(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "sample-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Global default of 2 samples for cases without an explicit count.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{"default_sample_count": 2})
@@ -332,10 +332,13 @@ func createSamplingCase(t *testing.T, base string, body map[string]interface{}) 
 	return out
 }
 
-// TestSeedMigrationAddsTieredCases stages a pre-ticket-21 database (old
-// column set, the original 3 cases per suite) and asserts the migration adds
-// the tiered expansion exactly once, without touching the original cases.
-func TestSeedMigrationAddsTieredCases(t *testing.T) {
+// TestPreV3UpgradePurgesLegacySuites stages a pre-ticket-21 database (old
+// column set, the original 3 cases per legacy suite, everything enabled) and
+// asserts the migration hard-deletes the pre-v3 legacy suites with their
+// cases (spec 0014 decision B, ADR 0012) while seeding the capability bank
+// exactly once — the upgrade path of a database that never saw the
+// generation-tracked retirement.
+func TestPreV3UpgradePurgesLegacySuites(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "old.db")
 	stagePreTieringDatabase(t, dbPath)
 
@@ -350,39 +353,46 @@ func TestSeedMigrationAddsTieredCases(t *testing.T) {
 		return ts, db
 	}
 
-	oldPrompts := map[string][]string{
-		"basic":     {"只回复 pong 这个单词", "用严格的 JSON 回复 {\"ok\": true}，不要任何其他文字", "数到 3，每行一个数字"},
-		"reasoning": {"17 + 25 = ? 只回复数字", "一个班里 30 人，18 人会游泳，15 人会骑车，至少几人两样都会？只回复数字", "数列 1, 1, 2, 3, 5, 8 的下一个数字是什么？只回复数字"},
-	}
+	legacyKeys := []string{"basic", "reasoning", "coding", "chinese"}
 
 	ts, db := serveSuites()
-	for key, prompts := range oldPrompts {
-		suite := suiteByKey(t, ts.URL, key)
-		cases := suite["cases"].([]interface{})
-		if len(cases) != 12 {
-			t.Errorf("suite %q has %d cases after migration, want 12", key, len(cases))
+	suites := fetchSuites(t, ts.URL, "")
+	if len(suites) != 10 {
+		t.Fatalf("suites after upgrade = %d, want 5 capability suites + 5 benchmark disabled: %v", len(suites), suites)
+	}
+	for _, s := range suites {
+		for _, key := range legacyKeys {
+			if s["key"] == key {
+				t.Errorf("legacy suite %q survived the upgrade purge", key)
+			}
 		}
-		for _, prompt := range prompts {
-			found := false
-			for _, c := range cases {
-				if c.(map[string]interface{})["prompt"] == prompt {
-					found = true
-				}
-			}
-			if !found {
-				t.Errorf("suite %q lost original seed case %q", key, prompt)
-			}
+		if s["capability"] == "" {
+			t.Errorf("suite %q has no capability after upgrade", s["key"])
+		}
+		if s["key"] == "mmlu" || s["key"] == "gsm8k" || s["key"] == "agieval_zh" || s["key"] == "cruxeval" || s["key"] == "ifeval" {
+			// Benchmark suites (ADR 0013): seeded disabled by design, exempt
+			// from the purge as in-bank suites; their 100-case frozen subsets
+			// are covered by the benchmark seed tests.
+			continue
+		}
+		if got := len(s["cases"].([]interface{})); got != 10 {
+			t.Errorf("capability suite %q has %d cases, want 10", s["key"], got)
 		}
 	}
 	db.Close()
 
-	// Re-opening must be a no-op: the generation record prevents re-seeding.
+	// Re-opening must be a no-op: tombstoned suites never resurrect.
 	ts2, db2 := serveSuites()
 	defer db2.Close()
-	for key := range oldPrompts {
-		suite := suiteByKey(t, ts2.URL, key)
-		if got := len(suite["cases"].([]interface{})); got != 12 {
-			t.Errorf("after reopen suite %q has %d cases, want still 12 (no duplicates)", key, got)
+	again := fetchSuites(t, ts2.URL, "")
+	if len(again) != 10 {
+		t.Fatalf("suites after reopen = %d, want still 8 (5 capability + 5 benchmark exempt)", len(again))
+	}
+	for _, s := range again {
+		for _, key := range legacyKeys {
+			if s["key"] == key {
+				t.Errorf("legacy suite %q resurrected on reopen", key)
+			}
 		}
 	}
 }

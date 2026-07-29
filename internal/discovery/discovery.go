@@ -148,6 +148,29 @@ func (s *Syncer) syncOne(ctx context.Context, hub store.Hub, source string) (sta
 	return s.syncMarked(ctx, hub, source)
 }
 
+// SyncHubNow runs the same work as StartSync but synchronously on the
+// caller: it takes the in-flight guard and persists the 'syncing' mark in
+// the same order, then runs the sync inline and returns only after every
+// tail write (sync result, task log) has landed. It exists for the server's
+// WithSyncDiscovery test seam (ticket 100) — a structural synchronization
+// point, because polling sync_status observes SetHubSyncResult, which
+// precedes the task-log tail write. Production never calls this.
+func (s *Syncer) SyncHubNow(ctx context.Context, hubID int64, source string) error {
+	if !s.acquire(hubID) {
+		return ErrSyncInProgress
+	}
+	defer s.release(hubID)
+	if err := s.db.SetHubSyncing(hubID); err != nil {
+		return err
+	}
+	hub, err := s.db.GetHub(hubID)
+	if err != nil {
+		return err
+	}
+	_, err = s.syncMarked(ctx, *hub, source)
+	return err
+}
+
 // StartSync launches an asynchronous sync for one hub and returns immediately.
 // The in-flight guard and the persisted 'syncing' mark are both taken before
 // returning, so a concurrent trigger sees ErrSyncInProgress and any read sees

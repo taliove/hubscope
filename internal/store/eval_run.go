@@ -325,6 +325,62 @@ func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 	return results, rows.Err()
 }
 
+// LiveFeedEntry is one judged-case event of a campaign (issue #17): the
+// unit of the console live feed's cursor-pulled stream — model, suite and
+// case identity, verdict method, the raw 0~1 per-case score (nil when the
+// case could not be judged — W7's "judge failure is null, not zero"), the
+// answer latency and the verdict time. VerdictType/CasePrompt come from the
+// case row; a purged case leaves them empty rather than dropping the event.
+type LiveFeedEntry struct {
+	ID          int64
+	ModelID     string
+	SuiteKey    string
+	SuiteName   string
+	CaseID      int64
+	CasePrompt  string
+	VerdictType string
+	Score       *float64
+	LatencyMs   int
+	CreatedAt   time.Time
+}
+
+// ListCampaignLiveFeed returns up to limit judged-case events of the
+// campaign whose result id is strictly greater than sinceID, ascending by
+// id — the cursor increment behind GET /api/campaigns/{id}/live-feed. The
+// case join is LEFT so an event survives its case being purged (empty
+// prompt/verdict), matching the run-history retention rule.
+func (db *DB) ListCampaignLiveFeed(campaignID, sinceID int64, limit int) ([]LiveFeedEntry, error) {
+	rows, err := db.conn.Query(`
+		SELECT res.id, res.model_id, s.key, s.name, res.case_id,
+			COALESCE(c.prompt, ''), COALESCE(c.verdict_type, ''),
+			res.score, res.latency_ms, res.created_at
+		FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		JOIN suites s ON s.id = r.suite_id
+		LEFT JOIN cases c ON c.id = res.case_id
+		WHERE r.campaign_id = ? AND res.id > ?
+		ORDER BY res.id
+		LIMIT ?
+	`, campaignID, sinceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := []LiveFeedEntry{}
+	for rows.Next() {
+		var e LiveFeedEntry
+		var createdAt string
+		if err := rows.Scan(&e.ID, &e.ModelID, &e.SuiteKey, &e.SuiteName, &e.CaseID,
+			&e.CasePrompt, &e.VerdictType, &e.Score, &e.LatencyMs, &createdAt); err != nil {
+			return nil, err
+		}
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // SetEvalRunVerdictProfile re-tags every result of a run with the given
 // verdict profile. It exists so caliber migrations and tests can stage a
 // run as scored under an older profile (ADR 0008); production scoring always
@@ -332,6 +388,52 @@ func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 func (db *DB) SetEvalRunVerdictProfile(runID int64, profile string) error {
 	_, err := db.conn.Exec(
 		"UPDATE eval_results SET verdict_profile = ? WHERE eval_run_id = ?", profile, runID)
+	return err
+}
+
+// NullScoreCell identifies one failed result of a run — a (model, case) unit
+// whose stored score IS NULL (answer or judge failure, W7: never zero). It
+// is the retry unit of GH #28's retry-failed path.
+type NullScoreCell struct {
+	ModelDBID int64
+	ModelID   string
+	CaseID    int64
+}
+
+// ListNullScoreCells returns every failed (null-score) result of the run,
+// ordered by model then case, as retry units.
+func (db *DB) ListNullScoreCells(runID int64) ([]NullScoreCell, error) {
+	rows, err := db.conn.Query(`
+		SELECT model_db_id, model_id, case_id FROM eval_results
+		WHERE eval_run_id = ? AND score IS NULL
+		ORDER BY model_db_id, case_id
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []NullScoreCell
+	for rows.Next() {
+		var c NullScoreCell
+		if err := rows.Scan(&c.ModelDBID, &c.ModelID, &c.CaseID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DeleteNullScoreResult removes the failed (null-score) result row of one
+// (run, model, case) unit, immediately before its re-evaluation inserts the
+// fresh row (GH #28). The score IS NULL clause is deliberately hardcoded —
+// never a parameter — so no caller, present or future, can widen this into
+// deleting a judged result (W7: scored rows are immutable).
+func (db *DB) DeleteNullScoreResult(runID, modelDBID, caseID int64) error {
+	_, err := db.conn.Exec(`
+		DELETE FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ? AND score IS NULL
+	`, runID, modelDBID, caseID)
 	return err
 }
 

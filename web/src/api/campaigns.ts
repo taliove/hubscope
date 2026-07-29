@@ -1,6 +1,6 @@
 // Eval Campaign API calls (ticket 29).
 import { http } from './client'
-import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends, PublicEvalBoard } from './types'
+import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends, LiveFeedEntry, PublicEvalBoard } from './types'
 
 export async function listCampaigns(): Promise<Campaign[]> {
   return http.get<Campaign[]>('/campaigns')
@@ -35,4 +35,18 @@ export async function getCampaignTrends(id: number, modelDbId: number): Promise<
 // newest settled campaign's full report; the client ranks and filters it.
 export async function getPublicEvalBoard(): Promise<PublicEvalBoard> {
   return http.get<PublicEvalBoard>('/public/eval/board')
+}
+
+// Live feed (issue #17): one campaign's judged-case events, ascending by id,
+// pulled by exclusive cursor (since_id) from the console's polling timer.
+// Console-only — session + hub-isolated; the shared/public surface never
+// calls this. limit caps the page (server default 50, max 200).
+export async function getCampaignLiveFeed(id: number, sinceId = 0, limit = 200): Promise<LiveFeedEntry[]> {
+  return http.get<LiveFeedEntry[]>(`/campaigns/${id}/live-feed?since_id=${sinceId}&limit=${limit}`)
+}
+
+// Retry-failed (GH #28): re-evaluate a settled batch's failed (null-score)
+// results. The batch returns to running; scored results are never touched.
+export async function retryCampaignFailed(id: number): Promise<CampaignDetail> {
+  return http.post<CampaignDetail>(`/campaigns/${id}/retry-failed`)
 }

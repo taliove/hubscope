@@ -90,7 +90,7 @@ func TestRollupAndRetention(t *testing.T) {
 	// faster than the default read tier allows. Limit behavior is covered by
 	// dedicated tests with tiny tiers.
 	ts := httptest.NewServer(server.New(db,
-		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{})))
+		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

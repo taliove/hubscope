@@ -35,26 +35,40 @@ type reportBaselineDTO struct {
 // coverage/sample confidence markers (ticket 51); on an unfinished campaign
 // the row list is the live half-scored board — model-id lexicographic
 // order, no ranking information (spec 0004).
+//
+// On a settled campaign the coverage gate applies (spec 0014 decision A):
+// Complete reports whether every covered suite produced a non-null score
+// (at least one judged case each — W7's "judge failure is null, not zero"
+// caliber is untouched); an incomplete row forfeits its total, its delta
+// and its rank, carries MissingSuites, and sinks below every complete row.
+// Both fields are absent on the live board: the gate never touches an
+// unfinished campaign.
 type reportRowDTO struct {
-	ModelDBID   int64               `json:"model_db_id"`
-	ModelID     string              `json:"model_id"`
-	Family      string              `json:"family"`
-	TotalScore  *float64            `json:"total_score"`
-	TotalDelta  *float64            `json:"total_delta"`
-	SuiteScores map[string]*float64 `json:"suite_scores"`
-	Cells       []reportCellDTO     `json:"cells"`
+	ModelDBID     int64               `json:"model_db_id"`
+	ModelID       string              `json:"model_id"`
+	Family        string              `json:"family"`
+	TotalScore    *float64            `json:"total_score"`
+	TotalDelta    *float64            `json:"total_delta"`
+	SuiteScores   map[string]*float64 `json:"suite_scores"`
+	Cells         []reportCellDTO     `json:"cells"`
+	Complete      *bool               `json:"complete,omitempty"`
+	MissingSuites int                 `json:"missing_suites,omitempty"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
 // suites it covers, the effective weights used for the totals, the
 // leaderboard rows, and the previous-batch baseline the rows' deltas
 // compare against (null when no earlier done campaign exists).
+// FailedResults counts the batch's null-score (failed) result rows (GH #28):
+// on a settled campaign, failed_results > 0 is the retry-failed button's
+// render condition.
 type campaignReportDTO struct {
 	campaignDTO
-	Suites   []reportSuiteDTO   `json:"suites"`
-	Weights  map[string]float64 `json:"weights"`
-	Rows     []reportRowDTO     `json:"rows"`
-	Baseline *reportBaselineDTO `json:"baseline"`
+	Suites        []reportSuiteDTO   `json:"suites"`
+	Weights       map[string]float64 `json:"weights"`
+	Rows          []reportRowDTO     `json:"rows"`
+	Baseline      *reportBaselineDTO `json:"baseline"`
+	FailedResults int                `json:"failed_results"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -168,6 +182,20 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	var baseline *reportBaselineDTO
 	if campaign.Status == "done" || campaign.Status == "failed" {
 		rows = buildReportRows(scores, weights, nadirs)
+		// The coverage gate (spec 0014 decision A) is a settled-batch
+		// ranking rule: incomplete models forfeit total/delta/rank but keep
+		// their real per-suite scores. It runs before the sort so the
+		// ranking sinks them, and never touches the live paths below. Only
+		// suites with enabled cases gate: an emptied suite assesses
+		// nothing, so its unavoidable null is bank configuration, not a
+		// judging gap, and must not disqualify every model.
+		gateSuites := make([]reportSuiteDTO, 0, len(suites))
+		for _, suite := range suites {
+			if expectedBySuite[suite.ID] > 0 {
+				gateSuites = append(gateSuites, suite)
+			}
+		}
+		rows = applyCoverageGate(rows, gateSuites)
 		if family != "" {
 			rows = filterReportRowsByFamily(rows, family)
 		}
@@ -177,7 +205,7 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		// Rows are re-created with deltas applied rather than mutated in
 		// place (immutable data rule).
 		var deltas map[int64]*float64
-		baseline, deltas, err = s.reportBaseline(campaign.ID, suites, weights, rows)
+		baseline, deltas, err = s.reportBaseline(campaign.ID, suites, gateSuites, weights, rows)
 		if err != nil {
 			return fail(http.StatusInternalServerError, "failed to build report baseline")
 		}
@@ -232,12 +260,18 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		}
 	}
 
+	failedResults, err := s.db.CountCampaignNullScoreResults(id)
+	if err != nil {
+		return fail(http.StatusInternalServerError, "failed to count failed results")
+	}
+
 	return campaignReportDTO{
-		campaignDTO: toCampaignDTO(progress),
-		Suites:      suites,
-		Weights:     weights,
-		Rows:        rows,
-		Baseline:    baseline,
+		campaignDTO:   toCampaignDTO(progress),
+		Suites:        suites,
+		Weights:       weights,
+		Rows:          rows,
+		Baseline:      baseline,
+		FailedResults: failedResults,
 	}, nil
 }
 
@@ -247,9 +281,12 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 // same suite set — the same caliber). Any version, profile or coverage
 // mismatch marks the baseline incomparable and yields no deltas, so neither
 // a question-bank change (ADR 0007) nor a scoring-caliber change (ADR 0008)
-// ever reads as a model change. Deltas come back as a map keyed by model
-// database id; the caller applies them to fresh rows.
-func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weights map[string]float64, rows []reportRowDTO) (*reportBaselineDTO, map[int64]*float64, error) {
+// ever reads as a model change. The baseline's own totals pass through the
+// same coverage gate as the current rows (gateSuites), so a partial
+// baseline total — a coverage artifact, not a score — offers nothing to
+// compare against and yields no delta either. Deltas come back as a map
+// keyed by model database id; the caller applies them to fresh rows.
+func (s *Server) reportBaseline(campaignID int64, suites, gateSuites []reportSuiteDTO, weights map[string]float64, rows []reportRowDTO) (*reportBaselineDTO, map[int64]*float64, error) {
 	prev, err := s.db.PreviousDoneCampaign(campaignID)
 	if err != nil {
 		return nil, nil, err
@@ -300,7 +337,7 @@ func (s *Server) reportBaseline(campaignID int64, suites []reportSuiteDTO, weigh
 	// each side must be scaled by the constant it was scored under.
 	prevNadirs := nadirBySuiteKey(suites, prevRuns)
 	prevTotals := map[int64]*float64{}
-	for _, row := range buildReportRows(prevScores, weights, prevNadirs) {
+	for _, row := range applyCoverageGate(buildReportRows(prevScores, weights, prevNadirs), gateSuites) {
 		prevTotals[row.ModelDBID] = row.TotalScore
 	}
 	deltas := map[int64]*float64{}

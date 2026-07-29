@@ -11,7 +11,7 @@
 // filtered result keeps all chips and shows a neutral "暂无匹配模型", never
 // a "全部上榜"-style conclusion.
 import type { CampaignReport, CampaignStatus, EvalTrigger, ReportCell, ReportSuite } from '@/api/types'
-import { baselineChipText, failedBatchWarning } from '@/utils/evalWording'
+import { baselineChipText, failedBatchWarning, incompleteWatermark } from '@/utils/evalWording'
 
 // Cap on leaderboard rows rendered into the card; the rest collapse into a
 // single overflow line (same shape as the StatusCard detail overflow).
@@ -23,7 +23,10 @@ export interface EvalCardChip {
 }
 
 export interface EvalCardRow {
-  rank: number
+  // Positional rank; null for judged-incomplete rows (ticket 92, spec 0014
+  // decision A) — they render the placeholder dash like the page and never
+  // take the top-3 rail.
+  rank: number | null
   modelId: string
   suiteScores: Record<string, number | null>
   cells: ReportCell[]
@@ -31,6 +34,10 @@ export interface EvalCardRow {
   score: number | null
   // Total delta vs the baseline; only rendered when showDeltaColumn holds.
   delta: number | null
+  // The judged-incomplete watermark text ('' for complete rows): precomputed
+  // here so the static card stays a dumb renderer (no tooltip fallback —
+  // the watermark must be fully visible inside the material).
+  incompleteNote: string
 }
 
 export interface EvalCardSnapshot {
@@ -88,19 +95,23 @@ function buildChips(report: CampaignReport, query: { family?: string; sort: stri
 
 // Build the frozen snapshot from the currently displayed report response and
 // the toolbar query (family/sort). The rows arrive already filtered and
-// ranked by the server, so ranks are positional.
+// ranked by the server, so ranks are positional — and the coverage gate
+// (spec 0014) already sank judged-incomplete rows, so a positional rank is
+// only ever assigned to a complete row; incomplete rows get rank null and
+// their precomputed watermark.
 export function buildEvalCardSnapshot(
   report: CampaignReport,
   query: { family?: string; sort: string },
 ): EvalCardSnapshot {
   const failedWarning = report.status === 'failed' ? failedBatchWarning(report.progress.failed) : null
   const rows: EvalCardRow[] = report.rows.slice(0, EVAL_CARD_MAX_ROWS).map((row, index) => ({
-    rank: index + 1,
+    rank: row.complete === false ? null : index + 1,
     modelId: row.model_id,
     suiteScores: row.suite_scores,
     cells: row.cells,
     score: row.total_score,
     delta: row.total_delta,
+    incompleteNote: incompleteWatermark(row),
   }))
   return {
     campaignId: report.id,

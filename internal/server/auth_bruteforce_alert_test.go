@@ -214,6 +214,29 @@ func TestLoginBruteForceAlertMessageContent(t *testing.T) {
 	if strings.Contains(msgs[0], lark.URL) {
 		t.Errorf("alert must never contain the webhook address, got: %s", msgs[0])
 	}
+
+	// The brute-force alert goes out as a red-header interactive card
+	// (ticket 101) with the count, window, and top lists as structured
+	// fields.
+	cards := lark.cards()
+	if len(cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(cards))
+	}
+	if cards[0].Template != "red" {
+		t.Errorf("brute-force card template: expected red, got %q", cards[0].Template)
+	}
+	if cards[0].Title != "登录爆破告警 · HubScope" {
+		t.Errorf("brute-force card title: got %q", cards[0].Title)
+	}
+	if cards[0].Fields["失败次数"] != "5 次" {
+		t.Errorf("brute-force card 失败次数 field: got %q", cards[0].Fields["失败次数"])
+	}
+	if !strings.Contains(cards[0].Fields["被尝试最多的用户名"], "admin") {
+		t.Errorf("brute-force card 用户名 field should list admin, got %q", cards[0].Fields["被尝试最多的用户名"])
+	}
+	if !strings.Contains(cards[0].Fields["失败最多的来源 IP"], "10.0.0.1") {
+		t.Errorf("brute-force card 来源 IP field should list 10.0.0.1, got %q", cards[0].Fields["失败最多的来源 IP"])
+	}
 }
 
 // TestLoginBruteForceAlertSilentWithoutWebhook verifies an unconfigured

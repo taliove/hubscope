@@ -53,7 +53,7 @@ func createImageEndpointViaDiscovery(t *testing.T, baseURL string, stub *discove
 }
 
 // TestImageDiscoveryCreatesGenerationEndpoint covers the discovery path of
-// spec 0014: an image-capable model whose image trial succeeds gains an
+// spec 0016: an image-capable model whose image trial succeeds gains an
 // enabled images_generation endpoint with the 1800s interval override, chat
 // endpoints keep a null override, and non-image models are never sent an
 // image trial.
@@ -143,7 +143,7 @@ func TestImageDiscoveryTrialFailureLeavesNoEndpoint(t *testing.T) {
 	}
 }
 
-// TestImageManualCreateAndTrial covers user story 8 of spec 0014: a manually
+// TestImageManualCreateAndTrial covers user story 8 of spec 0016: a manually
 // registered image-capable model is trial-probed on images_generation too,
 // and the manual trial endpoint backfills it later with the interval
 // override.
@@ -206,7 +206,7 @@ func TestImageManualCreateAndTrial(t *testing.T) {
 	}
 }
 
-// TestImageProbeRoundSingleRecord covers the probe-round shape of spec 0014:
+// TestImageProbeRoundSingleRecord covers the probe-round shape of spec 0016:
 // an image endpoint produces exactly one probe per round (streaming=false,
 // ttft null) with usage mapped into the token fields, while a chat endpoint
 // of the same model still produces its two records.
@@ -439,7 +439,7 @@ func TestImageEndpointSchedulerInterval(t *testing.T) {
 	waitForProbeCount(t, ts.URL, imageID, 2)
 }
 
-// TestEvalNeverUsesImageProtocol is the R1 guard of spec 0014: evaluation
+// TestEvalNeverUsesImageProtocol is the R1 guard of spec 0016: evaluation
 // traffic must stay on chat protocols. A chat-classified model whose only
 // enabled endpoint is images_generation is recorded as "no enabled endpoint"
 // instead of burning image-generation calls for text cases.
@@ -491,7 +491,7 @@ func TestEvalNeverUsesImageProtocol(t *testing.T) {
 		}
 	}
 
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	runID := triggerEval(t, ts.URL, suiteID, modelDBID)
 	run := waitEvalDone(t, ts.URL, runID)
 	if run["status"] != "done" {
@@ -520,7 +520,7 @@ func TestEvalNeverUsesImageProtocol(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// images_edit (GH #32, spec 0014 second slice): the edit path is a second,
+// images_edit (GH #32, spec 0016 second slice): the edit path is a second,
 // independent image protocol — multipart POST /v1/images/edits carrying the
 // embedded test image. Everything below mirrors the generations group.
 // ---------------------------------------------------------------------------
@@ -863,7 +863,7 @@ func TestImageEditAlertingLifecycle(t *testing.T) {
 	}
 }
 
-// TestEvalNeverUsesImageEditProtocol is the R1 guard of spec 0014 applied to
+// TestEvalNeverUsesImageEditProtocol is the R1 guard of spec 0016 applied to
 // the edit protocol: a chat-classified model whose only enabled endpoint is
 // images_edit is recorded as "no enabled endpoint" — eval traffic never
 // burns paid image edits.
@@ -916,7 +916,7 @@ func TestEvalNeverUsesImageEditProtocol(t *testing.T) {
 		}
 	}
 
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 	runID := triggerEval(t, ts.URL, suiteID, modelDBID)
 	run := waitEvalDone(t, ts.URL, runID)
 	if run["status"] != "done" {

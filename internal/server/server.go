@@ -27,6 +27,10 @@ type Server struct {
 	staticFS  fs.FS
 	now       func() time.Time
 	version   string
+	syncEval  bool
+	// syncDiscovery makes hub model-sync triggers run inline (ticket 100
+	// test seam, sibling of syncEval); see WithSyncDiscovery.
+	syncDiscovery bool
 
 	// Rate-limit tiers; a nil limiter means its tier is unlimited.
 	loginLimiter *ipLimiter
@@ -142,6 +146,33 @@ func WithCaptchaStore(store *CaptchaStore) Option {
 func WithVersion(version string) Option {
 	return func(s *Server) {
 		s.version = version
+	}
+}
+
+// WithSyncEval makes eval triggers execute synchronously in the request
+// instead of on a detached goroutine. Tests use it as a structural
+// synchronization point: a poller can only observe persisted state (run
+// done), which precedes the goroutine's tail writes (task log, campaign
+// settle, alert hook), so draining on state still races TempDir cleanup.
+// Production never sets this.
+func WithSyncEval() Option {
+	return func(s *Server) {
+		s.syncEval = true
+	}
+}
+
+// WithSyncDiscovery makes hub model-sync triggers (the auto-sync on hub
+// creation and POST /api/hubs/{id}/sync) execute synchronously in the
+// request instead of on a detached goroutine. Tests use it as a structural
+// synchronization point (ticket 100, sibling of WithSyncEval): polling the
+// hub's sync_status observes SetHubSyncResult, which precedes the sync's
+// task-log tail write, so draining on status still races TempDir cleanup.
+// It is a separate option from WithSyncEval because some tests must keep
+// eval asynchronous (in-flight observation) while discovery can always run
+// inline. Production never sets this.
+func WithSyncDiscovery() Option {
+	return func(s *Server) {
+		s.syncDiscovery = true
 	}
 }
 
@@ -265,6 +296,7 @@ func (s *Server) routes() chi.Router {
 				r.Patch("/cases/{id}", s.handlePatchCase)
 
 				r.Put("/settings", s.handlePutSettings)
+				r.Post("/settings/test-lark", s.handleTestLark)
 			})
 
 			// Hub-scoped writes: super_admin + admin + operator. These act on
@@ -292,6 +324,7 @@ func (s *Server) routes() chi.Router {
 				// classification_rules/suites/cases, not evals).
 				r.Post("/evals", s.handleCreateEval)
 
+				r.Post("/campaigns/{id}/retry-failed", s.handleRetryCampaignFailed)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})
@@ -333,6 +366,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
 			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 			r.Get("/campaigns/{id}/trends", s.handleGetCampaignTrends)
+			r.Get("/campaigns/{id}/live-feed", s.handleGetCampaignLiveFeed)
 
 			// Public eval board (spec 0010): anonymous like the status board
 			// via the publicReadPattern whitelist; serves the newest settled

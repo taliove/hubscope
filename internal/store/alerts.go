@@ -8,12 +8,16 @@ import (
 // Alert kinds emitted by the alert evaluator. "score_drop" fires when a
 // model's aggregate falls beyond the threshold between two campaigns;
 // "score_drop_skipped" records that a comparison was skipped because the two
-// runs ran different suite versions (nothing is sent for a skip).
+// runs ran different suite versions (nothing is sent for a skip). "test" is
+// the manual channel check from POST /api/settings/test-lark (ticket 100):
+// it carries a NULL endpoint_id and never joins the down/recovered state
+// rebuild (LatestDownRecoveryEvent filters by that whitelist).
 const (
 	AlertKindDown             = "down"
 	AlertKindRecovered        = "recovered"
 	AlertKindScoreDrop        = "score_drop"
 	AlertKindScoreDropSkipped = "score_drop_skipped"
+	AlertKindTest             = "test"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.

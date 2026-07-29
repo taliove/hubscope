@@ -4,6 +4,6 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** pending
+**Status:** 已迁移至 GitHub issue #10(2026-07-28 全面切换 GitHub Issues;本地票只读存档)
 
 - [ ] 分享页行下钻不再 401(隐藏入口或开放 token 口径,评审择一)

@@ -104,6 +104,37 @@ func totalScore(suiteScores map[string]*float64, weights map[string]float64) *fl
 	return &total
 }
 
+// applyCoverageGate marks each row's judging completeness against the
+// campaign's covered suites (spec 0014 decision A): a model is complete when
+// every covered suite produced a non-null score — at least one judged case
+// per suite, since SQLite AVG skips NULLs and only a fully unjudged suite
+// averages to null. An incomplete row forfeits its TotalScore (a partial-
+// coverage weighted mean must never outrank a fully judged model — the
+// production "absent valedictorian"), which in turn forfeits its delta, and
+// sortReportRows sinks it below every complete row. The per-suite scores
+// stay exactly as judged: W7's "judge failure is null, not zero" caliber is
+// untouched — only ranking eligibility is gated. Returns fresh rows; the
+// input slice is left untouched.
+func applyCoverageGate(rows []reportRowDTO, suites []reportSuiteDTO) []reportRowDTO {
+	out := make([]reportRowDTO, len(rows))
+	for i, row := range rows {
+		missing := 0
+		for _, suite := range suites {
+			if row.SuiteScores[suite.Key] == nil {
+				missing++
+			}
+		}
+		complete := missing == 0
+		row.Complete = &complete
+		if !complete {
+			row.MissingSuites = missing
+			row.TotalScore = nil
+		}
+		out[i] = row
+	}
+	return out
+}
+
 // filterReportRowsByFamily returns a new slice with only the rows of the
 // given model family; the input slice is left untouched.
 func filterReportRowsByFamily(rows []reportRowDTO, family string) []reportRowDTO {
@@ -118,7 +149,11 @@ func filterReportRowsByFamily(rows []reportRowDTO, family string) []reportRowDTO
 
 // sortReportRows ranks rows descending by the chosen column ("total" or a
 // suite key). Models without a score in that column rank last; ties break by
-// model id for a stable, deterministic board.
+// model id for a stable, deterministic board. The coverage gate (spec 0014)
+// dominates every column: rows the gate marked incomplete sink below all
+// complete ones regardless of their scores, and order among themselves by
+// model id. Rows the gate never processed (nil Complete — the live board
+// never reaches this function) are treated as complete.
 func sortReportRows(rows []reportRowDTO, sortKey string) {
 	scoreOf := func(row reportRowDTO) *float64 {
 		if sortKey == "total" {
@@ -126,7 +161,17 @@ func sortReportRows(rows []reportRowDTO, sortKey string) {
 		}
 		return row.SuiteScores[sortKey]
 	}
+	rankable := func(row reportRowDTO) bool {
+		return row.Complete == nil || *row.Complete
+	}
 	sort.SliceStable(rows, func(i, j int) bool {
+		ri, rj := rankable(rows[i]), rankable(rows[j])
+		if ri != rj {
+			return ri
+		}
+		if !ri {
+			return rows[i].ModelID < rows[j].ModelID
+		}
 		a, b := scoreOf(rows[i]), scoreOf(rows[j])
 		if a == nil || b == nil {
 			return a != nil

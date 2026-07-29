@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,12 +53,23 @@ func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
 
 	// Kick off the first model sync in the background so the new hub's
 	// models appear without waiting for the periodic full sync. The response
-	// must not block on it: a large hub takes minutes to probe.
-	if err := s.discovery.StartSync(hub.ID, store.TaskSourceManual); err != nil {
-		// Only ErrSyncInProgress is possible, and a fresh hub cannot be
-		// syncing — log defensively rather than failing the creation.
-		slog.Error("create hub: start sync failed", "hub_id", hub.ID, "error", err)
-	} else {
+	// must not block on it: a large hub takes minutes to probe. Tests built
+	// WithSyncDiscovery run the same work inline (structural drain).
+	syncErr := s.startHubSync(r.Context(), hub.ID)
+	if syncErr != nil {
+		// Only ErrSyncInProgress is possible on the async path, and a fresh
+		// hub cannot be syncing — log defensively rather than failing the
+		// creation. A sync-level failure on the synchronous (test-seam) path
+		// is persisted on the hub and reported the same way.
+		slog.Error("create hub: start sync failed", "hub_id", hub.ID, "error", syncErr)
+	}
+	if s.syncDiscovery {
+		// The sync ran inline; re-read so the response carries the terminal
+		// sync status (and last_synced_at), not the pre-sync row.
+		if fresh, err := s.db.GetHub(hub.ID); err == nil {
+			hub = fresh
+		}
+	} else if syncErr == nil {
 		// StartSync already persisted the syncing mark; reflect it.
 		hub.SyncStatus = store.HubSyncRunning
 	}
@@ -154,24 +166,44 @@ func (s *Server) handleSyncHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.discovery.StartSync(id, store.TaskSourceManual); err != nil {
+	if err := s.startHubSync(r.Context(), id); err != nil {
 		if errors.Is(err, discovery.ErrSyncInProgress) {
 			writeError(w, http.StatusConflict, "sync already in progress for this hub")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to start sync")
-		return
+		if !s.syncDiscovery {
+			// Async path: only a start failure (persisting the mark)
+			// reaches here; the sync itself reports through the hub status.
+			writeError(w, http.StatusInternalServerError, "failed to start sync")
+			return
+		}
+		// Synchronous (test-seam) path: a failed sync is already persisted
+		// on the hub — keep the async API's 202 semantics and let the
+		// re-read hub below carry the failure status.
 	}
 
 	s.audit(r, "hub.sync", "hub", strconv.FormatInt(id, 10), "", "accepted")
 
-	// Re-read so the response carries the syncing mark StartSync persisted.
+	// Re-read so the response carries the syncing mark StartSync persisted
+	// (or the terminal status when the sync ran inline).
 	hub, err = s.db.GetHub(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to reload hub")
 		return
 	}
 	writeData(w, http.StatusAccepted, toHubDTO(*hub))
+}
+
+// startHubSync kicks off a model sync for one hub. Production always takes
+// the asynchronous path (StartSync); servers built WithSyncDiscovery run
+// the same work synchronously in the request so no goroutine outlives it
+// (ticket 100 structural drain). Sync-level failures are persisted in the
+// hub's sync status on both paths, so they never change the HTTP outcome.
+func (s *Server) startHubSync(ctx context.Context, hubID int64) error {
+	if s.syncDiscovery {
+		return s.discovery.SyncHubNow(ctx, hubID, store.TaskSourceManual)
+	}
+	return s.discovery.StartSync(hubID, store.TaskSourceManual)
 }
 
 // parseIDParam extracts an int64 URL parameter.

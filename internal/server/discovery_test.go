@@ -39,6 +39,10 @@ type discoveryStubHub struct {
 	// and whether a non-empty image file arrived. Headers (notably
 	// Authorization) are deliberately not recorded (W6).
 	editReqs map[string][]editRequest
+	// chatReqs records every chat-protocol request per model (protocol names
+	// in arrival order) so tests can assert an image model received zero
+	// chat trials (GH #45).
+	chatReqs map[string][]string
 }
 
 // imageRequest is the recorded body of one /v1/images/generations call.
@@ -71,6 +75,7 @@ func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 		imageReqs:  map[string][]imageRequest{},
 		editModes:  map[string]string{},
 		editReqs:   map[string][]editRequest{},
+		chatReqs:   map[string][]string{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	t.Cleanup(stub.Close)
@@ -109,6 +114,14 @@ func (s *discoveryStubHub) editRequests(modelID string) []editRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]editRequest(nil), s.editReqs[modelID]...)
+}
+
+// chatRequests returns the recorded chat-protocol names requested for the
+// model, in arrival order.
+func (s *discoveryStubHub) chatRequests(modelID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.chatReqs[modelID]...)
 }
 
 // setModels replaces the model list returned by /v1/models.
@@ -226,6 +239,7 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &req)
 
 	s.mu.Lock()
+	s.chatReqs[req.Model] = append(s.chatReqs[req.Model], protocol)
 	fail := s.failing[req.Model][protocol]
 	s.mu.Unlock()
 	if fail {

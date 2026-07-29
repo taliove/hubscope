@@ -176,7 +176,7 @@ func TestOverviewStatusTransitions(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -296,7 +296,7 @@ func TestOverviewWindowStats(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -367,7 +367,7 @@ func TestOverviewDegradeCausesDoubleHit(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -427,7 +427,7 @@ func TestOverviewDotP50AndBaseline(t *testing.T) {
 	db := openTempDB(t)
 
 	fakeNow := time.Date(2026, 7, 20, 12, 30, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

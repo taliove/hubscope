@@ -29,6 +29,11 @@
 2. **关联功能层:** 改动触及模块的既有测试回测(`go test ./internal/<module>/...` 及调用方包)。
 3. **核心业务闭环层:** `make test` 全量(后端全部测试 + 前端类型检查 + 前端构建),覆盖"建 Hub → 同步模型 → 探测 → 状态/告警 → 评估 → 报表"闭环不被破坏——此层由 pre-commit 门禁强制执行。
 
+**异步排空纪律(ticket 100,check 终审沉淀):**
+
+- 凡触发异步 eval / discovery / task 工作的测试,drain 必须覆盖 goroutine 的**全部尾部写**,或走结构性同步点。轮询持久化状态(run=done、sync_status=succeeded)只能观察到中间写,尾部写(task 日志、campaign settle、告警钩子)总在状态之后——check 已实证此类 drain 不足以防 TempDir 竞态。结构性同步点 = server option 注入族(`WithSyncEval` / `WithSyncDiscovery`,共享 helper 默认开启);确需异步语义的测试(中态观察、进度、调度器行为)显式自建异步 server 并注释 drain 依据。
+- flake / 时序类修复必须 `go test -count=1` 连跑(≥10 轮)零失败并附证据入票,单次绿不算修复——缓存命中(`-count` 缺省)与低频竞态都会骗过你。
+
 ## 工程化
 
 - **统一入口是 Makefile。** 常用动作:`make build`(前端构建 + Go 单二进制)、`make test`(全部测试与静态检查,含 gofmt/vet)、`make fmt`(格式化)、`make lint`(静态检查)、`make package`(打包)、`make dev`(本地开发)。

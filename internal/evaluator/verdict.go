@@ -24,6 +24,32 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 		expected = *c.RuleExpected
 	}
 
+	// mcq has its own extraction-and-match caliber (ADR 0013) and reports
+	// extraction failures distinctly, so it bypasses the generic switch.
+	if mode == "mcq" {
+		return mcqVerdict(expected, answer)
+	}
+	// numeric likewise (ticket 95): ####-marker/last-line extraction with
+	// separator/sign/decimal normalization, conservative on failure.
+	if mode == "numeric" {
+		return numericVerdict(expected, answer)
+	}
+
+	// output_match (ticket 98, CRUXEval-style output prediction) likewise
+	// has its own literal canonicalization caliber and never touches the
+	// generic normalization pipeline — and never executes any code.
+	if mode == "output_match" {
+		return outputMatchVerdict(expected, answer)
+	}
+
+	// ifeval scores all-or-nothing against the case's structured check
+	// params (check_params column, ticket 97) and is never normalized (spec
+	// 0014: IFEval 免归一化 — case/whitespace/punctuation-sensitive checkers
+	// must see the raw answer), so it bypasses the generic switch too.
+	if mode == "ifeval" {
+		return ifevalVerdict(c.CheckParams, answer)
+	}
+
 	hit := false
 	switch mode {
 	case "exact":

@@ -18,7 +18,9 @@ package store
 // to bootstrap each capability. Ticket 50's full bank (30-50 cases per
 // capability) goes through manual review before replacing them.
 //
-// builtinSuites is composed in seedbank.go as legacySuites + capabilitySuites.
+// builtinSuites is composed in seedbank.go (capability suites only since
+// ticket 93 — the pre-v3 legacy bank was removed when disabled suites became
+// hard-deleted, ADR 0012).
 var capabilitySuites = []seedSuite{
 	{
 		key:        "cap_instruction",

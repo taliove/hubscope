@@ -38,6 +38,7 @@ function makeReport(overrides: Partial<CampaignReport> = {}): CampaignReport {
     weights: { reasoning: 1, coding: 1 },
     rows: [makeRow('model-a'), makeRow('model-b')],
     baseline: null,
+    failed_results: 0,
     ...overrides,
   }
 }
@@ -163,5 +164,27 @@ describe('buildEvalCardSnapshot rows', () => {
     expect(snapshot.overflowCount).toBe(0)
     expect(chipValues(snapshot)['系列']).toBe('fam-zzz')
     expect(snapshot.failedWarning).toBeNull()
+  })
+
+  // Coverage gate (ticket 92, spec 0014 decision A): incomplete rows render
+  // the placeholder dash in the material too, with the watermark precomputed
+  // (no tooltip fallback in a static image).
+  it('nulls the rank and precomputes the watermark for judged-incomplete rows', () => {
+    const report = makeReport({
+      rows: [
+        makeRow('complete-a'),
+        makeRow('incomplete-b', {
+          total_score: null,
+          suite_scores: { reasoning: 80, coding: null },
+          complete: false,
+          missing_suites: 1,
+        }),
+      ],
+    })
+    const snapshot = buildEvalCardSnapshot(report, defaultQuery)
+    expect(snapshot.rows[0].rank).toBe(1)
+    expect(snapshot.rows[0].incompleteNote).toBe('')
+    expect(snapshot.rows[1].rank).toBeNull()
+    expect(snapshot.rows[1].incompleteNote).toBe('判分不完整,缺 1/2 维度')
   })
 })

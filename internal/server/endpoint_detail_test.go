@@ -147,7 +147,7 @@ func f64(v float64) *float64 { return &v }
 func TestEndpointDetail(t *testing.T) {
 	db := openTempDB(t)
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -197,7 +197,7 @@ func TestEndpointDetail(t *testing.T) {
 func TestEndpointSeriesAggregation(t *testing.T) {
 	db := openTempDB(t)
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()
@@ -299,7 +299,7 @@ func TestEndpointSeriesValidation(t *testing.T) {
 func TestProbesOkFilter(t *testing.T) {
 	db := openTempDB(t)
 	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow })))
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

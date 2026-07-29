@@ -37,7 +37,7 @@
         </el-tab-pane>
         <el-tab-pane label="设置" name="settings">
           <div class="tab-stack">
-            <SettingsPanel />
+            <SettingsPanel :highlight-item="settingsItem" />
             <ShareLinksPanel />
           </div>
         </el-tab-pane>
@@ -47,10 +47,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAdminData } from '@/composables/useAdminData'
 import { fetchAuthStatus } from '@/api/auth'
+import { parseAdminTabQuery, parseSettingsItemQuery } from '@/utils/adminNav'
 import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
@@ -65,9 +67,42 @@ import ShareLinksPanel from '@/components/ShareLinksPanel.vue'
 
 const { hubs, endpointRows, endpointlessRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
 
+const router = useRouter()
+const route = useRoute()
+
 // Default landing tab; el-tabs keeps every pane mounted (no lazy rendering),
 // so HubManager's internal sync polling keeps running on inactive tabs.
-const activeTab = ref('resources')
+// A valid ?tab= query (GH #29) overrides the default so a deep link lands
+// on the tab it names; an invalid value falls back silently.
+const activeTab = ref(parseAdminTabQuery(route.query.tab) ?? 'resources')
+
+// Settings item anchor requested via ?item= (GH #29): only meaningful on
+// the settings tab — an item query naming another tab is ignored, so no
+// hidden pane is ever scrolled or highlighted.
+const settingsItem = computed(() =>
+  activeTab.value === 'settings' ? parseSettingsItemQuery(route.query.item) : null,
+)
+
+// A manual tab switch syncs the URL (same discipline as issue #16's batch
+// query): the stale deep-link query can never drag the user back, and the
+// item anchor is dropped so an old link cannot re-highlight a row the user
+// navigated away from. A query-driven change (route.query.tab already
+// matches) is left untouched — the URL is already the source of truth.
+watch(activeTab, (tab) => {
+  if (route.query.tab === tab) return
+  void router.replace({ query: { tab } })
+})
+
+// Late navigation to /admin?tab=... while the page is already mounted
+// (e.g. following a settings deep link from an open admin session):
+// re-target the tab; invalid values are ignored silently.
+watch(
+  () => route.query.tab,
+  (raw) => {
+    const tab = parseAdminTabQuery(raw)
+    if (tab !== null && tab !== activeTab.value) activeTab.value = tab
+  },
+)
 
 // User-management tab is visible only to admin+super_admin (operator/viewer
 // would be routed away by the guard, and the backend 403s them anyway; hiding
@@ -91,6 +126,11 @@ onMounted(async () => {
     const status = await fetchAuthStatus()
     if (status.user) {
       canManageUsers.value = status.user.role === 'super_admin' || status.user.role === 'admin'
+    }
+    // A ?tab=users deep link from a role without the users pane lands on
+    // the default tab instead of a pane-less empty page.
+    if (activeTab.value === 'users' && !canManageUsers.value) {
+      activeTab.value = 'resources'
     }
   } catch {
     // Router guard handles redirect; default hides the user tab.

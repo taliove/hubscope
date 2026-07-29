@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/taliove/hubscope/internal/store"
@@ -18,6 +19,7 @@ type settingsDTO struct {
 	ScoreDropAlertEnabled bool               `json:"score_drop_alert_enabled"`
 	JudgeModel            string             `json:"judge_model"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
+	EvalConcurrency       int                `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
@@ -30,6 +32,7 @@ type settingsPatch struct {
 	ScoreDropAlertEnabled *bool              `json:"score_drop_alert_enabled"`
 	JudgeModel            *string            `json:"judge_model"`
 	DefaultSampleCount    *int               `json:"default_sample_count"`
+	EvalConcurrency       *int               `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
@@ -50,6 +53,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
+		return dto, err
+	}
+	if dto.EvalConcurrency, err = s.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency); err != nil {
 		return dto, err
 	}
 	if dto.SuiteWeights, err = s.db.GetSuiteWeights(); err != nil {
@@ -85,6 +91,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patch.EvalConcurrency != nil &&
+		(*patch.EvalConcurrency < 1 || *patch.EvalConcurrency > store.MaxEvalConcurrency) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("eval_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
+		return
+	}
+
 	if patch.SuiteWeights != nil {
 		if err := s.validateSuiteWeights(patch.SuiteWeights); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -111,6 +124,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingDefaultSampleCount, func() error {
 			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
 		}},
+		{store.SettingEvalConcurrency, func() error {
+			return s.db.SetSettingInt(store.SettingEvalConcurrency, *patch.EvalConcurrency)
+		}},
 		{store.SettingSuiteWeights, func() error {
 			return s.db.SetSuiteWeights(patch.SuiteWeights)
 		}},
@@ -121,6 +137,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
 		patch.DefaultSampleCount != nil,
+		patch.EvalConcurrency != nil,
 		patch.SuiteWeights != nil,
 	}
 	for i, u := range updates {
@@ -149,6 +166,63 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "settings.update", "settings", "", "keys="+strings.Join(keys, ","), "success")
 	writeData(w, http.StatusOK, dto)
+}
+
+// testLarkRequest is the POST /api/settings/test-lark body: the address
+// under test is the one in the form, not the saved setting (ticket 100
+// decision 1 — verify before saving).
+type testLarkRequest struct {
+	WebhookURL string `json:"webhook_url"`
+}
+
+// testLarkResult is the response data: the send outcome and, on failure, the
+// reason. The error text never contains the webhook URL (LarkSender strips
+// url.Error, W6).
+type testLarkResult struct {
+	SentOK bool    `json:"sent_ok"`
+	Error  *string `json:"error"`
+}
+
+// handleTestLark handles POST /api/settings/test-lark (super_admin): it
+// sends the fixed test message through the process-wide alert evaluator and
+// reports the outcome. Every attempt — success or failure — is recorded as
+// an alert_events row with kind="test" inside the evaluator. The manual test
+// is not gated by alert_enabled (ticket 100 decision 3: the switch governs
+// automatic alerts only).
+func (s *Server) handleTestLark(w http.ResponseWriter, r *http.Request) {
+	var req testLarkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	webhookURL := strings.TrimSpace(req.WebhookURL)
+	if !isAbsoluteHTTPURL(webhookURL) {
+		writeError(w, http.StatusBadRequest, "webhook_url must be an absolute http(s) URL")
+		return
+	}
+
+	sendErr := s.alerter.SendTest(r.Context(), webhookURL)
+	result := "success"
+	var errText *string
+	if sendErr != nil {
+		result = "failure"
+		msg := sendErr.Error()
+		errText = &msg
+	}
+	// Audit the action and outcome only — the webhook URL carries the bot
+	// token and stays out of the audit log (W6).
+	s.audit(r, "settings.test_lark", "settings", "", "", result)
+	writeData(w, http.StatusOK, testLarkResult{SentOK: sendErr == nil, Error: errText})
+}
+
+// isAbsoluteHTTPURL accepts only absolute http/https URLs, rejecting empty
+// input, relative references, and non-HTTP schemes (file://, ftp://, …).
+func isAbsoluteHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // validateSuiteWeights checks a suite_weights patch: keys must name existing

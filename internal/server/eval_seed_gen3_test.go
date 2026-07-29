@@ -25,14 +25,12 @@ func openSuitesServer(t *testing.T, dbPath string) (*httptest.Server, *store.DB)
 }
 
 // TestSeedGen3Idempotent reopens a seeded database and asserts the gen-3
-// seed never duplicates cases, never reverts admin case edits, and never
-// re-applies the legacy-suite retirement once it has been recorded.
+// seed never duplicates cases and never reverts admin case edits.
 func TestSeedGen3Idempotent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "gen3.db")
 
 	// First boot: seed lands. An admin then curates the bank — a content edit
-	// (retire + mint) and one extra case on cap_reasoning — and deliberately
-	// re-enables the retired legacy "basic" suite.
+	// (retire + mint) and one extra case on cap_reasoning.
 	ts, db := openSuitesServer(t, dbPath)
 	before := suiteByKey(t, ts.URL, "cap_reasoning")
 	if got := len(before["cases"].([]interface{})); got != 10 {
@@ -51,13 +49,9 @@ func TestSeedGen3Idempotent(t *testing.T) {
 	if createResp.StatusCode != http.StatusCreated {
 		t.Fatalf("create admin case: expected 201, got %d", createResp.StatusCode)
 	}
-	legacy := suiteByKey(t, ts.URL, "basic")
-	if err := db.SetSuiteEnabled(int64(legacy["id"].(float64)), true); err != nil {
-		t.Fatalf("re-enable legacy suite: %v", err)
-	}
 	db.Close()
 
-	// Second boot: nothing is re-seeded, edited or re-retired.
+	// Second boot: nothing is re-seeded or edited.
 	ts2, db2 := openSuitesServer(t, dbPath)
 	defer db2.Close()
 
@@ -72,11 +66,6 @@ func TestSeedGen3Idempotent(t *testing.T) {
 	retired := caseByID(t, after, seedID)
 	if retired["enabled"] != false || retired["prompt"] != seed["prompt"] {
 		t.Errorf("admin edit reverted by reseed: %v", retired)
-	}
-
-	legacyAfter := suiteByKey(t, ts2.URL, "basic")
-	if legacyAfter["enabled"] != true {
-		t.Errorf("legacy suite re-retired on reopen; admin re-enable must stick: %v", legacyAfter["enabled"])
 	}
 
 	// Third boot for good measure: generation records keep it a no-op.
@@ -254,7 +243,7 @@ func TestSeedGen3JudgeSampling(t *testing.T) {
 
 // TestSeedGen3NadirSnapshot asserts a run snapshots its suite's nadir at
 // creation, read back through the eval API: the multiple-choice knowledge
-// suite records 0.25, a legacy suite records 0.
+// suite records 0.25, a zero-floor suite records 0.
 func TestSeedGen3NadirSnapshot(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
@@ -266,12 +255,11 @@ func TestSeedGen3NadirSnapshot(t *testing.T) {
 		t.Errorf("cap_knowledge run nadir = %v, want 0.25", nadir)
 	}
 
-	// A manual trigger on a retired legacy suite stays allowed and snapshots
-	// the legacy nadir 0.
-	legacyID := suiteIDByKey(t, ts.URL, "basic")
-	legacyRunID := triggerEval(t, ts.URL, legacyID, modelID)
-	waitEvalDone(t, ts.URL, legacyRunID)
-	if nadir := getEvalRun(t, ts.URL, legacyRunID)["nadir"]; nadir != 0.0 {
-		t.Errorf("legacy run nadir = %v, want 0", nadir)
+	// A zero-floor suite snapshots nadir 0 (the legacy raw-mean caliber).
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionRunID := triggerEval(t, ts.URL, instructionID, modelID)
+	waitEvalDone(t, ts.URL, instructionRunID)
+	if nadir := getEvalRun(t, ts.URL, instructionRunID)["nadir"]; nadir != 0.0 {
+		t.Errorf("cap_instruction run nadir = %v, want 0", nadir)
 	}
 }

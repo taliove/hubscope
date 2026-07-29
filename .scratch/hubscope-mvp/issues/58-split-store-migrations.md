@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** pending
+**Status:** 已迁移至 GitHub issue #11(2026-07-28 全面切换 GitHub Issues;本地票只读存档)
 
 - [ ] store.go 拆分后各文件 ≤~400 行
 - [ ] 纯移动(逐行 diff 证明),无标识符/行为变更
