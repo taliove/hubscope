@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, verdictTypeLabel } from './liveFeed'
+import { isJudgeFailure, LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, verdictTypeLabel } from './liveFeed'
 import type { LiveFeedEntry } from '@/api/types'
 
 function entry(id: number): LiveFeedEntry {
@@ -73,5 +73,23 @@ describe('verdictTypeLabel', () => {
   it('renders a neutral dash for an empty (purged case) or unknown type', () => {
     expect(verdictTypeLabel('')).toBe('-')
     expect(verdictTypeLabel('something-else')).toBe('-')
+  })
+})
+
+describe('isJudgeFailure', () => {
+  it('is true only for an unscored judge verdict (GH #29 deep-link row)', () => {
+    expect(isJudgeFailure({ ...entry(1), verdict_type: 'judge', score: null })).toBe(true)
+  })
+
+  it('is false for a scored judge verdict', () => {
+    expect(isJudgeFailure({ ...entry(1), verdict_type: 'judge', score: 0.5 })).toBe(false)
+  })
+
+  it('is false for a rule failure — the link must not appear there', () => {
+    expect(isJudgeFailure({ ...entry(1), verdict_type: 'rule', score: null })).toBe(false)
+  })
+
+  it('is false for a purged case (empty verdict type)', () => {
+    expect(isJudgeFailure({ ...entry(1), verdict_type: '', score: null })).toBe(false)
   })
 })
