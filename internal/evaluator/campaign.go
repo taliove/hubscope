@@ -7,15 +7,19 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// RunCampaign executes one eval run per suite under the given campaign,
-// sequentially, against the given models. Sequential execution keeps hub
-// load predictable (the same cadence the weekly batch always used) and a
-// failed suite never blocks the remaining ones. When the loop ends — all
-// suites attempted or the context canceled — the campaign's aggregate status
-// is settled from its member runs (firing the AfterCampaign hook on a done
-// campaign). The campaign trigger is stamped onto every run so runs and
-// their campaign always agree on provenance.
+// RunCampaign executes one eval run per suite under the given campaign
+// against the given models. Every run is created up front — the progress
+// grid shows the full batch shape from the first cell on — and execution
+// fans out as (run × model) cells through the bounded worker pool (GH #26):
+// cells run concurrently up to the configured eval_concurrency, cases stay
+// serial inside a cell, and a failed suite or model never blocks the
+// remaining ones. When every cell has executed (or the context was
+// canceled) the campaign's aggregate status is settled once from its member
+// runs, firing the AfterCampaign hook on a done campaign. The campaign
+// trigger is stamped onto every run so runs and their campaign always agree
+// on provenance.
 func (e *Evaluator) RunCampaign(ctx context.Context, campaignID int64, trigger string, suites []store.Suite, modelDBIDs []int64, judgeModel string) {
+	var prepared []*preparedRun
 	for _, suite := range suites {
 		if ctx.Err() != nil {
 			break
@@ -25,9 +29,15 @@ func (e *Evaluator) RunCampaign(ctx context.Context, campaignID int64, trigger s
 			slog.Error("evaluator: create campaign run", "campaign_id", campaignID, "suite_id", suite.ID, "error", err)
 			continue
 		}
-		if err := e.RunEval(ctx, run.ID, modelDBIDs); err != nil {
-			slog.Error("evaluator: run campaign suite", "campaign_id", campaignID, "suite_id", suite.ID, "error", err)
+		prep, err := e.prepareRun(run.ID, len(modelDBIDs))
+		if err != nil {
+			// prepareRun already marked the run failed; the campaign settles
+			// from its member runs either way.
+			slog.Error("evaluator: prepare campaign run", "campaign_id", campaignID, "suite_id", suite.ID, "error", err)
+			continue
 		}
+		prepared = append(prepared, prep)
 	}
+	e.executePrepared(ctx, prepared, modelDBIDs)
 	e.SettleCampaign(ctx, campaignID)
 }

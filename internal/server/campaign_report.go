@@ -59,12 +59,16 @@ type reportRowDTO struct {
 // suites it covers, the effective weights used for the totals, the
 // leaderboard rows, and the previous-batch baseline the rows' deltas
 // compare against (null when no earlier done campaign exists).
+// FailedResults counts the batch's null-score (failed) result rows (GH #28):
+// on a settled campaign, failed_results > 0 is the retry-failed button's
+// render condition.
 type campaignReportDTO struct {
 	campaignDTO
-	Suites   []reportSuiteDTO   `json:"suites"`
-	Weights  map[string]float64 `json:"weights"`
-	Rows     []reportRowDTO     `json:"rows"`
-	Baseline *reportBaselineDTO `json:"baseline"`
+	Suites        []reportSuiteDTO   `json:"suites"`
+	Weights       map[string]float64 `json:"weights"`
+	Rows          []reportRowDTO     `json:"rows"`
+	Baseline      *reportBaselineDTO `json:"baseline"`
+	FailedResults int                `json:"failed_results"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -256,12 +260,18 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		}
 	}
 
+	failedResults, err := s.db.CountCampaignNullScoreResults(id)
+	if err != nil {
+		return fail(http.StatusInternalServerError, "failed to count failed results")
+	}
+
 	return campaignReportDTO{
-		campaignDTO: toCampaignDTO(progress),
-		Suites:      suites,
-		Weights:     weights,
-		Rows:        rows,
-		Baseline:    baseline,
+		campaignDTO:   toCampaignDTO(progress),
+		Suites:        suites,
+		Weights:       weights,
+		Rows:          rows,
+		Baseline:      baseline,
+		FailedResults: failedResults,
 	}, nil
 }
 

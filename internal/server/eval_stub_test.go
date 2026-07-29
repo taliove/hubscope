@@ -32,6 +32,16 @@ type evalStubHub struct {
 	// gate, when non-nil, blocks every response until released; tests use it
 	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
 	gate chan struct{}
+	// grandTotal counts every completion call since the last resetCalls
+	// (across models); globalGateAfter/globalGate form the count-armed
+	// global gate: the first globalGateAfter calls answer normally, every
+	// later call waits on globalGate. Unlike the release/re-arm stepping of
+	// blockCalls, a count-armed gate has no slip window — the N+1-th call
+	// blocks deterministically (GH #26 follow-up: mid-flight freeze points
+	// must survive cells being fed back-to-back).
+	grandTotal      int
+	globalGateAfter int
+	globalGate      chan struct{}
 	// totalCalls records how many completion calls each model made (any
 	// prompt), the counter blockModelAfter thresholds compare against.
 	totalCalls map[string]int
@@ -46,6 +56,14 @@ type evalStubHub struct {
 	answerSeq map[string][]string
 	// judgeSeq scripts cycled judge responses by prompt marker.
 	judgeSeq map[string][]string
+	// failNext scripts the next n completion calls of (model, prompt marker)
+	// to fail with HTTP 503 — the answer/judge retry scenarios (GH #27).
+	failNext map[string]int
+	// inFlight counts completion calls currently being handled; peakInFlight
+	// is its high-water mark — the concurrency assertion of the (suite ×
+	// model) worker pool (GH #26). Both reset with resetCalls.
+	inFlight     int
+	peakInFlight int
 }
 
 func newEvalStubHub() *evalStubHub {
@@ -56,6 +74,7 @@ func newEvalStubHub() *evalStubHub {
 		broken:     map[string]bool{},
 		answerSeq:  map[string][]string{},
 		judgeSeq:   map[string][]string{},
+		failNext:   map[string]int{},
 		totalCalls: map[string]int{},
 		gateAfter:  map[string]int{},
 		modelGates: map[string]chan struct{}{},
@@ -98,7 +117,18 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	h.callCounts[req.Model+"\x00"+prompt]++
 	h.totalCalls[req.Model]++
 	calls := h.totalCalls[req.Model]
+	h.grandTotal++
+	grand := h.grandTotal
+	h.inFlight++
+	if h.inFlight > h.peakInFlight {
+		h.peakInFlight = h.inFlight
+	}
 	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		h.inFlight--
+		h.mu.Unlock()
+	}()
 
 	h.mu.Lock()
 	broken := h.broken[req.Model]
@@ -107,11 +137,18 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	if limit, gated := h.gateAfter[req.Model]; gated && calls <= limit {
 		modelGate = nil // still within the allowed-call budget
 	}
+	globalGate := h.globalGate
+	if grand <= h.globalGateAfter {
+		globalGate = nil // still within the allowed-call budget
+	}
 	h.mu.Unlock()
 	// A closed gate holds the response until the test releases it; the call
 	// above is already recorded, so waiters observe the call while blocked.
 	if gate != nil {
 		<-gate
+	}
+	if globalGate != nil {
+		<-globalGate
 	}
 	if modelGate != nil {
 		<-modelGate
@@ -120,6 +157,13 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{"message": "No available providers for this model"},
+		})
+		return
+	}
+	if h.consumeScriptedFailure(req.Model, prompt) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]string{"message": "scripted transient failure"},
 		})
 		return
 	}
@@ -200,6 +244,31 @@ func (h *evalStubHub) setJudgeSeq(marker string, seq ...string) {
 	h.judgeSeq[marker] = seq
 }
 
+// failNextCalls scripts the next n completion calls of the model whose
+// prompt contains marker to fail with HTTP 503 (GH #27 retry scenarios).
+// Failures are consumed per call; a failed call never reaches answerFor, so
+// scripted answer sequences are not advanced by failures.
+func (h *evalStubHub) failNextCalls(model, marker string, n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.failNext[model+"\x00"+marker] = n
+}
+
+// consumeScriptedFailure reports whether this call was scripted to fail,
+// decrementing the script's remaining budget.
+func (h *evalStubHub) consumeScriptedFailure(model, prompt string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for key, n := range h.failNext {
+		parts := strings.SplitN(key, "\x00", 2)
+		if n > 0 && parts[0] == model && strings.Contains(prompt, parts[1]) {
+			h.failNext[key]--
+			return true
+		}
+	}
+	return false
+}
+
 // callCount reports how many completion calls carried exactly the given
 // prompt for the model (one per sample).
 func (h *evalStubHub) callCount(model, prompt string) int {
@@ -260,6 +329,25 @@ func (h *evalStubHub) resetCalls() {
 	defer h.mu.Unlock()
 	h.calls = map[string]map[string]bool{}
 	h.totalCalls = map[string]int{}
+	h.grandTotal = 0
+	h.inFlight = 0
+	h.peakInFlight = 0
+}
+
+// inflight reports how many completion calls are currently being handled.
+func (h *evalStubHub) inflight() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.inFlight
+}
+
+// peakInflight reports the high-water mark of simultaneous completion calls
+// since the last resetCalls — the observable upper bound of the eval worker
+// pool's fan-out (GH #26).
+func (h *evalStubHub) peakInflight() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.peakInFlight
 }
 
 func (h *evalStubHub) markBad(model string, bad bool) {
@@ -284,6 +372,36 @@ func (h *evalStubHub) release() {
 		close(h.gate)
 		h.gate = nil
 	}
+}
+
+// blockCallsAfter arms the count-based global gate: the first n completion
+// calls (grand total across models, since the last resetCalls) answer
+// normally, every later call waits until releaseGlobal. The N+1-th call is
+// recorded before blocking, so tests can observe the exact freeze point —
+// there is no release/re-arm window for calls to slip through.
+func (h *evalStubHub) blockCallsAfter(n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.globalGateAfter = n
+	h.globalGate = make(chan struct{})
+}
+
+// releaseGlobal unblocks the count-armed global gate.
+func (h *evalStubHub) releaseGlobal() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.globalGate != nil {
+		close(h.globalGate)
+		h.globalGate = nil
+	}
+}
+
+// grandTotalCalls reports how many completion calls arrived since the last
+// resetCalls, across all models and prompts.
+func (h *evalStubHub) grandTotalCalls() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.grandTotal
 }
 
 // blockModelAfter freezes the given model's responses once its recorded

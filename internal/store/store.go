@@ -207,6 +207,15 @@ func (db *DB) migrate() error {
 			UNIQUE(dimension, keyword)
 		);
 
+		CREATE TABLE IF NOT EXISTS image_param_rules (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			keyword TEXT NOT NULL,
+			params TEXT NOT NULL,
+			priority INTEGER NOT NULL DEFAULT 100,
+			created_at TEXT NOT NULL,
+			UNIQUE(keyword)
+		);
+
 		CREATE TABLE IF NOT EXISTS audit_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			at TEXT NOT NULL,
@@ -432,6 +441,11 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.seedClassificationRules(); err != nil {
+		return err
+	}
+	// Image-probe cost-saving parameter rules (spec 0014 / GH #33): an
+	// independent one-shot flag, so the two rule tables seed separately.
+	if err := db.seedImageParamRules(); err != nil {
 		return err
 	}
 	return db.ReclassifyAll()

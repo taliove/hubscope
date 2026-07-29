@@ -22,17 +22,106 @@ type discoveryStubHub struct {
 	lastListAuth string                     // Authorization header of the last /v1/models call
 	listFails    bool                       // /v1/models answers HTTP 500
 	hold         chan struct{}              // non-nil: /v1/models blocks until released
+	// imageModes controls the /v1/images/generations answer per model:
+	// "success" / "empty_data" / "bad_shape"; an absent entry answers 503
+	// (spec 0014: the image trial must default to failure so existing
+	// assertions on chat-only endpoint sets keep holding).
+	imageModes map[string]string
+	// imageReqs records every /v1/images/generations request body per model,
+	// so tests can assert the wire shape and that no image traffic happened.
+	imageReqs map[string][]imageRequest
+	// editModes controls the /v1/images/edits answer per model, with the same
+	// values and 503 default as imageModes. The map is independent of
+	// imageModes so tests can express "generation works, edits does not"
+	// (and the reverse) — the two upstream paths fail separately in reality.
+	editModes map[string]string
+	// editReqs records every /v1/images/edits call per model: model, prompt,
+	// and whether a non-empty image file arrived. Headers (notably
+	// Authorization) are deliberately not recorded (W6).
+	editReqs map[string][]editRequest
+	// chatReqs records every chat-protocol request per model (protocol names
+	// in arrival order) so tests can assert an image model received zero
+	// chat trials (GH #45).
+	chatReqs map[string][]string
+}
+
+// imageRequest is the recorded body of one /v1/images/generations call.
+// Raw carries the full decoded JSON object so tests can assert the exact key
+// set (GH #33: cost-saving params present only when a rule matches).
+type imageRequest struct {
+	Model  string
+	Prompt string
+	N      int
+	Raw    map[string]interface{}
+}
+
+// editRequest is the recorded shape of one /v1/images/edits call: the
+// multipart fields the contract cares about, nothing else. Fields carries
+// every form value (first value per key) so tests can assert rule-driven
+// extra fields (GH #33).
+type editRequest struct {
+	Model        string
+	Prompt       string
+	ImagePresent bool
+	Fields       map[string]string
 }
 
 func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 	t.Helper()
 	stub := &discoveryStubHub{
-		modelIDs: modelIDs,
-		failing:  map[string]map[string]bool{},
+		modelIDs:   modelIDs,
+		failing:    map[string]map[string]bool{},
+		imageModes: map[string]string{},
+		imageReqs:  map[string][]imageRequest{},
+		editModes:  map[string]string{},
+		editReqs:   map[string][]editRequest{},
+		chatReqs:   map[string][]string{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	t.Cleanup(stub.Close)
 	return stub
+}
+
+// setImageMode makes /v1/images/generations for the model answer per mode
+// ("success" / "empty_data" / "bad_shape"); any other value (including the
+// zero value) answers 503.
+func (s *discoveryStubHub) setImageMode(modelID, mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.imageModes[modelID] = mode
+}
+
+// imageRequests returns the recorded /v1/images/generations request bodies
+// for the model, in arrival order.
+func (s *discoveryStubHub) imageRequests(modelID string) []imageRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]imageRequest(nil), s.imageReqs[modelID]...)
+}
+
+// setEditMode makes /v1/images/edits for the model answer per mode (same
+// values as setImageMode); any other value (including the zero value)
+// answers 503.
+func (s *discoveryStubHub) setEditMode(modelID, mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.editModes[modelID] = mode
+}
+
+// editRequests returns the recorded /v1/images/edits call shapes for the
+// model, in arrival order.
+func (s *discoveryStubHub) editRequests(modelID string) []editRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]editRequest(nil), s.editReqs[modelID]...)
+}
+
+// chatRequests returns the recorded chat-protocol names requested for the
+// model, in arrival order.
+func (s *discoveryStubHub) chatRequests(modelID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.chatReqs[modelID]...)
 }
 
 // setModels replaces the model list returned by /v1/models.
@@ -123,6 +212,19 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasSuffix(r.URL.Path, "/v1/images/generations") {
+		s.handleImageGeneration(w, r)
+		return
+	}
+
+	// The edits route is multipart and must be intercepted before the chat
+	// JSON parsing below — a multipart body fed to json.Unmarshal would be
+	// silently misread as an empty model and pollute the chat failure maps.
+	if strings.HasSuffix(r.URL.Path, "/v1/images/edits") {
+		s.handleImageEdit(w, r)
+		return
+	}
+
 	isAnthropic := strings.HasSuffix(r.URL.Path, "/v1/messages")
 	protocol := "openai"
 	if isAnthropic {
@@ -137,6 +239,7 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &req)
 
 	s.mu.Lock()
+	s.chatReqs[req.Model] = append(s.chatReqs[req.Model], protocol)
 	fail := s.failing[req.Model][protocol]
 	s.mu.Unlock()
 	if fail {
@@ -151,6 +254,113 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeStubNonStream(w, isAnthropic)
+}
+
+// handleImageGeneration answers POST /v1/images/generations. The request is
+// always recorded, then validated against the minimal probe contract
+// {model, prompt, n:1} (spec 0014): a malformed body answers 400 so a
+// hardcoded-field implementation bug fails the trial instead of passing it.
+// The response shape is controlled per model via setImageMode and defaults
+// to 503.
+func (s *discoveryStubHub) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+		N      int    `json:"n"`
+	}
+	_ = json.Unmarshal(body, &req)
+	var raw map[string]interface{}
+	_ = json.Unmarshal(body, &raw)
+
+	s.mu.Lock()
+	s.imageReqs[req.Model] = append(s.imageReqs[req.Model], imageRequest{
+		Model: req.Model, Prompt: req.Prompt, N: req.N, Raw: raw,
+	})
+	mode := s.imageModes[req.Model]
+	fail := s.failing[req.Model]["images_generation"]
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if req.Model == "" || req.Prompt == "" || req.N != 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"invalid image generation request"}}`)
+		return
+	}
+	if fail {
+		mode = ""
+	}
+	switch mode {
+	case "success":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"b64_json":"aGVsbG8="}],`+
+			`"usage":{"total_tokens":15,"input_tokens":12,"output_tokens":3}}`)
+	case "empty_data":
+		fmt.Fprint(w, `{"created":1720000000,"data":[]}`)
+	case "bad_shape":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"revised_prompt":"painted square"}]}`)
+	default:
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
+	}
+}
+
+// handleImageEdit answers POST /v1/images/edits. The multipart form is really
+// parsed (ParseMultipartForm) so the test proves the probe actually uploads
+// the embedded test image: model + prompt fields and a non-empty image file
+// part are required, anything missing or empty answers 400 — a client with
+// wrong field names (e.g. an image[]/file dialect) fails the trial instead
+// of passing it. The call is always recorded (model/prompt/image presence
+// only, never headers). The response shape is controlled per model via
+// setEditMode and defaults to 503.
+func (s *discoveryStubHub) handleImageEdit(w http.ResponseWriter, r *http.Request) {
+	model, prompt, imagePresent := "", "", false
+	fields := map[string]string{}
+	if err := r.ParseMultipartForm(10 << 20); err == nil {
+		model = r.FormValue("model")
+		prompt = r.FormValue("prompt")
+		if r.MultipartForm != nil {
+			for key, values := range r.MultipartForm.Value {
+				if len(values) > 0 {
+					fields[key] = values[0]
+				}
+			}
+		}
+		if file, _, err := r.FormFile("image"); err == nil {
+			n, _ := io.Copy(io.Discard, file)
+			file.Close()
+			imagePresent = n > 0
+		}
+	}
+
+	s.mu.Lock()
+	s.editReqs[model] = append(s.editReqs[model], editRequest{
+		Model: model, Prompt: prompt, ImagePresent: imagePresent, Fields: fields,
+	})
+	mode := s.editModes[model]
+	fail := s.failing[model]["images_edit"]
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if model == "" || prompt == "" || !imagePresent {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"invalid image edit request"}}`)
+		return
+	}
+	if fail {
+		mode = ""
+	}
+	switch mode {
+	case "success":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"b64_json":"aGVsbG8="}],`+
+			`"usage":{"total_tokens":15,"input_tokens":12,"output_tokens":3}}`)
+	case "empty_data":
+		fmt.Fprint(w, `{"created":1720000000,"data":[]}`)
+	case "bad_shape":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"revised_prompt":"darker square"}]}`)
+	default:
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
+	}
 }
 
 // createHubViaAPI registers a hub pointing at hubURL and returns its ID.

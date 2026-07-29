@@ -1,12 +1,12 @@
 <template>
-  <div class="settings-stack">
+  <div ref="rootEl" class="settings-stack">
     <el-card shadow="never" class="admin-card">
       <template #header>
         <span>告警设置</span>
       </template>
 
       <el-form :model="form" label-width="120px" :disabled="saving">
-        <el-form-item label="飞书 Webhook">
+        <el-form-item label="飞书 Webhook" data-item="lark_webhook_url">
           <el-input
             v-model="form.lark_webhook_url"
             class="webhook-input"
@@ -15,10 +15,10 @@
           />
           <el-button class="test-lark-btn" :loading="testing" @click="onTestLark">发送测试</el-button>
         </el-form-item>
-        <el-form-item label="端点告警">
+        <el-form-item label="端点告警" data-item="alert_enabled">
           <el-switch v-model="form.alert_enabled" active-text="开" inactive-text="关" />
         </el-form-item>
-        <el-form-item label="分数大跌告警">
+        <el-form-item label="分数大跌告警" data-item="score_drop_alert_enabled">
           <el-switch v-model="form.score_drop_alert_enabled" active-text="开" inactive-text="关" />
           <div class="field-hint block-hint">
             每轮评估(Campaign)完成后,与上一轮同评估集对比,任一评估集得分跌幅超过 0.2
@@ -53,17 +53,21 @@
       </template>
 
       <el-form :model="form" label-width="120px" :disabled="saving">
-        <el-form-item label="裁判模型">
+        <el-form-item label="裁判模型" data-item="judge_model">
           <el-input v-model="form.judge_model" class="judge-input" placeholder="claude-opus-4-8" />
         </el-form-item>
-        <el-form-item label="默认采样次数">
+        <el-form-item label="默认采样次数" data-item="default_sample_count">
           <el-input-number v-model="form.default_sample_count" :min="1" :max="10" />
           <span class="field-hint">每题作答次数,多次取平均;题目可单独覆盖</span>
+        </el-form-item>
+        <el-form-item label="评估并发数" data-item="eval_concurrency">
+          <el-input-number v-model="form.eval_concurrency" :min="1" :max="16" />
+          <span class="field-hint">同时执行的评估单元(评估集 × 模型)数;调大可缩短批次时长,但会增加 Hub 压力</span>
         </el-form-item>
         <el-form-item label="每周计划">
           <span class="field-static">每周日凌晨自动发起全量评估(内置计划,无需配置)</span>
         </el-form-item>
-        <el-form-item label="评估集权重">
+        <el-form-item label="评估集权重" data-item="suite_weights">
           <div class="weights-block">
             <div v-for="suite in enabledSuites" :key="suite.key" class="weight-item">
               <span class="weight-label" :title="suite.key">{{ suite.name }}</span>
@@ -87,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   getSettings,
@@ -99,7 +103,54 @@ import {
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
 import { formatTime } from '@/utils/format'
+import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
+
+// Settings item anchor requested via /admin?tab=settings&item=... (GH #29):
+// AdminView owns the query parsing; this panel only scrolls the named row
+// into view and flashes it. Null = no deep link, render as before.
+const props = defineProps<{
+  highlightItem?: SettingsItem | null
+}>()
+
+const rootEl = ref<HTMLElement | null>(null)
+
+// How long the flash stays at full brand-soft before fading back out
+// through the same --hs-transition it arrived with.
+const HIGHLIGHT_HOLD_MS = 2400
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearHighlight() {
+  if (highlightTimer !== undefined) {
+    clearTimeout(highlightTimer)
+    highlightTimer = undefined
+  }
+  rootEl.value?.querySelector('.setting-highlight')?.classList.remove('setting-highlight')
+}
+
+// Scroll the anchored row into view and flash it. Re-targeting replaces any
+// in-flight flash so two quick deep links never stack timers.
+async function flashItem(item: SettingsItem) {
+  await nextTick()
+  const el = rootEl.value?.querySelector<HTMLElement>(`[data-item="${item}"]`)
+  if (!el) return
+  clearHighlight()
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('setting-highlight')
+  highlightTimer = setTimeout(() => {
+    el.classList.remove('setting-highlight')
+    highlightTimer = undefined
+  }, HIGHLIGHT_HOLD_MS)
+}
+
+watch(
+  () => props.highlightItem,
+  (item) => {
+    if (item) void flashItem(item)
+  },
+)
+
+onBeforeUnmount(clearHighlight)
 
 const form = reactive<AppSettings>({
   lark_webhook_url: '',
@@ -107,6 +158,7 @@ const form = reactive<AppSettings>({
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
   default_sample_count: 1,
+  eval_concurrency: 4,
   suite_weights: {},
 })
 const suites = ref<Suite[]>([])
@@ -190,6 +242,9 @@ async function onTestLark() {
 }
 
 onMounted(async () => {
+  // Initial deep link (/admin?tab=settings&item=...): the tab is already
+  // active, so the anchored row can flash as soon as the pane is painted.
+  if (props.highlightItem) void flashItem(props.highlightItem)
   try {
     const [settings, suiteList, alertList] = await Promise.all([getSettings(), listSuites(), listAlerts()])
     Object.assign(form, settings)
@@ -209,6 +264,17 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--hs-space-4);
   width: 100%;
+}
+/* Deep-link anchor rows (GH #29): the flash arrives and leaves on the
+   shared transition token, so it breathes instead of blinking. */
+.settings-stack [data-item] {
+  border-radius: var(--hs-radius-sm);
+  transition: background-color var(--hs-transition);
+}
+/* The flash tint is the brand soft surface — emphasis by the existing
+   brand family, no new hue (ui-guidelines §2/§3). */
+.settings-stack .setting-highlight {
+  background-color: var(--hs-brand-soft);
 }
 /* Admin density tier: compact 12px card padding (ui-guidelines §2). */
 .admin-card {

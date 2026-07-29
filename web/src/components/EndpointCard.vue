@@ -2,7 +2,7 @@
   <el-card shadow="never" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
     <div class="card-head">
       <span class="model-id" :title="entry.model_id">{{ entry.model_id }}</span>
-      <el-tag :type="entry.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
+      <el-tag :type="protocolTagType(entry.protocol)" size="small">
         {{ entry.protocol }}
       </el-tag>
     </div>
@@ -65,6 +65,7 @@ import type { OverviewEntry, OverviewDot } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
 import LatencySparkline from './LatencySparkline.vue'
 import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
+import { protocolTagType } from '@/utils/protocol'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
 // Clicking navigates to the endpoint detail page.

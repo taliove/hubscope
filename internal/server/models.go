@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/taliove/hubscope/internal/classifier"
 	"github.com/taliove/hubscope/internal/hubclient"
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -20,12 +21,35 @@ type createModelRequest struct {
 	ModelID string `json:"model_id"`
 }
 
-// modelProtocols lists both hub API protocols in canonical endpoint order.
+// modelProtocols lists the chat hub API protocols in canonical endpoint
+// order. Image-capable models additionally trial the image protocol (see
+// trialProtocolsFor).
 var modelProtocols = []string{"anthropic", "openai"}
 
+// trialProtocolsFor returns the protocols a model is trial-probed on: chat
+// protocols for every model, plus the image protocols for image-capable
+// models (spec 0014 / ADR 0012), generation before edit (GH #32). On a
+// rule-read failure the chat-only list is returned: a missed image trial is
+// backfilled by the next discovery sync, while a wrongly sent image trial
+// would burn money per call.
+func (s *Server) trialProtocolsFor(modelID string) []string {
+	list := append([]string(nil), modelProtocols...)
+	rules, err := s.db.ListClassificationRules()
+	if err != nil {
+		slog.Error("trial protocols: load classification rules, trialing chat protocols only", "error", err)
+		return list
+	}
+	capability, _ := classifier.Classify(modelID, rules)
+	if capability == "image" {
+		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
+	}
+	return list
+}
+
 // handleCreateModel handles POST /api/models. The model is trial-probed on
-// both protocols first: an endpoint is created per protocol that answered.
-// A model unreachable on both is rejected with 400 and nothing is stored.
+// its candidate protocols first: an endpoint is created per protocol that
+// answered. A model unreachable on all of them is rejected with 400 and
+// nothing is stored.
 func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	var req createModelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -45,11 +69,12 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	working, failures := s.trialProtocols(r.Context(), *hub, req.ModelID, modelProtocols)
+	protocols := s.trialProtocolsFor(req.ModelID)
+	working, failures := s.trialProtocols(r.Context(), *hub, req.ModelID, protocols)
 	if len(working) == 0 {
-		s.audit(r, "model.create", "model", req.ModelID, failures, "failed: unreachable on both protocols")
+		s.audit(r, "model.create", "model", req.ModelID, failures, "failed: unreachable on all trialed protocols")
 		writeError(w, http.StatusBadRequest,
-			"model is unreachable on both anthropic and openai protocols: "+failures)
+			"model is unreachable on all trialed protocols ("+strings.Join(protocols, ", ")+"): "+failures)
 		return
 	}
 
@@ -79,12 +104,24 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 // trialProtocols probes the model on the given protocols and returns the
 // protocols that answered plus a human-readable summary of the failures.
+// Image protocol trials carry the rule-merged extra parameters (GH #33) via
+// the single resolution entry (store.ImageParamsFor); a rules-table hiccup
+// degrades the trial to the minimal request body rather than failing it.
 func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string, protocols []string) ([]string, string) {
 	client := hubclient.New()
 	working := []string{}
 	failures := []string{}
 	for _, protocol := range protocols {
-		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false)
+		var imageParams map[string]string
+		if hubclient.IsImageProtocol(protocol) {
+			if params, err := s.db.ImageParamsFor(modelID); err != nil {
+				slog.Warn("models: image param rules unavailable, trialing with minimal body",
+					"model", modelID, "protocol", protocol, "error", err)
+			} else {
+				imageParams = params
+			}
+		}
+		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false, imageParams)
 		if result.OK {
 			working = append(working, protocol)
 			continue
@@ -233,11 +270,21 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 			missing = append(missing, protocol)
 		}
 	}
+	// Image-capable models also trial the image protocols (spec 0014); the
+	// stored capability is authoritative here because the model already
+	// exists. Generation and edit are independent trials (GH #32).
+	if model.Capability == "image" {
+		for _, protocol := range []string{hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit} {
+			if !have[protocol] {
+				missing = append(missing, protocol)
+			}
+		}
+	}
 
 	working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, missing)
 	created := make([]string, 0, len(working))
 	for _, protocol := range working {
-		if _, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+		if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 			// Keep going: a partially created trial must not surface as a
 			// bare 500 with the already-created endpoints left invisible.
 			slog.Error("model trial: create endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
@@ -248,6 +295,9 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		} else if isNew {
+			if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
+				slog.Error("model trial: apply creation defaults", "model_id", model.ID, "protocol", protocol, "error", err)
+			}
 			created = append(created, protocol)
 		}
 	}

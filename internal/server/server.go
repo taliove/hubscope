@@ -302,6 +302,10 @@ func (s *Server) routes() chi.Router {
 				r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
 				r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
 
+				r.Post("/image-param-rules", s.handleCreateImageParamRule)
+				r.Patch("/image-param-rules/{id}", s.handlePatchImageParamRule)
+				r.Delete("/image-param-rules/{id}", s.handleDeleteImageParamRule)
+
 				r.Post("/cases", s.handleCreateCase)
 				r.Patch("/cases/{id}", s.handlePatchCase)
 
@@ -334,6 +338,7 @@ func (s *Server) routes() chi.Router {
 				// classification_rules/suites/cases, not evals).
 				r.Post("/evals", s.handleCreateEval)
 
+				r.Post("/campaigns/{id}/retry-failed", s.handleRetryCampaignFailed)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})
@@ -361,6 +366,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
 			r.Get("/classification-rules", s.handleListClassificationRules)
+			r.Get("/image-param-rules", s.handleListImageParamRules)
 
 			r.Get("/overview", s.handleGetOverview)
 

@@ -52,3 +52,11 @@ export function verdictTypeLabel(verdictType: string): string {
   if (verdictType === 'judge') return '裁判'
   return '-'
 }
+
+// A judge failure: the case went to the judge model but came back unscored
+// (W7: judge failure is null, never zero). These rows — and only these —
+// carry the GH #29 deep link to the judge-model setting; a rule failure is
+// a case-authoring matter, not a judge-setting one.
+export function isJudgeFailure(entry: Pick<LiveFeedEntry, 'verdict_type' | 'score'>): boolean {
+  return entry.verdict_type === 'judge' && entry.score === null
+}

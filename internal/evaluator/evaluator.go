@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/taliove/hubscope/internal/hubclient"
@@ -43,45 +44,186 @@ func New(db *store.DB, client *hubclient.Client) *Evaluator {
 // selected model and marks the run done. A failing model never blocks the
 // others; per-case failures are recorded as results with nil scores.
 //
-// The judge model is read from settings at run start (default
-// store.DefaultJudgeModel); the run record is updated when the configured
-// value differs from the snapshot taken at creation, so eval_runs.judge_model
-// always reflects the judge actually used. The default sample count is read
-// the same way; a case's own sample_count overrides it.
+// Execution goes through the same (run × model) cell pool as full campaigns
+// (GH #26): one cell per selected model, bounded by the configured
+// eval_concurrency. The judge model is read from settings at run start
+// (default store.DefaultJudgeModel); the run record is updated when the
+// configured value differs from the snapshot taken at creation, so
+// eval_runs.judge_model always reflects the judge actually used. The default
+// sample count is read the same way; a case's own sample_count overrides it.
 func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64) error {
+	prep, err := e.prepareRun(runID, len(modelDBIDs))
+	if err != nil {
+		return err
+	}
+	e.executePrepared(ctx, []*preparedRun{prep}, modelDBIDs)
+	return ctx.Err()
+}
+
+// preparedRun is a run staged for execution: the judge-resolved run record,
+// its task-center mirror and the enabled cases of its suite, loaded once so
+// every (run × model) cell of the run shares them.
+type preparedRun struct {
+	run   *store.EvalRun
+	task  *runTask
+	cases []store.Case
+}
+
+// prepareRun loads and stages one run for cell execution. A case-loading
+// failure marks the run failed (with its task) and returns the error, the
+// same outcome the serial executor produced.
+func (e *Evaluator) prepareRun(runID int64, modelCount int) (*preparedRun, error) {
 	run, err := e.db.GetEvalRun(runID)
 	if err != nil {
-		return fmt.Errorf("load eval run %d: %w", runID, err)
+		return nil, fmt.Errorf("load eval run %d: %w", runID, err)
 	}
 	run = e.resolveJudgeModel(run)
-	defaultSamples := e.resolveDefaultSampleCount()
 
 	// Register the run with the task center; tracking failures never abort
 	// the run itself (beginRunTask returns a no-op logger then).
-	task := e.beginRunTask(run, len(modelDBIDs))
+	task := e.beginRunTask(run, modelCount)
 
 	cases, err := e.db.ListEnabledCases(run.SuiteID)
 	if err != nil {
 		_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
 		task.fail(fmt.Sprintf("load cases for suite %d: %v", run.SuiteID, err))
-		return fmt.Errorf("load cases for suite %d: %w", run.SuiteID, err)
+		return nil, fmt.Errorf("load cases for suite %d: %w", run.SuiteID, err)
 	}
+	return &preparedRun{run: run, task: task, cases: cases}, nil
+}
 
-	for _, modelDBID := range modelDBIDs {
-		if err := ctx.Err(); err != nil {
-			_ = e.db.FinishEvalRun(runID, "failed", time.Now().UTC())
-			task.fail(err.Error())
-			return err
+// evalCell is the unit of eval execution (GH #26): one run against one
+// model. Cases stay serial inside a cell, keeping per-model cadence and hub
+// pressure predictable; cells fan out across a bounded worker pool.
+type evalCell struct {
+	prep      *preparedRun
+	modelDBID int64
+}
+
+// executePrepared fans every (run × model) cell of the prepared runs out to
+// the bounded worker pool and finishes each run once its cells complete:
+// done when every cell executed, failed when the context was canceled with
+// cells unstarted. It returns after all cells executed or the context was
+// canceled (in-flight cells always run to completion).
+func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) {
+	defaultSamples := e.resolveDefaultSampleCount()
+
+	var mu sync.Mutex
+	remaining := map[int64]int{}
+	var cells []evalCell
+	for _, prep := range prepared {
+		remaining[prep.run.ID] = len(modelDBIDs)
+		for _, modelDBID := range modelDBIDs {
+			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
 		}
-		e.evalModel(ctx, run, modelDBID, cases, task, defaultSamples)
+		// A run with no models has no cells to wait for: it evaluates
+		// nothing and finishes done immediately (the serial executor's
+		// zero-model outcome).
+		if len(modelDBIDs) == 0 {
+			e.finishPreparedRun(prep, "done")
+		}
 	}
 
-	if err := e.db.FinishEvalRun(runID, "done", time.Now().UTC()); err != nil {
-		task.fail(err.Error())
-		return err
+	e.runCellPool(ctx, cells, func(cctx context.Context, cell evalCell) {
+		e.evalModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+		mu.Lock()
+		remaining[cell.prep.run.ID]--
+		done := remaining[cell.prep.run.ID] == 0
+		mu.Unlock()
+		if done {
+			// All of the run's cells executed: the run is done regardless
+			// of a later cancellation (the serial executor finished a run
+			// done once its last model completed, too).
+			e.finishPreparedRun(cell.prep, "done")
+		}
+	})
+
+	// Cells dropped because the context was canceled never reported back;
+	// their runs fail, matching the serial executor's cancellation outcome.
+	mu.Lock()
+	defer mu.Unlock()
+	for _, prep := range prepared {
+		if remaining[prep.run.ID] > 0 {
+			reason := "execution incomplete"
+			if err := ctx.Err(); err != nil {
+				reason = err.Error()
+			}
+			e.failPreparedRun(prep, reason)
+		}
 	}
-	task.succeed()
-	return nil
+}
+
+// runCellPool executes job for every cell with at most eval_concurrency
+// workers at once (GH #26). A canceled context stops workers from taking new
+// cells and stops the feeder from offering them; cells already in flight run
+// to completion before runCellPool returns. Result persistence stays safe
+// under fan-out: the store's single SQLite connection serializes writes
+// (W2 — the pool never widens it).
+func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, job func(ctx context.Context, cell evalCell)) {
+	if len(cells) == 0 {
+		return
+	}
+	workers := e.resolveEvalConcurrency()
+	if workers > len(cells) {
+		workers = len(cells)
+	}
+
+	jobs := make(chan evalCell)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				// Pre-check: once the context is canceled, no new cell is
+				// taken — without it a select with both branches ready
+				// (canceled ctx + pending cell) would randomly steal one.
+				if ctx.Err() != nil {
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case cell, ok := <-jobs:
+					if !ok {
+						return
+					}
+					job(ctx, cell)
+				}
+			}
+		}()
+	}
+
+feed:
+	for _, cell := range cells {
+		if ctx.Err() != nil {
+			break feed
+		}
+		select {
+		case <-ctx.Done():
+			break feed
+		case jobs <- cell:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+// finishPreparedRun stamps a terminal status onto the run and mirrors it to
+// the task center.
+func (e *Evaluator) finishPreparedRun(prep *preparedRun, status string) {
+	if err := e.db.FinishEvalRun(prep.run.ID, status, time.Now().UTC()); err != nil {
+		prep.task.fail(err.Error())
+		return
+	}
+	prep.task.succeed()
+}
+
+// failPreparedRun marks the run failed with the given reason, in the store
+// and in the task center.
+func (e *Evaluator) failPreparedRun(prep *preparedRun, reason string) {
+	_ = e.db.FinishEvalRun(prep.run.ID, "failed", time.Now().UTC())
+	prep.task.fail(reason)
 }
 
 // SettleCampaign settles a campaign from its member runs and, when the
@@ -156,6 +298,25 @@ func (e *Evaluator) resolveDefaultSampleCount() int {
 	}
 	if n > store.MaxSampleCount {
 		return store.MaxSampleCount
+	}
+	return n
+}
+
+// resolveEvalConcurrency reads the eval worker-pool size from settings,
+// clamped to [1, store.MaxEvalConcurrency] (GH #26). Read failures fall back
+// to the built-in default. The clamp mirrors the settings API validation, so
+// a hand-edited database value can never widen the pool past the cap.
+func (e *Evaluator) resolveEvalConcurrency() int {
+	n, err := e.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency)
+	if err != nil {
+		slog.Error("evaluator: read eval_concurrency setting, using default", "error", err)
+		return store.DefaultEvalConcurrency
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > store.MaxEvalConcurrency {
+		return store.MaxEvalConcurrency
 	}
 	return n
 }
@@ -263,9 +424,25 @@ type sampleOutcome struct {
 	outputTokens *int
 }
 
-// evalSample executes one answer call plus its verdict.
+// evalSample executes one answer call plus its verdict. A failed answer call
+// (timeout, connection error, hub 5xx) is retried exactly once, immediately —
+// the 120s request timeout is already the wait (GH #27). The judge call is
+// never retried: a failed judge stays a null score (W7).
 func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) sampleOutcome {
 	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
+	retried := false
+	if !res.OK && ctx.Err() == nil {
+		// Second and final attempt. A canceled context skips the retry — the
+		// retry would fail the same way and the detail must stay honest.
+		retry := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
+		retried = true
+		if retry.OK {
+			res = retry
+		} else {
+			res.LatencyMs += retry.LatencyMs
+			res.ErrorSummary = retry.ErrorSummary
+		}
+	}
 	out := sampleOutcome{
 		latencyMs:    res.LatencyMs,
 		inputTokens:  res.InputTokens,
@@ -277,11 +454,21 @@ func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *sto
 		if res.ErrorSummary != nil {
 			out.detail = "answer call failed: " + *res.ErrorSummary
 		}
+		if retried {
+			out.detail = "answer call failed after 2 attempts"
+			if res.ErrorSummary != nil {
+				out.detail = "answer call failed after 2 attempts: " + *res.ErrorSummary
+			}
+		}
 		return out
 	}
 
 	out.answer = &res.Text
 	out.score, out.detail = e.verdict(ctx, hub, protocol, run.JudgeModel, c, res.Text)
+	if retried {
+		// Never claim a first-try success: the detail names the recovery.
+		out.detail += "; answer succeeded on attempt 2 after an initial failure"
+	}
 	return out
 }
 
@@ -330,8 +517,12 @@ func (e *Evaluator) storeResult(r store.EvalResult) {
 	}
 }
 
-// selectProtocol picks the protocol used to call a model: anthropic when its
-// endpoint is enabled, otherwise any enabled endpoint's protocol.
+// selectProtocol picks the chat protocol used to call a model: anthropic
+// when its endpoint is enabled, otherwise openai. Image-protocol endpoints
+// are never selected (spec 0014, R1 guard): an evaluation prompt sent to an
+// image endpoint would burn a paid generation per case and pollute scoring
+// with non-answers, so a model without an enabled chat endpoint reports "no
+// enabled endpoint" instead.
 func selectProtocol(endpoints []store.Endpoint) (string, bool) {
 	for _, ep := range endpoints {
 		if ep.Enabled && ep.Protocol == "anthropic" {
@@ -339,8 +530,8 @@ func selectProtocol(endpoints []store.Endpoint) (string, bool) {
 		}
 	}
 	for _, ep := range endpoints {
-		if ep.Enabled {
-			return ep.Protocol, true
+		if ep.Enabled && ep.Protocol == "openai" {
+			return "openai", true
 		}
 	}
 	return "", false

@@ -21,6 +21,9 @@ const (
 	// SettingDefaultSampleCount is how many times a case is answered per run
 	// when the case does not override it.
 	SettingDefaultSampleCount = "default_sample_count"
+	// SettingEvalConcurrency bounds how many (suite × model) cells of an
+	// eval campaign execute at once (GH #26).
+	SettingEvalConcurrency = "eval_concurrency"
 	// SettingSuiteWeights maps suite keys to leaderboard total-score weights
 	// (JSON object, e.g. {"basic":2}); suites absent from the map weigh 1, so
 	// the default is equal weighting (ADR 0005).
@@ -44,6 +47,13 @@ const (
 	DefaultSampleCount = 1
 	// MaxSampleCount bounds per-case sampling to keep run cost predictable.
 	MaxSampleCount = 10
+	// DefaultEvalConcurrency runs four (suite × model) cells at once out of
+	// the box — enough to shorten wall-clock batch time without hammering
+	// hubs (GH #26).
+	DefaultEvalConcurrency = 4
+	// MaxEvalConcurrency caps the eval worker pool; beyond this hub load and
+	// latency distortion grow without meaningful speedup.
+	MaxEvalConcurrency = 16
 )
 
 // GetSetting returns the stored value for key, or def when the key has never

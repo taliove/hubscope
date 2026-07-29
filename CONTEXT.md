@@ -13,14 +13,14 @@ Hub 上可被调用的一个模型,以其模型 ID 标识(如 `claude-opus-4-8`�
 _Avoid_: 渠道、供应商(那是 Hub 上游的概念,不属于本系统)
 
 **Protocol**:
-调用 Hub 时使用的 API 协议,取值 `anthropic`(`POST /v1/messages`)或 `openai`(`POST /v1/chat/completions`)。同一 Model 在两种 Protocol 下的可用性可能不同。
+调用 Hub 时使用的 API 协议,取值 `anthropic`(`POST /v1/messages`)、`openai`(`POST /v1/chat/completions`)、`images_generation`(`POST /v1/images/generations`)或 `images_edit`(`POST /v1/images/edits`,multipart 表单、须带输入图片)。同一 Model 在不同 Protocol 下的可用性可能不同。图像协议仅对 capability=image 的 Model 试通(ADR 0012)。
 
 **Endpoint**:
 一个 (Model × Protocol) 组合,是可用性监控的最小单位,各自独立出状态、独立统计指标。
 _Avoid_: 接口、路由
 
 **Probe**:
-对单个 Endpoint 执行的一轮可用性检查,包含一次非流式请求和一次流式请求。记录成败、HTTP 状态码、错误信息、总延迟、TTFT、token 用量。
+对单个 Endpoint 执行的一轮可用性检查。聊天协议(anthropic/openai)一轮 = 一次非流式请求 + 一次流式请求,记录成败、HTTP 状态码、错误信息、总延迟、TTFT、token 用量;图像协议(images_generation/images_edit)一轮 = 单次调用,无流式与 TTFT,超时与探测间隔独立(图像生成耗时长、单次调用有真实成本)。
 _Avoid_: 打点、探活(口头可用,代码与文档统一用 Probe)
 
 ## Language — 品牌

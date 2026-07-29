@@ -17,8 +17,26 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// protocols lists both hub API protocols in canonical endpoint order.
+// protocols lists the chat hub API protocols in canonical endpoint order.
+// Every model is trialed on them; image-capable models additionally trial
+// the image protocol (see trialProtocolsFor).
 var protocols = []string{"anthropic", "openai"}
+
+// trialProtocolsFor returns the protocols a model is trial-probed on: chat
+// protocols for every model, plus the image protocols for image-capable
+// models only (spec 0014 / ADR 0012) — a wrong image trial would burn money
+// per call and produce upstream noise, so the gate stays strict. The image
+// trials run after the chat trials: a fast-failing chat path costs nothing,
+// and image trials only happen for models that classify as image anyway.
+// Generation comes before edit within the image family (GH #32): the two
+// are independent trials with independent outcomes.
+func trialProtocolsFor(capability string) []string {
+	list := append([]string(nil), protocols...)
+	if capability == "image" {
+		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
+	}
+	return list
+}
 
 // Stats summarizes one sync run across all hubs.
 type Stats struct {
@@ -255,24 +273,49 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 	}
 
 	created := 0
-	for _, protocol := range protocols {
+	for _, protocol := range trialProtocolsFor(model.Capability) {
 		if have[protocol] {
 			continue
 		}
-		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false)
+		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false, s.imageParamsFor(protocol, model.ModelID))
 		if !result.OK {
 			slog.Debug("discovery: protocol trial failed",
 				"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol,
 				"http_status", result.HTTPStatus, "error", errSummary(result.ErrorSummary))
 			continue
 		}
-		if _, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+		if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 			return created, err
 		} else if isNew {
+			// A defaults-write failure leaves the endpoint on the global
+			// interval: costly but recoverable via PATCH, and not worth
+			// aborting the whole sync over (same policy as model trial).
+			if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
+				slog.Error("discovery: apply creation defaults",
+					"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol, "error", err)
+			}
 			created++
 		}
 	}
 	return created, nil
+}
+
+// imageParamsFor resolves the rule-merged extra probe parameters for image
+// protocol trials via the single resolution entry (store.ImageParamsFor,
+// GH #33); chat trials take nil. A rules-table hiccup must never break a
+// sync: on error the trial degrades to the minimal request body and the
+// failure is logged.
+func (s *Syncer) imageParamsFor(protocol, modelID string) map[string]string {
+	if !hubclient.IsImageProtocol(protocol) {
+		return nil
+	}
+	params, err := s.db.ImageParamsFor(modelID)
+	if err != nil {
+		slog.Warn("discovery: image param rules unavailable, trialing with minimal body",
+			"model", modelID, "protocol", protocol, "error", err)
+		return nil
+	}
+	return params
 }
 
 // errSummary dereferences a probe error summary for logging.

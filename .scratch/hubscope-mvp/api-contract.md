@@ -22,11 +22,11 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Models
 
-- `POST /api/models` → 201 `{"data": Model}`。Body: `{"hub_id": number, "model_id": string}`。服务端自动创建两条 Endpoint(anthropic + openai,均 enabled)。同一 Hub 下 model_id 重复 → 409。
+- `POST /api/models` → 201 `{"data": Model}`。Body: `{"hub_id": number, "model_id": string}`。服务端按试通结果自动创建 Endpoint(chat 双协议 anthropic + openai;capability=image 的模型追加 images_generation 与 images_edit 试通,各自独立试通、独立建端点,spec 0014 / GH #32)。同一 Hub 下 model_id 重复 → 409。
 - `GET /api/models` → `{"data": [Model]}`
 
 `Model = {"id": number, "hub_id": number, "model_id": string, "origin": "manual", "status": "active", "capability": "chat", "endpoints": [Endpoint]}`
-`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai", "enabled": boolean, "interval_seconds": number|null}`(`interval_seconds` 为 null 表示用全局默认 300)
+`Endpoint = {"id": number, "model_id": number, "protocol": "anthropic"|"openai"|"images_generation"|"images_edit", "enabled": boolean, "interval_seconds": number|null}`(`interval_seconds` 为 null 表示用全局默认 300;图像协议端点创建时默认落 1800,spec 0014)
 
 ## Endpoints
 
@@ -34,7 +34,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Probes
 
-- `POST /api/endpoints/{id}/probe` → `{"data": {"endpoint_id": number, "results": [ProbeRecord, ProbeRecord]}}`。同步执行一轮 Probe:先非流式、后流式,两条记录都返回。
+- `POST /api/endpoints/{id}/probe` → `{"data": {"endpoint_id": number, "results": [ProbeRecord, ...]}}`。同步执行一轮 Probe:chat 协议先非流式、后流式,两条记录都返回;图像协议(images_generation / images_edit)单条记录(无流式/TTFT 概念,spec 0014)。
 - `GET /api/endpoints/{id}/probes?limit=50` → `{"data": [ProbeRecord]}`(按时间倒序,limit 默认 50、最大 200)
 
 `ProbeRecord = {"id": number, "endpoint_id": number, "streaming": boolean, "ok": boolean, "http_status": number, "error_summary": string|null, "latency_ms": number, "ttft_ms": number|null, "input_tokens": number|null, "output_tokens": number|null, "created_at": string(RFC3339)}`
@@ -42,17 +42,19 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## 探测语义(后端实现约定)
 
-- Prompt 固定:user message `"Reply with the single word: pong"`,`max_tokens` 16,单请求超时 60s。
+- Prompt 固定:user message `"Reply with the single word: pong"`,`max_tokens` 16,单请求超时 60s(chat 协议)。
 - anthropic 协议:`POST {base_url}/v1/messages`,headers `x-api-key`, `anthropic-version: 2023-06-01`;流式加 `"stream": true`。
 - openai 协议:`POST {base_url}/v1/chat/completions`,header `Authorization: Bearer <token>`;流式加 `"stream": true` 与 `"stream_options": {"include_usage": true}`。
-- `ok` = HTTP 200 且响应可解析为正常完成;`error_summary` = HTTP 状态 + 上游错误消息,截断 500 字符。网络层失败 `http_status` 记 0。
+- images_generation 协议(spec 0014):`POST {base_url}/v1/images/generations`,header `Authorization: Bearer <token>`;请求体最小形态 `{"model", "prompt", "n": 1}`(prompt 为固定简单生成指令;按模型名追加省钱参数是后续票);单请求超时 180s;`ok` = HTTP 2xx 且响应 `data` 数组非空、每项含 `b64_json` 或 `url`(200 空 data / 错体判失败);上游返回 `usage` 时 `input_tokens`/`output_tokens` 照常落库;每轮单条探测记录,`streaming=false`、`ttft_ms` 恒为 null。
+- images_edit 协议(spec 0014 / GH #32):`POST {base_url}/v1/images/edits`,header `Authorization: Bearer <token>`;multipart 表单,字段按 OpenAI images edits 契约:`image`(文件 part,系统内置固定测试图 1024×1024 纯色 PNG,Go embed 进二进制,filename `probe-image.png`、Content-Type `image/png`)+ `prompt`(固定简单编辑指令)+ `model`,单数字段名,无 `image[]`/`file` 方言;超时、成功判定、usage 映射与探测记录形态同 images_generation。
+- `ok`(chat 协议)= HTTP 200 且响应可解析为正常完成;`error_summary` = HTTP 状态 + 上游错误消息,截断 500 字符。网络层失败 `http_status` 记 0。
 - 流式 `ttft_ms` = 发出请求到收到第一个含内容的 SSE 事件;token 用量尽量从响应/流末取得,取不到为 null。
 
 ## Overview(ticket 03)
 
 - `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
 
-`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
+`OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai"|"images_generation"|"images_edit", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
 
 `OverviewDot = {"bucket_start": string(RFC3339,整点), "total": number, "failures": number, "p50_ms": number|null(桶内仅成功探测的 P50;失败探测的延迟是失败耗时、绝不计入,无成功探测为 null)}`
 
@@ -66,7 +68,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 ## Discovery(ticket 05)
 
 - `POST /api/discovery/run` → `{"data": {"added": number, "retired": number, "endpoints_created": number}}`。立即对所有 Hub 执行一次同步(定时任务每小时也会自动跑)。
-- 同步语义:拉每个 Hub 的 `/v1/models`;新 model_id → 建 Model(origin="discovered", capability 按名单判断:含 "image"/"embedding"/"tts"/"dall" 等非对话关键词 → "non_chat",否则 "chat")并对双协议各发一次极简请求试通,通的建 enabled Endpoint,不通的建 disabled Endpoint;列表中消失且 origin="discovered" 的 Model → status="retired"(其 Endpoint 停止调度,历史保留);重新出现 → 恢复 "active"。手工添加的 Model(origin="manual")不受下线影响。
+- 同步语义:拉每个 Hub 的 `/v1/models`;新 model_id → 建 Model(origin="discovered",capability/family 按分类规则判定)并试通建端点——chat 双协议(anthropic/openai)对全模型试通,capability=image 的模型追加 images_generation 与 images_edit 试通(spec 0014 / GH #32,生成先于编辑,各自独立);试通成功的协议建 enabled Endpoint(图像协议端点默认 interval_seconds=1800),试通失败不留占位端点(ticket 17);列表中消失且 origin="discovered" 的 Model → status="retired"(其 Endpoint 停止调度,历史保留);重新出现 → 恢复 "active"。手工添加的 Model(origin="manual")不受下线影响。
 
 ## Eval(ticket 08)
 
@@ -83,8 +85,8 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Settings & Alerts(ticket 06,本波不实现,先占位契约)
 
-- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
-- `PUT /api/settings` → `{"data": ...同上}`(字段均可选)
+- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string, "default_sample_count": number, "suite_weights": object, "eval_concurrency": number}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
+- `PUT /api/settings` → `{"data": ...同上}`(字段均可选;`default_sample_count` ∈ [1,10]、`eval_concurrency` ∈ [1,16],越界 400)
 - `POST /api/settings/test-lark`(super_admin,ticket 100)→ body `{"webhook_url": string}`(必填,绝对 http/https URL,否则 400)→ `{"data": {"sent_ok": boolean, "error": string|null}}`。测试目标是 body 里的地址(非已保存设置),不受 alert_enabled 开关影响;每次尝试(成功/失败)落 alert_events(kind="test", endpoint_id=null);error 不含 webhook URL(W6)。
 - `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test", "message": string, "sent_ok": boolean, "created_at": string}`
 - 飞书告警消息以消息卡片形态发送(ticket 101,`msg_type: "interactive"`,legacy card JSON):颜色标题栏(down/登录爆破 = red、score_drop = orange、recovered = green、test = turquoise)+ 双列字段(模型/协议/错误等)+ 时间备注行;`alert_events.message` 仍落纯文本,告警历史表渲染不变。
@@ -103,8 +105,25 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - 每周定时:每周日凌晨(本地时区)对所有 active 且 capability=chat 的模型 × 全部 enabled suite 各跑一次(trigger="scheduled")。
 - 分数大跌告警:某 (suite × model) 本次聚合分较上次 done run 下跌超过 0.2 且 settings.score_drop_alert_enabled=true → 经飞书通道发 score_drop 告警并落 alert_events(kind="score_drop", endpoint_id=null)。
 
-## Task Center(ticket 18)
+## Eval 执行器并发与失败补救(GH #26/#27/#28)
 
+- 执行单元为 (suite × model) cell(GH #26):批次开始即建好全部 suite 的 run(进度网格语义不变),cell 进有界工作池并发执行,并发数 = settings.eval_concurrency(默认 4,clamp [1,16]);cell 内 case 仍串行(单模型内时序与 Hub 压力可控)。全部 cell 完成后统一 settle,AfterCampaign 恰好一次;ctx 取消后不再领取新 cell。单 suite 手动触发(POST /api/evals 带 suite_id)同样走 cell 池(单 run × 多 model)。
+- answer 调用失败自动重试 1 次(GH #27,共 2 次尝试,立即不退避——120s 超时本身已是等待;judge 调用不重试,RequestTimeout 120s 不变):两次都失败 → score=null,verdict_detail 形如 `answer call failed after 2 attempts: <末次原因>`;重试成功正常判分,detail 注明第 2 次尝试成功,不谎称一次成功。
+- `POST /api/campaigns/{id}/retry-failed`(GH #28;hub scoped 写组,与 evals.create 同组)→ 202 `{"data": CampaignDetail}`(同 POST /api/evals 响应形状),异步执行。前置校验:批次须 done/failed 且存在 score IS NULL 的结果,否则 409 `campaign has no failed results to retry` / `campaign is not settled`;批次不存在 404;匿名 401;跨 hub 写按既有组口径。执行语义:批次状态 done/failed → running(**仅本路径可回迁**,store 层 WHERE 守卫),同事务把仍含 null 分结果的成员 run 一并回迁 running(GH #39;干净 done run 不动);retry 每完成一个 run 的全部重评 cell 即标 done(ctx 取消→未完成的 run 标 failed,与正常执行同语义:null 分是结果不是 run 失败),批次据此重新 settle;对每个含 null 分结果的 (run × model),仅删除该单元 score IS NULL 的结果行(删除条件 `score IS NULL` 硬编码,构造上不可能误删已判分结果——已判分结果逐字节不动,W7 同向),重评这些 case 并插入新结果(仍走 answer 自动重试);全部完成后走既有 SettleCampaign 统一 settle。已知并接受:AfterCampaign 会再触发一次(单次 retry-settle 一次,不连发),分数大跌告警以重跑后数据重新对比。
+- `CampaignReport` 新增 `failed_results: number`(GH #28)——批次全部 run 中 score IS NULL 的结果行数;settle 批次 `failed_results > 0` 是前端「重跑失败项」按钮的渲染条件。公开榜单与分享报告同形状返回(失败计数是运行元数据,与覆盖率水印同源信息)。
+
+## Image Param Rules(GH #33,spec 0016)
+
+图像探测省钱参数规则:按模型名子串匹配(不区分大小写)给图像探测请求体追加参数;空表/无命中时请求体退化为最小形态 `{model, prompt, n:1}`。generations 并入 JSON body,edits 以同名字段写入 multipart 表单,两协议共用同一匹配。
+
+- `GET /api/image-param-rules` → `{"data": [ImageParamRule]}`(任意已登录角色可读),按 (priority, id) 升序。
+- `POST /api/image-param-rules`(仅 super_admin)→ 201 `{"data": ImageParamRule}`;body `{"keyword": string, "params": {string: string}, "priority"?: number(默认 100,范围 1~10000)}`。校验:keyword 去空白转小写且非空;params 非空、值仅字符串、键不得为保留键 `model`/`prompt`/`n`(不区分大小写),违反 → 400;keyword 重复 → 409。
+- `PATCH /api/image-param-rules/{id}`(仅 super_admin)→ 200;body 字段均可选(keyword/params/priority),校验同上;未命中 → 404,keyword 冲突 → 409。
+- `DELETE /api/image-param-rules/{id}`(仅 super_admin)→ 204;未命中 → 404。
+- `ImageParamRule = {"id": number, "keyword": string, "params": {string: string}, "priority": number}`。
+- 匹配语义:多条命中合并全部命中规则的参数,同键时 priority 小者胜;保留键即使在库中被手工写入也在合并时跳过。规则变更下一次探测即生效(无缓存)。审计动作:`image_param_rule.create` / `image_param_rule.update` / `image_param_rule.delete`(create 重复失败亦落审计)。
+
+## Task Center(ticket 18)
 - `GET /api/tasks?type=&status=&page=1&page_size=20` → `{"data": {"items": [Task], "total": number, "page": number, "page_size": number}}`(倒序,page_size 上限 100;type/status 精确过滤,可空)。读遵循监控数据分级:需登录。
 - `GET /api/tasks/{id}` → `{"data": TaskDetail}`;`TaskDetail = Task + {"logs": [TaskLog]}`(按时间正序)。未知 id → 404,非法 id → 400。
 - `Task = {"id": number, "type": "eval_run", "source": "manual"|"scheduled", "status": "pending"|"running"|"success"|"failed", "entity_type": "eval_run", "entity_id": number, "started_at": string|null, "finished_at": string|null, "duration_ms": number|null(终态才有), "created_at": string}`

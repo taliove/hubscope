@@ -19,7 +19,7 @@
       </el-table-column>
       <el-table-column label="协议" width="120">
         <template #default="{ row }">
-          <el-tag :type="row.endpoint.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
+          <el-tag :type="protocolTagType(row.endpoint.protocol)" size="small">
             {{ row.endpoint.protocol }}
           </el-tag>
         </template>
@@ -151,6 +151,7 @@ import { triggerProbe, listProbeHistory } from '@/api/probes'
 import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
 import { deleteModel, trialModel } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
+import { protocolTagType } from '@/utils/protocol'
 import type { EndpointRow, EndpointlessModelRow } from '@/composables/useAdminData'
 import ProbeRecordTable from './ProbeRecordTable.vue'
 

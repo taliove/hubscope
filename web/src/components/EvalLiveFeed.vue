@@ -40,6 +40,13 @@
             {{ scoreText(e.score) }}
           </span>
           <span class="feed-latency">{{ formatMs(e.latency_ms) }}</span>
+          <!-- GH #29: only a judge failure deep-links to the setting that
+               governs it; rule failures and scored rows render as before. -->
+          <router-link
+            v-if="isJudgeFailure(e)"
+            class="feed-fix-link"
+            :to="{ path: '/admin', query: { tab: 'settings', item: 'judge_model' } }"
+          >检查裁判模型设置</router-link>
         </span>
       </div>
     </div>
@@ -50,7 +57,7 @@
 import { computed } from 'vue'
 import type { LiveFeedEntry } from '@/api/types'
 import { formatClockTime, formatMs, formatScore } from '@/utils/format'
-import { liveFeedDisplay, verdictTypeLabel } from '@/utils/liveFeed'
+import { liveFeedDisplay, isJudgeFailure, verdictTypeLabel } from '@/utils/liveFeed'
 import { scoreBand } from '@/utils/scoreTier'
 
 // EvalLiveFeed is the running batch's case-level event stream (issue #17):
@@ -193,5 +200,17 @@ function scoreClass(score: number | null): string {
   min-width: 56px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+/* Judge-failure deep link (GH #29): brand-colored inline action, secondary
+   weight so it never competes with the row's score (ui-guidelines §2/§7). */
+.feed-fix-link {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-brand);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.feed-fix-link:hover {
+  color: var(--hs-brand-hover);
+  text-decoration: underline;
 }
 </style>

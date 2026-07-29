@@ -1,0 +1,3 @@
+# 图像生成作为独立 Protocol(images_generation / images_edit)
+
+图像类模型(gpt-image-2 等)的可用性监控不借用 chat 协议路径,而是新增两个 Protocol 取值:`images_generation`(`POST /v1/images/generations`,JSON)与 `images_edit`(`POST /v1/images/edits`,multipart + 固定测试图)。原因:实测 Hub 上图像模型经 chat/completions 试通成功并不代表 images 路径可用(Hub 可能路由到不同上游),契约形状(无流式、无 TTFT、返回 `data[].b64_json/url` 而非 choices)与成本结构(每次调用真实生成图片)均不同;「Endpoint = 模型 × 协议」承重墙(W3)不变,协议的本质就是调用契约,试通才建机制原样复用。试通按 capability=image 门控(classifier 词表命中才发图像试通,控制试错成本),chat 协议试通照旧对全模型开放。配套口径:图像端点探测轮 = 单次调用(无双请求对、TTFT 为 null),请求超时 180s(生成耗时长),探测间隔独立默认 30 分钟(单次调用有真实成本,约 $16/月/端点,5 分钟间隔约 $95/月),请求体默认最小化(model+prompt+n=1)按模型名规则追加省钱参数(gpt-image 系加 `quality:"low"`)。图像质量评估(vision 裁判)本期不做,留作后续方向。

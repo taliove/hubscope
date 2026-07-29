@@ -3,6 +3,8 @@ package store
 import (
 	"strings"
 	"time"
+
+	"github.com/taliove/hubscope/internal/hubclient"
 )
 
 // CreateDiscoveredModel registers a model found via hub discovery. When the
@@ -121,6 +123,23 @@ func (db *DB) CreateEndpoint(modelID int64, protocol string, enabled bool) (*End
 	ep.Enabled = enabledInt == 1
 	ep.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return &ep, affected == 1, nil
+}
+
+// ApplyCreationDefaults applies protocol-dependent creation defaults to a
+// freshly created endpoint: image-protocol endpoints get the 30-minute
+// interval override (see DefaultImageProtocolIntervalSeconds) so their costly
+// probes do not run at the 300s global default. Chat endpoints are left
+// untouched. Callers must invoke it only for newly created endpoints — an
+// existing endpoint's override belongs to the administrator (PATCH path).
+// CreateModel cannot use this helper (it inserts inside a transaction on the
+// single connection) and writes the same default inline instead.
+func (db *DB) ApplyCreationDefaults(endpointID int64, protocol string) error {
+	if !hubclient.IsImageProtocol(protocol) {
+		return nil
+	}
+	v := DefaultImageProtocolIntervalSeconds
+	_, err := db.UpdateEndpoint(endpointID, nil, IntervalPatch{Set: true, Value: &v})
+	return err
 }
 
 // getModelByModelID fetches a model by its (hub_id, model_id) unique key.

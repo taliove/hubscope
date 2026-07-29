@@ -391,6 +391,52 @@ func (db *DB) SetEvalRunVerdictProfile(runID int64, profile string) error {
 	return err
 }
 
+// NullScoreCell identifies one failed result of a run — a (model, case) unit
+// whose stored score IS NULL (answer or judge failure, W7: never zero). It
+// is the retry unit of GH #28's retry-failed path.
+type NullScoreCell struct {
+	ModelDBID int64
+	ModelID   string
+	CaseID    int64
+}
+
+// ListNullScoreCells returns every failed (null-score) result of the run,
+// ordered by model then case, as retry units.
+func (db *DB) ListNullScoreCells(runID int64) ([]NullScoreCell, error) {
+	rows, err := db.conn.Query(`
+		SELECT model_db_id, model_id, case_id FROM eval_results
+		WHERE eval_run_id = ? AND score IS NULL
+		ORDER BY model_db_id, case_id
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []NullScoreCell
+	for rows.Next() {
+		var c NullScoreCell
+		if err := rows.Scan(&c.ModelDBID, &c.ModelID, &c.CaseID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DeleteNullScoreResult removes the failed (null-score) result row of one
+// (run, model, case) unit, immediately before its re-evaluation inserts the
+// fresh row (GH #28). The score IS NULL clause is deliberately hardcoded —
+// never a parameter — so no caller, present or future, can widen this into
+// deleting a judged result (W7: scored rows are immutable).
+func (db *DB) DeleteNullScoreResult(runID, modelDBID, caseID int64) error {
+	_, err := db.conn.Exec(`
+		DELETE FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ? AND score IS NULL
+	`, runID, modelDBID, caseID)
+	return err
+}
+
 // HasScheduledEvalRunSince reports whether any scheduled eval run started at
 // or after the given time. The weekly worker uses it to stay idempotent
 // across restarts inside the Sunday window.
