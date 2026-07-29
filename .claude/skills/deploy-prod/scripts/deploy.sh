@@ -247,6 +247,11 @@ EOF
 # tag — tag deploy (the only production deploy mode)
 # =============================================================================
 
+# Compression contract: the edge terminates TLS, so response compression lives
+# here, not in the Go binary — one `encode` covers both the embedded SPA assets
+# (the ~1MB index-*.js dominates page load) and every /api JSON response.
+# zstd preferred (browsers since 2024 send it in Accept-Encoding), gzip as the
+# universal fallback; Caddy handles negotiation + Vary automatically.
 # XFF trust contract (spec 0011 decision 2): the app reads X-Forwarded-For's
 # first hop as clientIP, so the edge proxy MUST replace the client-supplied
 # value. header_up (no +/- prefix) overwrites any existing value — including a
@@ -264,6 +269,7 @@ ensure_caddy_site() {
 set -e
 cat > '$PROD_CADDYFILE' <<'CADDY'
 $PROD_DOMAIN {
+	encode zstd gzip
 	reverse_proxy 127.0.0.1:$PROD_PORT {
 		header_up X-Forwarded-For {remote_host}
 	}
@@ -272,21 +278,23 @@ CADDY
 systemctl reload caddy
 EOF
     log_success "Caddy 站点块已生效(首次证书申请约 15-30s)"
-  elif prod_ssh "grep -q 'header_up X-Forwarded-For' '$PROD_CADDYFILE' 2>/dev/null"; then
-    log_info "Caddy 站点块已存在且 XFF 替换语义已就位,跳过"
+  elif prod_ssh "grep -q 'header_up X-Forwarded-For' '$PROD_CADDYFILE' 2>/dev/null && grep -q 'encode zstd gzip' '$PROD_CADDYFILE' 2>/dev/null"; then
+    log_info "Caddy 站点块已存在且 XFF 替换与压缩(encode zstd gzip)已就位,跳过"
   else
-    # Migration (spec 0011 decision 2): the existing site block predates the
-    # XFF fix. Back up → rewrite → validate → auto-restore on failure. The
-    # rewrite is a full-file write, same as the create path (this script owns
-    # the file). Idempotent: a successful migration lands in the skip branch
-    # above; a failed validation restores the backup and the next run retries.
-    log_info "存量 Caddy 站点块缺少 XFF 替换(header_up),执行迁移(先备份)..."
+    # Migration: the existing site block predates the XFF fix (spec 0011
+    # decision 2) and/or the encode directive. Back up → rewrite → validate →
+    # auto-restore on failure. The rewrite is a full-file write, same as the
+    # create path (this script owns the file). Idempotent: a successful
+    # migration lands in the skip branch above; a failed validation restores
+    # the backup and the next run retries.
+    log_info "存量 Caddy 站点块缺少 XFF 替换或压缩(encode zstd gzip),执行迁移(先备份)..."
     prod_ssh "bash -s" <<EOF
 set -e
 backup='$PROD_CADDYFILE.bak-'\$(date +%Y%m%d-%H%M%S)
 cp -a '$PROD_CADDYFILE' "\$backup"
 cat > '$PROD_CADDYFILE' <<'CADDY'
 $PROD_DOMAIN {
+	encode zstd gzip
 	reverse_proxy 127.0.0.1:$PROD_PORT {
 		header_up X-Forwarded-For {remote_host}
 	}
@@ -301,7 +309,7 @@ fi
 systemctl reload caddy
 echo "原配置备份: \$backup"
 EOF
-    log_success "存量站点块已迁移(XFF 替换语义就位)"
+    log_success "存量站点块已迁移(XFF 替换与压缩就位)"
   fi
 }
 

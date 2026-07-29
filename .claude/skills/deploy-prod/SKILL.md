@@ -10,7 +10,7 @@ trigger: user-invocable
 
 ## 架构与边界
 
-- **链路:** 公网 → Caddy(443/80,systemd 原生,Let's Encrypt 自动 HTTPS)→ `127.0.0.1:8080` → Docker 容器 `hubscope` → bind mount 宿主机数据目录。
+- **链路:** 公网 → Caddy(443/80,systemd 原生,Let's Encrypt 自动 HTTPS;站点块含 `encode zstd gzip`——压缩固定在边缘层,SPA 静态资源与 /api JSON 全覆盖,Go 二进制不做压缩)→ `127.0.0.1:8080` → Docker 容器 `hubscope` → bind mount 宿主机数据目录。
 - **连接参数:** 全部在仓库根目录 `.env.prod`(gitignore,模板 `.env.prod.example`):`PROD_HOST` / `PROD_SSH_PORT` / `PROD_SSH_USER` / `PROD_DOMAIN` / `PROD_DATA_DIR` 等。**本文件与任何提交物中不得出现实值**(三级分离纪律,spec 0008 决策 8)。
 - **数据安全三道防线(核心纪律):** ① 数据只走宿主机 bind mount,容器生死与数据无关;② 每次部署前强制备份(热备优先);③ 恢复流程实机演练过(2026-07-27 首次部署已验证三条全部通过)。
 
