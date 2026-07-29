@@ -15,6 +15,17 @@ export function formatTime(value: string | null): string {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
 }
 
+// Render an RFC3339 timestamp as a bare local clock reading "HH:mm:ss" —
+// for dense, same-session feeds (issue #17 live feed) where the date is
+// noise. Falls back to the raw value on an unparseable input.
+export function formatClockTime(value: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 // Render a nullable numeric metric, falling back to a dash.
 export function formatMetric(value: number | null): string {
   if (value === null || value === undefined) return '-'

@@ -272,6 +272,25 @@ export interface CampaignDetail extends Campaign {
   runs: EvalRun[]
 }
 
+// Live-feed entry (issue #17): one judged-case event of a campaign, pulled
+// incrementally by id cursor (GET /campaigns/{id}/live-feed, console-only —
+// session + hub-isolated, never on the shared/public surface). score is the
+// raw 0~1 per-case score (null = judge failure, never zero); the 0-100
+// conversion happens at render through formatScore (ui-guidelines §7).
+// verdict_type is 'rule' | 'judge', or '' when the case was purged.
+export interface LiveFeedEntry {
+  id: number
+  model_id: string
+  suite_key: string
+  suite_name: string
+  case_id: number
+  case_prompt: string
+  verdict_type: string
+  score: number | null
+  latency_ms: number
+  created_at: string // RFC3339
+}
+
 // Campaign report types (ticket 31): the leaderboard over a campaign's done
 // runs. All scores are on the 0-100 scale, nadir-normalized per suite (ADR
 // 0009); null means unscored.
