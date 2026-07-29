@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -56,6 +57,17 @@ type Server struct {
 	// trustProxy controls whether X-Forwarded-For is honored when resolving
 	// client IPs for rate limiting and auditing.
 	trustProxy bool
+
+	// slowLogThreshold and slowLogger back the /api slow-request warn log
+	// (spec 0015 decision 10); zero/nil fall back to the defaults at
+	// middleware construction.
+	slowLogThreshold time.Duration
+	slowLogger       *slog.Logger
+
+	// overview is the process-wide /api/overview snapshot cache (spec 0015
+	// decisions 3+4): write paths dirty it via InvalidateOverview, readers
+	// rebuild singleflight when stale. See overview_snapshot.go.
+	overview *overviewCache
 
 	// sessionSecret signs the stateless session cookie. It is loaded from
 	// the SESSION_SECRET env var or the settings table (auto-generated on
@@ -197,13 +209,21 @@ func New(db *store.DB, opts ...Option) *Server {
 		captchaLimiter: newIPLimiter(limits.Captcha.PerMinute, limits.Captcha.Burst, 0),
 		captchaTrigger: newCaptchaTrigger(defaultCaptchaPolicy()),
 		captchaStore:   NewCaptchaStore(CaptchaStorePolicy{}),
+		overview:       newOverviewCache(),
 	}
-	// Alert evaluation hooks into every probe round served by this prober.
-	// main hooks the scheduler's prober into the same evaluator via Alerter().
-	s.prober.AfterRound = s.alerter.HandleRound
+	// Alert evaluation hooks into every probe round served by this prober,
+	// followed by overview invalidation (spec 0015 decision 3). main hooks
+	// the scheduler's prober into the same path via HandleProbeRound, so
+	// manual and scheduled rounds share one semantics (W5).
+	s.prober.AfterRound = s.HandleProbeRound
 	// Score-drop checks hook into every settled eval campaign served by this
-	// evaluator; the weekly eval worker shares it via Evaluator().
-	s.evaluator.AfterCampaign = s.alerter.HandleCampaign
+	// evaluator, followed by overview invalidation (the eval_score column);
+	// the weekly eval worker shares it via Evaluator().
+	s.evaluator.AfterCampaign = s.handleCampaignSettled
+	// Discovery syncs (manual or scheduled, this process's single Syncer)
+	// invalidate the overview on completion — they create, retire and
+	// reactivate models and endpoints.
+	s.discovery.AfterSync = func(hubID int64) { s.InvalidateOverview() }
 	// Brute-force login alerts fire through the same single Evaluator
 	// instance (W5), throttled by the server-side tracker.
 	s.loginAlertTracker = newLoginAlertTracker(defaultLoginAlertPolicy(), s.alerter.HandleLoginFailures)
@@ -223,13 +243,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // periodic schedule.
 func (s *Server) Discovery() *discovery.Syncer {
 	return s.discovery
-}
-
-// Alerter exposes the shared alert evaluator so main can hook the
-// scheduler's prober into the same instance (one alerted-state map per
-// process, avoiding duplicate alerts from manual vs scheduled rounds).
-func (s *Server) Alerter() *alerter.Evaluator {
-	return s.alerter
 }
 
 // Evaluator exposes the shared eval runner so main can drive the weekly
@@ -252,6 +265,7 @@ func (s *Server) routes() chi.Router {
 	r.Get("/api/version", s.handleVersion)
 
 	r.Route("/api", func(r chi.Router) {
+		r.Use(s.slowRequestLogger)
 		r.Use(s.rateLimit)
 		r.Use(limitBodySize)
 		// Auth endpoints stay open; login issues the session cookie.
@@ -287,6 +301,10 @@ func (s *Server) routes() chi.Router {
 				r.Post("/classification-rules", s.handleCreateClassificationRule)
 				r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
 				r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
+
+				r.Post("/image-param-rules", s.handleCreateImageParamRule)
+				r.Patch("/image-param-rules/{id}", s.handlePatchImageParamRule)
+				r.Delete("/image-param-rules/{id}", s.handleDeleteImageParamRule)
 
 				r.Post("/cases", s.handleCreateCase)
 				r.Patch("/cases/{id}", s.handlePatchCase)
@@ -348,6 +366,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
 			r.Get("/classification-rules", s.handleListClassificationRules)
+			r.Get("/image-param-rules", s.handleListImageParamRules)
 
 			r.Get("/overview", s.handleGetOverview)
 

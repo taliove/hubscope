@@ -52,6 +52,7 @@ import { listModels } from '@/api/models'
 import EvalCampaignList from '@/components/EvalCampaignList.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
+import { createVisibilityPoll } from '@/utils/visibilityPoll'
 import type { Campaign, EvalRun, Model, Suite } from '@/api/types'
 
 // Eval operations panel (admin console): manual triggering, live progress of
@@ -69,7 +70,7 @@ const triggerDialogVisible = ref(false)
 const detailRunId = ref<number | null>(null)
 const trackedCampaign = ref<Campaign | null>(null)
 const tracking = ref(false)
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollHandle: { clear(): void } | null = null
 
 const pollIntervalMs = 1500
 
@@ -112,32 +113,37 @@ async function reload() {
 }
 
 // Poll a freshly triggered campaign until it settles, then refresh the
-// history. The timer is always cleared on unmount.
+// history. Batch-class poll (ui-guidelines §6): paused while the tab is
+// hidden, immediate refresh on return; the handle is always cleared on
+// unmount.
 function startTracking(campaign: Campaign) {
   trackedCampaign.value = campaign
   tracking.value = true
   stopPolling()
-  pollTimer = setInterval(async () => {
-    try {
-      const latest = await getCampaign(campaign.id)
-      trackedCampaign.value = latest
-      if (latest.status !== 'running' && latest.status !== 'pending') {
-        stopPolling()
-        tracking.value = false
-        // reload swallows its own errors into the error alert, so no
-        // try/catch is needed here.
-        await reload()
+  pollHandle = createVisibilityPoll(
+    async () => {
+      try {
+        const latest = await getCampaign(campaign.id)
+        trackedCampaign.value = latest
+        if (latest.status !== 'running' && latest.status !== 'pending') {
+          stopPolling()
+          tracking.value = false
+          // reload swallows its own errors into the error alert, so no
+          // try/catch is needed here.
+          await reload()
+        }
+      } catch {
+        // Transient poll failures keep the loop alive; the next tick retries.
       }
-    } catch {
-      // Transient poll failures keep the loop alive; the next tick retries.
-    }
-  }, pollIntervalMs)
+    },
+    { intervalMs: pollIntervalMs },
+  )
 }
 
 function stopPolling() {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer)
-    pollTimer = null
+  if (pollHandle !== null) {
+    pollHandle.clear()
+    pollHandle = null
   }
 }
 

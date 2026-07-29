@@ -25,9 +25,10 @@ func New(db *store.DB, client *hubclient.Client) *Prober {
 	return &Prober{db: db, client: client}
 }
 
-// RunRound executes one probe round for a single endpoint: a non-streaming
-// request followed by a streaming request (serially). Both probe records are
-// persisted and returned in order.
+// RunRound executes one probe round for a single endpoint. Chat protocols run
+// a non-streaming request followed by a streaming request (serially), image
+// protocols run a single call — they have no streaming mode or TTFT concept
+// (spec 0014). All probe records are persisted and returned in order.
 func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe, error) {
 	endpoint, err := p.db.GetEndpoint(endpointID)
 	if err != nil {
@@ -44,11 +45,15 @@ func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe,
 		return nil, err
 	}
 
-	// Non-streaming first, then streaming.
-	nonStream := p.probeAndStore(ctx, hub, model, endpoint, false)
-	stream := p.probeAndStore(ctx, hub, model, endpoint, true)
-
-	probes := []store.Probe{nonStream, stream}
+	var probes []store.Probe
+	if hubclient.IsImageProtocol(endpoint.Protocol) {
+		probes = []store.Probe{p.probeAndStore(ctx, hub, model, endpoint, false, p.imageParamsFor(model))}
+	} else {
+		// Non-streaming first, then streaming.
+		nonStream := p.probeAndStore(ctx, hub, model, endpoint, false, nil)
+		stream := p.probeAndStore(ctx, hub, model, endpoint, true, nil)
+		probes = []store.Probe{nonStream, stream}
+	}
 	if p.AfterRound != nil {
 		// A misbehaving hook must never take down probing.
 		func() {
@@ -63,9 +68,25 @@ func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe,
 	return probes, nil
 }
 
-// probeAndStore runs one probe and writes the result to the store.
-func (p *Prober) probeAndStore(ctx context.Context, hub *store.Hub, model *store.Model, endpoint *store.Endpoint, streaming bool) store.Probe {
-	result := p.client.Probe(ctx, hub.BaseURL, hub.Token, endpoint.Protocol, model.ModelID, streaming)
+// imageParamsFor resolves the rule-merged extra probe parameters for an
+// image-capable model via the single resolution entry (store.ImageParamsFor,
+// GH #33). A rules-table hiccup must never break probing: on error the round
+// degrades to the minimal request body and the failure is logged.
+func (p *Prober) imageParamsFor(model *store.Model) map[string]string {
+	params, err := p.db.ImageParamsFor(model.ModelID)
+	if err != nil {
+		slog.Warn("prober: image param rules unavailable, probing with minimal body",
+			"model", model.ModelID, "error", err)
+		return nil
+	}
+	return params
+}
+
+// probeAndStore runs one probe and writes the result to the store. imageParams
+// is non-nil only for image protocols (chat probes take the minimal fixed
+// chat body).
+func (p *Prober) probeAndStore(ctx context.Context, hub *store.Hub, model *store.Model, endpoint *store.Endpoint, streaming bool, imageParams map[string]string) store.Probe {
+	result := p.client.Probe(ctx, hub.BaseURL, hub.Token, endpoint.Protocol, model.ModelID, streaming, imageParams)
 
 	probe := store.Probe{
 		EndpointID:   endpoint.ID,

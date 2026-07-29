@@ -13,7 +13,9 @@ type probeRoundResponse struct {
 }
 
 // handleProbeEndpoint handles POST /api/endpoints/{id}/probe. Runs one round
-// (non-streaming then streaming) synchronously and returns both records.
+// synchronously and returns its records: non-streaming then streaming for
+// chat protocols, a single record for image protocols (no streaming or TTFT
+// concept, spec 0014).
 func (s *Server) handleProbeEndpoint(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {

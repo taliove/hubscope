@@ -149,6 +149,7 @@ import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { failedBatchWarning } from '@/utils/evalWording'
+import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import { liveFeedCursor, mergeLiveFeed } from '@/utils/liveFeed'
 import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
 import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedEntry, ReportRow } from '@/api/types'
@@ -292,18 +293,24 @@ function isUnfinished(status: CampaignStatus): boolean {
 // Poll only while the selected batch is unfinished; every tick re-arms, so
 // completion stops the timer and the board replaces the progress state
 // (ui-guidelines §6: every setInterval pairs with cleanup). The live feed
-// (issue #17) rides this same timer — no interval of its own.
-let pollTimer: ReturnType<typeof setInterval> | undefined
+// (issue #17) rides this same timer — no interval of its own. The poll
+// pauses in a hidden tab and refreshes immediately on return
+// (ui-guidelines §6); a batch that settles while hidden is observed by
+// that return refresh, so the settle transition semantics are unchanged.
+let poll: VisibilityPollHandle | null = null
 function armPolling() {
-  clearInterval(pollTimer)
-  pollTimer = undefined
+  poll?.clear()
+  poll = null
   if (selected.value && isUnfinished(selected.value.status)) {
-    pollTimer = setInterval(() => {
-      void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()]).then(armPolling)
-    }, 3000)
+    poll = createVisibilityPoll(
+      () => {
+        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()]).then(armPolling)
+      },
+      { intervalMs: 3000 },
+    )
   }
 }
-onBeforeUnmount(() => clearInterval(pollTimer))
+onBeforeUnmount(() => poll?.clear())
 
 // Monotonic token invalidating stale report responses (same race as ticket
 // 42): switching batches fast must not let an older report overwrite the

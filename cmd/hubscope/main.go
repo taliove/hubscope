@@ -108,10 +108,11 @@ func run() error {
 
 	// Start the probe scheduler on the wall clock; it shares the process
 	// lifecycle and is stopped during graceful shutdown below. Its prober
-	// reports rounds to the server's shared alert evaluator so scheduled and
-	// manual probes produce one coherent alert stream.
+	// reports rounds through the server's shared round hook, so scheduled
+	// and manual probes produce one coherent alert stream (W5) and both
+	// invalidate the overview snapshot (spec 0015 decision 3).
 	schedProber := prober.New(db, hubclient.New())
-	schedProber.AfterRound = srv.Alerter().HandleRound
+	schedProber.AfterRound = srv.HandleProbeRound
 	sched := scheduler.New(db, schedProber, scheduler.RealClock{})
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	schedDone := make(chan struct{})
@@ -156,9 +157,19 @@ func run() error {
 	evalWorker := scheduler.NewEvalWorker(db, srv.Evaluator(), scheduler.RealClock{})
 	go evalWorker.Run(schedCtx)
 
+	// Baseline server timeouts (spec 0015 decision 7). The origin chain is
+	// local Caddy → container with no SSE/WebSocket long-lived connections,
+	// so tight timeouts are safe: ReadHeaderTimeout blunts slowloris,
+	// Read/WriteTimeout bound full request/response cycles (30s is ample for
+	// the ~1MB static assets over a loopback hop), IdleTimeout recycles
+	// keep-alive connections.
 	httpServer := &http.Server{
-		Addr:    addr,
-		Handler: srv,
+		Addr:              addr,
+		Handler:           srv,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start listening in the background.

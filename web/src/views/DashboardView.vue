@@ -47,8 +47,9 @@
         class="filter-keyword"
       />
       <el-select v-model="protocolFilter" placeholder="协议" clearable class="filter-select">
-        <el-option label="anthropic" value="anthropic" />
-        <el-option label="openai" value="openai" />
+        <!-- Options come from the single protocol vocabulary (utils/protocol.ts)
+             so new protocols appear here automatically. -->
+        <el-option v-for="p in PROTOCOLS" :key="p" :label="p" :value="p" />
       </el-select>
       <el-select v-model="statusFilter" placeholder="状态" clearable class="filter-select">
         <el-option label="正常" value="healthy" />
@@ -120,6 +121,7 @@ import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
+import { PROTOCOLS } from '@/utils/protocol'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, start } = useOverview()

@@ -11,8 +11,8 @@ fi
 DATA_DIR=${DATA_DIR:-$HOME/data}
 BACKUP_DIR=${BACKUP_DIR:-$DATA_DIR/hubscope-backups}
 CONTAINER_NAME=hubscope
-PORT=8080
-HOST_IP=192.168.1.101
+PORT=${PORT:-8080}
+HOST_IP=${HOST_IP:-192.168.1.101}
 OPS_DIR=${OPS_DIR:-/opt/hubscope/bin}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -211,7 +211,7 @@ start_container() {
   # without a proxy would let any client forge the rate-limit key and the
   # audit IP — strictly worse than not trusting it. Do not "helpfully" add it.
   docker run -d --name $CONTAINER_NAME \
-    -p "$HOST_IP:$PORT:$PORT" \
+    -p "$HOST_IP:$PORT:8080" \
     -v "$DATA_DIR/hubscope:/data" \
     "$IMAGE_TAG"
   log_success "Container started: $IMAGE_TAG"
@@ -445,7 +445,7 @@ rollback() {
   # proxy in front of this line (verified 2026-07-27), so trusting
   # X-Forwarded-For would make the rate-limit key and audit IP client-forgeable.
   docker run -d --name $CONTAINER_NAME \
-    -p "$HOST_IP:$PORT:$PORT" \
+    -p "$HOST_IP:$PORT:8080" \
     -v "$DATA_DIR/hubscope:/data" \
     "$prev_image"
 

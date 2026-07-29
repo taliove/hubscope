@@ -161,17 +161,35 @@ func (a *groupAccumulator) groups() []overviewGroupDTO {
 	return out
 }
 
-// handleGetOverview builds the status matrix for every endpoint, plus the
-// family and capability group aggregates.
+// handleGetOverview serves the status matrix from the process-wide snapshot
+// (spec 0015 decisions 3+4): unchanged data answers from memory (or 304 when
+// the poller's If-None-Match matches), stale snapshots rebuild singleflight.
+// Cache-Control: no-cache is REQUIRED alongside the ETag — without it
+// browsers may serve heuristic cache hits without revalidating, and the
+// status board would go stale; no-cache + ETag means every poll revalidates
+// and unchanged data costs only a 304.
 func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
-	now := s.now().UTC()
-
-	models, err := s.listModelsForRequest(r)
+	snap, err := s.overviewSnapshotFor(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list models")
+		writeError(w, http.StatusInternalServerError, "failed to build overview")
 		return
 	}
 
+	w.Header().Set("ETag", snap.etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if ifNoneMatchMatches(r.Header.Get("If-None-Match"), snap.etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(snap.body)
+}
+
+// buildOverviewDTO computes the full status matrix for the given models as
+// of now — the exact payload the pre-snapshot handler computed per request.
+// It runs only on snapshot rebuilds (see overview_snapshot.go).
+func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overviewDTO, error) {
 	// Batch-load latest eval scores for all models to avoid N+1 queries
 	modelIDs := make([]int64, len(models))
 	for i, m := range models {
@@ -179,8 +197,7 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	evalScores, err := s.getEvalScoresForModels(modelIDs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load eval scores")
-		return
+		return overviewDTO{}, err
 	}
 
 	entries := []overviewEntryDTO{}
@@ -194,14 +211,12 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	for _, model := range models {
 		endpoints, err := s.db.ListEndpointsByModelID(model.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to list endpoints")
-			return
+			return overviewDTO{}, err
 		}
 		for _, ep := range endpoints {
 			stats, err := s.gatherWindowStats(ep.ID, now)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to build overview")
-				return
+				return overviewDTO{}, err
 			}
 			entry := buildOverviewEntryFromStats(ep, model, stats, now)
 			// Attach eval score from the batch-loaded map
@@ -230,8 +245,7 @@ func (s *Server) handleGetOverview(w http.ResponseWriter, r *http.Request) {
 	if groups := global.groups(); len(groups) > 0 {
 		dto.Availability24h = groups[0].Availability24h
 	}
-
-	writeData(w, http.StatusOK, dto)
+	return dto, nil
 }
 
 // windowStats bundles the probe history the status machine needs for one

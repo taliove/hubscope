@@ -23,6 +23,18 @@ type Probe struct {
 	CreatedAt    time.Time
 }
 
+// ProbeWatermark returns the largest probe ID (0 when the table is empty).
+// It is the overview snapshot's cheap freshness sentinel (spec 0015 decision
+// 3): every probe insert moves it strictly upward, so one indexed MAX query
+// per request replaces the per-endpoint query fan-out on cache hits — and it
+// catches probe writes from any path, including ones that bypass the HTTP
+// handlers (seeded history in tests, future writers).
+func (db *DB) ProbeWatermark() (int64, error) {
+	var id int64
+	err := db.conn.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM probes`).Scan(&id)
+	return id, err
+}
+
 // CreateProbe inserts a probe record and returns the stored copy with its
 // assigned ID and creation time. The input is not mutated. When p.CreatedAt
 // is zero the current time is used; a non-zero CreatedAt is stored as-is so

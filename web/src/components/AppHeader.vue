@@ -85,6 +85,7 @@ import type { Campaign } from '@/api/types'
 import { fetchVersion } from '@/api/version'
 import { roleLabel, roleTagType } from '@/utils/role'
 import { useTheme } from '@/utils/theme'
+import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import BrandMark from './BrandMark.vue'
 import Wordmark from './Wordmark.vue'
 
@@ -172,17 +173,18 @@ async function loadVersion() {
 // Newest unfinished batch, if any (campaigns arrive newest first). The
 // header entry is advisory: fetch failures stay silent and simply hide it.
 const activeBatch = ref<Campaign | null>(null)
-let batchTimer: ReturnType<typeof setInterval> | undefined
+let batchPoll: VisibilityPollHandle | null = null
 
 function stopBatchPolling() {
-  clearInterval(batchTimer)
-  batchTimer = undefined
+  batchPoll?.clear()
+  batchPoll = null
 }
 
 // Refresh the batch entry and arm the 3s poll only while an unfinished
 // batch exists; the tick that observes the settle stops the timer and hides
-// the entry (ui-guidelines §5 AppHeader registration). Every setInterval
-// pairs with cleanup on unmount.
+// the entry (ui-guidelines §5 AppHeader registration). The poll pauses in a
+// hidden tab and refreshes immediately on return (ui-guidelines §6); the
+// handle's clear() runs on unmount like the old clearInterval pair.
 async function refreshBatch() {
   if (!user.value) {
     activeBatch.value = null
@@ -197,7 +199,7 @@ async function refreshBatch() {
   }
   stopBatchPolling()
   if (activeBatch.value) {
-    batchTimer = setInterval(() => void refreshBatch(), 3000)
+    batchPoll = createVisibilityPoll(() => void refreshBatch(), { intervalMs: 3000 })
   }
 }
 

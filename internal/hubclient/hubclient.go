@@ -15,8 +15,29 @@ const probePrompt = "Reply with the single word: pong"
 // maxTokens is the fixed max_tokens for probe requests
 const maxTokens = 16
 
-// requestTimeout is the per-request timeout
+// requestTimeout is the per-request timeout for chat-protocol calls.
 const requestTimeout = 60 * time.Second
+
+// ImageRequestTimeout is the per-request timeout for image-protocol calls:
+// generation queues and cold starts make 10-60s responses normal, so the
+// chat budget would misread a slow-but-healthy path as down (spec 0014).
+const ImageRequestTimeout = 180 * time.Second
+
+// ProtocolImagesGeneration is the OpenAI-compatible image generation
+// protocol (POST /v1/images/generations, spec 0014 / ADR 0012).
+const ProtocolImagesGeneration = "images_generation"
+
+// ProtocolImagesEdit is the OpenAI-compatible image edit protocol
+// (POST /v1/images/edits, multipart form with the embedded test image,
+// spec 0014 / ADR 0012 / GH #32).
+const ProtocolImagesEdit = "images_edit"
+
+// IsImageProtocol reports whether the protocol belongs to the image family:
+// one call per probe round, no streaming or TTFT, and the image request
+// budget.
+func IsImageProtocol(protocol string) bool {
+	return protocol == ProtocolImagesGeneration || protocol == ProtocolImagesEdit
+}
 
 // errorSummaryLimit truncates error summaries to this many characters
 const errorSummaryLimit = 500
@@ -38,21 +59,39 @@ type Result struct {
 // Client executes probe requests against a Hub.
 type Client struct {
 	httpClient *http.Client
+	// timeout is the per-call budget for chat protocols; image protocols
+	// always use ImageRequestTimeout instead (see callTimeout).
+	timeout time.Duration
 }
 
-// New creates a Client with the standard probe timeout.
+// New creates a Client with the standard chat probe timeout. Image-protocol
+// calls get ImageRequestTimeout regardless of construction.
 func New() *Client {
 	return NewWithTimeout(requestTimeout)
 }
 
-// NewWithTimeout creates a Client with a custom per-request timeout.
+// NewWithTimeout creates a Client with a custom per-request timeout for chat
+// protocols.
 func NewWithTimeout(d time.Duration) *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout:   d,
 			Transport: probeTransport(),
 		},
+		timeout: d,
 	}
+}
+
+// callTimeout returns the per-call budget: image protocols always get
+// ImageRequestTimeout (the client-level timeout would cut a healthy
+// generation off at 60s), chat protocols use the client's configured value.
+// Every public method wraps its context with this budget — "no unbounded
+// exit" is a construction property of the Client, so a hung hub can never
+// park a caller (e.g. the discovery in-flight guard) forever.
+func (c *Client) callTimeout(protocol string) time.Duration {
+	if IsImageProtocol(protocol) {
+		return ImageRequestTimeout
+	}
+	return c.timeout
 }
 
 // probeTransport mirrors http.DefaultTransport with explicit proxy handling:
@@ -77,25 +116,44 @@ func probeTransport() *http.Transport {
 // protocol and model ID. When streaming is true it opens an SSE stream and
 // measures TTFT. Probe semantics (fixed prompt, tiny token budget) are
 // unchanged; it simply delegates to call with the probe constants.
-func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool) Result {
-	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming)
+//
+// imageParams carries the rule-merged extra parameters for image protocols
+// (spec 0014 / GH #33, e.g. quality:"low" for gpt-image models); chat
+// callers pass nil. The client stays database-free by construction: callers
+// resolve the rules (store.ImageParamsFor) and hand in the merged map, so
+// rule changes take effect on the very next call with no cache to invalidate.
+func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool, imageParams map[string]string) Result {
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
+	defer cancel()
+	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming, imageParams)
 }
 
 // Complete executes a single non-streaming completion with a custom prompt
 // and token budget. Used by the evaluator, where answers need room to be
 // complete (unlike the 16-token probe). The per-request timeout comes from
-// the client construction (see NewWithTimeout).
+// the client construction (see NewWithTimeout). Evaluation traffic stays on
+// chat protocols (spec 0014 R1), so no image parameters apply.
 func (c *Client) Complete(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int) Result {
-	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
+	defer cancel()
+	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false, nil)
 }
 
-// call dispatches to the protocol-specific implementation.
-func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool) Result {
+// call dispatches to the protocol-specific implementation. Callers (Probe,
+// Complete) apply the protocol-family timeout budget before reaching it.
+func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool, imageParams map[string]string) Result {
 	switch protocol {
 	case "anthropic":
 		return c.callAnthropic(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
 	case "openai":
 		return c.callOpenAI(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
+	case ProtocolImagesGeneration:
+		// Image calls have no streaming mode and use their own fixed prompt;
+		// the chat prompt/token arguments do not apply.
+		return c.callImagesGeneration(ctx, baseURL, token, modelID, imageParams)
+	case ProtocolImagesEdit:
+		// Same as generations: own fixed prompt plus the embedded test image.
+		return c.callImagesEdit(ctx, baseURL, token, modelID, imageParams)
 	default:
 		msg := "unknown protocol: " + protocol
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}

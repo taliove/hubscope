@@ -10,7 +10,7 @@ trigger: user-invocable
 
 ## 架构与边界
 
-- **链路:** 公网 → Caddy(443/80,systemd 原生,Let's Encrypt 自动 HTTPS)→ `127.0.0.1:8080` → Docker 容器 `hubscope` → bind mount 宿主机数据目录。
+- **链路:** 公网 → Caddy(443/80,systemd 原生,Let's Encrypt 自动 HTTPS;站点块含 `encode zstd gzip`——压缩固定在边缘层,SPA 静态资源与 /api JSON 全覆盖,Go 二进制不做压缩)→ `127.0.0.1:8080` → Docker 容器 `hubscope` → bind mount 宿主机数据目录。
 - **连接参数:** 全部在仓库根目录 `.env.prod`(gitignore,模板 `.env.prod.example`):`PROD_HOST` / `PROD_SSH_PORT` / `PROD_SSH_USER` / `PROD_DOMAIN` / `PROD_DATA_DIR` 等。**本文件与任何提交物中不得出现实值**(三级分离纪律,spec 0008 决策 8)。
 - **数据安全三道防线(核心纪律):** ① 数据只走宿主机 bind mount,容器生死与数据无关;② 每次部署前强制备份(热备优先);③ 恢复流程实机演练过(2026-07-27 首次部署已验证三条全部通过)。
 
@@ -56,6 +56,7 @@ hubscope-status         # 状态一览(同 $DS status 的本机版)
 5. **SSH 会话偶发掉线(curl exit 56):** 对生产机新绑定端口立刻 curl 时偶发。**重连即可,远端操作实际已生效**——掉线后先重连核对状态,不要盲目重跑(deploy.sh 各命令幂等,重跑安全)。
 6. **防火墙分层:** 宿主防火墙状态以 `$DS init` 实测为准(firewalld 运行则自动放行 http/https);云平台安全组在脚本触及范围外,公网不通而本地通时先查安全组。
 7. **备份姿势:** CentOS 7 自带 sqlite3 支持 `.backup` 热备,秒级完成,无需停服(`hubscope-backup` 默认姿势,无 sqlite3 时回落停服 cp)。
+8. **容器加固约定(spec 0015 决策 8):** 所有 `docker run`(部署与回滚两处)一律带 `--log-opt max-size=50m --log-opt max-file=3`(json-file 日志轮转,防磁盘慢性风险)与 `--memory 1g`(容器异常不拖垮同机 Caddy);新加 `docker run` 路径时必须保持一致。
 
 ## 与测试线(deploy-test-101)差异登记
 

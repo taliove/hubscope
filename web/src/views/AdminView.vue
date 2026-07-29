@@ -12,6 +12,7 @@
         <el-tab-pane label="分类规则" name="rules">
           <div class="tab-stack">
             <ClassificationRules @changed="reloadModels" />
+            <ImageParamRules />
           </div>
         </el-tab-pane>
         <el-tab-pane label="评估运营" name="eval-ops">
@@ -56,6 +57,7 @@ import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
 import ClassificationRules from '@/components/ClassificationRules.vue'
+import ImageParamRules from '@/components/ImageParamRules.vue'
 import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
 import AuditLogs from '@/components/AuditLogs.vue'

@@ -1,6 +1,8 @@
 // Domain types mirroring api-contract.md exactly. Field names must not drift.
 
-export type Protocol = 'anthropic' | 'openai'
+// images_generation joined in spec 0014 (GH #31), images_edit in GH #32;
+// the tag color mapping lives in utils/protocol.ts (GH #34).
+export type Protocol = 'anthropic' | 'openai' | 'images_generation' | 'images_edit'
 
 export interface Hub {
   id: number
@@ -50,6 +52,18 @@ export interface ClassificationRule {
   dimension: 'capability' | 'family'
   keyword: string
   category: string
+  priority: number
+}
+
+// An image-probe cost-saving parameter rule (GH #33, spec 0014): image
+// probe requests for models whose ID contains keyword (case-insensitive)
+// carry the rule's params in addition to the minimal {model, prompt, n:1}
+// body. Every matching rule contributes; on a key collision the smaller
+// priority wins. Values are strings only.
+export interface ImageParamRule {
+  id: number
+  keyword: string
+  params: Record<string, string>
   priority: number
 }
 
