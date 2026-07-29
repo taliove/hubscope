@@ -257,6 +257,10 @@ func (s *Server) routes() chi.Router {
 				r.Patch("/classification-rules/{id}", s.handlePatchClassificationRule)
 				r.Delete("/classification-rules/{id}", s.handleDeleteClassificationRule)
 
+				r.Post("/image-param-rules", s.handleCreateImageParamRule)
+				r.Patch("/image-param-rules/{id}", s.handlePatchImageParamRule)
+				r.Delete("/image-param-rules/{id}", s.handleDeleteImageParamRule)
+
 				r.Post("/cases", s.handleCreateCase)
 				r.Patch("/cases/{id}", s.handlePatchCase)
 
@@ -315,6 +319,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/endpoints/{id}/probes", s.handleListProbes)
 
 			r.Get("/classification-rules", s.handleListClassificationRules)
+			r.Get("/image-param-rules", s.handleListImageParamRules)
 
 			r.Get("/overview", s.handleGetOverview)
 

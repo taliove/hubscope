@@ -103,8 +103,18 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - 每周定时:每周日凌晨(本地时区)对所有 active 且 capability=chat 的模型 × 全部 enabled suite 各跑一次(trigger="scheduled")。
 - 分数大跌告警:某 (suite × model) 本次聚合分较上次 done run 下跌超过 0.2 且 settings.score_drop_alert_enabled=true → 经飞书通道发 score_drop 告警并落 alert_events(kind="score_drop", endpoint_id=null)。
 
-## Task Center(ticket 18)
+## Image Param Rules(GH #33,spec 0014)
 
+图像探测省钱参数规则:按模型名子串匹配(不区分大小写)给图像探测请求体追加参数;空表/无命中时请求体退化为最小形态 `{model, prompt, n:1}`。generations 并入 JSON body,edits 以同名字段写入 multipart 表单,两协议共用同一匹配。
+
+- `GET /api/image-param-rules` → `{"data": [ImageParamRule]}`(任意已登录角色可读),按 (priority, id) 升序。
+- `POST /api/image-param-rules`(仅 super_admin)→ 201 `{"data": ImageParamRule}`;body `{"keyword": string, "params": {string: string}, "priority"?: number(默认 100,范围 1~10000)}`。校验:keyword 去空白转小写且非空;params 非空、值仅字符串、键不得为保留键 `model`/`prompt`/`n`(不区分大小写),违反 → 400;keyword 重复 → 409。
+- `PATCH /api/image-param-rules/{id}`(仅 super_admin)→ 200;body 字段均可选(keyword/params/priority),校验同上;未命中 → 404,keyword 冲突 → 409。
+- `DELETE /api/image-param-rules/{id}`(仅 super_admin)→ 204;未命中 → 404。
+- `ImageParamRule = {"id": number, "keyword": string, "params": {string: string}, "priority": number}`。
+- 匹配语义:多条命中合并全部命中规则的参数,同键时 priority 小者胜;保留键即使在库中被手工写入也在合并时跳过。规则变更下一次探测即生效(无缓存)。审计动作:`image_param_rule.create` / `image_param_rule.update` / `image_param_rule.delete`(create 重复失败亦落审计)。
+
+## Task Center(ticket 18)
 - `GET /api/tasks?type=&status=&page=1&page_size=20` → `{"data": {"items": [Task], "total": number, "page": number, "page_size": number}}`(倒序,page_size 上限 100;type/status 精确过滤,可空)。读遵循监控数据分级:需登录。
 - `GET /api/tasks/{id}` → `{"data": TaskDetail}`;`TaskDetail = Task + {"logs": [TaskLog]}`(按时间正序)。未知 id → 404,非法 id → 400。
 - `Task = {"id": number, "type": "eval_run", "source": "manual"|"scheduled", "status": "pending"|"running"|"success"|"failed", "entity_type": "eval_run", "entity_id": number, "started_at": string|null, "finished_at": string|null, "duration_ms": number|null(终态才有), "created_at": string}`
