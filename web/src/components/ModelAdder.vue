@@ -26,7 +26,7 @@
         <el-button type="primary" :loading="submitting" @click="onSubmit">添加</el-button>
       </el-form-item>
     </el-form>
-    <p class="hint">添加时系统自动试通该模型的候选协议(chat 模型:anthropic / openai;图像模型:另加 images_generation),试通成功的协议自动建立 Endpoint,全部不通则拒绝添加。</p>
+    <p class="hint">添加时系统自动试通该模型的候选协议(chat 模型:anthropic / openai;图像模型:另加 images_generation / images_edit),试通成功的协议自动建立 Endpoint,全部不通则拒绝添加。</p>
   </el-card>
 </template>
 
