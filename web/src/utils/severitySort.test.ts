@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import type { EndpointStatus, OverviewEntry, OverviewGroup } from '@/api/types'
 import {
   DISABLED_RANK,
+  SEVERITY_ORDER,
   SEVERITY_RANK,
   entryRank,
   groupRank,
@@ -61,6 +62,15 @@ describe('SEVERITY_RANK / entryRank', () => {
     expect(SEVERITY_RANK.degraded).toBeLessThan(SEVERITY_RANK.healthy)
     expect(entryRank(makeEntry('a', 'failing'))).toBe(SEVERITY_RANK.failing)
     expect(entryRank(makeEntry('b', 'healthy'))).toBe(SEVERITY_RANK.healthy)
+  })
+
+  // GH #55: SEVERITY_ORDER is the list-form single source consumed by the
+  // stats strip and the group header — it must never drift from the rank
+  // table, or the board grows a second severity caliber again.
+  it('SEVERITY_ORDER covers every status in the same order as SEVERITY_RANK', () => {
+    expect(SEVERITY_ORDER).toHaveLength(Object.keys(SEVERITY_RANK).length)
+    const ranks = SEVERITY_ORDER.map((s) => SEVERITY_RANK[s])
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b))
   })
 
   it('ranks a disabled endpoint DISABLED_RANK whatever its status', () => {

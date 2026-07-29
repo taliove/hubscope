@@ -1,8 +1,11 @@
 <template>
   <el-card shadow="never" class="endpoint-card" :class="`card-${entry.status}`" @click="goDetail">
     <div class="card-head">
-      <span class="model-id" :title="entry.model_id">{{ entry.model_id }}</span>
-      <el-tag :type="protocolTagType(entry.protocol)" size="small">
+      <span class="model-id" :title="entry.model_id">
+        <span class="model-head">{{ modelSplit.head }}</span>
+        <span v-if="modelSplit.tail" class="model-tail">{{ modelSplit.tail }}</span>
+      </span>
+      <el-tag v-if="showProtocolTag" :type="protocolTagType(entry.protocol)" size="small">
         {{ entry.protocol }}
       </el-tag>
     </div>
@@ -10,7 +13,7 @@
     <div class="card-status">
       <el-tooltip :content="entry.status_reason" placement="top" :show-after="200">
         <span class="status-wrap">
-          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" />
+          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" size="md" />
         </span>
       </el-tooltip>
       <el-tooltip placement="top" :show-after="200">
@@ -29,11 +32,11 @@
       </div>
       <div class="metric">
         <span class="metric-label">P50</span>
-        <span class="metric-value">{{ formatMs(entry.p50_ms) }}</span>
+        <span class="metric-value metric-p50">{{ formatMs(entry.p50_ms) }}</span>
       </div>
       <div class="metric">
         <span class="metric-label">P95</span>
-        <span class="metric-value">{{ formatMs(entry.p95_ms) }}</span>
+        <span class="metric-value metric-p95">{{ formatMs(entry.p95_ms) }}</span>
       </div>
     </div>
 
@@ -66,18 +69,31 @@ import StatusBadge from './StatusBadge.vue'
 import LatencySparkline from './LatencySparkline.vue'
 import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
+import { splitMiddle } from '@/utils/truncate'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
 // Clicking navigates to the endpoint detail page.
-const props = defineProps<{ entry: OverviewEntry }>()
+// showProtocolTag defaults to true; a uniform-protocol group section
+// collapses the per-card tag and shows one tag in the group header instead
+// (GH #54) — flat mode and mixed-protocol groups keep the card tag.
+const props = withDefaults(defineProps<{ entry: OverviewEntry; showProtocolTag?: boolean }>(), {
+  showProtocolTag: true,
+})
 const router = useRouter()
 
 function goDetail() {
   router.push(`/endpoints/${props.entry.endpoint_id}`)
 }
 
+// Middle truncation (GH #54): the head takes the CSS ellipsis while the
+// tail (usually the version/variant part) stays fully visible. Split is
+// width-driven — no JS character budgeting.
+const modelSplit = computed(() => splitMiddle(props.entry.model_id))
+
 // Stability score badge: colored by score band, gray when there is no data.
-const scoreText = computed(() => (props.entry.score === null ? '暂无评分' : String(props.entry.score)))
+// The "评分 " prefix labels the bare number (GH #54); this is the stability
+// score, not an eval score — formatScore does not govern it.
+const scoreText = computed(() => (props.entry.score === null ? '暂无评分' : `评分 ${props.entry.score}`))
 const scoreClass = computed(() => {
   const score = props.entry.score
   if (score === null) return 'score-none'
@@ -137,12 +153,28 @@ function dotTooltip(dot: OverviewDot): string {
   margin-bottom: 10px;
 }
 .model-id {
+  /* Middle truncation (GH #54): the parent is a shrinkable flex row; the
+     head span eats the ellipsis, the tail span never truncates. */
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--hs-text-lg);
   font-weight: 600;
   color: var(--hs-text-primary);
+}
+.model-head {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.model-tail {
+  flex: none;
+  white-space: nowrap;
+}
+.card-head .el-tag {
+  flex: none;
 }
 .card-status {
   display: flex;
@@ -202,6 +234,17 @@ function dotTooltip(dot: OverviewDot): string {
   line-height: 1.2;
   color: var(--hs-text-primary);
   margin-top: 2px;
+}
+/* Metric hierarchy (GH #54): P50 is the primary latency signal, P95 is the
+   secondary tail — they must not carry equal visual weight. The 24h success
+   rate keeps the base md size. Order unchanged: rate / P50 / P95. */
+.metric-p50 {
+  font-size: var(--hs-text-lg);
+  font-weight: 600;
+}
+.metric-p95 {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
 }
 .card-dots {
   display: flex;

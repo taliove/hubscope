@@ -14,6 +14,14 @@ export const SEVERITY_RANK: Record<EndpointStatus, number> = {
   healthy: 3,
 }
 
+// The same severity caliber as an ordered LIST (GH #55): consumed wherever
+// a status sequence is rendered — the Dashboard stats strip order and the
+// group header status-count order. Both used to declare their own orderings
+// (strip mild→severe, header its own priority list); they now share this
+// single source so the board has one severity caliber, heavy→light. The
+// test suite asserts this array stays consistent with SEVERITY_RANK.
+export const SEVERITY_ORDER: EndpointStatus[] = ['failing', 'down', 'degraded', 'healthy']
+
 // Rank of a disabled endpoint — and of a group with no enabled entries:
 // sinks below every enabled rank. A disabled endpoint is out of service by
 // admin choice; it must never compete for the first screen, and a disabled

@@ -4,6 +4,17 @@
       <span class="group-arrow">{{ collapsed ? '▸' : '▾' }}</span>
       <span class="group-key">{{ group.key }}</span>
       <span class="group-count">{{ group.endpoint_count }} 端点</span>
+      <!-- Uniform-protocol collapse (GH #54): when every filtered entry in
+           the group shares one protocol, one tag in the header replaces the
+           per-card tags. Skipped when grouping by protocol — the group key
+           already names it. -->
+      <el-tag
+        v-if="uniformProtocol && grouping !== 'protocol'"
+        :type="protocolTagType(uniformProtocol)"
+        size="small"
+      >
+        {{ uniformProtocol }}
+      </el-tag>
 
       <span class="group-stats">
         <template v-for="s in presentStatuses" :key="s">
@@ -30,7 +41,12 @@
     </div>
 
     <div v-show="!collapsed" class="card-grid">
-      <EndpointCard v-for="entry in entries" :key="entry.endpoint_id" :entry="entry" />
+      <EndpointCard
+        v-for="entry in entries"
+        :key="entry.endpoint_id"
+        :entry="entry"
+        :show-protocol-tag="!collapseCardProtocolTag"
+      />
       <el-empty v-if="entries.length === 0" description="该组无匹配的 Endpoint" :image-size="60" />
     </div>
   </el-card>
@@ -42,9 +58,14 @@ import { Share } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
 import { formatPercent, formatMs } from '@/utils/format'
-import type { OverviewGroup, OverviewEntry, EndpointStatus } from '@/api/types'
+import { protocolTagType } from '@/utils/protocol'
+import type { OverviewGroup, OverviewEntry, EndpointStatus, Protocol } from '@/api/types'
 
-const props = defineProps<{ group: OverviewGroup; entries: OverviewEntry[] }>()
+const props = defineProps<{
+  group: OverviewGroup
+  entries: OverviewEntry[]
+  grouping?: 'family' | 'capability' | 'protocol'
+}>()
 
 const emit = defineEmits<{ (e: 'share'): void }>()
 
@@ -54,6 +75,25 @@ const collapsed = ref(false)
 const STATUS_PRIORITY: EndpointStatus[] = ['down', 'failing', 'degraded', 'healthy']
 const presentStatuses = computed(() =>
   STATUS_PRIORITY.filter(s => (props.group.status_counts[s] ?? 0) > 0)
+)
+
+// Uniform-protocol collapse (GH #54): the protocol shared by every filtered
+// entry, or null for mixed/empty groups. Based on the filtered entries prop
+// (the same set the cards render), never on the unfiltered group aggregate.
+const uniformProtocol = computed<Protocol | null>(() => {
+  if (props.entries.length === 0) return null
+  const first = props.entries[0].protocol
+  // Defensive: the Protocol type forbids '', but API payloads are untyped at
+  // runtime — an empty protocol must not collapse into a header tag.
+  if ((first as string) === '') return null
+  return props.entries.every((e) => e.protocol === first) ? first : null
+})
+
+// Card tags collapse when the header carries the tag (uniform group) or
+// when the group key already names the protocol (grouping = 'protocol').
+// Flat mode never reaches this component, and mixed groups keep card tags.
+const collapseCardProtocolTag = computed(
+  () => props.grouping === 'protocol' || uniformProtocol.value !== null,
 )
 </script>
 
@@ -105,7 +145,7 @@ const presentStatuses = computed(() =>
 }
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
 }
 </style>

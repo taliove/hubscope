@@ -12,7 +12,8 @@
 
     <!-- Stats strip (replaces the old summary cards): one slim row of counts.
          Status items keep the click-to-filter / click-again-to-clear toggle;
-         the active item gets a brand underline instead of a card frame. -->
+         the active item gets a brand-soft fill (GH #55 — the old brand
+         underline read as a nav tab, not a selected filter). -->
     <div class="stats-strip">
       <span
         class="stat-item stat-clickable"
@@ -22,7 +23,7 @@
         总数 <span class="stat-num">{{ entries.length }}</span>
       </span>
       <span
-        v-for="status in STRIP_ORDER"
+        v-for="status in SEVERITY_ORDER"
         :key="status"
         class="stat-item stat-clickable"
         :class="{ 'stat-active': statusFilter === status }"
@@ -44,12 +45,17 @@
         clearable
         class="filter-keyword"
       />
-      <el-select v-model="protocolFilter" placeholder="协议" clearable class="filter-select">
+      <!-- Inline labels (GH #55, Dashboard-local convention): the selects
+           no longer lean on placeholders as their only name. Keyword input
+           and grouping select stay as-is. -->
+      <span class="filter-label">协议:</span>
+      <el-select v-model="protocolFilter" placeholder="全部" clearable class="filter-select">
         <!-- Options come from the single protocol vocabulary (utils/protocol.ts)
              so new protocols appear here automatically. -->
         <el-option v-for="p in PROTOCOLS" :key="p" :label="p" :value="p" />
       </el-select>
-      <el-select v-model="statusFilter" placeholder="状态" clearable class="filter-select">
+      <span class="filter-label">状态:</span>
+      <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
         <el-option label="正常" value="healthy" />
         <el-option label="降级" value="degraded" />
         <el-option label="宕机" value="down" />
@@ -91,6 +97,7 @@
           :key="section.group.key"
           :group="section.group"
           :entries="section.entries"
+          :grouping="grouping"
           @share="openGroupShare(section)"
         />
         <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
@@ -120,13 +127,14 @@ import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
-import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
+import { sortEntriesBySeverity, sortGroupSections, SEVERITY_ORDER, type GroupSection } from '@/utils/severitySort'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
 
-// Display order of the stats strip: mildest to most severe.
-const STRIP_ORDER: EndpointStatus[] = ['healthy', 'degraded', 'down', 'failing']
+// The stats strip renders SEVERITY_ORDER directly (GH #55): the board's
+// single severity caliber, heavy → light, shared with the group header —
+// the old local mild→severe STRIP_ORDER is deleted.
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
@@ -245,16 +253,18 @@ onMounted(start)
 }
 .stat-clickable {
   cursor: pointer;
-  padding-bottom: 2px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  padding: 2px 6px;
+  border-radius: var(--hs-radius-sm);
+  transition: color var(--hs-transition), background-color var(--hs-transition);
 }
 .stat-clickable:hover {
   color: var(--hs-brand-hover);
 }
+/* Selected filter = brand-soft fill + brand text (GH #55): a filter chip,
+   not a nav tab — the old 2px brand underline borrowed the tab language. */
 .stat-active {
   color: var(--hs-brand);
-  border-bottom-color: var(--hs-brand);
+  background-color: var(--hs-brand-soft);
 }
 .stat-num {
   font-weight: 600;
@@ -273,6 +283,10 @@ onMounted(start)
 .filter-keyword {
   width: 220px;
 }
+.filter-label {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+}
 .filter-select {
   width: 140px;
 }
@@ -284,7 +298,7 @@ onMounted(start)
 }
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
   min-height: 120px;
 }

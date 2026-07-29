@@ -1,5 +1,5 @@
 <template>
-  <span class="status-badge" :class="`status-${status}`" :title="reason">
+  <span class="status-badge" :class="[`status-${status}`, `badge-${size}`]" :title="reason">
     <span class="dot" />
     <span class="label">{{ label }}</span>
     <span v-if="causeSuffix" class="causes">{{ causeSuffix }}</span>
@@ -16,7 +16,14 @@ import { degradeCauseSuffix } from '@/utils/degradeCauses'
 // The optional causes prop adds a plain-text degrade-cause sub-label after
 // the status word (spec 0013) — secondary text only, never a second status
 // light. Aggregates never pass causes.
-const props = defineProps<{ status: EndpointStatus; reason?: string; causes?: DegradeCause[] }>()
+// size is a two-stop scale (GH #54): sm (default) everywhere, md only where
+// the status row is the card's primary line (EndpointCard). The md stop is
+// a size variant of the same badge — same dot, same label — never a second
+// status light; callers must not :deep-override it.
+const props = withDefaults(
+  defineProps<{ status: EndpointStatus; reason?: string; causes?: DegradeCause[]; size?: 'sm' | 'md' }>(),
+  { size: 'sm' },
+)
 
 const label = computed(() => STATUS_LABELS[props.status])
 const reason = computed(() => props.reason ?? '')
@@ -54,8 +61,21 @@ const causeSuffix = computed(() =>
   background: var(--hs-status-failing);
   animation: hs-blink 0.8s ease-in-out infinite;
 }
+/* md stop (GH #54): the status word steps up to the card-primary scale; the
+   dot grows to match. The cause sub-label stays sm/secondary — it is
+   auxiliary text in every size (ui-guidelines §5 StatusBadge). */
+.badge-md {
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+}
+.badge-md .dot {
+  width: 12px;
+  height: 12px;
+}
 .causes {
   /* Plain secondary text: no dot, no background, no animation. */
+  font-size: var(--hs-text-sm);
+  font-weight: 400;
   color: var(--hs-text-secondary);
   white-space: nowrap;
 }
