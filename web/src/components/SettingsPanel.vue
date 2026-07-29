@@ -60,6 +60,10 @@
           <el-input-number v-model="form.default_sample_count" :min="1" :max="10" />
           <span class="field-hint">每题作答次数,多次取平均;题目可单独覆盖</span>
         </el-form-item>
+        <el-form-item label="评估并发数">
+          <el-input-number v-model="form.eval_concurrency" :min="1" :max="16" />
+          <span class="field-hint">同时执行的评估单元(评估集 × 模型)数;调大可缩短批次时长,但会增加 Hub 压力</span>
+        </el-form-item>
         <el-form-item label="每周计划">
           <span class="field-static">每周日凌晨自动发起全量评估(内置计划,无需配置)</span>
         </el-form-item>
@@ -107,6 +111,7 @@ const form = reactive<AppSettings>({
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
   default_sample_count: 1,
+  eval_concurrency: 4,
   suite_weights: {},
 })
 const suites = ref<Suite[]>([])

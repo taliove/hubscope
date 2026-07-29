@@ -7,6 +7,9 @@ export interface AppSettings {
   score_drop_alert_enabled: boolean
   judge_model: string
   default_sample_count: number
+  // Eval worker-pool size: how many (suite × model) cells run at once
+  // (GH #26); 1-16, default 4.
+  eval_concurrency: number
   // Leaderboard total-score weight per suite key (ticket 31); suites absent
   // from the map weigh 1 (equal weighting is the default).
   suite_weights: Record<string, number>

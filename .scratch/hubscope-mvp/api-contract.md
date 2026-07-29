@@ -83,8 +83,8 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Settings & Alerts(ticket 06,本波不实现,先占位契约)
 
-- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
-- `PUT /api/settings` → `{"data": ...同上}`(字段均可选)
+- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string, "default_sample_count": number, "suite_weights": object, "eval_concurrency": number}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
+- `PUT /api/settings` → `{"data": ...同上}`(字段均可选;`default_sample_count` ∈ [1,10]、`eval_concurrency` ∈ [1,16],越界 400)
 - `POST /api/settings/test-lark`(super_admin,ticket 100)→ body `{"webhook_url": string}`(必填,绝对 http/https URL,否则 400)→ `{"data": {"sent_ok": boolean, "error": string|null}}`。测试目标是 body 里的地址(非已保存设置),不受 alert_enabled 开关影响;每次尝试(成功/失败)落 alert_events(kind="test", endpoint_id=null);error 不含 webhook URL(W6)。
 - `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test", "message": string, "sent_ok": boolean, "created_at": string}`
 - 飞书告警消息以消息卡片形态发送(ticket 101,`msg_type: "interactive"`,legacy card JSON):颜色标题栏(down/登录爆破 = red、score_drop = orange、recovered = green、test = turquoise)+ 双列字段(模型/协议/错误等)+ 时间备注行;`alert_events.message` 仍落纯文本,告警历史表渲染不变。
@@ -102,6 +102,13 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - 裁判模型来源:settings.judge_model(默认 claude-opus-4-8),evaluator 每次 run 开始时读取。
 - 每周定时:每周日凌晨(本地时区)对所有 active 且 capability=chat 的模型 × 全部 enabled suite 各跑一次(trigger="scheduled")。
 - 分数大跌告警:某 (suite × model) 本次聚合分较上次 done run 下跌超过 0.2 且 settings.score_drop_alert_enabled=true → 经飞书通道发 score_drop 告警并落 alert_events(kind="score_drop", endpoint_id=null)。
+
+## Eval 执行器并发与失败补救(GH #26/#27/#28)
+
+- 执行单元为 (suite × model) cell(GH #26):批次开始即建好全部 suite 的 run(进度网格语义不变),cell 进有界工作池并发执行,并发数 = settings.eval_concurrency(默认 4,clamp [1,16]);cell 内 case 仍串行(单模型内时序与 Hub 压力可控)。全部 cell 完成后统一 settle,AfterCampaign 恰好一次;ctx 取消后不再领取新 cell。单 suite 手动触发(POST /api/evals 带 suite_id)同样走 cell 池(单 run × 多 model)。
+- answer 调用失败自动重试 1 次(GH #27,共 2 次尝试,立即不退避——120s 超时本身已是等待;judge 调用不重试,RequestTimeout 120s 不变):两次都失败 → score=null,verdict_detail 形如 `answer call failed after 2 attempts: <末次原因>`;重试成功正常判分,detail 注明第 2 次尝试成功,不谎称一次成功。
+- `POST /api/campaigns/{id}/retry-failed`(GH #28;hub scoped 写组,与 evals.create 同组)→ 202 `{"data": CampaignDetail}`(同 POST /api/evals 响应形状),异步执行。前置校验:批次须 done/failed 且存在 score IS NULL 的结果,否则 409 `campaign has no failed results to retry` / `campaign is not settled`;批次不存在 404;匿名 401;跨 hub 写按既有组口径。执行语义:批次状态 done/failed → running(**仅本路径可回迁**,store 层 WHERE 守卫);对每个含 null 分结果的 (run × model),仅删除该单元 score IS NULL 的结果行(删除条件 `score IS NULL` 硬编码,构造上不可能误删已判分结果——已判分结果逐字节不动,W7 同向),重评这些 case 并插入新结果(仍走 answer 自动重试);全部完成后走既有 SettleCampaign 统一 settle。已知并接受:AfterCampaign 会再触发一次(单次 retry-settle 一次,不连发),分数大跌告警以重跑后数据重新对比。
+- `CampaignReport` 新增 `failed_results: number`(GH #28)——批次全部 run 中 score IS NULL 的结果行数;settle 批次 `failed_results > 0` 是前端「重跑失败项」按钮的渲染条件。公开榜单与分享报告同形状返回(失败计数是运行元数据,与覆盖率水印同源信息)。
 
 ## Task Center(ticket 18)
 

@@ -19,6 +19,7 @@ type settingsDTO struct {
 	ScoreDropAlertEnabled bool               `json:"score_drop_alert_enabled"`
 	JudgeModel            string             `json:"judge_model"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
+	EvalConcurrency       int                `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
@@ -31,6 +32,7 @@ type settingsPatch struct {
 	ScoreDropAlertEnabled *bool              `json:"score_drop_alert_enabled"`
 	JudgeModel            *string            `json:"judge_model"`
 	DefaultSampleCount    *int               `json:"default_sample_count"`
+	EvalConcurrency       *int               `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 }
 
@@ -51,6 +53,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
+		return dto, err
+	}
+	if dto.EvalConcurrency, err = s.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency); err != nil {
 		return dto, err
 	}
 	if dto.SuiteWeights, err = s.db.GetSuiteWeights(); err != nil {
@@ -86,6 +91,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patch.EvalConcurrency != nil &&
+		(*patch.EvalConcurrency < 1 || *patch.EvalConcurrency > store.MaxEvalConcurrency) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("eval_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
+		return
+	}
+
 	if patch.SuiteWeights != nil {
 		if err := s.validateSuiteWeights(patch.SuiteWeights); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -112,6 +124,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingDefaultSampleCount, func() error {
 			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
 		}},
+		{store.SettingEvalConcurrency, func() error {
+			return s.db.SetSettingInt(store.SettingEvalConcurrency, *patch.EvalConcurrency)
+		}},
 		{store.SettingSuiteWeights, func() error {
 			return s.db.SetSuiteWeights(patch.SuiteWeights)
 		}},
@@ -122,6 +137,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
 		patch.DefaultSampleCount != nil,
+		patch.EvalConcurrency != nil,
 		patch.SuiteWeights != nil,
 	}
 	for i, u := range updates {
