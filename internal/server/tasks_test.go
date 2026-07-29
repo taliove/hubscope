@@ -314,9 +314,12 @@ func TestFailedEvalRunTaskMarkedFailed(t *testing.T) {
 	waitFor(t, "failed task to appear", func() bool {
 		// The hub auto-sync triggered by the model setup may have failed
 		// against the eval stub and registered its own failed task; this test
-		// cares only about the eval run's task.
+		// cares only about the eval run's task. Since GH #26 every suite's
+		// run is created up front, so a mid-batch cancellation fails them
+		// all — assert at least one failed eval_run task rather than the
+		// serial executor's exactly-one.
 		items := taskItems(t, listTasks(t, ts.URL, "status=failed&type=eval_run"))
-		if len(items) != 1 {
+		if len(items) == 0 {
 			return false
 		}
 		failedTask = items[0]

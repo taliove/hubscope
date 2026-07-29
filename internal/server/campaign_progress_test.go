@@ -78,6 +78,10 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
 	stub.markBroken("alpha-model", true)
+	// Serial cell order (GH #26 pool at 1): the scenario pins gamma's
+	// cap_language cell as not-yet-started at the freeze point, which only a
+	// deterministic suite→model order guarantees.
+	setEvalConcurrency(t, ts.URL, 1)
 	stub.resetCalls()
 	stub.blockModelAfter(store.DefaultJudgeModel, 3)
 	t.Cleanup(func() { stub.releaseModel(store.DefaultJudgeModel) })

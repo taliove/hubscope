@@ -45,6 +45,8 @@ func rowModelIDs(rows []map[string]interface{}) []string {
 // freeze point the first run is mid-flight: alpha and beta have their full
 // cap_instruction case set recorded (effectively done cells), gamma has zero
 // results anywhere — yet must already occupy a row with a pending cell.
+// eval_concurrency=1 keeps the cell order deterministic (alpha then beta
+// then gamma); the concurrent fan-out is pinned in eval_concurrency_test.go.
 func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 	// Async eval: observes the mid-flight live board (gamma frozen on its
 	// first answer call); drained by releaseModel + waitCampaignStatus(done).
@@ -52,6 +54,7 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
+	setEvalConcurrency(t, ts.URL, 1)
 	stub.blockModel("gamma-model")
 	stub.resetCalls()
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
@@ -111,6 +114,9 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	gammaID := createEvalModel(t, ts.URL, stub.URL, "gamma-model")
 	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	// Serial cell order (GH #26 pool at 1): alpha's cell completes before
+	// gamma's first blocked call, so the freeze point is deterministic.
+	setEvalConcurrency(t, ts.URL, 1)
 	stub.blockModel("gamma-model")
 	stub.resetCalls()
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
@@ -150,6 +156,10 @@ func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	betaID := createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
+	// Serial cell order (GH #26 pool at 1): alpha and beta record their
+	// results before gamma's cell blocks, so the delete lands on a
+	// deterministic mid-flight state.
+	setEvalConcurrency(t, ts.URL, 1)
 	stub.blockModel("gamma-model")
 	stub.resetCalls()
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })

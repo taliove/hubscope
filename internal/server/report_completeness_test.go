@@ -159,6 +159,11 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
+	// Serial cell order (GH #26 pool at 1): the scenario holds gamma broken
+	// for exactly the cap_instruction run — "broken until that suite's run
+	// settles, unbroken after" only maps to one suite when cells execute
+	// suite by suite.
+	setEvalConcurrency(t, ts.URL, 1)
 
 	// Batch 1: a fully judged baseline for every model.
 	first := triggerFullSweep(t, ts.URL)
@@ -281,6 +286,10 @@ func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "foxtrot-model")
 	createEvalModel(t, ts.URL, stub.URL, "echo-model")
 	createEvalModel(t, ts.URL, stub.URL, "delta-model")
+	// Serial cell order (GH #26 pool at 1): the scenario pins models
+	// executing sequentially inside each run and suites in order — foxtrot's
+	// call counts gate suite boundaries only under that order.
+	setEvalConcurrency(t, ts.URL, 1)
 
 	// Rule cases are answered exactly once (sample_count=1), so foxtrot's
 	// call count per rule suite equals its enabled case count.
