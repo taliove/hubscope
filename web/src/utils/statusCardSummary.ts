@@ -67,6 +67,16 @@ export function scopedAvailability(entries: OverviewEntry[]): number | null {
   return total === 0 ? null : ok / total
 }
 
+// 24h availability of a single endpoint from its overview entry (GH #56,
+// EndpointDetail KPI). An undefined entry (a hub-scoped visitor cannot see a
+// foreign hub's entry in the overview payload) degrades to null — the KPI
+// renders a neutral no-data placeholder and must NOT fall back to the chart
+// buckets, which follow the window/mode controls and would let the KPI drift.
+export function endpointAvailability24h(entry: OverviewEntry | undefined): number | null {
+  if (!entry) return null
+  return scopedAvailability([entry])
+}
+
 // Mean of per-endpoint p50 latencies across entries with data; null when
 // none. Scope-consistent by construction (see the module header for why the
 // backend group aggregate is not reused here).

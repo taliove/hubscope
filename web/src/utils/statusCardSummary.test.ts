@@ -10,6 +10,7 @@ import {
   availabilityTier,
   distributionSegments,
   dotTier,
+  endpointAvailability24h,
   healthyRateRange,
   healthyRangeText,
   longestDegradedStreak,
@@ -118,6 +119,24 @@ describe('scopedAvailability', () => {
   })
   it('is null when nothing was probed', () => {
     expect(scopedAvailability([makeEntry()])).toBeNull()
+  })
+})
+
+describe('endpointAvailability24h', () => {
+  it('is null for an undefined entry (hub-scoped visitor edge, GH #56)', () => {
+    expect(endpointAvailability24h(undefined)).toBeNull()
+  })
+  it('is null when the entry has a fully empty 24h window', () => {
+    expect(endpointAvailability24h(makeEntry())).toBeNull()
+  })
+  it('aggregates probe-weighted and keeps the 95% boundary exact', () => {
+    // 19 ok / 20 probes lands exactly on the >=95% "ok" threshold — the KPI
+    // must read 0.95, not a drifted window-controlled figure.
+    expect(endpointAvailability24h(makeEntry({ dots_24h: dotsWith(20, 1, [23]) }))).toBeCloseTo(0.95)
+    // Two probed hours sum across the window: (8 + 90) / (10 + 100) = 0.8909...
+    const dots = dotsWith(10, 2, [22])
+    dots[23] = { ...dots[23], total: 100, failures: 10 }
+    expect(endpointAvailability24h(makeEntry({ dots_24h: dots }))).toBeCloseTo(0.8909, 3)
   })
 })
 

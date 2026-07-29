@@ -12,6 +12,7 @@
           分享
         </el-button>
       </template>
+      <el-skeleton v-else-if="!error" class="header-skeleton" :rows="1" animated />
     </header>
     <!-- Status row mirrors the Dashboard card: StatusBadge first, then tags,
          then the reason text (same colors, same words, ui-guidelines §3). -->
@@ -23,17 +24,29 @@
       </span>
     </div>
 
-    <!-- Metrics cards: stability score (from probes) and eval score (from latest campaign) -->
+    <!-- Metrics cards: fixed 24h availability KPI (GH #56 — never drifts with
+         the window controls below) and eval score (from latest campaign). -->
     <div v-if="detail" class="metrics-row">
       <el-card shadow="never" class="metric-card">
-        <div class="metric-label">24h 稳定性</div>
-        <div class="metric-value" :class="`score-${stabilityTier}`">
-          {{ formatScore(stabilityScore) }}
+        <div class="metric-label">24h 可用率</div>
+        <div class="metric-value" :class="`score-${availabilityTierName}`">
+          {{ formatPercent(availability24h) }}
         </div>
+        <div v-if="availability24h === null" class="metric-note">24h 内无探测数据</div>
       </el-card>
 
       <el-card shadow="never" class="metric-card">
-        <template v-if="evalSummary">
+        <el-skeleton v-if="evalLoading" :rows="2" animated />
+        <template v-else-if="evalError">
+          <!-- Failure is not the empty state: neutral secondary text (the eval
+               card is auxiliary — danger red would read as an endpoint
+               incident) plus a retry link. -->
+          <div class="metric-label eval-error">
+            <span class="eval-error-text" :title="evalError">评估数据加载失败:{{ evalError }}</span>
+            <el-button link type="primary" size="small" @click="loadEvalSummary">重试</el-button>
+          </div>
+        </template>
+        <template v-else-if="evalSummary">
           <div class="metric-label">评估总分</div>
           <div class="metric-value">{{ formatScore(evalSummary.total_score) }}</div>
           <div class="suite-tags">
@@ -46,6 +59,11 @@
         <template v-else>
           <div class="metric-label empty">暂无评估数据</div>
         </template>
+      </el-card>
+    </div>
+    <div v-else-if="!error" class="metrics-row">
+      <el-card v-for="i in 2" :key="i" shadow="never" class="metric-card">
+        <el-skeleton :rows="2" animated />
       </el-card>
     </div>
 
@@ -66,13 +84,13 @@
       <el-button v-if="authed && detail" type="primary" @click="triggerEval">评估此模型</el-button>
     </div>
 
-    <el-alert
-      v-if="error"
-      :title="`加载失败:${error}`"
-      type="error"
-      :closable="false"
-      class="error-alert"
-    />
+    <el-alert v-if="error" type="error" :closable="false" class="error-alert">
+      <template #title>加载失败:{{ error }}</template>
+      <!-- Retry reruns the whole initial load chain (detail + failures +
+           overview + eval + series): the error ref is shared by the first
+           load and reloadSeries, and the full-chain rerun covers both. -->
+      <el-button size="small" @click="loadInitial">重试</el-button>
+    </el-alert>
 
     <div v-loading="loading">
       <TimeSeriesChart title="延迟(P50 / P95)" :categories="categories" :series="latencySeries" y-name="ms" />
@@ -125,11 +143,11 @@ import ProbeRecordTable from '@/components/ProbeRecordTable.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
-import { formatBucketTime, formatScore, formatTime } from '@/utils/format'
+import { formatBucketTime, formatPercent, formatScore, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
-import { availabilityTier, type AvailabilityTier } from '@/utils/statusCardSummary'
+import { availabilityTier, endpointAvailability24h, type AvailabilityTier } from '@/utils/statusCardSummary'
 import { createSingleModelSnapshot, type StatusCardSnapshot } from '@/utils/statusCardSnapshot'
-import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary, Suite, Model, Campaign } from '@/api/types'
+import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary, Suite, Model, Campaign, OverviewEntry } from '@/api/types'
 
 // Endpoint detail page: status header plus latency/TTFT/success-rate charts
 // over hourly buckets, and the recent-failures evidence table.
@@ -140,6 +158,12 @@ const detail = ref<EndpointDetail | null>(null)
 const buckets = ref<SeriesBucket[]>([])
 const failures = ref<ProbeRecord[]>([])
 const evalSummary = ref<ModelEvalSummary | null>(null)
+const evalLoading = ref(false)
+const evalError = ref('')
+// Overview entry for this endpoint, fetched once at mount (anonymous-safe);
+// drives the fixed 24h availability KPI. Undefined when the entry is not
+// visible (hub-scoped session viewing a foreign hub's endpoint).
+const overviewEntry = ref<OverviewEntry | undefined>(undefined)
 const suites = ref<Suite[]>([])
 const models = ref<Model[]>([])
 const evalDialogVisible = ref(false)
@@ -182,26 +206,14 @@ const successSeries = computed(() => [
   },
 ])
 
-// Compute 24h stability score from recent buckets (simplified from overview entry).
-// In a full implementation this would come from the backend, but for now we
-// approximate it from the success rate of loaded buckets.
-const stabilityScore = computed((): number | null => {
-  if (buckets.value.length === 0) return null
-  let total = 0
-  let failures = 0
-  for (const b of buckets.value) {
-    total += b.total
-    failures += b.failures
-  }
-  if (total === 0) return null
-  const rate = (total - failures) / total
-  return Math.round(rate * 100)
-})
+// Fixed 24h availability KPI (GH #56): computed from the mount-time overview
+// entry's dots_24h via the batch-59 probe-weighted pure function — identical
+// to the backend figure by construction and NEVER drifting with the window/
+// mode controls below (those only drive the charts). Null renders "-" plus a
+// neutral no-data note; no fallback to the chart buckets (second data path).
+const availability24h = computed(() => endpointAvailability24h(overviewEntry.value))
 
-const stabilityTier = computed((): AvailabilityTier => {
-  if (stabilityScore.value === null) return 'none'
-  return availabilityTier(stabilityScore.value / 100)
-})
+const availabilityTierName = computed((): AvailabilityTier => availabilityTier(availability24h.value))
 
 async function reloadSeries() {
   loading.value = true
@@ -215,14 +227,20 @@ async function reloadSeries() {
   }
 }
 
+// Eval summary failure is NOT the empty state (GH #56): a failed load keeps
+// evalSummary null but records the reason in evalError, so the card renders
+// "评估数据加载失败 · 重试" instead of masquerading as "暂无评估数据".
 async function loadEvalSummary() {
   if (!detail.value) return
+  evalLoading.value = true
+  evalError.value = ''
   try {
     evalSummary.value = await getModelEvalSummary(detail.value.model_id)
   } catch (e) {
-    // Eval summary is optional; don't block the page if it fails
-    console.warn('Failed to load eval summary:', e)
     evalSummary.value = null
+    evalError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    evalLoading.value = false
   }
 }
 
@@ -258,15 +276,21 @@ async function shareModel() {
   }
 }
 
-onMounted(async () => {
-  await refreshAuth()
+// Whole initial load chain (GH #56): detail + failures + overview + eval +
+// series. The error alert's retry button reruns this, so a retry covers both
+// error sources (first load and series reload) with one path.
+async function loadInitial() {
+  error.value = ''
   try {
-    const [d, f] = await Promise.all([
+    const [d, f, overview] = await Promise.all([
       getEndpointDetail(endpointId),
       listProbeHistory(endpointId, 20, false),
+      // Anonymous-safe; drives the fixed 24h availability KPI.
+      fetchOverview(),
     ])
     detail.value = d
     failures.value = f
+    overviewEntry.value = overview.endpoints.find(e => e.endpoint_id === endpointId)
 
     // Load evaluation summary for this model (ticket 60.3)
     await loadEvalSummary()
@@ -289,6 +313,11 @@ onMounted(async () => {
     error.value = e instanceof Error ? e.message : String(e)
   }
   await reloadSeries()
+}
+
+onMounted(async () => {
+  await refreshAuth()
+  await loadInitial()
 })
 </script>
 
@@ -369,6 +398,30 @@ onMounted(async () => {
 }
 .metric-value.score-none {
   color: var(--hs-text-placeholder);
+}
+.metric-note {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+/* Eval-load failure: neutral secondary (auxiliary card — danger red would
+   read as an endpoint incident, ui-guidelines §3 semantic domain). */
+.eval-error {
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+}
+/* Long backend messages truncate with title hover (ui-guidelines §6), same
+   pattern as .status-reason. */
+.eval-error-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.header-skeleton {
+  flex: 1;
+  min-width: 0;
 }
 .suite-tags {
   display: flex;

@@ -57,8 +57,11 @@ function render() {
       type: 'line',
       data: s.data,
       showSymbol: false,
-      smooth: true,
-      connectNulls: true,
+      // Honesty discipline (GH #56): never interpolate across gaps — hours
+      // without probes break the line instead of inventing data points, and
+      // latency spikes stay visible (the curve is evidence, not decoration).
+      smooth: false,
+      connectNulls: false,
     })),
   })
 }
