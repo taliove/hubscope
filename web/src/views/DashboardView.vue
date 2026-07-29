@@ -4,8 +4,6 @@
          always reflects the unfiltered global picture. -->
     <HealthBanner
       :entries="entries"
-      :enabled-endpoints="enabledEndpoints"
-      :availability24h="availability24h"
       :generated-at="generatedAt"
       :loading="loading"
       :stale="error !== null"
@@ -125,7 +123,7 @@ import { PROTOCOLS } from '@/utils/protocol'
 import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
-const { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, start } = useOverview()
+const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
 
 // Display order of the stats strip: mildest to most severe.
 const STRIP_ORDER: EndpointStatus[] = ['healthy', 'degraded', 'down', 'failing']

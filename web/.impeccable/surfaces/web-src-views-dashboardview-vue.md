@@ -30,8 +30,8 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 ### LatencySparkline(EndpointCard 延迟曲线唯一组件,迁自 ui-guidelines §5)
 24h 分段条下方同构曲线行,按小时桶 P50 绘制(仅统计成功探测;全失败桶分段条显红、曲线断线)。形态:纯 SVG polyline,不引 ECharts;行高 28px,每卡恒渲染(无数据时同高灰轨道占位)。**x 轴与分段条构造性对齐(硬约束):** 两行标签统一固定宽 26px、flex:none;SVG 经 ResizeObserver 实测 strip 像素宽,桶中心 x 由几何纯函数按 flex+gap 公式计算(slot=(W−23×GAP)/24);**GAP=2px 是 dots CSS 与 sparkline 几何的唯一共享常量,改动必须同步**;禁止固定比例 viewBox + preserveAspectRatio="none"。曲线:stroke secondary 1.5px round,孤立单点段渲染 r=1.5 圆点;null 桶断线分段;曲线下方面积浅填充 bg-hover 实心(填充随段断,孤立点不填);曲线中性色不承载状态语义。**量程:** 数据驱动 yMax = max(峰值×1.25, 1000ms 下限);降级阈值虚线(2×7天 P50 基线,warning 1px dasharray 4 3)**按需出现** ⟺ 阈值 ≤ yMax,不出现零残余指示,tooltip 恒兜底,不加迟滞。hover:strip 顶层 24 列透明 overlay 分列 tooltip;p50 null 桶按事实二分措辞(无探测→「无数据」;全失败→「探测全部失败,无延迟样本」)。几何抽 utils/latencySparkline.ts 纯函数(vitest 覆盖),组件只渲染。
 
-### HealthBanner(全局健康横幅)
-四态:全部正常 / N 个端点降级 / N 个端点异常(含告警闪烁)/ 加载 skeleton。数据只反映全局,永不受页面过滤器影响。仅异常态可点(应用状态过滤并滚动定位)。大字结论用 display 档。其他页面不得复刻其结论文案模式。**GH #53 将重构:异常端点 chips + display 可用率大数字 + 计数归 strip,届时以回写后的本节为准。**
+### HealthBanner(全局健康横幅,GH #53 重构定稿)
+构成两行:行 1 = [alert-dot(仅 failing,hs-blink 闪烁全横幅独占)] 大字结论(display 档)+ 右端元信息区([stale chip「数据非最新」]+「更新于 HH:mm · 每 10s 自动刷新」,xs/placeholder,margin-left:auto,溢出优先截断 cadence 段);行 2 = display 档 24h 可用率大数字(label「24h 可用率」xs,数字墨色 --hs-text-primary 不着色——banner 底色 + 结论已是双编码;null → 占位色「-」+「24h 内无探测数据」)+ 异常端点 chips 横排。四态:healthy 显结论 + 大数字(正向证据,无 chips);degraded / abnormal = 结论 + 大数字 + chips;空态(无数据)= 中性灰底 + 结论「暂无数据」+ 可用率「-」,不渲染 chips,永不读作全部正常;skeleton 固定高(min-height 104px)不跳。**异常 chips:** 集合 = 调用方 enabled entries 中 failing + down + degraded;排序走 #52 `SEVERITY_RANK`(utils/severitySort.ts 全站唯一秩表,经 `sortEntriesBySeverity` 复用,tie 按 model_id → protocol → endpoint_id,禁第二份秩表);上限 `MAX_ABNORMAL_CHIPS=5`,溢出「+N」(中性 placeholder,不可点);纯函数 `abnormalChips` 收 utils/healthConclusion.ts(输出仅 endpoint_id / model_id / protocol / status,函数内零文案字面量,vitest 覆盖)。chip 形态:描边 + radius-sm,状态词(语义色/600,failing 用 --hs-status-failing,down=danger,degraded=warning)+ 模型名(primary,截断 + title 全显「模型 · 协议 · 状态词」);**禁圆点、禁闪烁、禁底色**(W5 视觉镜像,闪烁由 alert-dot 独占);hover 仅描边转 brand。**chip 点击 = 复用 onBannerInspect(status) 状态过滤 + 滚动 matrix**(@click.stop 不触发整卡);banner 整卡点击保留(仅 abnormal 态,过滤到最紧急状态 failing>down)。**可用率口径:** `scopedAvailability(enabledEntries)`(statusCardSummary.ts 纯函数,探测加权 ok/total,与后端 overview 聚合构造性相等);`availability24h` / `enabledEndpoints` props 已随重构退役。**计数归 strip:** banner 不再渲染任何状态计数(告警/宕机/降级计数、共 N 个、另有 N 个正常、N 个已停用全部退役,stats strip 是唯一渲染处)。数据只反映全局,永不受页面过滤器影响;其他页面不得复刻其结论文案模式。
 
 ### EndpointCard(端点卡)
 矩阵卡片,每卡:状态左边条 + 模型名(截断 + title hover)+ 协议 tag(集中映射 utils/protocol.ts,色语义=契约家族区分非健康度,GH #34)+ 评分徽章 + 三指标(24h 成功率/P50/P95)+ 24h 分段条 + LatencySparkline + 最近探测时间。整卡可点下钻 EndpointDetail。**GH #54 将重构卡内层级(状态行升格、P50 主/P95 次、middleTruncate 保后缀、评分徽章标签、同值 tag 收敛),届时以回写后的本节为准。**
@@ -53,7 +53,7 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 
 ## 体检基线与已排改进
 - critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
-- 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构 / #54 卡片层级 / #55 一致性批。
+- 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构(**已完成 2026-07-29**,约定见「组件规格」HealthBanner 节)/ #54 卡片层级 / #55 一致性批。
 
 ## 未决(另立批次)
 - a11y(click-only 主交互键盘可达、dots aria 等价)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。
