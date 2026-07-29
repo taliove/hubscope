@@ -210,6 +210,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **Primary:** 电波青底白字;hover 提亮一档(teal-500),按下加深一档(teal-700)。
 - **Text / link 型:** 无色底,文字电波青;用于卡片内操作与图标按钮(分享入口、主题切换)。
 - **反馈:** 点击类操作请求期间给 loading 或禁用态,不静默等待。
+- **焦点单语言(2026-07-29 登记,全站唯一焦点样式):** `:focus-visible` = `outline: none` + 1px brand 内嵌描边(`box-shadow: inset 0 0 0 1px var(--hs-brand)`),可点元素可叠加 `--hs-shadow-md`(与 hover 反馈配对);EP 组件焦点态由 ep-theme.css 统一映射,自定义可点元素(button 化的快捷项、role=button/link 的卡片)一律用此语言,不引入第二种焦点样式。
 
 ### Cards / Containers
 - **Corner Style:** 面板圆角(8px)。
