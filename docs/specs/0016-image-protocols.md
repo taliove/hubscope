@@ -1,4 +1,4 @@
-# Spec 0014: 图像协议(images_generation / images_edit)可用性监控
+# Spec 0016: 图像协议(images_generation / images_edit)可用性监控
 
 关联:ADR 0012(docs/adr/0012-image-protocols.md)、W3(Endpoint = 模型 × 协议,试通才建)。
 
