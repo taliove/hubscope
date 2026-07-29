@@ -56,6 +56,7 @@ hubscope-status         # 状态一览(同 $DS status 的本机版)
 5. **SSH 会话偶发掉线(curl exit 56):** 对生产机新绑定端口立刻 curl 时偶发。**重连即可,远端操作实际已生效**——掉线后先重连核对状态,不要盲目重跑(deploy.sh 各命令幂等,重跑安全)。
 6. **防火墙分层:** 宿主防火墙状态以 `$DS init` 实测为准(firewalld 运行则自动放行 http/https);云平台安全组在脚本触及范围外,公网不通而本地通时先查安全组。
 7. **备份姿势:** CentOS 7 自带 sqlite3 支持 `.backup` 热备,秒级完成,无需停服(`hubscope-backup` 默认姿势,无 sqlite3 时回落停服 cp)。
+8. **容器加固约定(spec 0015 决策 8):** 所有 `docker run`(部署与回滚两处)一律带 `--log-opt max-size=50m --log-opt max-file=3`(json-file 日志轮转,防磁盘慢性风险)与 `--memory 1g`(容器异常不拖垮同机 Caddy);新加 `docker run` 路径时必须保持一致。
 
 ## 与测试线(deploy-test-101)差异登记
 

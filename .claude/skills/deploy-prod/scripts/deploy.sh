@@ -370,6 +370,8 @@ docker run -d --name $CONTAINER_NAME --restart unless-stopped \
   -p 127.0.0.1:$PROD_PORT:$PROD_PORT \
   -e TRUST_PROXY=true \
   -v '$PROD_DATA_DIR':/data \
+  --log-opt max-size=50m --log-opt max-file=3 \
+  --memory 1g \
   $CONTAINER_NAME:$version
 EOF
 
@@ -453,6 +455,8 @@ docker run -d --name $CONTAINER_NAME --restart unless-stopped \
   -p 127.0.0.1:$PROD_PORT:$PROD_PORT \
   -e TRUST_PROXY=true \
   -v '$PROD_DATA_DIR':/data \
+  --log-opt max-size=50m --log-opt max-file=3 \
+  --memory 1g \
   $prev_image
 EOF
 
