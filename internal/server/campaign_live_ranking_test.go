@@ -39,7 +39,19 @@ func TestCampaignReportLiveRanksByPartialTotal(t *testing.T) {
 	if err != nil || len(suites) == 0 {
 		t.Fatalf("list suites: %v (n=%d)", err, len(suites))
 	}
-	suite := suites[0]
+	// A nadir-0 suite keeps the staged raw scores on the 0-100 scale the
+	// assertions use (nadir-bearing suites normalize, ADR 0009 — mmlu's 0.5
+	// would surface as 33.3, not 50).
+	var suite store.Suite
+	for _, s := range suites {
+		if s.Nadir == 0 {
+			suite = s
+			break
+		}
+	}
+	if suite.ID == 0 {
+		t.Fatalf("no nadir-0 suite in the rotation: %v", suites)
+	}
 	cases, err := db.ListCases(suite.ID)
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("list cases: %v (n=%d)", err, len(cases))

@@ -296,6 +296,23 @@ func (db *DB) CountCampaignNullScoreResults(campaignID int64) (int, error) {
 	return n, err
 }
 
+// SettleEmptyCampaign marks a campaign that has no runs as done (ticket 99
+// risk 3): with zero suites in the evaluation rotation — the cutover's
+// empty-rotation window — a scheduled or manual batch degrades to an empty
+// batch instead of an error. The aggregate rule (zero runs => failed) is
+// kept for campaigns whose runs failed to materialize for any other reason;
+// this path is entered only by the evaluator's explicit no-suite branch and
+// is a no-op for any campaign that does have runs or is already terminal.
+func (db *DB) SettleEmptyCampaign(id int64, now time.Time) error {
+	_, err := db.conn.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = ?
+		WHERE id = ? AND status NOT IN (?, ?)
+			AND NOT EXISTS (SELECT 1 FROM eval_runs WHERE campaign_id = ?)
+	`, CampaignStatusDone, now.UTC().Format(time.RFC3339), id,
+		CampaignStatusDone, CampaignStatusFailed, id)
+	return err
+}
+
 // PreviousDoneCampaign returns the most recent done campaign strictly before
 // the given one, or nil when there is none. Only settled ("done") campaigns
 // serve as report baselines. Note this differs from the score-drop alert's

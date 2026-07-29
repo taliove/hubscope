@@ -66,11 +66,14 @@ func campaignIDOfRun(t *testing.T, run map[string]interface{}) int64 {
 // stay byte-identical throughout (W7), and once the hub recovers a second
 // retry fills every null — the batch ends fully judged (complete=true).
 func TestRetryFailedRefillsNullScoresOnly(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
 	stub.markBroken("broken-model", true)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	// Custom exact-rule bank: the default stub answer scores 1 once the
+	// model recovers, so the refill is observable as null -> 1.
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID, brokenID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -194,7 +197,7 @@ func TestRetryFailedRequiresSettledCampaign(t *testing.T) {
 func TestRetryFailedGuards(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -240,7 +243,7 @@ func TestRetryFailedCoversSetupFailureCells(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	ghostID := createEvalModel(t, ts.URL, stub.URL, "ghost-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	// Disable the ghost model's endpoints so its whole cell fails at setup.
 	resp := doGet(t, ts.URL+"/api/models")
@@ -310,6 +313,23 @@ func TestRetryFailedCoversSetupFailureCells(t *testing.T) {
 
 // stageNullResult records one null-score (failed) result for the model — a
 // staged retry unit (GH #28) in the production shape of GH #39.
+// enabledCaseIDs returns the ids of a suite's enabled cases from its API
+// payload, in listing order.
+func enabledCaseIDs(t *testing.T, suite map[string]interface{}) []int64 {
+	t.Helper()
+	var ids []int64
+	for _, c := range suite["cases"].([]interface{}) {
+		cm := c.(map[string]interface{})
+		if en, _ := cm["enabled"].(bool); en {
+			ids = append(ids, int64(cm["id"].(float64)))
+		}
+	}
+	if len(ids) == 0 {
+		t.Fatalf("suite %v has no enabled cases", suite["key"])
+	}
+	return ids
+}
+
 func stageNullResult(t *testing.T, db *store.DB, runID, modelDBID int64, modelID string, caseID int64) {
 	t.Helper()
 	if _, err := db.CreateEvalResult(store.EvalResult{
@@ -332,13 +352,17 @@ func TestRetryFailedMigratesFailedRunThroughStateChain(t *testing.T) {
 	ts, stub, db := setupAsyncEvalEnv(t)
 	modelDBID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 
-	instruction := suiteByKey(t, ts.URL, "cap_instruction")
-	reasoning := suiteByKey(t, ts.URL, "cap_reasoning")
+	// Custom exact-rule bank (two cases in mmlu): the default stub answer
+	// scores 1, so the retried nulls refill as 1.0.
+	installCustomBank(t, ts.URL, db, map[string]int{"mmlu": 2})
+	instruction := suiteByKey(t, ts.URL, "mmlu")
+	reasoning := suiteByKey(t, ts.URL, "agieval_zh")
 	instructionID := int64(instruction["id"].(float64))
 	reasoningID := int64(reasoning["id"].(float64))
-	icases := instruction["cases"].([]interface{})
-	case1 := int64(icases[0].(map[string]interface{})["id"].(float64))
-	case2 := int64(icases[1].(map[string]interface{})["id"].(float64))
+	// The suites API lists retired cases alongside enabled ones; the custom
+	// bank's live cases are the enabled tail.
+	customIDs := enabledCaseIDs(t, instruction)
+	case1, case2 := customIDs[0], customIDs[1]
 
 	// Stage the production shape of GH #39: a failed batch whose failed run
 	// holds two null-score results, next to a clean done run.
@@ -455,11 +479,15 @@ func TestRetryFailedCancelFailsRunKeepsUntouchedNulls(t *testing.T) {
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	twoID := createEvalModel(t, ts.URL, stub.URL, "chat-two")
 
-	instruction := suiteByKey(t, ts.URL, "cap_instruction")
+	// Custom exact-rule bank (two cases in mmlu): the default stub answer
+	// scores 1, so the case judged before the cancel lands as 1.0.
+	installCustomBank(t, ts.URL, db, map[string]int{"mmlu": 2})
+	instruction := suiteByKey(t, ts.URL, "mmlu")
 	instructionID := int64(instruction["id"].(float64))
-	icases := instruction["cases"].([]interface{})
-	case1 := int64(icases[0].(map[string]interface{})["id"].(float64))
-	case2 := int64(icases[1].(map[string]interface{})["id"].(float64))
+	// The suites API lists retired cases alongside enabled ones; the custom
+	// bank's live cases are the enabled tail.
+	customIDs := enabledCaseIDs(t, instruction)
+	case1, case2 := customIDs[0], customIDs[1]
 
 	now := time.Now()
 	campaign, err := db.CreateCampaign("manual", []int64{smartID, twoID}, now)

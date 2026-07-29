@@ -145,24 +145,28 @@ func getSharedReportByToken(t *testing.T, base, token string) map[string]interfa
 }
 
 // TestReportCompletenessGateSettledBoard is the headline scenario: gamma's
-// calls fail through the whole cap_instruction run (every case there
-// unjudged) while its other four suites judge perfectly — under the pre-gate
-// formula its partial total (98+) would have outranked both fully judged
-// models (totals ≈ 6), the exact production "absent valedictorian". The gate
-// must sink it below them with null total/delta on all three consuming
+// calls fail through the whole mmlu run (every case there unjudged) while
+// its other four suites judge perfectly — under the pre-gate formula its
+// partial total (100) would have outranked both fully judged models
+// (totals 0), the exact production "absent valedictorian". The gate must
+// sink it below them with null total/delta on all three consuming
 // endpoints, leave its real per-suite scores visible, keep the complete
 // models' relative order untouched, and never leak into the live board.
 func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	// Async eval: batch 3 observes the live half-scored board (all calls
 	// blocked); drained by stub.release + waitCampaignStatus(done).
-	ts, stub, _ := setupAsyncEvalEnv(t)
+	ts, stub, db := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
+	// One custom exact-rule case per rotation suite: normal answers score
+	// 100, bad answers score 0 (judged), broken calls stay unjudged.
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
 	// Serial cell order (GH #26 pool at 1): the scenario holds gamma broken
-	// for exactly the cap_instruction run — "broken until that suite's run
-	// settles, unbroken after" only maps to one suite when cells execute
-	// suite by suite.
+	// for exactly the mmlu run — "broken until that suite's run settles,
+	// unbroken after" only maps to one suite when cells execute suite by
+	// suite, and alpha's gate freezes the campaign at a suite boundary only
+	// when alpha runs first inside every run.
 	setEvalConcurrency(t, ts.URL, 1)
 
 	// Batch 1: a fully judged baseline for every model.
@@ -171,21 +175,33 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	waitCampaignStatus(t, ts.URL, firstID, store.CampaignStatusDone)
 
 	// Batch 2: alpha and beta answer everything wrong (judged — complete,
-	// low scores); gamma is broken for exactly the cap_instruction run, so
-	// that suite comes back fully unjudged while the rest judge normally.
+	// low scores); gamma is broken for exactly the mmlu run (the first suite
+	// in bank order), so that suite comes back fully unjudged while the rest
+	// judge normally. The freeze is deterministic: alpha runs FIRST inside
+	// every suite, so gating its second call freezes the campaign between
+	// mmlu (done, gamma broken) and agieval_zh (not yet started for gamma),
+	// where the test lifts the break before releasing (the stub reads the
+	// broken flag at call time, so gamma must be unbroken before its
+	// second-suite call is made, not merely before it is answered).
 	stub.markBad("alpha-model", true)
 	stub.markBad("beta-model", true)
 	stub.markBroken("gamma-model", true)
+	stub.resetCalls()
+	stub.blockModelAfter("alpha-model", 1)
+	t.Cleanup(func() { stub.releaseModel("alpha-model") })
 	second := triggerFullSweep(t, ts.URL)
 	secondID := int64(second["id"].(float64))
-	waitForSuiteRunStatus(t, ts.URL, secondID, "cap_instruction", "done")
+	waitFor(t, "alpha frozen before its second-suite call", func() bool {
+		return stub.callTotal("alpha-model") >= 2
+	})
 	stub.markBroken("gamma-model", false)
+	stub.releaseModel("alpha-model")
 	waitCampaignStatus(t, ts.URL, secondID, store.CampaignStatusDone)
 
 	report := getCampaignReport(t, ts.URL, secondID, "")
 	rows := reportRows(t, report)
 	// Pre-gate order would have been [gamma, alpha, beta]: gamma's partial
-	// total (~98) beats the complete models' ~6. The gate inverts it.
+	// total (100) beats the complete models' 0. The gate inverts it.
 	assertGateOrder(t, rows, "alpha-model", "beta-model", "gamma-model")
 	assertGateCompleteRow(t, rows[0])
 	assertGateCompleteRow(t, rows[1])
@@ -195,11 +211,11 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	// the delta and the rank are forfeited (W7: unjudged stays null, not 0).
 	gamma := rowByModel(t, rows, "gamma-model")
 	gammaScores, _ := gamma["suite_scores"].(map[string]interface{})
-	if gammaScores["cap_instruction"] != nil {
-		t.Errorf("gamma cap_instruction = %v, want null (fully unjudged suite)", gammaScores["cap_instruction"])
+	if gammaScores["mmlu"] != nil {
+		t.Errorf("gamma mmlu = %v, want null (fully unjudged suite)", gammaScores["mmlu"])
 	}
-	if got, ok := gammaScores["cap_reasoning"].(float64); !ok || got <= 0 {
-		t.Errorf("gamma cap_reasoning = %v, want its real positive score", gammaScores["cap_reasoning"])
+	if got, ok := gammaScores["gsm8k"].(float64); !ok || got <= 0 {
+		t.Errorf("gamma gsm8k = %v, want its real positive score", gammaScores["gsm8k"])
 	}
 
 	// Complete models keep their baseline deltas; gamma has none.
@@ -209,8 +225,8 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	}
 
 	// Suite-column sorting obeys the same gate: gamma holds the highest
-	// cap_reasoning score (100 vs 0/0) yet still ranks last.
-	byReasoning := getCampaignReport(t, ts.URL, secondID, "sort=cap_reasoning")
+	// gsm8k score (100 vs 0/0) yet still ranks last.
+	byReasoning := getCampaignReport(t, ts.URL, secondID, "sort=gsm8k")
 	assertGateOrder(t, reportRows(t, byReasoning), "alpha-model", "beta-model", "gamma-model")
 
 	// The public board and the token-gated shared report serve the identical
@@ -281,42 +297,41 @@ func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 	// frozen at the next suite's first case, so echo/delta cannot advance
 	// past the boundary while their broken flags flip (ticket 100). Drained
 	// by releaseModel + waitCampaignStatus(done).
-	ts, stub, _ := setupAsyncEvalEnv(t)
+	ts, stub, db := setupAsyncEvalEnv(t)
 	// delta-model is created last so it executes last inside each run.
 	createEvalModel(t, ts.URL, stub.URL, "foxtrot-model")
 	createEvalModel(t, ts.URL, stub.URL, "echo-model")
 	createEvalModel(t, ts.URL, stub.URL, "delta-model")
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
 	// Serial cell order (GH #26 pool at 1): the scenario pins models
 	// executing sequentially inside each run and suites in order — foxtrot's
 	// call counts gate suite boundaries only under that order.
 	setEvalConcurrency(t, ts.URL, 1)
 
-	// Rule cases are answered exactly once (sample_count=1), so foxtrot's
-	// call count per rule suite equals its enabled case count.
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
-	reasoningID := suiteIDByKey(t, ts.URL, "cap_reasoning")
-	instructionCalls := enabledCaseCount(t, ts.URL, instructionID)
-	reasoningCalls := enabledCaseCount(t, ts.URL, reasoningID)
+	// One custom exact-rule case per rotation suite (oneCasePerSuite), so
+	// foxtrot's call count per suite equals one.
+	mmluCalls := 1
+	agievalCalls := 1
 
-	// delta-model misses two suites (cap_instruction + cap_reasoning),
-	// echo-model misses one (cap_instruction); foxtrot-model is complete.
+	// delta-model misses two suites (mmlu + agieval_zh, the first two in
+	// bank order), echo-model misses one (mmlu); foxtrot-model is complete.
 	stub.markBroken("delta-model", true)
 	stub.markBroken("echo-model", true)
 	stub.resetCalls()
-	// Freeze foxtrot at cap_reasoning's first case: cap_instruction is fully
-	// done for every model, and echo/delta have not started cap_reasoning
-	// (models execute sequentially inside a run).
-	stub.blockModelAfter("foxtrot-model", instructionCalls)
+	// Freeze foxtrot at agieval_zh's first case: mmlu is fully done for
+	// every model, and echo/delta have not started agieval_zh (models
+	// execute sequentially inside a run).
+	stub.blockModelAfter("foxtrot-model", mmluCalls)
 	t.Cleanup(func() { stub.releaseModel("foxtrot-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	waitForSuiteRunStatus(t, ts.URL, campaignID, "cap_instruction", "done")
+	waitForSuiteRunStatus(t, ts.URL, campaignID, "mmlu", "done")
 	stub.markBroken("echo-model", false)
 	// Atomic handoff: release foxtrot and re-freeze it at the third suite's
 	// first case in one locked step — no call can slip through between.
-	stub.moveModelGateAfter("foxtrot-model", instructionCalls+reasoningCalls)
-	waitForSuiteRunStatus(t, ts.URL, campaignID, "cap_reasoning", "done")
+	stub.moveModelGateAfter("foxtrot-model", mmluCalls+agievalCalls)
+	waitForSuiteRunStatus(t, ts.URL, campaignID, "agieval_zh", "done")
 	stub.markBroken("delta-model", false)
 	stub.releaseModel("foxtrot-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
@@ -336,7 +351,7 @@ func TestReportCompletenessGateAllIncomplete(t *testing.T) {
 	zetaID := createEvalModel(t, ts.URL, stub.URL, "zeta-model")
 	stub.markBroken("zeta-model", true)
 
-	runID := triggerEval(t, ts.URL, suiteIDByKey(t, ts.URL, "cap_instruction"), zetaID)
+	runID := triggerEval(t, ts.URL, suiteIDByKey(t, ts.URL, "gsm8k"), zetaID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)

@@ -316,7 +316,8 @@ func singleInstructionCases(t *testing.T, cases []ifevalCaseFields) map[string][
 }
 
 // TestIFEvalSuiteSeeded asserts the benchmark seed casts the ifeval suite
-// from the embedded subset: capability instruction, pre-cutover disabled,
+// from the embedded subset: capability instruction, in the rotation since
+// the ticket-99 cutover,
 // zero nadir floor (free-form generation has no random-guess rate), and 100
 // single-sample rule cases whose check params stay within the ported
 // instruction set.
@@ -327,9 +328,9 @@ func TestIFEvalSuiteSeeded(t *testing.T) {
 	if suite["capability"] != "instruction" {
 		t.Errorf("ifeval capability = %v, want instruction", suite["capability"])
 	}
-	// Pre-cutover (ticket 99 flips the rotation): seeds disabled.
-	if suite["enabled"] != false {
-		t.Errorf("ifeval enabled = %v, want false (seeds disabled pre-cutover)", suite["enabled"])
+	// Post-cutover (ticket 99): the benchmark suite is the rotation.
+	if suite["enabled"] != true {
+		t.Errorf("ifeval enabled = %v, want true (post-cutover rotation)", suite["enabled"])
 	}
 	if suite["nadir"] != 0.0 {
 		t.Errorf("ifeval nadir = %v, want 0 (no random-guess floor; ticket 99 recalibrates)", suite["nadir"])
@@ -653,38 +654,6 @@ func TestIFEvalCampaignReportShowsInstruction(t *testing.T) {
 	}
 }
 
-// TestIFEvalManualTriggerOnDisabledSuite documents the pre-cutover
-// contract: the seeded-disabled benchmark suite is excluded from the
-// rotation but a manual single-suite trigger still runs it.
-func TestIFEvalManualTriggerOnDisabledSuite(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "ifeval-manual")
-
-	suite, cases := ifevalSuiteCases(t, ts.URL)
-	suiteID := int64(suite["id"].(float64))
-	for _, c := range cases {
-		if len(c.instructions) == 1 {
-			stub.setAnswerSeq(c.prompt, passAnswer(c.instructions[0]))
-		} else {
-			stub.setAnswerSeq(c.prompt, "unrelated answer")
-		}
-	}
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-	if n := len(resultsByModel(run, "ifeval-manual")); n != 100 {
-		t.Errorf("manual trigger on disabled suite ran %d cases, want 100", n)
-	}
-	if v := run["suite_version"]; v != 1.0 {
-		t.Errorf("run suite_version = %v, want 1", v)
-	}
-	if nadir := run["nadir"]; nadir != 0.0 {
-		t.Errorf("run nadir snapshot = %v, want 0", nadir)
-	}
-}
-
 // TestIFEvalCaseAdminBoundaries covers the admin API boundary for ifeval
 // cases: the check params are seed-cast structured data the admin API cannot
 // author, so creating an ifeval-mode case is rejected (fail-closed), while
@@ -692,7 +661,7 @@ func TestIFEvalManualTriggerOnDisabledSuite(t *testing.T) {
 // immutable retire-and-mint replace (ticket 97 acceptance).
 func TestIFEvalCaseAdminBoundaries(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "ifeval")
 
 	resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
 		"suite_id":     suiteID,

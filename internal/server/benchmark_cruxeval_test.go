@@ -167,7 +167,8 @@ func mutateLiteral(expected string) string {
 }
 
 // TestCRUXEvalSuiteSeeded asserts the benchmark seed casts the cruxeval suite
-// from the embedded subset: capability coding, pre-cutover disabled, nadir 0
+// from the embedded subset: capability coding, in the rotation since the
+// ticket-99 cutover, nadir 0
 // pending ticket-99 calibration, and 100 single-sample output_match cases
 // whose prompts carry the official-style output-prediction template.
 func TestCRUXEvalSuiteSeeded(t *testing.T) {
@@ -177,11 +178,9 @@ func TestCRUXEvalSuiteSeeded(t *testing.T) {
 	if suite["capability"] != "coding" {
 		t.Errorf("cruxeval capability = %v, want coding", suite["capability"])
 	}
-	// Pre-cutover (ticket 99 flips the rotation): the benchmark suite seeds
-	// disabled, so full sweeps and the weekly batch skip it until the
-	// deliberate switch. Manual triggers stay allowed.
-	if suite["enabled"] != false {
-		t.Errorf("cruxeval enabled = %v, want false (seeds disabled pre-cutover)", suite["enabled"])
+	// Post-cutover (ticket 99): the benchmark suite is the rotation.
+	if suite["enabled"] != true {
+		t.Errorf("cruxeval enabled = %v, want true (post-cutover rotation)", suite["enabled"])
 	}
 	if suite["nadir"] != 0.0 {
 		t.Errorf("cruxeval nadir = %v, want 0 (output prediction has no guess floor; ticket 99 calibrates)", suite["nadir"])
@@ -381,40 +380,12 @@ func TestCRUXEvalCampaignReportShowsCoding(t *testing.T) {
 	}
 }
 
-// TestCRUXEvalManualTriggerOnDisabledSuite documents the pre-cutover
-// contract: the seeded-disabled benchmark suite is excluded from the rotation
-// but a manual single-suite trigger still runs it (same as the mmlu suite).
-func TestCRUXEvalManualTriggerOnDisabledSuite(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "cruxeval-manual")
-
-	suite, cases := cruxevalSuiteCases(t, ts.URL)
-	suiteID := int64(suite["id"].(float64))
-	for _, c := range cases {
-		stub.setAnswerSeq(c.prompt, c.expected)
-	}
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-	if n := len(resultsByModel(run, "cruxeval-manual")); n != 100 {
-		t.Errorf("manual trigger on disabled suite ran %d cases, want 100", n)
-	}
-	if v := run["suite_version"]; v != 1.0 {
-		t.Errorf("run suite_version = %v, want 1", v)
-	}
-	if nadir := run["nadir"]; nadir != 0.0 {
-		t.Errorf("run nadir snapshot = %v, want 0", nadir)
-	}
-}
-
 // TestCRUXEvalOutputMatchCaseValidation covers the admin API boundary for
 // output_match cases: the expectation must be a parseable Python literal,
 // anything else could never score a hit and is rejected at creation.
 func TestCRUXEvalOutputMatchCaseValidation(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "cruxeval")
 
 	create := func(expected string) int {
 		resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{

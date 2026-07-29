@@ -54,8 +54,11 @@ func totalOf(t *testing.T, row map[string]interface{}) float64 {
 // suppresses every delta (ADR 0007: a question-bank change must never read
 // as a model change).
 func TestCampaignReportTotalDelta(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "smart-model")
+	// One custom exact-rule case per rotation suite: the smart model scores
+	// 100 in batch 1 and 0 once it turns bad in batch 2.
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
 
 	// Batch 1: no earlier done campaign exists, so there is no baseline and
 	// every row's delta is null.
@@ -115,8 +118,17 @@ func TestCampaignReportTotalDelta(t *testing.T) {
 	// being comparable, the baseline carries the suite_changed marker, and
 	// every delta disappears.
 	stub.markBad("smart-model", false)
-	instructionCase := suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{})[0].(map[string]interface{})
-	patchCase(t, ts.URL, int64(instructionCase["id"].(float64)), map[string]interface{}{
+	var gsm8kCase map[string]interface{}
+	for _, c := range suiteByKey(t, ts.URL, "gsm8k")["cases"].([]interface{}) {
+		cm := c.(map[string]interface{})
+		if enabled, _ := cm["enabled"].(bool); enabled {
+			gsm8kCase = cm
+		}
+	}
+	if gsm8kCase == nil {
+		t.Fatal("no enabled gsm8k case to patch")
+	}
+	patchCase(t, ts.URL, int64(gsm8kCase["id"].(float64)), map[string]interface{}{
 		"prompt": "只回复单词 rotated，不要任何标点",
 	})
 	third := triggerFullSweep(t, ts.URL)
@@ -157,7 +169,7 @@ func TestCampaignReportDeltaSuiteMissingBaseline(t *testing.T) {
 	waitCampaignStatus(t, ts.URL, int64(full["id"].(float64)), store.CampaignStatusDone)
 
 	// A manual single-suite campaign lands between the two sweeps.
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
 	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	waitCampaignStatus(t, ts.URL, int64(run["campaign_id"].(float64)), store.CampaignStatusDone)

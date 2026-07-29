@@ -59,9 +59,9 @@ var zhCorrectVariants = append(append([]func(string) string{}, correctVariants..
 )
 
 // TestAgievalZhSuiteSeeded asserts the benchmark seed casts the agieval_zh
-// suite from the embedded subset: capability language, pre-cutover disabled,
-// the four-option nadir floor, and 100 single-sample mcq cases with the
-// frozen Chinese prompt template.
+// suite from the embedded subset: capability language, in the rotation since
+// the ticket-99 cutover, the four-option nadir floor, and 100 single-sample
+// mcq cases with the frozen Chinese prompt template.
 func TestAgievalZhSuiteSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
@@ -69,10 +69,9 @@ func TestAgievalZhSuiteSeeded(t *testing.T) {
 	if suite["capability"] != "language" {
 		t.Errorf("agieval_zh capability = %v, want language", suite["capability"])
 	}
-	// Pre-cutover (ticket 99 flips the rotation): the benchmark suite seeds
-	// disabled, same contract as mmlu.
-	if suite["enabled"] != false {
-		t.Errorf("agieval_zh enabled = %v, want false (seeds disabled pre-cutover)", suite["enabled"])
+	// Post-cutover (ticket 99): the benchmark suite is the rotation.
+	if suite["enabled"] != true {
+		t.Errorf("agieval_zh enabled = %v, want true (post-cutover rotation)", suite["enabled"])
 	}
 	if suite["nadir"] != 0.25 {
 		t.Errorf("agieval_zh nadir = %v, want 0.25 (four-option floor)", suite["nadir"])
@@ -270,33 +269,5 @@ func TestAgievalZhCampaignReportShowsLanguage(t *testing.T) {
 	}
 	if row["total_score"] != 100.0 {
 		t.Errorf("total_score = %v, want 100", row["total_score"])
-	}
-}
-
-// TestAgievalZhManualTriggerOnDisabledSuite documents the pre-cutover
-// contract: the seeded-disabled benchmark suite is excluded from the rotation
-// but a manual single-suite trigger still runs it.
-func TestAgievalZhManualTriggerOnDisabledSuite(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "agieval-manual")
-
-	suite, cases := agievalSuiteCases(t, ts.URL)
-	suiteID := int64(suite["id"].(float64))
-	for _, c := range cases {
-		stub.setAnswerSeq(c.prompt, c.expected)
-	}
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-	if n := len(resultsByModel(run, "agieval-manual")); n != 100 {
-		t.Errorf("manual trigger on disabled suite ran %d cases, want 100", n)
-	}
-	if v := run["suite_version"]; v != 1.0 {
-		t.Errorf("run suite_version = %v, want 1", v)
-	}
-	if nadir := run["nadir"]; nadir != 0.25 {
-		t.Errorf("run nadir snapshot = %v, want 0.25", nadir)
 	}
 }

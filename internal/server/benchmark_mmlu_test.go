@@ -98,8 +98,9 @@ func wrongVariants(i int, expected string) string {
 }
 
 // TestMMLUSuiteSeeded asserts the benchmark seed casts the mmlu suite from
-// the embedded subset: capability knowledge, pre-cutover disabled, the
-// four-option nadir floor, and 100 single-sample mcq cases.
+// the embedded subset: capability knowledge, in the rotation since the
+// ticket-99 cutover, the four-option nadir floor, and 100 single-sample mcq
+// cases.
 func TestMMLUSuiteSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
@@ -107,11 +108,9 @@ func TestMMLUSuiteSeeded(t *testing.T) {
 	if suite["capability"] != "knowledge" {
 		t.Errorf("mmlu capability = %v, want knowledge", suite["capability"])
 	}
-	// Pre-cutover (ticket 99 flips the rotation): the benchmark suite seeds
-	// disabled, so full sweeps and the weekly batch skip it until the
-	// deliberate switch. Manual triggers stay allowed.
-	if suite["enabled"] != false {
-		t.Errorf("mmlu enabled = %v, want false (seeds disabled pre-cutover)", suite["enabled"])
+	// Post-cutover (ticket 99): the benchmark suite is the rotation.
+	if suite["enabled"] != true {
+		t.Errorf("mmlu enabled = %v, want true (post-cutover rotation)", suite["enabled"])
 	}
 	if suite["nadir"] != 0.25 {
 		t.Errorf("mmlu nadir = %v, want 0.25 (four-option floor)", suite["nadir"])
@@ -312,40 +311,12 @@ func TestMMLUCampaignReportShowsKnowledge(t *testing.T) {
 	}
 }
 
-// TestMMLUManualTriggerOnDisabledSuite documents the pre-cutover contract:
-// the seeded-disabled benchmark suite is excluded from the rotation but a
-// manual single-suite trigger still runs it (same as retired legacy suites).
-func TestMMLUManualTriggerOnDisabledSuite(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "mmlu-manual")
-
-	suite, cases := mmluSuiteCases(t, ts.URL)
-	suiteID := int64(suite["id"].(float64))
-	for _, c := range cases {
-		stub.setAnswerSeq(c.prompt, c.expected)
-	}
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-	if n := len(resultsByModel(run, "mmlu-manual")); n != 100 {
-		t.Errorf("manual trigger on disabled suite ran %d cases, want 100", n)
-	}
-	if v := run["suite_version"]; v != 1.0 {
-		t.Errorf("run suite_version = %v, want 1", v)
-	}
-	if nadir := run["nadir"]; nadir != 0.25 {
-		t.Errorf("run nadir snapshot = %v, want 0.25", nadir)
-	}
-}
-
 // TestMMLUMCQCaseValidation covers the admin API boundary for mcq cases
 // (ADR 0013): the expectation must be a single option letter A-D, anything
 // else could never score a hit and is rejected at creation.
 func TestMMLUMCQCaseValidation(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	create := func(expected string) int {
 		resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{

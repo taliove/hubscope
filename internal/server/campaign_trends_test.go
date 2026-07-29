@@ -128,11 +128,25 @@ func probeEndpointOnce(t *testing.T, base string, endpointID int64, wantOK bool)
 // staying a visible null-score point, the probe-side rollup on the same
 // timeline, and a deleted model keeping its trend with the deleted flag.
 func TestCampaignTrends(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom exact-rule case (seeded cases retired): the smart model
+	// scores 100, and the case is the version-bump target below.
+	retireSuiteCases(t, db, instructionID)
+	createRuleCase(t, ts.URL, instructionID, "TREND-A:请作答", "好的", nil)
+	var trendCaseID int64
+	for _, c := range suiteByKey(t, ts.URL, "gsm8k")["cases"].([]interface{}) {
+		cm := c.(map[string]interface{})
+		if cm["prompt"] == "TREND-A:请作答" {
+			trendCaseID = int64(cm["id"].(float64))
+		}
+	}
+	if trendCaseID == 0 {
+		t.Fatal("custom trend case not found")
+	}
 
-	// Campaign 1 on suite v1: the smart model scores 100.
+	// Campaign 1 on suite v101: the smart model scores 100.
 	run1 := triggerEval(t, ts.URL, instructionID, modelID)
 	waitEvalDone(t, ts.URL, run1)
 	c1 := int64(getEvalRun(t, ts.URL, run1)["campaign_id"].(float64))
@@ -142,8 +156,8 @@ func TestCampaignTrends(t *testing.T) {
 	endpointID := firstEndpointID(t, ts.URL, modelID)
 	probeEndpointOnce(t, ts.URL, endpointID, true)
 
-	// Editing a case bumps the question bank to v2.
-	patchCase(t, ts.URL, 1, map[string]interface{}{"prompt": "只回复 pong，别的什么都不要说"})
+	// Editing the case bumps the question bank one version.
+	patchCase(t, ts.URL, trendCaseID, map[string]interface{}{"prompt": "只回复 pong，别的什么都不要说"})
 
 	// Campaign 2 on v2 with the model broken: answers fail, scores stay
 	// unjudged (null) — the trend point must remain visible, not vanish.
@@ -168,8 +182,8 @@ func TestCampaignTrends(t *testing.T) {
 	}
 
 	suites := trendSuites(t, trends)
-	if len(suites) != 1 || suites[0]["key"] != "cap_instruction" {
-		t.Fatalf("trend suites = %v, want exactly the instruction suite", suites)
+	if len(suites) != 1 || suites[0]["key"] != "gsm8k" {
+		t.Fatalf("trend suites = %v, want exactly the reasoning suite", suites)
 	}
 	points, ok := suites[0]["points"].([]interface{})
 	if !ok || len(points) != 2 {
@@ -182,8 +196,9 @@ func TestCampaignTrends(t *testing.T) {
 	if int64(p0["campaign_id"].(float64)) != c1 || int64(p1["campaign_id"].(float64)) != c2 {
 		t.Errorf("point campaign order = [%v %v], want [%d %d]", p0["campaign_id"], p1["campaign_id"], c1, c2)
 	}
-	if p0["suite_version"] != 1.0 || p1["suite_version"] != 2.0 {
-		t.Errorf("point suite versions = [%v %v], want [1 2]", p0["suite_version"], p1["suite_version"])
+	v0 := p0["suite_version"].(float64)
+	if p1["suite_version"] != v0+1 {
+		t.Errorf("point suite versions = [%v %v], want [v v+1]", p0["suite_version"], p1["suite_version"])
 	}
 	if p0["score"] != 100.0 {
 		t.Errorf("campaign 1 score = %v, want 100", p0["score"])
@@ -266,7 +281,7 @@ func TestCampaignTrendsValidation(t *testing.T) {
 	// A real campaign is needed for the parameter checks: run one quick eval.
 	ts2, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts2.URL, stub.URL, "smart-model")
-	instructionID := suiteIDByKey(t, ts2.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts2.URL, "gsm8k")
 	runID := triggerEval(t, ts2.URL, instructionID, modelID)
 	waitEvalDone(t, ts2.URL, runID)
 	campaignID := int64(getEvalRun(t, ts2.URL, runID)["campaign_id"].(float64))

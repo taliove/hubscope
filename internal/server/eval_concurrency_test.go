@@ -167,7 +167,7 @@ func TestEvalConcurrencyOneRunsSerially(t *testing.T) {
 
 // TestCancelStopsNewCells pins the pool's cancellation guarantee (GH #26):
 // once the context is canceled, no worker takes a new cell. The freeze
-// construction is deterministic — smart-model's last cap_instruction call is
+// construction is deterministic — smart-model's last mmlu call is
 // blocked mid-flight, the cancel lands while the worker is still inside that
 // cell, so the next loop iteration provably starts with a canceled context.
 // The observable of a stolen cell is not the (ctx-aborted, possibly unsent)
@@ -196,8 +196,11 @@ func TestCancelStopsNewCells(t *testing.T) {
 	stub.resetCalls()
 	// Freeze the last call of smart-model's first cell: with the pool at 1,
 	// chat-two's cell is next in line, and the blocked call guarantees the
-	// cancel lands before the worker could take it.
-	stub.blockModelAfter("smart-model", 9)
+	// cancel lands before the worker could take it. The first run covers
+	// mmlu (first suite in bank order), so the cell costs exactly its
+	// enabled-case count of calls.
+	firstCellCalls := enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
+	stub.blockModelAfter("smart-model", firstCellCalls-1)
 	t.Cleanup(func() { stub.releaseModel("smart-model") })
 
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
@@ -219,8 +222,8 @@ func TestCancelStopsNewCells(t *testing.T) {
 		}
 	})
 
-	waitFor(t, "smart-model's 10th call reaching the stub", func() bool {
-		return stub.callTotal("smart-model") >= 10
+	waitFor(t, "smart-model's last mmlu call reaching the stub", func() bool {
+		return stub.callTotal("smart-model") >= firstCellCalls
 	})
 	cancel()
 	stub.releaseModel("smart-model")
@@ -248,7 +251,7 @@ func TestCancelStopsNewCells(t *testing.T) {
 	if got := resultsByModel(detail, "chat-two"); len(got) != 0 {
 		t.Errorf("chat-two has %d result rows in run %d, want 0 (stolen cell)", len(got), firstRunID)
 	}
-	if got := resultsByModel(detail, "smart-model"); len(got) != 10 {
-		t.Errorf("smart-model has %d result rows in run %d, want its 10 recorded cases", len(got), firstRunID)
+	if got := resultsByModel(detail, "smart-model"); len(got) != firstCellCalls {
+		t.Errorf("smart-model has %d result rows in run %d, want its %d recorded cases", len(got), firstRunID, firstCellCalls)
 	}
 }

@@ -16,17 +16,12 @@ import (
 // case-sensitive, regex is never normalized, and every result records the
 // profile it was scored with (ADR 0008).
 func TestVerdictNormalizationPipeline(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	// Replace the seeded case set so the test controls every expectation.
-	for _, c := range suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{}) {
-		cm := c.(map[string]interface{})
-		if enabled, _ := cm["enabled"].(bool); enabled {
-			patchCase(t, ts.URL, int64(cm["id"].(float64)), map[string]interface{}{"enabled": false})
-		}
-	}
+	retireSuiteCases(t, db, suiteID)
 
 	// Each entry stages one rule case plus the answer the stub will return.
 	stages := []struct {
@@ -103,7 +98,10 @@ func TestVerdictNormalizationPipeline(t *testing.T) {
 func TestVerdictProfileTrendBreak(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom exact-rule case: both campaigns score 100 on the raw scale.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "PROFILE-TREND:请作答", "好的", nil)
 
 	// Campaign 1 scores under what history calls the v1 caliber.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -170,7 +168,11 @@ func TestScoreDropSkippedAcrossVerdictProfiles(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "caliber-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom exact-rule case: campaign 1 aggregates 1.0; campaign 3
+	// (model gone bad) aggregates 0.0 — the drop that alerts.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "PROFILE-SKIP:请作答", "好的", nil)
 
 	// Campaign 1: v1 baseline, aggregate 1.0.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)

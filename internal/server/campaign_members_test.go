@@ -43,7 +43,7 @@ func rowModelIDs(rows []map[string]interface{}) []string {
 //
 // Scenario: three models, gamma frozen on its very first answer call. At the
 // freeze point the first run is mid-flight: alpha and beta have their full
-// cap_instruction case set recorded (effectively done cells), gamma has zero
+// first-suite case set recorded (effectively done cells), gamma has zero
 // results anywhere — yet must already occupy a row with a pending cell.
 // eval_concurrency=1 keeps the cell order deterministic (alpha then beta
 // then gamma); the concurrent fan-out is pinned in eval_concurrency_test.go.
@@ -79,9 +79,9 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 	if got := rowModelIDs(rows); len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("live board rows = %v, want every member %v (lexicographic, gamma pending)", got, want)
 	}
-	assertCell(t, rows[0], suiteKey, "done", 10, 10)
-	assertCell(t, rows[1], suiteKey, "done", 10, 10)
-	assertCell(t, rows[2], suiteKey, "pending", 0, 10)
+	assertCell(t, rows[0], suiteKey, "done", 100, 100)
+	assertCell(t, rows[1], suiteKey, "done", 100, 100)
+	assertCell(t, rows[2], suiteKey, "pending", 0, 100)
 
 	// Gamma has no results yet: no scores, no total.
 	gamma := rows[2]
@@ -113,7 +113,7 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 	alphaID := createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	gammaID := createEvalModel(t, ts.URL, stub.URL, "gamma-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 	// Serial cell order (GH #26 pool at 1): alpha's cell completes before
 	// gamma's first blocked call, so the freeze point is deterministic.
 	setEvalConcurrency(t, ts.URL, 1)
@@ -138,8 +138,8 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 	if got := rowModelIDs(rows); len(got) != 2 || got[0] != "alpha-model" || got[1] != "gamma-model" {
 		t.Fatalf("live board rows = %v, want exactly the selected [alpha-model gamma-model]", got)
 	}
-	assertCell(t, rows[0], suiteKey, "done", 10, 10)
-	assertCell(t, rows[1], suiteKey, "pending", 0, 10)
+	assertCell(t, rows[0], suiteKey, "done", 100, 100)
+	assertCell(t, rows[1], suiteKey, "pending", 0, 100)
 
 	stub.releaseModel("gamma-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)

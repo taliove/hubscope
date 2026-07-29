@@ -7,6 +7,9 @@ package store
 // suites are hard-deleted at Open, so keeping them in the bank would re-seed
 // what the purge deletes on every boot. Existing deployments already carry
 // their generation records, and the purge removes those suites and records
-// together. Benchmark suites use the same generation mechanism
-// (retireAtGen) to seed disabled until the cutover (ticket 99).
+// together. The v3 capability suites stay in the bank with retireAtGen 4 so
+// existing databases learn their retirement at the ticket-99 cutover and the
+// purge deletes them; the benchmark suites seed enabled (retireAtGen 0) and
+// databases that pre-seeded them disabled are flipped by the one-time cutover
+// migration (cutover.go).
 var builtinSuites = append(capabilitySuites, benchmarkSuites...)

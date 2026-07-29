@@ -25,21 +25,21 @@ func fetchSuites(t *testing.T, base, query string) []map[string]interface{} {
 	return suites
 }
 
-// TestSuitesSeeded verifies the migration ships the question-bank v3 seed
-// (ADR 0010): five capability suites in the rotation with 8-12 first-issue
-// cases each across three difficulty tiers, judge cases at sample_count 3
-// and rule cases at 1, and the knowledge suite calibrated to the
-// multiple-choice nadir floor. Pre-v3 legacy suites never appear (spec 0014
-// decision B, ADR 0012): disabled suites are hard-deleted at Open and the
-// legacy bank is no longer seeded. The mmlu, gsm8k and agieval_zh
-// benchmark suites (ADR 0013, tickets 94-96) are the sixth through eighth
-// seeds: listed but disabled until the ticket-99 cutover.
+// TestSuitesSeeded verifies the post-cutover seed bank (ticket 99, spec 0014
+// decision C, ADR 0013): exactly the five authoritative-benchmark suites in
+// the rotation, all enabled, each carrying its 100-case frozen subset of
+// single-sample rule cases. The v3 capability suites never appear (retired
+// and purged at Open, ADR 0012), nor do pre-v3 legacy suites. Every verdict
+// is a deterministic rule — zero judge cases by design (spec 0014: 全部规则
+// 判分,零 LLM 裁判). Nadir floors are the structural random-guess rates:
+// 0.25 for the four-option MCQ suites, 0 for the open-ended ones (ticket 99
+// recalibration confirmed the floors, see the ticket notes).
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 10 {
-		t.Fatalf("expected 8 suites (5 capability + 2 benchmark disabled), got %d", len(suites))
+	if len(suites) != 5 {
+		t.Fatalf("expected exactly the 5 benchmark suites, got %d", len(suites))
 	}
 
 	byKey := map[string]map[string]interface{}{}
@@ -47,45 +47,50 @@ func TestSuitesSeeded(t *testing.T) {
 		byKey[s["key"].(string)] = s
 	}
 
-	// No pre-v3 legacy suite (empty capability) may be listed.
+	// No v3 capability suite and no pre-v3 legacy suite may be listed.
+	for key := range byKey {
+		if strings.HasPrefix(key, "cap_") {
+			t.Errorf("v3 suite %q listed, want retired and purged at the cutover", key)
+		}
+	}
 	for _, key := range []string{"basic", "reasoning", "coding", "chinese"} {
 		if _, ok := byKey[key]; ok {
 			t.Errorf("legacy suite %q listed, want purged/never seeded", key)
 		}
 	}
-	for _, s := range suites {
-		if s["capability"] == "" {
-			t.Errorf("suite %q has empty capability (legacy), want capability suites only", s["key"])
-		}
-	}
 
-	// Capability suites: enabled, capability-tagged, 8-12 cases, three tiers.
-	capByKey := map[string]string{
-		"cap_instruction": "instruction",
-		"cap_reasoning":   "reasoning",
-		"cap_coding":      "coding",
-		"cap_language":    "language",
-		"cap_knowledge":   "knowledge",
+	want := map[string]struct {
+		capability string
+		nadir      float64
+		ruleMode   string
+	}{
+		"mmlu":       {"knowledge", 0.25, "mcq"},
+		"agieval_zh": {"language", 0.25, "mcq"},
+		"gsm8k":      {"reasoning", 0, "numeric"},
+		"cruxeval":   {"coding", 0, "output_match"},
+		"ifeval":     {"instruction", 0, "ifeval"},
 	}
-	for key, capability := range capByKey {
+	for key, w := range want {
 		s, ok := byKey[key]
 		if !ok {
-			t.Fatalf("missing capability suite %q", key)
+			t.Fatalf("missing benchmark suite %q", key)
 		}
 		if s["enabled"] != true {
-			t.Errorf("capability suite %q enabled = %v, want true", key, s["enabled"])
+			t.Errorf("benchmark suite %q enabled = %v, want true (post-cutover rotation)", key, s["enabled"])
 		}
-		if s["capability"] != capability {
-			t.Errorf("suite %q capability = %v, want %q", key, s["capability"], capability)
+		if s["capability"] != w.capability {
+			t.Errorf("suite %q capability = %v, want %q", key, s["capability"], w.capability)
 		}
 		if s["version"] != 1.0 {
 			t.Errorf("fresh suite %q version = %v, want 1", key, s["version"])
 		}
-		cases := s["cases"].([]interface{})
-		if len(cases) < 8 || len(cases) > 12 {
-			t.Errorf("suite %q has %d first-issue cases, want 8~12", key, len(cases))
+		if s["nadir"] != w.nadir {
+			t.Errorf("suite %q nadir = %v, want %v", key, s["nadir"], w.nadir)
 		}
-		tiers := map[string]int{}
+		cases := s["cases"].([]interface{})
+		if len(cases) != 100 {
+			t.Errorf("suite %q has %d cases, want 100 (frozen subset)", key, len(cases))
+		}
 		for _, c := range cases {
 			cm := c.(map[string]interface{})
 			if cm["prompt"] == "" {
@@ -94,62 +99,22 @@ func TestSuitesSeeded(t *testing.T) {
 			if cm["enabled"] != true {
 				t.Errorf("seed case in suite %q should be enabled", key)
 			}
-			d, _ := cm["difficulty"].(string)
-			switch d {
-			case "basic", "intermediate", "hard":
-				tiers[d]++
-			default:
-				t.Errorf("suite %q has a case with invalid difficulty %q", key, d)
+			if cm["verdict_type"] != "rule" {
+				t.Errorf("suite %q case verdict_type = %v, want rule (zero LLM judge)", key, cm["verdict_type"])
 			}
-			// Rule cases pin one sample; judge cases pin three and carry a
-			// rubric spelling out the 1/0.5/0 scale.
-			if cm["verdict_type"] == "rule" {
-				if cm["sample_count"] != 1.0 {
-					t.Errorf("suite %q rule case sample_count = %v, want 1", key, cm["sample_count"])
-				}
-				rc, ok := cm["rule_config"].(map[string]interface{})
-				if !ok || rc["mode"] == "" || rc["expected"] == "" {
-					t.Errorf("suite %q rule case missing rule_config: %v", key, cm["rule_config"])
-				}
-			} else {
-				if cm["sample_count"] != 3.0 {
-					t.Errorf("suite %q judge case sample_count = %v, want 3", key, cm["sample_count"])
-				}
-				rubric, ok := cm["rubric"].(string)
-				if !ok || !strings.Contains(rubric, "0.5") {
-					t.Errorf("suite %q judge case rubric should spell out the 1/0.5/0 scale: %v", key, cm["rubric"])
-				}
+			if cm["sample_count"] != 1.0 {
+				t.Errorf("suite %q case sample_count = %v, want 1", key, cm["sample_count"])
 			}
-		}
-		for _, tier := range []string{"basic", "intermediate", "hard"} {
-			if tiers[tier] == 0 {
-				t.Errorf("suite %q has no %s-tier seed case", key, tier)
+			if key == "ifeval" {
+				if cm["check_params"] == nil {
+					t.Errorf("ifeval case missing check_params: %v", cm)
+				}
+				continue
 			}
-		}
-	}
-
-	// Judge cases stay a minority of the bank (ADR 0010 caps them at 40%).
-	total, judges := 0, 0
-	for key := range capByKey {
-		for _, c := range byKey[key]["cases"].([]interface{}) {
-			total++
-			if c.(map[string]interface{})["verdict_type"] == "judge" {
-				judges++
+			rc, ok := cm["rule_config"].(map[string]interface{})
+			if !ok || rc["mode"] != w.ruleMode {
+				t.Errorf("suite %q case rule mode = %v, want %q", key, rc["mode"], w.ruleMode)
 			}
-		}
-	}
-	if judges == 0 || judges*100/total > 40 {
-		t.Errorf("judge share = %d/%d, want >0 and <= 40%%", judges, total)
-	}
-
-	// The knowledge suite is multiple choice throughout and floors its nadir
-	// at the random-guess rate; the other capability suites floor at 0.
-	if got := byKey["cap_knowledge"]["nadir"]; got != 0.25 {
-		t.Errorf("cap_knowledge nadir = %v, want 0.25", got)
-	}
-	for _, key := range []string{"cap_instruction", "cap_reasoning", "cap_coding", "cap_language"} {
-		if got := byKey[key]["nadir"]; got != 0.0 {
-			t.Errorf("suite %q nadir = %v, want 0", key, got)
 		}
 	}
 }
@@ -161,18 +126,11 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	filtered := fetchSuites(t, ts.URL, "?capability=reasoning")
-	if len(filtered) != 2 {
-		t.Fatalf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
+	if len(filtered) != 1 || filtered[0]["key"] != "gsm8k" {
+		t.Fatalf("capability=reasoning suites = %v, want exactly gsm8k", filtered)
 	}
-	byKey := map[string]map[string]interface{}{}
-	for _, s := range filtered {
-		byKey[s["key"].(string)] = s
-		if s["capability"] != "reasoning" {
-			t.Errorf("filtered suite capability = %v, want reasoning", s["capability"])
-		}
-	}
-	if byKey["cap_reasoning"] == nil || byKey["gsm8k"] == nil {
-		t.Errorf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
+	if filtered[0]["capability"] != "reasoning" {
+		t.Errorf("filtered suite capability = %v, want reasoning", filtered[0]["capability"])
 	}
 
 	// An unknown capability yields an empty list, not an error.
@@ -180,9 +138,8 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 		t.Errorf("capability=nosuch suites = %v, want empty", got)
 	}
 
-	// No parameter: every suite, the full capability bank plus the disabled
-	// benchmark suites.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 10 {
-		t.Errorf("unfiltered suites = %d, want 10", len(got))
+	// No parameter: exactly the five benchmark suites of the rotation.
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 5 {
+		t.Errorf("unfiltered suites = %d, want 5", len(got))
 	}
 }

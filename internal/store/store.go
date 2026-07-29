@@ -444,10 +444,19 @@ func (db *DB) migrate() error {
 	if err := db.seedSuites(); err != nil {
 		return err
 	}
+	// Ticket 99 (spec 0014 decision C): the benchmark cutover flips the five
+	// authoritative-benchmark suites into the rotation. Runs after seedSuites
+	// (the suites must exist) and BEFORE the purge: databases that seeded
+	// them disabled under tickets 94-98 would otherwise lose them to the
+	// purge in the same boot that retires the v3 suites.
+	if err := db.enableBenchmarkSuitesAtCutover(); err != nil {
+		return err
+	}
 	// Ticket 93 (spec 0014 decision B, ADR 0012): disabled suites are
 	// hard-deleted with their cases, runs and results. Runs after seedSuites
-	// so a first-time retirement (retireAtGen) is purged in the same boot;
-	// idempotent, so every later Open is a no-op.
+	// so a first-time retirement (retireAtGen — including the v3 retirement
+	// at the ticket-99 cutover) is purged in the same boot; idempotent, so
+	// every later Open is a no-op.
 	if err := db.purgeDisabledSuites(); err != nil {
 		return err
 	}

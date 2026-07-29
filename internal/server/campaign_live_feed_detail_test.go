@@ -72,7 +72,21 @@ func TestCampaignLiveFeedResultDetail(t *testing.T) {
 	ts := newTestAPIServer(t, db)
 
 	ruleSuite, ruleCase := findCaseByVerdict(t, db, "rule")
-	judgeSuite, judgeCase := findCaseByVerdict(t, db, "judge")
+	// The post-cutover bank seeds rule cases only (ticket 99), so the judge
+	// leg of the fork installs its own case into the same suite.
+	judgeSuite := ruleSuite
+	judgeRubric := "评分要点:切题得 1 分,否则 0 分。"
+	judgeCasePtr, err := db.CreateCase(store.Case{
+		SuiteID:     judgeSuite.ID,
+		Prompt:      "LIVEFEED-JUDGE:请作答",
+		VerdictType: "judge",
+		Rubric:      &judgeRubric,
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("create judge case: %v", err)
+	}
+	judgeCase := *judgeCasePtr
 
 	hub, err := db.CreateHub("detail-hub", "http://detail.test", "tok-detail-0000")
 	if err != nil {

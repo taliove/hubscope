@@ -55,7 +55,7 @@ func lastCaseID(t *testing.T, base string, suiteID int64) int64 {
 func TestAnswerRetrySucceedsOnSecondAttempt(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	prompt := "RETRY-OK-MARKER 请只回答四个字:紫电青霜"
 	createRuleCase(t, ts.URL, suiteID, prompt, "紫电青霜", nil)
@@ -89,7 +89,7 @@ func TestAnswerRetrySucceedsOnSecondAttempt(t *testing.T) {
 func TestAnswerRetryBothAttemptsFail(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	prompt := "RETRY-FAIL-MARKER 请只回答四个字:紫电青霜"
 	createRuleCase(t, ts.URL, suiteID, prompt, "紫电青霜", nil)
@@ -123,7 +123,7 @@ func TestAnswerRetryBothAttemptsFail(t *testing.T) {
 func TestJudgeCallIsNotRetried(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	prompt := "JUDGE-FAIL-MARKER 随便聊聊天气"
 	resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
@@ -167,7 +167,7 @@ func TestJudgeCallIsNotRetried(t *testing.T) {
 func TestAnswerRetryDetailKeepsSampleFraming(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	prompt := "RETRY-FRAME-MARKER 请只回答四个字:紫电青霜"
 	createRuleCase(t, ts.URL, suiteID, prompt, "紫电青霜", nil)

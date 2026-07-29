@@ -13,10 +13,12 @@ import (
 // readable: the deleted model's rows keep their model_id text and carry a
 // model_deleted flag the UI turns into a badge.
 func TestEvalLatestHidesDeletedModels(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	keepID := createEvalModel(t, ts.URL, stub.URL, "keep-model")
 	dropID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, instructionID)
+	createRuleCase(t, ts.URL, instructionID, "HIDE-A:请作答", "好的", nil)
 
 	runID := triggerEval(t, ts.URL, instructionID, keepID, dropID)
 	waitEvalDone(t, ts.URL, runID)
@@ -26,8 +28,8 @@ func TestEvalLatestHidesDeletedModels(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("before delete: expected 2 latest rows, got %v", rows)
 	}
-	findLatest(t, rows, "cap_instruction", "keep-model")
-	findLatest(t, rows, "cap_instruction", "drop-model")
+	findLatest(t, rows, "gsm8k", "keep-model")
+	findLatest(t, rows, "gsm8k", "drop-model")
 
 	resp := doDelete(t, fmt.Sprintf("%s/api/models/%d", ts.URL, dropID))
 	resp.Body.Close()
@@ -40,7 +42,7 @@ func TestEvalLatestHidesDeletedModels(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("after delete: expected 1 latest row, got %v", rows)
 	}
-	keep := findLatest(t, rows, "cap_instruction", "keep-model")
+	keep := findLatest(t, rows, "gsm8k", "keep-model")
 	if keep["score"] != 1.0 {
 		t.Errorf("keep-model score = %v, want 1", keep["score"])
 	}

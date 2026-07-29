@@ -23,8 +23,8 @@ func TestGetModelEvalSummary(t *testing.T) {
 		t.Fatalf("expected null for unevaluated model, got %v", summary)
 	}
 
-	// Trigger an evaluation using the seeded cap_instruction suite
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	// Trigger an evaluation using the seeded gsm8k suite
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))

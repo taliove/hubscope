@@ -8,19 +8,24 @@ import (
 	"testing"
 )
 
-// TestEvalExactMode runs the reasoning suite (exact rule mode) against a
-// smart model; every answer must score 1 and the aggregate must be 1.
+// TestEvalExactMode runs custom exact-mode rule cases against a smart
+// model; every answer must score 1 and the aggregate must be 1. The case set
+// is installed over the gsm8k suite (seeded cases retired).
 func TestEvalExactMode(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_reasoning")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "EXACT-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "EXACT-B:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "EXACT-C:请作答", "好的", nil)
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 10 {
-		t.Fatalf("got %d results, want 10", len(results))
+	if len(results) != 3 {
+		t.Fatalf("got %d results, want 3", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -35,24 +40,31 @@ func TestEvalExactMode(t *testing.T) {
 	}
 }
 
-// TestEvalJudge covers the judge verdict path on the language suite (6 rule
-// cases + 4 judge cases): judge cases get a parsed score and reason, except
-// one whose judge replies are scripted to garbage and which must stay
-// unscored (score null). The aggregate must average only the scored cases.
+// TestEvalJudge covers the judge verdict path over a custom case set (2
+// rule cases + 3 judge cases, installed on the gsm8k suite with its seeded
+// cases retired): judge cases get a parsed score and reason, except one
+// whose judge replies are scripted to garbage and which must stay unscored
+// (score null). The aggregate must average only the scored cases.
 func TestEvalJudge(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "JUDGE-RULE-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "JUDGE-RULE-B:请作答", "好的", nil)
+	createJudgeCaseForTest(t, ts.URL, suiteID, "JUDGE-OK-A:请回答")
+	createJudgeCaseForTest(t, ts.URL, suiteID, "JUDGE-OK-B:请回答")
+	createJudgeCaseForTest(t, ts.URL, suiteID, "JUDGE-GARBAGE:请回答")
 
-	// The product-intro judge case gets unparseable verdicts on every sample.
-	stub.setJudgeSeq("保温杯", "I cannot produce a score for this.")
+	// The garbage judge case gets unparseable verdicts on every sample.
+	stub.setJudgeSeq("JUDGE-GARBAGE", "I cannot produce a score for this.")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 10 {
-		t.Fatalf("got %d results, want 10", len(results))
+	if len(results) != 5 {
+		t.Fatalf("got %d results, want 5", len(results))
 	}
 
 	var scored, unscored int
@@ -81,12 +93,12 @@ func TestEvalJudge(t *testing.T) {
 			}
 		}
 	}
-	if scored != 9 || unscored != 1 {
-		t.Errorf("scored/unscored = %d/%d, want 9/1", scored, unscored)
+	if scored != 4 || unscored != 1 {
+		t.Errorf("scored/unscored = %d/%d, want 4/1", scored, unscored)
 	}
 
-	// Aggregate averages only non-null scores: (6 x 1 + 3 x 0.75) / 9.
-	want := (6.0 + 3.0*0.75) / 9.0
+	// Aggregate averages only non-null scores: (2 x 1 + 2 x 0.75) / 4.
+	want := (2.0 + 2.0*0.75) / 4.0
 	if score, ok := run["score"].(float64); !ok || score < want-1e-9 || score > want+1e-9 {
 		t.Errorf("run score = %v, want %v (nulls excluded)", run["score"], want)
 	}
@@ -100,7 +112,7 @@ func TestEvalModelFailure(t *testing.T) {
 	// the model: every eval call 503s from here on.
 	modelID := createEvalModel(t, ts.URL, stub.URL, "flaky-model")
 	stub.markBroken("flaky-model", true)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -110,8 +122,8 @@ func TestEvalModelFailure(t *testing.T) {
 	}
 
 	results := resultsByModel(run, "flaky-model")
-	if len(results) != 10 {
-		t.Fatalf("got %d results, want 10", len(results))
+	if len(results) != 100 {
+		t.Fatalf("got %d results, want 100", len(results))
 	}
 	for _, r := range results {
 		if r["answer_text"] != nil {
@@ -134,7 +146,7 @@ func TestEvalModelFailure(t *testing.T) {
 func TestEvalValidation(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	post := func(body map[string]interface{}) *http.Response {
 		return doPost(t, ts.URL+"/api/evals", body)
@@ -189,7 +201,7 @@ func TestEvalValidation(t *testing.T) {
 // TestEvalProtocolFallback disables the anthropic endpoint of a model; the
 // evaluator must fall back to the openai endpoint and still score the run.
 func TestEvalProtocolFallback(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 
 	// Find the model's anthropic endpoint and disable it via the API.
@@ -224,13 +236,15 @@ func TestEvalProtocolFallback(t *testing.T) {
 	patchResp.Body.Close()
 	stub.resetCalls()
 
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "FALLBACK-A:请作答", "好的", nil)
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 
 	results := resultsByModel(run, "smart-model")
-	if len(results) != 10 {
-		t.Fatalf("got %d results, want 10", len(results))
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
 	}
 	for _, r := range results {
 		if r["score"] != 1.0 {
@@ -266,7 +280,7 @@ func patchSampleCount(t *testing.T, base string, id int64, value interface{}) ma
 
 func TestCaseCreatePatch(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	// Create a new rule case.
 	createResp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
@@ -332,7 +346,7 @@ func TestCaseCreatePatch(t *testing.T) {
 	_ = json.Unmarshal(env.Data, &suites)
 	var oldRow, newRow map[string]interface{}
 	for _, s := range suites {
-		if s["key"] != "cap_instruction" {
+		if s["key"] != "gsm8k" {
 			continue
 		}
 		for _, c := range s["cases"].([]interface{}) {
