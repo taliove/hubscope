@@ -96,7 +96,7 @@
           v-for="(row, index) in report.rows"
           :key="row.model_db_id"
           class="lb-grid row"
-          :class="{ clickable: selectable, 'rank-top-rail': !live && index < 3 }"
+          :class="{ clickable: selectable, 'rank-top-rail': isTopRank(row, index) }"
           :role="selectable ? 'button' : undefined"
           :tabindex="selectable ? 0 : undefined"
           :style="gridStyle"
@@ -104,12 +104,20 @@
           @keydown.enter="selectable && emit('select', row)"
           @keydown.space.prevent="selectable && emit('select', row)"
         >
-          <span class="rank" :class="{ 'rank-live': live, 'rank-top': !live && index < 3 }">{{
-            live ? '–' : index + 1
+          <span class="rank" :class="{ 'rank-dash': live || row.complete === false, 'rank-top': isTopRank(row, index) }">{{
+            live || row.complete === false ? '–' : index + 1
           }}</span>
           <span class="model">
-            <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
-            <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
+            <span class="model-line">
+              <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
+              <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
+            </span>
+            <!-- Judged-incomplete watermark (ticket 92, spec 0014 decision A;
+                 ui-guidelines §5 判分不完整模式): second line under the model
+                 name — the model is the subject of the verdict, the three
+                 dashes are its consequences. Never truncated (the static
+                 material has no hover to fall back on). -->
+            <span v-if="row.complete === false" class="model-watermark">{{ incompleteWatermark(row) }}</span>
           </span>
           <!-- Total column: xl ink number, NEVER band-colored — hierarchy
                comes from size and the thicker 6px bar, not color. In live
@@ -165,7 +173,7 @@ import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { scoreBand, liveCounts } from '@/utils/scoreTier'
 import { nextSortKey } from '@/utils/sortHeader'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
-import { baselineNoteText } from '@/utils/evalWording'
+import { baselineNoteText, incompleteWatermark } from '@/utils/evalWording'
 
 // Leaderboard is the single ranking display of the eval board (registered in
 // ui-guidelines §5): one row per model — rank, truncated name, family tag,
@@ -180,6 +188,15 @@ import { baselineNoteText } from '@/utils/evalWording'
 // and the delta column hides entirely. Scored suites render normally;
 // unscored cells are a dash over an empty track and surface in the row-end
 // "N 个维度进行中 / N 个失败" note.
+//
+// Judged-incomplete mode (ticket 92, spec 0014 decision A — settled batches
+// only, mutually exclusive with live by construction): a row with
+// complete === false forfeits rank/total/delta — dash in all three slots,
+// the same empty uncolored total track — but keeps its real per-suite
+// scores (the gate takes ranking eligibility, never the judged facts). The
+// "判分不完整,缺 N/M 维度" watermark rides a second line under the model
+// name; the server already sank these rows below every complete one (the
+// /board client mirrors that caliber in utils/boardSort).
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -250,6 +267,14 @@ function cellOf(row: ReportRow, suiteKey: string): ReportCell | undefined {
   return row.cells.find((c) => c.suite_key === suiteKey)
 }
 
+// Top-3 ceremony (ticket 82) applies to the COMPLETE group's first three
+// only: the coverage gate sinks incomplete rows, but nothing guarantees at
+// least three complete rows, so the index alone would crown an incomplete
+// row (ui-guidelines §5 判分不完整模式 — never judge by index alone).
+function isTopRank(row: ReportRow, index: number): boolean {
+  return !props.live && row.complete !== false && index < 3
+}
+
 function countsOf(row: ReportRow) {
   return liveCounts(row.cells)
 }
@@ -290,6 +315,9 @@ function deltaTone(row: ReportRow): string {
 }
 
 function deltaTitle(row: ReportRow): string {
+  // Judged-incomplete rows (ticket 92): they have suite scores, just no
+  // total — the generic "no score in baseline" line would be inaccurate.
+  if (row.complete === false) return '判分不完整,不参与排名与涨跌'
   const baseline = props.report.baseline
   if (!baseline) return '首个已完成批次,无涨跌对比'
   if (!baseline.comparable) {
@@ -431,14 +459,32 @@ function deltaTitle(row: ReportRow): string {
   font-size: var(--hs-text-lg);
   font-weight: 600;
 }
-.rank-live {
+.rank-dash {
   color: var(--hs-text-placeholder);
 }
 .model {
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--hs-space-1);
+  min-width: 0;
+}
+.model-line {
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+/* Judged-incomplete watermark (ticket 92): xs secondary at the ScoreCell
+   watermark's reduced emphasis (weight 400 + opacity 0.85); wraps naturally
+   on narrow columns, never truncated — the static material has no hover. */
+.model-watermark {
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--hs-text-secondary);
+  opacity: 0.85;
+  white-space: normal;
 }
 .model-name {
   flex: 1;

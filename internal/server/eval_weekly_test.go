@@ -92,7 +92,10 @@ func TestWeeklyEvalSchedule(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -180,7 +183,10 @@ func TestWeeklyEvalRestartDedup(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 

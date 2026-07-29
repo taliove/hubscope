@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:.claude 已是 plan/write/check 三 agent + 五领域 skill 扁平架构,format-web.sh 已补)
 
 ## Problem Statement
 

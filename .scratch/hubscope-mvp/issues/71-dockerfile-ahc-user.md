@@ -4,7 +4,7 @@
 
 **Blocked by:** 70
 
-**Status:** ready-for-agent
+**Status:** 已迁移至 GitHub issue #12(2026-07-28 全面切换 GitHub Issues;本地票只读存档)
 
 - [ ] Dockerfile:`ahc` 用户创建与 `USER` 指令 → `hubscope`;相关 chown/chmod 同步
 - [ ] 镜像内 /data 属主 = hubscope(容器启动可写 SQLite)

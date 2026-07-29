@@ -44,6 +44,14 @@ var isolatedListPaths = []isolatedListPath{
 // require HTTP-triggered writes to materialize, unlike the store-seeded rows
 // this sweep relies on. The per-hub isolation invariant still holds there.
 //
+// /api/campaigns/{id}/live-feed is likewise covered by a dedicated test
+// (TestCampaignLiveFeedHubIsolation in campaign_live_feed_test.go): the path
+// carries a campaign id, and its 404-without-oracle semantics (cross-hub and
+// unknown campaign answer identically) need assertions this path-less sweep
+// cannot express. Path-parameterized isolated list endpoints may use a
+// dedicated test instead of sweep registration, provided the two files
+// cross-reference each other like this one.
+//
 // Leak-signal markers. markerA/markerB are model_id strings unique to each
 // hub; their presence in a response body is the leak signal. The remaining
 // constants are per-resource markers carried by the seeded rows' free-text

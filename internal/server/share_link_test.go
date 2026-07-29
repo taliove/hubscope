@@ -81,8 +81,8 @@ func setupDoneCampaign(t *testing.T) (*httptest.Server, int64) {
 	t.Helper()
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	basicID := suiteIDByKey(t, ts.URL, "basic")
-	runID := triggerEval(t, ts.URL, basicID, modelID)
+	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
@@ -329,7 +329,10 @@ func TestSharedReportRateLimited(t *testing.T) {
 // after three judge calls, catching the sweep mid-cap_language with results
 // already recorded; gamma is a discovered model retired mid-flight.
 func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the shared report while the sweep is frozen
+	// mid-flight (judge gate); drained by releaseModel +
+	// waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	stub.markBroken("alpha-model", true)

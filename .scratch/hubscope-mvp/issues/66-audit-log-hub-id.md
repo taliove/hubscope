@@ -4,7 +4,7 @@
 
 **Blocked by:** 64
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:audit_logs.hub_id 列 + ListAuditLogsByHub 均在)
 
 - [ ] `audit_logs` 加 `hub_id INTEGER NULL` 列（`ensureColumn` 幂等）；历史行回填 NULL（等价 super_admin 可见，不破坏旧数据）
 - [ ] `s.audit` 落库时从 ctx 取 user.hub_id 写入；`auth.login`/`auth.logout`/`settings.update`/`discovery.*` 类无 Hub 归属动作写 NULL

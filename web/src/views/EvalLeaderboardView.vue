@@ -82,6 +82,16 @@
             @query="onQuery"
             @select="openTrend"
           />
+          <!-- Case-level live feed (issue #17): console-only, refreshed by
+               the page's own poll timer; unmounts at settle (historical
+               batches never show it — the simple form of the brief's
+               "settle 后停止增长" choice). -->
+          <EvalLiveFeed
+            :entries="liveFeed"
+            :loading="liveFeedLoading"
+            :error="liveFeedError"
+            @retry="loadLiveFeed"
+          />
         </template>
 
         <template v-else>
@@ -117,25 +127,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { listCampaigns, getCampaignReport } from '@/api/campaigns'
+import { listCampaigns, getCampaignLiveFeed, getCampaignReport } from '@/api/campaigns'
+import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { failedBatchWarning } from '@/utils/evalWording'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
-import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
+import { liveFeedCursor, mergeLiveFeed } from '@/utils/liveFeed'
+import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
+import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedEntry, ReportRow } from '@/api/types'
 
 // Eval leaderboard page (ticket 45): a pure consumption page. The batch
 // switcher defaults to the newest done campaign; unfinished batches render
 // the progress grid by default with a live half-scored board behind the
 // view switch (ticket 52), and only they are polled (ui-guidelines §6). Ops
 // and the case library live in /admin since ticket 44; row drill-down opens
-// the shared ModelTrendDialog (ticket 32 pattern).
+// the shared ModelTrendDialog (ticket 32 pattern). A ?batch=<id> query
+// (issue #16, from the AppHeader progress entry) overrides the default so
+// the entry lands on the batch it was showing.
 const router = useRouter()
+const route = useRoute()
+
+// Batch requested via ?batch=<id>; null when absent or unparseable. Kept
+// reactive so a late navigation (clicking the header entry while already
+// on /eval) still re-targets the selection.
+const requestedBatchId = computed(() => parseBatchQuery(route.query.batch))
 
 const campaigns = ref<Campaign[]>([])
 const selectedId = ref<number | null>(null)
@@ -160,6 +181,42 @@ const selected = computed(() => campaigns.value.find((c) => c.id === selectedId.
 const trendModel = ref<ReportRow | null>(null)
 function openTrend(row: ReportRow) {
   trendModel.value = row
+}
+
+// Live feed (issue #17): accumulated judged-case events of the selected
+// unfinished batch. The parent owns the cursor and the fetch so the feed
+// rides the page's single poll timer — no setInterval of its own.
+const liveFeed = ref<LiveFeedEntry[]>([])
+const liveFeedLoading = ref(false)
+const liveFeedError = ref('')
+// Monotonic token invalidating stale feed responses on batch switch (same
+// race guard as reportSeq).
+let feedSeq = 0
+
+async function loadLiveFeed() {
+  if (selectedId.value === null || !selected.value || !isUnfinished(selected.value.status)) return
+  const seq = ++feedSeq
+  liveFeedLoading.value = true
+  try {
+    const batch = await getCampaignLiveFeed(selectedId.value, liveFeedCursor(liveFeed.value))
+    if (seq !== feedSeq) return
+    liveFeed.value = mergeLiveFeed(liveFeed.value, batch)
+    liveFeedError.value = ''
+  } catch (err) {
+    if (seq !== feedSeq) return
+    liveFeedError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    if (seq === feedSeq) liveFeedLoading.value = false
+  }
+}
+
+// Batch switch resets the feed: the cursor is per-batch, and a stale
+// in-flight response must not append into the new batch's stream.
+function resetLiveFeed() {
+  feedSeq++
+  liveFeed.value = []
+  liveFeedError.value = ''
+  liveFeedLoading.value = false
 }
 
 function campaignStatusLabel(status: CampaignStatus): string {
@@ -190,10 +247,11 @@ function isUnfinished(status: CampaignStatus): boolean {
 
 // Poll only while the selected batch is unfinished; every tick re-arms, so
 // completion stops the timer and the board replaces the progress state
-// (ui-guidelines §6: every setInterval pairs with cleanup). The poll pauses
-// in a hidden tab and refreshes immediately on return (ui-guidelines §6);
-// a batch that settles while hidden is observed by that return refresh, so
-// the settle transition semantics are unchanged.
+// (ui-guidelines §6: every setInterval pairs with cleanup). The live feed
+// (issue #17) rides this same timer — no interval of its own. The poll
+// pauses in a hidden tab and refreshes immediately on return
+// (ui-guidelines §6); a batch that settles while hidden is observed by
+// that return refresh, so the settle transition semantics are unchanged.
 let poll: VisibilityPollHandle | null = null
 function armPolling() {
   poll?.clear()
@@ -201,7 +259,7 @@ function armPolling() {
   if (selected.value && isUnfinished(selected.value.status)) {
     poll = createVisibilityPoll(
       () => {
-        void Promise.all([loadCampaigns(true), loadReport()]).then(armPolling)
+        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()]).then(armPolling)
       },
       { intervalMs: 3000 },
     )
@@ -219,10 +277,13 @@ async function loadCampaigns(silent = false) {
   try {
     const list = await listCampaigns()
     campaigns.value = list
-    // Default: the newest done campaign; fall back to the newest batch of
-    // any state so a running first batch still shows its progress.
+    // Initial selection (issue #16): a valid ?batch=<id> query wins;
+    // otherwise the established default — the newest done campaign, falling
+    // back to the newest batch of any state so a running first batch still
+    // shows its progress. Re-entry only happens when the selection is empty
+    // or vanished, so polling never overrides a manual choice.
     if (selectedId.value === null || !list.some((c) => c.id === selectedId.value)) {
-      selectedId.value = (list.find((c) => c.status === 'done') ?? list[0])?.id ?? null
+      selectedId.value = resolveInitialBatchId(list, requestedBatchId.value)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -271,18 +332,38 @@ async function loadReport() {
 async function reload() {
   error.value = ''
   await loadCampaigns()
-  await loadReport()
+  await Promise.all([loadReport(), loadLiveFeed()])
   armPolling()
 }
 
-function onBatchChange() {
+function switchBatch(id: number) {
+  selectedId.value = id
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []
   viewMode.value = 'grid'
   trendModel.value = null
-  void loadReport().then(armPolling)
+  resetLiveFeed()
+  void Promise.all([loadReport(), loadLiveFeed()]).then(armPolling)
 }
+
+function onBatchChange() {
+  if (selectedId.value === null) return
+  // A manual switch syncs the URL (issue #16): the stale entry query can
+  // never drag the user back, and a refresh keeps landing on the chosen
+  // batch.
+  void router.replace({ query: { ...route.query, batch: String(selectedId.value) } })
+  switchBatch(selectedId.value)
+}
+
+// Late navigation to /eval?batch=<id> while the page is already mounted
+// (e.g. clicking the AppHeader progress entry from /eval itself): re-target
+// the selection when the query names a different, existing batch.
+watch(requestedBatchId, (id) => {
+  if (id === null || id === selectedId.value) return
+  if (!campaigns.value.some((c) => c.id === id)) return
+  switchBatch(id)
+})
 
 function onQuery(q: { family?: string; sort: string }) {
   query.value = q

@@ -256,7 +256,7 @@ func TestFullSweepCampaign(t *testing.T) {
 func TestManualSingleSuiteCampaign(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	waitEvalDone(t, ts.URL, runID)
@@ -319,7 +319,10 @@ func TestWeeklyBatchProducesOneCampaign(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -365,7 +368,9 @@ func TestWeeklyBatchProducesOneCampaign(t *testing.T) {
 // campaign reports running with live run progress, then settles to done once
 // released.
 func TestCampaignStatusWhileRunning(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes mid-sweep running status and live progress (all
+	// calls blocked); drained by stub.release + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	stub.resetCalls()
 	stub.blockCalls()
@@ -405,7 +410,10 @@ func TestCampaignFailedWhenBatchAborted(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -462,6 +470,9 @@ func TestCampaignFailedWhenBatchAborted(t *testing.T) {
 // stagePreCampaignDatabase writes a pre-ticket-29 database: the current
 // schema minus the campaigns table and the eval_runs.campaign_id column,
 // with two historical runs (a done manual one and a failed scheduled one).
+// The staged suite carries a non-empty capability so the ticket-93
+// disabled-suite purge (which retires and deletes pre-v3 capability=”
+// suites) leaves the fixture's run history intact.
 func stagePreCampaignDatabase(t *testing.T, path string) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", path)
@@ -475,7 +486,8 @@ func stagePreCampaignDatabase(t *testing.T, path string) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
-			version INTEGER NOT NULL DEFAULT 1
+			version INTEGER NOT NULL DEFAULT 1,
+			capability TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE eval_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -492,7 +504,7 @@ func stagePreCampaignDatabase(t *testing.T, path string) {
 	if _, err := conn.Exec(ddl); err != nil {
 		t.Fatalf("create old schema: %v", err)
 	}
-	if _, err := conn.Exec("INSERT INTO suites (key, name) VALUES ('basic', '基础能力')"); err != nil {
+	if _, err := conn.Exec("INSERT INTO suites (key, name, capability) VALUES ('basic', '基础能力', 'instruction')"); err != nil {
 		t.Fatalf("seed suite: %v", err)
 	}
 	runs := []struct {

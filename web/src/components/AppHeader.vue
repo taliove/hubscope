@@ -38,13 +38,16 @@
         </el-button>
         <!-- Batch progress entry (ticket 52): rendered only for logged-in
              users while an unfinished batch exists; the rotating Loading
-             icon is the only motion (no orange-red, no flashing). -->
+             icon is the only motion (no orange-red, no flashing). The click
+             deep-links to that very batch (issue #16): /eval would otherwise
+             default to the newest done batch and the entry's intent — "show
+             me the batch in progress" — would be lost. -->
         <el-button
           v-if="user && activeBatch"
           link
           type="primary"
           class="batch-entry"
-          @click="router.push('/eval')"
+          @click="goToActiveBatch"
         >
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>
@@ -198,6 +201,14 @@ async function refreshBatch() {
   if (activeBatch.value) {
     batchPoll = createVisibilityPoll(() => void refreshBatch(), { intervalMs: 3000 })
   }
+}
+
+// Deep-link to the batch the entry is showing (issue #16): /eval resolves
+// ?batch=<id> into its initial selection, falling back to its established
+// default when the query names no existing batch.
+function goToActiveBatch() {
+  if (!activeBatch.value) return
+  void router.push({ path: '/eval', query: { batch: String(activeBatch.value.id) } })
 }
 
 async function onLogout() {

@@ -67,7 +67,7 @@ func TestScoreDropAlert(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Campaign 1: everything correct (aggregate 1.0); no baseline, no alert.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -88,7 +88,7 @@ func TestScoreDropAlert(t *testing.T) {
 		return len(lark.messages()) == 1
 	})
 	msg := lark.messages()[0]
-	for _, want := range []string{"drop-model", "基础指令遵循", "1.00", "0.00"} {
+	for _, want := range []string{"drop-model", "指令遵循", "1.00", "0.00"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("score_drop message should contain %q, got: %s", want, msg)
 		}
@@ -108,8 +108,36 @@ func TestScoreDropAlert(t *testing.T) {
 	if event["sent_ok"] != true {
 		t.Error("score_drop event sent_ok should be true")
 	}
-	if event["message"] != msg {
-		t.Errorf("event message should match the webhook text:\nevent: %v\nsent:  %v", event["message"], msg)
+	// The persisted message stays plain text (ticket 101 regression: the
+	// alert history table renders it unchanged) — never the card JSON.
+	eventMsg, _ := event["message"].(string)
+	for _, want := range []string{"【HubScope】评估分数大跌", "drop-model", "指令遵循", "Case#"} {
+		if !strings.Contains(eventMsg, want) {
+			t.Errorf("event message should contain %q, got: %s", want, eventMsg)
+		}
+	}
+	if strings.Contains(eventMsg, "msg_type") {
+		t.Errorf("event message must stay plain text, got: %s", eventMsg)
+	}
+
+	// The webhook payload is an orange-header interactive card (ticket 101)
+	// with the model as a structured field and per-case changes in the
+	// detail block.
+	cards := lark.cards()
+	if len(cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(cards))
+	}
+	if cards[0].Template != "orange" {
+		t.Errorf("score_drop card template: expected orange, got %q", cards[0].Template)
+	}
+	if cards[0].Title != "评估分数大跌 · HubScope" {
+		t.Errorf("score_drop card title: got %q", cards[0].Title)
+	}
+	if cards[0].Fields["模型"] != "drop-model" {
+		t.Errorf("score_drop card 模型 field: got %q", cards[0].Fields["模型"])
+	}
+	if !strings.Contains(cards[0].Detail, "Case#") {
+		t.Errorf("score_drop card detail should carry per-case changes, got: %s", cards[0].Detail)
 	}
 
 	// Campaign 3: the model recovers (rise, not a drop) — still just one alert.
@@ -197,7 +225,7 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "ver-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Campaign 1 at suite version 1.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -287,12 +315,12 @@ func TestScoreDropAlertCaseDetails(t *testing.T) {
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "detail-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	// Replace the seeded case set with three scripted judge cases so the test
 	// controls every score. Disabling bumps the version; both campaigns then
 	// run at the same one.
-	for _, c := range suiteByKey(t, ts.URL, "basic")["cases"].([]interface{}) {
+	for _, c := range suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{}) {
 		cm := c.(map[string]interface{})
 		if enabled, _ := cm["enabled"].(bool); !enabled {
 			continue

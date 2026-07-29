@@ -134,6 +134,7 @@ func (db *DB) migrate() error {
 			rubric TEXT,
 			difficulty TEXT NOT NULL DEFAULT 'basic',
 			sample_count INTEGER,
+			check_params TEXT,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (suite_id) REFERENCES suites(id)
@@ -312,6 +313,12 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("cases", "sample_count", "INTEGER NULL"); err != nil {
 		return err
 	}
+	// Ticket 97 (spec 0014 decision C): IFEval cases carry structured check
+	// parameters (instruction id + kwargs) as a JSON array; NULL for every
+	// other verdict shape, so pre-existing rows need no backfill.
+	if err := db.ensureColumn("cases", "check_params", "TEXT NULL"); err != nil {
+		return err
+	}
 	if err := db.ensureColumn("eval_runs", "suite_version", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
@@ -415,6 +422,13 @@ func (db *DB) migrate() error {
 	// first run (no-op afterwards), then re-run classification so upgraded
 	// databases pick up the current rule set.
 	if err := db.seedSuites(); err != nil {
+		return err
+	}
+	// Ticket 93 (spec 0014 decision B, ADR 0012): disabled suites are
+	// hard-deleted with their cases, runs and results. Runs after seedSuites
+	// so a first-time retirement (retireAtGen) is purged in the same boot;
+	// idempotent, so every later Open is a no-op.
+	if err := db.purgeDisabledSuites(); err != nil {
 		return err
 	}
 	if err := db.seedClassificationRules(); err != nil {

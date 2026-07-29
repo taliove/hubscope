@@ -72,10 +72,14 @@
           </template>
         </el-alert>
 
+        <!-- Shared settle board (issue #10, option A ruling): rows are not
+             clickable — drill-down is console-only, same caliber as /board.
+             The console view keeps the default selectable=true. -->
         <Leaderboard
           :report="report"
           :family-options="familyOptions"
           :shared="shared"
+          :selectable="rowDrilldownEnabled(shared)"
           @query="onQuery"
           @select="openTrend"
         />
@@ -103,6 +107,7 @@ import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
 import { failedBatchWarning } from '@/utils/evalWording'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
+import { rowDrilldownEnabled } from '@/utils/reportDrilldown'
 import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done
@@ -176,8 +181,11 @@ function armPolling() {
 onBeforeUnmount(() => poll?.clear())
 
 // Trend drill-down (ticket 32): the row under inspection; null = dialog closed.
+// Shared mode never drills down (issue #10): the trends endpoint is in the
+// authenticated route group, so an anonymous click could only produce a 401.
 const trendModel = ref<ReportRow | null>(null)
 function openTrend(row: ReportRow) {
+  if (!rowDrilldownEnabled(shared)) return
   trendModel.value = row
 }
 

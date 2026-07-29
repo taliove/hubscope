@@ -60,15 +60,28 @@ func (e *Evaluator) HandleLoginFailures(snapshot LoginFailureSnapshot) {
 	}()
 }
 
-// buildLoginAlertMessage composes the alert text: the failure count over the
-// window plus the most-attempted usernames and most frequent source IPs.
-func buildLoginAlertMessage(s LoginFailureSnapshot) string {
+// buildLoginAlertMessage composes the alert — once, as a Message whose plain
+// text mirrors the historical wording and whose fields render the card
+// (ticket 101): the failure count over the window plus the most-attempted
+// usernames and most frequent source IPs.
+func buildLoginAlertMessage(s LoginFailureSnapshot) Message {
 	var b strings.Builder
 	fmt.Fprintf(&b, "【HubScope】登录爆破告警:最近 %s 内全站登录失败 %d 次,疑似暴力破解,请检查审计日志。",
 		loginAlertWindowText(s.Window), s.Count)
 	fmt.Fprintf(&b, "\n被尝试最多的用户名:%s", joinOrDash(s.TopUsernames))
 	fmt.Fprintf(&b, "\n失败最多的来源 IP:%s", joinOrDash(s.TopIPs))
-	return b.String()
+	return Message{
+		Text:     b.String(),
+		Title:    "登录爆破告警",
+		Template: templateRed,
+		Fields: []Field{
+			{Label: "失败次数", Value: fmt.Sprintf("%d 次", s.Count)},
+			{Label: "统计窗口", Value: loginAlertWindowText(s.Window)},
+			{Label: "被尝试最多的用户名", Value: joinOrDash(s.TopUsernames)},
+			{Label: "失败最多的来源 IP", Value: joinOrDash(s.TopIPs)},
+		},
+		Detail: "疑似暴力破解,请检查审计日志。",
+	}
 }
 
 // loginAlertWindowText renders the window in whole minutes when possible

@@ -33,7 +33,6 @@
             <el-tag v-if="suite.nadir > 0" size="small" effect="plain" class="suite-tag">
               nadir {{ suite.nadir }}
             </el-tag>
-            <el-tag v-if="!suite.enabled" size="small" type="info" class="suite-tag">已停用</el-tag>
           </template>
           <div class="suite-actions">
             <el-button size="small" type="primary" plain @click="openCreate(suite)">新增 Case</el-button>
@@ -102,9 +101,28 @@
               <el-option label="完全相等 (exact)" value="exact" />
               <el-option label="正则匹配 (regex)" value="regex" />
               <el-option label="包含子串 (contains)" value="contains" />
+              <el-option label="选项字母 (mcq)" value="mcq" />
+              <el-option label="数值提取 (numeric)" value="numeric" />
+              <el-option label="输出匹配 (output_match)" value="output_match" />
+              <!-- ifeval 仅能由权威题库 seed 铸入,新增不提供该选项;编辑 ifeval case 时显示以保住当前值。 -->
+              <el-option v-if="form.ruleMode === 'ifeval'" label="指令校验 (ifeval)" value="ifeval" />
             </el-select>
           </el-form-item>
-          <el-form-item label="期望值" prop="ruleExpected">
+          <template v-if="form.ruleMode === 'ifeval'">
+            <el-form-item label="校验参数">
+              <div class="ifeval-params">
+                <el-input
+                  :model-value="form.ifevalParams"
+                  type="textarea"
+                  :rows="6"
+                  readonly
+                  placeholder="无校验参数"
+                />
+                <div class="ifeval-note">校验参数由权威题库种子铸入,编辑此 Case 时原样保留,不可手工修改。</div>
+              </div>
+            </el-form-item>
+          </template>
+          <el-form-item v-else label="期望值" prop="ruleExpected">
             <el-input v-model="form.ruleExpected" placeholder="命中得 1 分,否则 0 分" />
           </el-form-item>
         </template>
@@ -146,14 +164,15 @@ import type { Capability, Difficulty, EvalCase, Suite, VerdictType } from '@/api
 // session, so write forms are always shown; the server still re-validates.
 // Cases are immutable server-side: a content edit returns a new case id and
 // retires the old row, which stays visible as disabled after the refresh.
-// Retired suites (enabled=false) stay listed — history must keep rendering
-// them — but carry the 已停用 badge. The panel loads its own suite data.
+// Retired suites never reach this panel: disabled suites are hard-deleted
+// server-side at Open (ADR 0012). The panel loads its own suite data.
 const suites = ref<Suite[]>([])
 const loading = ref(false)
 const error = ref('')
 
-// Capability filter: 'all' lists every suite (retired legacy included);
-// 'legacy' narrows to the pre-v3 suites (capability '').
+// Capability filter: 'all' lists every suite; the other options narrow to
+// one capability dimension. Pre-v3 legacy suites no longer exist (hard-deleted
+// server-side at Open, ADR 0012), so there is no legacy option.
 const capabilityFilter = ref('all')
 
 const CAPABILITY_LABELS: Record<Capability, string> = {
@@ -162,7 +181,6 @@ const CAPABILITY_LABELS: Record<Capability, string> = {
   coding: '代码',
   language: '语言理解与生成',
   knowledge: '知识问答',
-  '': '旧版套件',
 }
 
 const capabilityOptions = computed(() => [
@@ -172,12 +190,10 @@ const capabilityOptions = computed(() => [
   { value: 'coding', label: CAPABILITY_LABELS.coding },
   { value: 'language', label: CAPABILITY_LABELS.language },
   { value: 'knowledge', label: CAPABILITY_LABELS.knowledge },
-  { value: 'legacy', label: CAPABILITY_LABELS[''] },
 ])
 
 const filteredSuites = computed(() => {
   if (capabilityFilter.value === 'all') return suites.value
-  if (capabilityFilter.value === 'legacy') return suites.value.filter(s => s.capability === '')
   return suites.value.filter(s => s.capability === capabilityFilter.value)
 })
 
@@ -208,8 +224,9 @@ onMounted(loadSuites)
 interface CaseForm {
   prompt: string
   verdict_type: VerdictType
-  ruleMode: 'exact' | 'regex' | 'contains'
+  ruleMode: 'exact' | 'regex' | 'contains' | 'mcq' | 'numeric' | 'output_match' | 'ifeval'
   ruleExpected: string
+  ifevalParams: string // read-only pretty JSON of check_params (ifeval only)
   rubric: string
   difficulty: Difficulty
   sampleCount: number
@@ -222,6 +239,7 @@ const form = reactive<CaseForm>({
   verdict_type: 'rule',
   ruleMode: 'contains',
   ruleExpected: '',
+  ifevalParams: '',
   rubric: '',
   difficulty: 'basic',
   sampleCount: 1,
@@ -230,11 +248,13 @@ const form = reactive<CaseForm>({
 })
 
 // Inline validation (ui-guidelines §5): required fields follow the verdict
-// type — rule cases need an expected value, judge cases need a rubric.
+// type — rule cases need an expected value, judge cases need a rubric. An
+// ifeval case's expectation lives in its seed-cast check params, so the
+// expected-value input is neither shown nor required for that mode.
 const rules = computed<FormRules>(() => ({
   prompt: [{ required: true, message: '题目不能为空', trigger: 'blur' }],
   ruleExpected:
-    form.verdict_type === 'rule'
+    form.verdict_type === 'rule' && form.ruleMode !== 'ifeval'
       ? [{ required: true, message: '期望值不能为空', trigger: 'blur' }]
       : [],
   rubric:
@@ -262,6 +282,9 @@ function difficultyTagType(d: Difficulty): 'success' | 'warning' | 'danger' {
 // Summarize the verdict configuration for the read-only table.
 function verdictConfig(c: EvalCase): string {
   if (c.verdict_type === 'rule' && c.rule_config) {
+    if (c.rule_config.mode === 'ifeval') {
+      return `ifeval: ${c.check_params?.length ?? 0} 条校验指令`
+    }
     return `${c.rule_config.mode}: ${c.rule_config.expected}`
   }
   return c.rubric ?? '-'
@@ -275,6 +298,7 @@ function openCreate(suite: Suite) {
     verdict_type: 'rule' as VerdictType,
     ruleMode: 'contains' as const,
     ruleExpected: '',
+    ifevalParams: '',
     rubric: '',
     difficulty: 'basic' as Difficulty,
     sampleCount: 1,
@@ -292,6 +316,7 @@ function openEdit(suiteId: number, c: EvalCase) {
     verdict_type: c.verdict_type,
     ruleMode: c.rule_config?.mode ?? 'contains',
     ruleExpected: c.rule_config?.expected ?? '',
+    ifevalParams: c.check_params ? JSON.stringify(c.check_params, null, 2) : '',
     rubric: c.rubric ?? '',
     difficulty: c.difficulty,
     sampleCount: c.sample_count ?? 1,
@@ -303,7 +328,9 @@ function openEdit(suiteId: number, c: EvalCase) {
 
 // Persist the form after inline validation; the server validates the whole
 // merged case. A content edit comes back with a new id (the old case is
-// retired) — the refresh makes both rows visible.
+// retired) — the refresh makes both rows visible. An ifeval case's
+// rule_config is never submitted: the check params are seed-cast, and the
+// server preserves them across the retire-and-mint replace (ticket 97).
 async function onSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -313,9 +340,11 @@ async function onSave() {
       prompt: form.prompt,
       verdict_type: form.verdict_type,
       rule_config:
-        form.verdict_type === 'rule'
+        form.verdict_type === 'rule' && form.ruleMode !== 'ifeval'
           ? { mode: form.ruleMode, expected: form.ruleExpected }
-          : null,
+          : form.verdict_type === 'rule'
+            ? undefined
+            : null,
       rubric: form.verdict_type === 'judge' ? form.rubric : null,
       difficulty: form.difficulty,
       sample_count: form.sampleCountCustom ? form.sampleCount : null,
@@ -376,5 +405,14 @@ async function onSave() {
 }
 .suite-actions {
   margin-bottom: 8px;
+}
+.ifeval-params {
+  width: 100%;
+}
+.ifeval-note {
+  margin-top: var(--hs-space-1);
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+  line-height: 1.5;
 }
 </style>

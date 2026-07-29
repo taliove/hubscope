@@ -18,3 +18,17 @@ clone 后跑一次 `make hooks` 启用 `.githooks/`:pre-commit(凭证扫描 + `m
 ## 设计规范
 
 前端 UI/UX 唯一设计规范是 [.claude/rules/ui-guidelines.md](./.claude/rules/ui-guidelines.md),由 `plan` agent 维护;新视图/新交互/新复用组件开工前必过设计评审(经 frontend skill 调 `plan` 的 UI 评审子能力)。
+
+## Agent skills
+
+### Issue tracker
+
+工作项全部走 GitHub Issues(`taliove/hubscope`,经 `gh` CLI 操作);2026-07-28 前的本地 Markdown 票(`.scratch/hubscope-mvp/issues/`)只读保留为历史档案。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+五个状态角色直接使用同名标签(`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`),类别用 `bug` / `enhancement`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文布局:根 `CONTEXT.md` + `docs/adr/`;项目治理层(AGENTS.md / 承重墙 / 设计规范)优先于通用 skill 约定。详见 `docs/agents/domain.md`。

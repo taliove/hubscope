@@ -299,35 +299,53 @@ func (e *Evaluator) sendModelAlert(ctx context.Context, webhook string, campaign
 	}
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
 		Kind:    store.AlertKindScoreDrop,
-		Message: message,
+		Message: message.Text,
 		SentOK:  sentOK,
 	}); err != nil {
 		slog.Error("alerter: record score_drop event", "campaign_id", campaign.ID, "model", alert.modelID, "error", err)
 	}
 }
 
-// buildModelAlertMessage composes the consolidated alert text: a header
-// naming the model and campaign, one section per dropped suite with its
-// aggregate fall, and the case-level changes behind each drop.
-func buildModelAlertMessage(campaign *store.Campaign, alert *modelAlert) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "【HubScope】评估分数大跌:模型 %s 本轮评估(Campaign #%d)对比上一轮,%d 个评估集得分大跌(阈值 %.1f):",
+// buildModelAlertMessage composes the consolidated alert — once, as a
+// Message whose plain text is persisted and whose fields/detail render the
+// card (ticket 101: single source for both renderings): a header naming the
+// model and campaign, the aggregate facts as card fields, and one section
+// per dropped suite with its aggregate fall plus the case-level changes
+// behind it as the card's detail block.
+func buildModelAlertMessage(campaign *store.Campaign, alert *modelAlert) Message {
+	var text, detail strings.Builder
+	fmt.Fprintf(&text, "【HubScope】评估分数大跌:模型 %s 本轮评估(Campaign #%d)对比上一轮,%d 个评估集得分大跌(阈值 %.1f):",
 		alert.modelID, campaign.ID, len(alert.drops), ScoreDropThreshold)
 	for _, drop := range alert.drops {
-		fmt.Fprintf(&b, "\n·「%s」%.2f → %.2f(跌 %.2f)",
+		fmt.Fprintf(&text, "\n·「%s」%.2f → %.2f(跌 %.2f)",
+			drop.suiteName, drop.previous, drop.current, drop.previous-drop.current)
+		fmt.Fprintf(&detail, "**「%s」** %.2f → %.2f(跌 %.2f)\n",
 			drop.suiteName, drop.previous, drop.current, drop.previous-drop.current)
 		shown := drop.changes
 		if len(shown) > maxCaseChangesPerSuite {
 			shown = shown[:maxCaseChangesPerSuite]
 		}
 		for _, ch := range shown {
-			fmt.Fprintf(&b, "\n  - Case#%d %s:%s", ch.caseID, ch.prompt, caseChangeText(ch))
+			fmt.Fprintf(&text, "\n  - Case#%d %s:%s", ch.caseID, ch.prompt, caseChangeText(ch))
+			fmt.Fprintf(&detail, "  - Case#%d %s:%s\n", ch.caseID, ch.prompt, caseChangeText(ch))
 		}
 		if extra := len(drop.changes) - len(shown); extra > 0 {
-			fmt.Fprintf(&b, "\n  - …另有 %d 项变动", extra)
+			fmt.Fprintf(&text, "\n  - …另有 %d 项变动", extra)
+			fmt.Fprintf(&detail, "  - …另有 %d 项变动\n", extra)
 		}
 	}
-	return b.String()
+	return Message{
+		Text:     text.String(),
+		Title:    "评估分数大跌",
+		Template: templateOrange,
+		Fields: []Field{
+			{Label: "模型", Value: alert.modelID},
+			{Label: "评估批次", Value: fmt.Sprintf("Campaign #%d", campaign.ID)},
+			{Label: "大跌评估集", Value: fmt.Sprintf("%d 个", len(alert.drops))},
+			{Label: "告警阈值", Value: fmt.Sprintf("%.1f", ScoreDropThreshold)},
+		},
+		Detail: strings.TrimRight(detail.String(), "\n"),
+	}
 }
 
 // caseChangeText renders one case-level change: "1.00 → 未判分" for a case

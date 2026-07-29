@@ -17,10 +17,17 @@ export type UpdateSettingsPayload = Partial<AppSettings>
 export interface AlertEvent {
   id: number
   endpoint_id: number | null
-  kind: 'down' | 'recovered' | 'score_drop' | 'score_drop_skipped'
+  kind: 'down' | 'recovered' | 'score_drop' | 'score_drop_skipped' | 'test'
   message: string
   sent_ok: boolean
   created_at: string
+}
+
+// Result of POST /api/settings/test-lark (ticket 100): error carries the
+// send failure reason, never the webhook URL.
+export interface TestLarkResult {
+  sent_ok: boolean
+  error: string | null
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -33,4 +40,10 @@ export async function updateSettings(payload: UpdateSettingsPayload): Promise<Ap
 
 export async function listAlerts(limit = 50): Promise<AlertEvent[]> {
   return http.get<AlertEvent[]>(`/alerts?limit=${limit}`)
+}
+
+// Sends the fixed test message to the given webhook address (the form value,
+// not the saved setting); every attempt records a kind="test" alert event.
+export async function testLark(webhookUrl: string): Promise<TestLarkResult> {
+  return http.post<TestLarkResult>('/settings/test-lark', { webhook_url: webhookUrl })
 }

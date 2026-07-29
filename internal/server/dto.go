@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/taliove/hubscope/internal/store"
@@ -137,16 +138,21 @@ type ruleConfigDTO struct {
 // caseDTO is the API representation of a Case. rule_config is only populated
 // for verdict_type="rule" and rubric only for "judge"; the other is null.
 // sample_count is null when the case inherits the global default.
+// check_params carries the IFEval structured check parameters (a JSON array
+// of {instruction_id, kwargs}) for rule mode "ifeval" and is null otherwise
+// (ticket 97); it is seed-cast data the admin API never authors, only
+// preserves.
 type caseDTO struct {
-	ID          int64          `json:"id"`
-	SuiteID     int64          `json:"suite_id"`
-	Prompt      string         `json:"prompt"`
-	VerdictType string         `json:"verdict_type"`
-	RuleConfig  *ruleConfigDTO `json:"rule_config"`
-	Rubric      *string        `json:"rubric"`
-	Difficulty  string         `json:"difficulty"`
-	SampleCount *int           `json:"sample_count"`
-	Enabled     bool           `json:"enabled"`
+	ID          int64           `json:"id"`
+	SuiteID     int64           `json:"suite_id"`
+	Prompt      string          `json:"prompt"`
+	VerdictType string          `json:"verdict_type"`
+	RuleConfig  *ruleConfigDTO  `json:"rule_config"`
+	Rubric      *string         `json:"rubric"`
+	Difficulty  string          `json:"difficulty"`
+	SampleCount *int            `json:"sample_count"`
+	CheckParams json.RawMessage `json:"check_params"`
+	Enabled     bool            `json:"enabled"`
 }
 
 // suiteDTO is the API representation of a Suite with its cases. Version is
@@ -254,6 +260,9 @@ func toCaseDTO(c store.Case) caseDTO {
 	}
 	if c.VerdictType == "judge" {
 		dto.Rubric = c.Rubric
+	}
+	if c.CheckParams != nil {
+		dto.CheckParams = json.RawMessage(*c.CheckParams)
 	}
 	return dto
 }

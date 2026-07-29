@@ -26,17 +26,20 @@ func fetchSuites(t *testing.T, base, query string) []map[string]interface{} {
 }
 
 // TestSuitesSeeded verifies the migration ships the question-bank v3 seed
-// (ADR 0010): the four legacy suites stay listed but retired (enabled=false,
-// no capability, nadir 0), and five capability suites join the rotation with
-// 8-12 first-issue cases each across three difficulty tiers, judge cases at
-// sample_count 3 and rule cases at 1, and the knowledge suite calibrated to
-// the multiple-choice nadir floor.
+// (ADR 0010): five capability suites in the rotation with 8-12 first-issue
+// cases each across three difficulty tiers, judge cases at sample_count 3
+// and rule cases at 1, and the knowledge suite calibrated to the
+// multiple-choice nadir floor. Pre-v3 legacy suites never appear (spec 0014
+// decision B, ADR 0012): disabled suites are hard-deleted at Open and the
+// legacy bank is no longer seeded. The mmlu, gsm8k and agieval_zh
+// benchmark suites (ADR 0013, tickets 94-96) are the sixth through eighth
+// seeds: listed but disabled until the ticket-99 cutover.
 func TestSuitesSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 9 {
-		t.Fatalf("expected 9 suites (4 legacy retired + 5 capability), got %d", len(suites))
+	if len(suites) != 10 {
+		t.Fatalf("expected 8 suites (5 capability + 2 benchmark disabled), got %d", len(suites))
 	}
 
 	byKey := map[string]map[string]interface{}{}
@@ -44,23 +47,15 @@ func TestSuitesSeeded(t *testing.T) {
 		byKey[s["key"].(string)] = s
 	}
 
-	// Legacy suites: retired, not deleted; no capability; legacy nadir 0.
+	// No pre-v3 legacy suite (empty capability) may be listed.
 	for _, key := range []string{"basic", "reasoning", "coding", "chinese"} {
-		s, ok := byKey[key]
-		if !ok {
-			t.Fatalf("legacy suite %q must stay listed (retired, not deleted)", key)
+		if _, ok := byKey[key]; ok {
+			t.Errorf("legacy suite %q listed, want purged/never seeded", key)
 		}
-		if s["enabled"] != false {
-			t.Errorf("legacy suite %q enabled = %v, want false (retired)", key, s["enabled"])
-		}
-		if s["capability"] != "" {
-			t.Errorf("legacy suite %q capability = %v, want empty", key, s["capability"])
-		}
-		if s["nadir"] != 0.0 {
-			t.Errorf("legacy suite %q nadir = %v, want 0 (legacy caliber)", key, s["nadir"])
-		}
-		if got := len(s["cases"].([]interface{})); got != 12 {
-			t.Errorf("legacy suite %q kept %d cases, want 12 (retired, not deleted)", key, got)
+	}
+	for _, s := range suites {
+		if s["capability"] == "" {
+			t.Errorf("suite %q has empty capability (legacy), want capability suites only", s["key"])
 		}
 	}
 
@@ -166,11 +161,18 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
 	filtered := fetchSuites(t, ts.URL, "?capability=reasoning")
-	if len(filtered) != 1 || filtered[0]["key"] != "cap_reasoning" {
-		t.Fatalf("capability=reasoning suites = %v, want only cap_reasoning", filtered)
+	if len(filtered) != 2 {
+		t.Fatalf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
 	}
-	if filtered[0]["capability"] != "reasoning" {
-		t.Errorf("filtered suite capability = %v, want reasoning", filtered[0]["capability"])
+	byKey := map[string]map[string]interface{}{}
+	for _, s := range filtered {
+		byKey[s["key"].(string)] = s
+		if s["capability"] != "reasoning" {
+			t.Errorf("filtered suite capability = %v, want reasoning", s["capability"])
+		}
+	}
+	if byKey["cap_reasoning"] == nil || byKey["gsm8k"] == nil {
+		t.Errorf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", filtered)
 	}
 
 	// An unknown capability yields an empty list, not an error.
@@ -178,8 +180,9 @@ func TestSuitesCapabilityFilter(t *testing.T) {
 		t.Errorf("capability=nosuch suites = %v, want empty", got)
 	}
 
-	// No parameter: every suite, retired legacy ones included.
-	if got := fetchSuites(t, ts.URL, ""); len(got) != 9 {
-		t.Errorf("unfiltered suites = %d, want 9", len(got))
+	// No parameter: every suite, the full capability bank plus the disabled
+	// benchmark suites.
+	if got := fetchSuites(t, ts.URL, ""); len(got) != 10 {
+		t.Errorf("unfiltered suites = %d, want 10", len(got))
 	}
 }

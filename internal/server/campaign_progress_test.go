@@ -70,7 +70,10 @@ func assertCell(t *testing.T, row map[string]interface{}, suiteKey, status strin
 // (3 samples) judged and is blocked on the fourth judge call inside the
 // second judge case, and gamma has no cap_language results yet.
 func TestCampaignReportProgressGrid(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the running report with cap_language frozen
+	// mid-flight (judge gate after 3 calls); drained by releaseModel +
+	// waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")

@@ -154,7 +154,7 @@ func TestRollupAndCleanupRegisterTasks(t *testing.T) {
 	start := time.Now().UTC()
 	clock := scheduler.NewFakeClock(start)
 	ts := httptest.NewServer(server.New(db,
-		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{})))
+		server.WithNow(clock.Now), server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery()))
 	t.Cleanup(ts.Close)
 
 	stub := newStubHubServer()

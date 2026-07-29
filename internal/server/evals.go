@@ -11,12 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/taliove/hubscope/internal/evaluator"
+	"github.com/taliove/hubscope/internal/evaluator/ifeval"
 	"github.com/taliove/hubscope/internal/store"
 )
 
 // validVerdictTypes and validRuleModes enumerate the accepted case configs.
+// mcq (ADR 0013), numeric (ticket 95), output_match (ticket 98) and
+// ifeval (ticket 97) must stay listed or admins could not curate benchmark
+// cases through the case API (PATCH revalidates the merged case).
 var validVerdictTypes = map[string]bool{"rule": true, "judge": true}
-var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true}
+var validRuleModes = map[string]bool{"exact": true, "regex": true, "contains": true, "mcq": true, "numeric": true, "output_match": true, "ifeval": true}
 
 // validDifficulties enumerates the accepted difficulty tiers.
 var validDifficulties = map[string]bool{"basic": true, "intermediate": true, "hard": true}
@@ -166,6 +171,11 @@ func (s *Server) handlePatchCase(w http.ResponseWriter, r *http.Request) {
 	if req.RuleConfig != nil {
 		merged.RuleMode = &req.RuleConfig.Mode
 		merged.RuleExpected = &req.RuleConfig.Expected
+		if req.RuleConfig.Mode != "ifeval" {
+			// check_params only applies to the ifeval mode; switching a case
+			// to another mode drops the params from the minted case.
+			merged.CheckParams = nil
+		}
 	}
 	if req.Rubric != nil {
 		merged.Rubric = req.Rubric
@@ -226,7 +236,8 @@ func sameCaseContent(a, b store.Case) bool {
 		strPtrEqual(a.RuleExpected, b.RuleExpected) &&
 		strPtrEqual(a.Rubric, b.Rubric) &&
 		a.Difficulty == b.Difficulty &&
-		intPtrEqual(a.SampleCount, b.SampleCount)
+		intPtrEqual(a.SampleCount, b.SampleCount) &&
+		strPtrEqual(a.CheckParams, b.CheckParams)
 }
 
 // strPtrEqual compares two nullable strings by value.
@@ -258,6 +269,18 @@ func parseSampleCountPatch(raw json.RawMessage) (*int, error) {
 	return &n, nil
 }
 
+// numericExpectationPattern accepts the spellings a numeric expectation may
+// use: optional leading "$", optional sign, integer part either plain or
+// with correctly placed comma thousands separators, optional decimal part.
+// "1,000" and "14000" pass; "1,2,3" does not (misplaced separators).
+var numericExpectationPattern = regexp.MustCompile(`^\$?-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$`)
+
+// numericExpectationValid reports whether s canonicalizes to a plain number
+// the numeric verdict could ever match.
+func numericExpectationValid(s string) bool {
+	return numericExpectationPattern.MatchString(strings.TrimSpace(s))
+}
+
 // validateCase checks a fully-populated case for consistency.
 func validateCase(c store.Case) error {
 	if c.Prompt == "" {
@@ -268,14 +291,50 @@ func validateCase(c store.Case) error {
 	}
 	if c.VerdictType == "rule" {
 		if c.RuleMode == nil || !validRuleModes[*c.RuleMode] {
-			return fmt.Errorf("rule_config.mode must be exact, regex or contains")
+			return fmt.Errorf("rule_config.mode must be exact, regex, contains, mcq, numeric, output_match or ifeval")
 		}
-		if c.RuleExpected == nil || *c.RuleExpected == "" {
+		if *c.RuleMode == "ifeval" {
+			// An ifeval case carries structured check parameters instead of
+			// an expected string (ticket 97). They are cast only by the
+			// benchmark seed — the admin API never authors check_params, so
+			// this branch is reachable only when editing an existing seeded
+			// case, and it revalidates the params fail-closed.
+			if c.CheckParams == nil {
+				return fmt.Errorf("rule_config.mode ifeval requires seeded check_params")
+			}
+			if err := ifeval.Validate(*c.CheckParams); err != nil {
+				return fmt.Errorf("check_params is not valid IFEval check parameters: %v", err)
+			}
+		} else if c.RuleExpected == nil || *c.RuleExpected == "" {
 			return fmt.Errorf("rule_config.expected is required")
 		}
 		if *c.RuleMode == "regex" {
 			if _, err := regexp.Compile(*c.RuleExpected); err != nil {
 				return fmt.Errorf("rule_config.expected is not a valid regex: %v", err)
+			}
+		}
+		if *c.RuleMode == "mcq" {
+			// An mcq expectation is one option letter; anything else could
+			// never score a hit (ADR 0013).
+			exp := strings.ToUpper(strings.TrimSpace(*c.RuleExpected))
+			if len(exp) != 1 || !strings.Contains("ABCD", exp) {
+				return fmt.Errorf("rule_config.expected must be a single option letter A-D for mcq")
+			}
+		}
+		if *c.RuleMode == "numeric" {
+			// A numeric expectation must canonicalize to a plain number
+			// (sign, decimals, thousands separators allowed); anything else
+			// could never score a hit (ticket 95).
+			if !numericExpectationValid(*c.RuleExpected) {
+				return fmt.Errorf("rule_config.expected must be a number for numeric")
+			}
+		}
+		if *c.RuleMode == "output_match" {
+			// An output_match expectation is the precomputed standard output
+			// as a Python literal; anything else could never score a hit
+			// (ticket 98). Validation is pure parsing — no code execution.
+			if _, ok := evaluator.CanonicalPyLiteral(*c.RuleExpected); !ok {
+				return fmt.Errorf("rule_config.expected must be a Python literal for output_match")
 			}
 		}
 	}
@@ -367,11 +426,18 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 
 	// Single-instance async execution: detached context so the run survives
 	// the request; state is persisted in the store for polling. Settling goes
-	// through the evaluator so a done campaign fires the alert hook.
-	go func() {
+	// through the evaluator so a done campaign fires the alert hook. Tests
+	// may force synchronous execution via WithSyncEval (structural
+	// synchronization point — state polling precedes the tail writes).
+	exec := func() {
 		_ = s.evaluator.RunEval(context.Background(), run.ID, req.ModelIDs)
 		s.evaluator.SettleCampaign(context.Background(), campaign.ID)
-	}()
+	}
+	if s.syncEval {
+		exec()
+	} else {
+		go exec()
+	}
 
 	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("suite_id=%d models=%d judge=%q", req.SuiteID, len(req.ModelIDs), judgeModel), "accepted")

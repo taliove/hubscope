@@ -187,8 +187,16 @@ export type VerdictType = 'rule' | 'judge'
 export type Difficulty = 'basic' | 'intermediate' | 'hard'
 
 export interface RuleConfig {
-  mode: 'exact' | 'regex' | 'contains'
+  mode: 'exact' | 'regex' | 'contains' | 'mcq' | 'numeric' | 'output_match' | 'ifeval'
   expected: string
+}
+
+// One IFEval verifiable instruction (ticket 97): the official instruction id
+// plus its kwargs, as cast into check_params by the benchmark seed. Seed-cast
+// data — the admin case API never authors it, only preserves it on edits.
+export interface IFEvalInstruction {
+  instruction_id: string
+  kwargs: Record<string, unknown>
 }
 
 // Named EvalCase to avoid clashing with the JS reserved-word flavor of "Case".
@@ -203,12 +211,13 @@ export interface EvalCase {
   rubric: string | null // only for verdict_type "judge"
   difficulty: Difficulty
   sample_count: number | null // null = inherit the global default
+  check_params: IFEvalInstruction[] | null // only for rule mode "ifeval"
   enabled: boolean
 }
 
-// Capability dimension of question-bank v3 (ADR 0010); '' marks pre-v3
-// legacy suites (retired but still listed for history).
-export type Capability = 'instruction' | 'reasoning' | 'coding' | 'language' | 'knowledge' | ''
+// Capability dimension of question-bank v3 (ADR 0010). Pre-v3 legacy suites
+// no longer exist: disabled suites are hard-deleted server-side (ADR 0012).
+export type Capability = 'instruction' | 'reasoning' | 'coding' | 'language' | 'knowledge'
 
 export interface Suite {
   id: number
@@ -217,7 +226,7 @@ export interface Suite {
   version: number // question-bank version, bumps on every case mutation
   capability: Capability
   nadir: number // normalization constant (ADR 0009); 0 = legacy raw-mean caliber
-  enabled: boolean // false = retired: excluded from sweeps/weekly batches, still listed
+  enabled: boolean // false = retired; retired suites are purged server-side and never returned
   cases: EvalCase[]
 }
 
@@ -263,6 +272,25 @@ export interface CampaignDetail extends Campaign {
   runs: EvalRun[]
 }
 
+// Live-feed entry (issue #17): one judged-case event of a campaign, pulled
+// incrementally by id cursor (GET /campaigns/{id}/live-feed, console-only —
+// session + hub-isolated, never on the shared/public surface). score is the
+// raw 0~1 per-case score (null = judge failure, never zero); the 0-100
+// conversion happens at render through formatScore (ui-guidelines §7).
+// verdict_type is 'rule' | 'judge', or '' when the case was purged.
+export interface LiveFeedEntry {
+  id: number
+  model_id: string
+  suite_key: string
+  suite_name: string
+  case_id: number
+  case_prompt: string
+  verdict_type: string
+  score: number | null
+  latency_ms: number
+  created_at: string // RFC3339
+}
+
 // Campaign report types (ticket 31): the leaderboard over a campaign's done
 // runs. All scores are on the 0-100 scale, nadir-normalized per suite (ADR
 // 0009); null means unscored.
@@ -296,6 +324,14 @@ export interface ReportRow {
   total_delta: number | null // total vs the baseline campaign, null when not comparable
   suite_scores: Record<string, number | null> // per suite key
   cells: ReportCell[] // per-suite progress detail, one per campaign suite
+  // Coverage gate (ticket 91 contract, spec 0014 decision A): settled
+  // (done/failed) batches only — live rows never carry the key. false means
+  // judging is incomplete: the row forfeits total/rank/delta and sinks below
+  // every complete row; the per-suite scores stay as judged.
+  complete?: boolean
+  // Present only when complete === false: how many gating suites (covered
+  // suites with enabled cases) went unjudged — the watermark's N.
+  missing_suites?: number
 }
 
 // View switch of the unfinished-batch board (ticket 52): the progress grid

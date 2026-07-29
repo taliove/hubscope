@@ -1,6 +1,6 @@
 # Ticket 60: 评估体系集成到状态板与分享
 
-Status: planned
+Status: done(2026-07-28 核对销账:实现已在 main——eval-summary/overview/详情页/单模型卡;Q4 被批 59 取代)
 
 ## 背景
 

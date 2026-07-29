@@ -46,7 +46,9 @@ func rowModelIDs(rows []map[string]interface{}) []string {
 // cap_instruction case set recorded (effectively done cells), gamma has zero
 // results anywhere — yet must already occupy a row with a pending cell.
 func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the mid-flight live board (gamma frozen on its
+	// first answer call); drained by releaseModel + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -102,7 +104,9 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 // unselected model never appears), no less (a selected model shows pending
 // before its first result).
 func TestManualRunMembersMatchSelection(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: observes the mid-flight live board (gamma frozen on its
+	// first answer call); drained by releaseModel + waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	alphaID := createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	gammaID := createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -140,7 +144,9 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 // a model deleted mid-batch must drop out of the live board (members join
 // the models table at read time) — the snapshot never resurrects it.
 func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	// Async eval: deletes a model mid-batch while gamma is frozen; drained by
+	// releaseModel + waitCampaignStatus(terminal).
+	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	betaID := createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
@@ -169,6 +175,9 @@ func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
 	}
 
 	stub.releaseModel("gamma-model")
+	// Drain the released sweep: campaign-terminal covers every tail write
+	// (no webhook configured, so the alert hook only reads settings).
+	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone, store.CampaignStatusFailed)
 }
 
 // stagePreMembersDatabase writes a pre-ticket-53 database: the current
@@ -176,6 +185,9 @@ func TestDeletedModelStaysOffLiveMemberBoard(t *testing.T) {
 // run recorded results for two models. It hand-copies the schema as of
 // ticket 53 (2026-07-23); later migrations do not need to be mirrored here —
 // the fixture only has to look like a database that predates campaign_models.
+// The staged suite carries a non-empty capability so the ticket-93
+// disabled-suite purge (which retires and deletes pre-v3 capability=”
+// suites) leaves the fixture's run history intact.
 func stagePreMembersDatabase(t *testing.T, path string) {
 	t.Helper()
 	conn, err := sql.Open("sqlite", path)
@@ -207,7 +219,8 @@ func stagePreMembersDatabase(t *testing.T, path string) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
-			version INTEGER NOT NULL DEFAULT 1
+			version INTEGER NOT NULL DEFAULT 1,
+			capability TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE cases (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +274,7 @@ func stagePreMembersDatabase(t *testing.T, path string) {
 		`INSERT INTO hubs (name, base_url, token, created_at) VALUES ('legacy hub', 'http://hub', 'tok', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO models (hub_id, model_id, family, created_at) VALUES (1, 'legacy-alpha', 'gpt', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO models (hub_id, model_id, family, created_at) VALUES (1, 'legacy-beta', 'gpt', '2026-07-01T00:00:00Z')`,
-		`INSERT INTO suites (key, name) VALUES ('legacy_basic', '遗留基础')`,
+		`INSERT INTO suites (key, name, capability) VALUES ('legacy_basic', '遗留基础', 'instruction')`,
 		`INSERT INTO cases (suite_id, prompt, verdict_type, created_at) VALUES (1, '1+1=?', 'rule', '2026-07-01T00:00:00Z')`,
 		`INSERT INTO campaigns ("trigger", status, started_at, finished_at, created_at) VALUES ('manual', 'done', '2026-07-01T01:00:00Z', '2026-07-01T01:05:00Z', '2026-07-01T01:00:00Z')`,
 		`INSERT INTO eval_runs (campaign_id, suite_id, "trigger", judge_model, status, started_at, finished_at) VALUES (1, 1, 'manual', 'fake-judge', 'done', '2026-07-01T01:00:00Z', '2026-07-01T01:05:00Z')`,

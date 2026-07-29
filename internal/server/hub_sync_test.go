@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/taliove/hubscope/internal/server"
 )
 
 // getHubViaAPI fetches GET /api/hubs and returns the hub with the given ID.
@@ -84,7 +87,17 @@ func TestCreateHubTriggersAutoSync(t *testing.T) {
 // and 404 for an unknown hub.
 func TestHubSyncEndpointConflictAndRerun(t *testing.T) {
 	db := openTempDB(t)
-	ts := newTestAPIServer(t, db)
+	// Explicit async server: this test asserts the in-flight conflict (409),
+	// which is unobservable under newTestAPIServer's WithSyncDiscovery seam —
+	// the auto-sync must stay parked inside /v1/models while the manual
+	// trigger arrives (ticket 100). Drain: waitForHubSyncStatus covers the
+	// sync-result write, and waitTasksByType(success, 2) below covers the
+	// task-log tail write that follows it.
+	ts := httptest.NewServer(server.New(db,
+		server.WithRateLimits(server.RateLimits{}),
+		server.WithSessionSecret(testSessionSecret),
+	))
+	t.Cleanup(ts.Close)
 
 	stub := newDiscoveryStubHub(t, []string{"model-a"})
 	// The auto-sync triggered by hub creation blocks inside /v1/models,
@@ -123,6 +136,9 @@ func TestHubSyncEndpointConflictAndRerun(t *testing.T) {
 		t.Fatal("manual re-sync should register model-b")
 	}
 	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+	// Full drain of the async sync: the task-log write trails the sync-status
+	// write, so also wait for both discovery tasks (auto + manual) to settle.
+	waitTasksByType(t, ts.URL, "discovery_sync", "success", 2)
 
 	resp = syncHubViaAPI(t, ts.URL, 99999)
 	resp.Body.Close()

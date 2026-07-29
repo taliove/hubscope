@@ -4,7 +4,7 @@
 
 **Blocked by:** 61
 
-**Status:** ready-for-agent
+**Status:** done(2026-07-28 核对销账:cmd/hubscope/admin.go + admin_test.go 均在,零 ADMIN_PASSWORD 引用)
 
 - [ ] `cmd/hubscope/admin.go`(新):`runAdminCreate(args)` 解析 flag、bcrypt.GenerateFromPassword、调 `db.CreateUser(username, hash, hubID, role)`;重名(ErrUsernameTaken)返回友好错误退出;用户名非空 + 密码≥8 + hub_id 存在性校验
 - [ ] `cmd/hubscope/main.go`:os.Args 分派(`os.Args[1]=="admin"` → runAdmin(os.Args[2:]))+ 硬删 ADMIN_PASSWORD env 读取 + deprecation warning(57-62 整段)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/taliove/hubscope/internal/store"
@@ -154,6 +155,63 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		s.InvalidateOverview()
 	}
 	writeData(w, http.StatusOK, dto)
+}
+
+// testLarkRequest is the POST /api/settings/test-lark body: the address
+// under test is the one in the form, not the saved setting (ticket 100
+// decision 1 — verify before saving).
+type testLarkRequest struct {
+	WebhookURL string `json:"webhook_url"`
+}
+
+// testLarkResult is the response data: the send outcome and, on failure, the
+// reason. The error text never contains the webhook URL (LarkSender strips
+// url.Error, W6).
+type testLarkResult struct {
+	SentOK bool    `json:"sent_ok"`
+	Error  *string `json:"error"`
+}
+
+// handleTestLark handles POST /api/settings/test-lark (super_admin): it
+// sends the fixed test message through the process-wide alert evaluator and
+// reports the outcome. Every attempt — success or failure — is recorded as
+// an alert_events row with kind="test" inside the evaluator. The manual test
+// is not gated by alert_enabled (ticket 100 decision 3: the switch governs
+// automatic alerts only).
+func (s *Server) handleTestLark(w http.ResponseWriter, r *http.Request) {
+	var req testLarkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	webhookURL := strings.TrimSpace(req.WebhookURL)
+	if !isAbsoluteHTTPURL(webhookURL) {
+		writeError(w, http.StatusBadRequest, "webhook_url must be an absolute http(s) URL")
+		return
+	}
+
+	sendErr := s.alerter.SendTest(r.Context(), webhookURL)
+	result := "success"
+	var errText *string
+	if sendErr != nil {
+		result = "failure"
+		msg := sendErr.Error()
+		errText = &msg
+	}
+	// Audit the action and outcome only — the webhook URL carries the bot
+	// token and stays out of the audit log (W6).
+	s.audit(r, "settings.test_lark", "settings", "", "", result)
+	writeData(w, http.StatusOK, testLarkResult{SentOK: sendErr == nil, Error: errText})
+}
+
+// isAbsoluteHTTPURL accepts only absolute http/https URLs, rejecting empty
+// input, relative references, and non-HTTP schemes (file://, ftp://, …).
+func isAbsoluteHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // validateSuiteWeights checks a suite_weights patch: keys must name existing

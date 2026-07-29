@@ -170,7 +170,7 @@ func TestEvalRunRegistersTask(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	dumbID := createEvalModel(t, ts.URL, stub.URL, "dumb-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID, dumbID)
 	waitEvalDone(t, ts.URL, runID)
@@ -232,7 +232,10 @@ func TestEvalRunRegistersTask(t *testing.T) {
 func TestEvalRunTaskLogsJudgeFailure(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "chinese")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
+
+	// The product-intro judge case gets unparseable verdicts on every sample.
+	stub.setJudgeSeq("保温杯", "I cannot produce a score for this.")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	waitEvalDone(t, ts.URL, runID)
@@ -241,12 +244,11 @@ func TestEvalRunTaskLogsJudgeFailure(t *testing.T) {
 	detail := getTaskDetail(t, ts.URL, int64(task["id"].(float64)))
 	logs := taskLogs(t, detail)
 
-	// The chinese suite's judge cases are all scored 0.75 by the stub except
-	// the formal-rewrite case, which gets a garbage judge reply and must
-	// surface as a warn-level judge failure line, never as score 0.
-	caseCount := enabledCaseCount(t, ts.URL, suiteID)
-	if got := countLogLines(logs, "info", "score=0.75"); got != caseCount-1 {
-		t.Errorf("expected %d judged score=0.75 lines, got %d (logs: %v)", caseCount-1, got, logs)
+	// The language suite's four judge cases are scored 0.75 by the stub
+	// except the scripted product-intro case, whose garbage judge replies
+	// must surface as a warn-level judge failure line, never as score 0.
+	if got := countLogLines(logs, "info", "score=0.75"); got != 3 {
+		t.Errorf("expected 3 judged score=0.75 lines, got %d (logs: %v)", got, logs)
 	}
 	if got := countLogLines(logs, "warn", "judge failed"); got != 1 {
 		t.Errorf("expected 1 judge failure warn line, got %d (logs: %v)", got, logs)
@@ -266,7 +268,10 @@ func TestFailedEvalRunTaskMarkedFailed(t *testing.T) {
 
 	stub := newEvalStubHub()
 	t.Cleanup(stub.Close)
-	srv := server.New(db, server.WithRateLimits(server.RateLimits{}))
+	// Eval runs go through the weekly worker (asynchronous by design);
+	// drain = cancel + wait for worker.Run, inside which RunCampaign
+	// executes synchronously (ticket 100). Discovery stays inline.
+	srv := server.New(db, server.WithRateLimits(server.RateLimits{}), server.WithSyncDiscovery())
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -352,7 +357,7 @@ func TestFailedEvalRunTaskMarkedFailed(t *testing.T) {
 func TestTaskListPaginationAndFilters(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "basic")
+	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
 
 	run1 := triggerEval(t, ts.URL, suiteID, smartID)
 	waitTaskStatus(t, ts.URL, run1, "success")

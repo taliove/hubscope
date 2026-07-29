@@ -131,28 +131,38 @@ func (e *Evaluator) transition(ctx context.Context, endpointID int64, kind strin
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
 		EndpointID: &endpointID,
 		Kind:       kind,
-		Message:    message,
+		Message:    message.Text,
 		SentOK:     sentOK,
 	}); err != nil {
 		slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
 	}
 }
 
-// buildMessage composes the alert text with the model ID, protocol, and the
-// latest error summary for down alerts.
-func (e *Evaluator) buildMessage(endpointID int64, kind string) (string, error) {
+// buildMessage composes the alert with the model ID, protocol, and the
+// latest error summary for down alerts — once, as a Message whose plain text
+// is persisted and whose fields render the card (ticket 101: the two
+// renderings share this single source).
+func (e *Evaluator) buildMessage(endpointID int64, kind string) (Message, error) {
 	endpoint, err := e.db.GetEndpoint(endpointID)
 	if err != nil {
-		return "", fmt.Errorf("load endpoint: %w", err)
+		return Message{}, fmt.Errorf("load endpoint: %w", err)
 	}
 	model, err := e.db.GetModel(endpoint.ModelID)
 	if err != nil {
-		return "", fmt.Errorf("load model: %w", err)
+		return Message{}, fmt.Errorf("load model: %w", err)
 	}
 
 	if kind == store.AlertKindRecovered {
-		return fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",
-			model.ModelID, endpoint.Protocol), nil
+		return Message{
+			Text: fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",
+				model.ModelID, endpoint.Protocol),
+			Title:    "端点恢复",
+			Template: templateGreen,
+			Fields: []Field{
+				{Label: "模型", Value: model.ModelID},
+				{Label: "协议", Value: endpoint.Protocol},
+			},
+		}, nil
 	}
 
 	lastError := "未知错误"
@@ -160,6 +170,16 @@ func (e *Evaluator) buildMessage(endpointID int64, kind string) (string, error) 
 		latest != nil && !latest.OK && latest.ErrorSummary != nil {
 		lastError = *latest.ErrorSummary
 	}
-	return fmt.Sprintf("【HubScope】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
-		model.ModelID, endpoint.Protocol, status.DownThreshold, lastError), nil
+	return Message{
+		Text: fmt.Sprintf("【HubScope】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
+			model.ModelID, endpoint.Protocol, status.DownThreshold, lastError),
+		Title:    "端点告警",
+		Template: templateRed,
+		Fields: []Field{
+			{Label: "模型", Value: model.ModelID},
+			{Label: "协议", Value: endpoint.Protocol},
+			{Label: "连续失败", Value: fmt.Sprintf("%d 次", status.DownThreshold)},
+			{Label: "最近错误", Value: lastError},
+		},
+	}, nil
 }
