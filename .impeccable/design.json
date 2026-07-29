@@ -1,0 +1,296 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-29T09:00:00Z",
+  "title": "Design System: HubScope",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "电波青 Teal-600",
+        "canonical": "#0c8078",
+        "tonalRamp": [
+          "#063f3d",
+          "#085350",
+          "#0a6963",
+          "#0c8078",
+          "#0faea2",
+          "#30c4b8",
+          "#68dccf",
+          "#effcfa"
+        ],
+        "darkValue": "#0faea2"
+      },
+      "success": {
+        "role": "functional",
+        "displayName": "Success 绿",
+        "canonical": "#059669",
+        "tonalRamp": [
+          "#064e3b",
+          "#065f46",
+          "#047857",
+          "#059669",
+          "#10b981",
+          "#34d399",
+          "#a7f3d0",
+          "#ecfdf5"
+        ]
+      },
+      "warning": {
+        "role": "functional",
+        "displayName": "Warning 黄",
+        "canonical": "#d97706",
+        "tonalRamp": [
+          "#78350f",
+          "#92400e",
+          "#b45309",
+          "#d97706",
+          "#f59e0b",
+          "#fbbf24",
+          "#fde68a",
+          "#fffbeb"
+        ]
+      },
+      "danger": {
+        "role": "functional",
+        "displayName": "Danger 红",
+        "canonical": "#dc2626",
+        "tonalRamp": [
+          "#7f1d1d",
+          "#991b1b",
+          "#b91c1c",
+          "#dc2626",
+          "#ef4444",
+          "#f87171",
+          "#fecaca",
+          "#fef2f2"
+        ]
+      },
+      "failing": {
+        "role": "functional",
+        "displayName": "告警橙 Orange-700(具名例外)",
+        "canonical": "#c2410c",
+        "tonalRamp": [
+          "#7c2d12",
+          "#9a3412",
+          "#c2410c",
+          "#ea580c",
+          "#f97316",
+          "#fb923c",
+          "#fed7aa",
+          "#fff7ed"
+        ],
+        "darkValue": "#fb923c"
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "青灰 Gray-900",
+        "canonical": "#0f1b20",
+        "tonalRamp": [
+          "#0f1b20",
+          "#1e2b31",
+          "#324249",
+          "#45565c",
+          "#617379",
+          "#91a3a8",
+          "#c7d3d6",
+          "#f7fafb"
+        ],
+        "darkValue": "#e2e8f0"
+      },
+      "page-bg": {
+        "role": "neutral",
+        "displayName": "青灰 Gray-50",
+        "canonical": "#f7fafb",
+        "darkValue": "#0f1115"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "卡面白",
+        "canonical": "#ffffff",
+        "darkValue": "#17191d"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "消费页主视觉大数字(健康横幅结论、可用率大数字);禁用于管理台标题与正文。"
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "品牌区标题。"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "页面标题、关键数字。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "正文基准、表单、表格主列。"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "辅助/标签/时间戳。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-sm",
+        "value": "0 1px 2px rgba(15,27,32,0.05)",
+        "darkValue": "0 1px 2px rgba(0,0,0,0.3)",
+        "purpose": "最轻浮起,少用"
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 2px 8px rgba(15,27,32,0.08)",
+        "darkValue": "0 2px 12px rgba(0,0,0,0.4)",
+        "purpose": "可点卡片 hover 反馈"
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 8px 24px rgba(15,27,32,0.12)",
+        "darkValue": "0 6px 24px rgba(0,0,0,0.5)",
+        "purpose": "浮层(弹窗/抽屉/下拉)"
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-standard",
+        "value": "0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "统一过渡;hs-blink(failing 闪烁)是唯一动画,独占告警语义"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "content-max",
+        "value": "1200px",
+        "note": "桌面优先,内容区居中;窄屏不阻断即可,无移动端断点体系"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "电波青底白字主按钮,页面主行动唯一。",
+      "html": "<button class=\"ds-btn-primary\">触发同步</button>",
+      "css": ".ds-btn-primary { background: var(--hs-brand, #0c8078); color: #fff; border: none; border-radius: 4px; height: 32px; padding: 0 16px; font-size: 14px; font-weight: 400; cursor: pointer; transition: background 0.2s cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: var(--hs-brand-hover, #0faea2); } .ds-btn-primary:active { background: var(--hs-brand-active, #0a6963); } .ds-btn-primary:focus-visible { outline: 2px solid var(--hs-brand, #0c8078); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "无色底文字按钮,卡片内操作与图标按钮(分享入口、主题切换)。",
+      "html": "<button class=\"ds-btn-text\">↗ 分享</button>",
+      "css": ".ds-btn-text { background: transparent; color: var(--hs-brand, #0c8078); border: none; border-radius: 4px; height: 32px; padding: 0 8px; font-size: 14px; cursor: pointer; transition: color 0.2s; } .ds-btn-text:hover { color: var(--hs-brand-hover, #0faea2); } .ds-btn-text:focus-visible { outline: 2px solid var(--hs-brand, #0c8078); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat-by-default 静态卡片:1px 描边分层,不吃阴影。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">分组标题</div><div class=\"ds-card-body\">卡片内容靠描边与表面色阶分层,静态不用阴影。</div></div>",
+      "css": ".ds-card { background: var(--hs-bg-card, #ffffff); border: 1px solid var(--hs-border, #e0e8ea); border-radius: 8px; padding: 16px; } .ds-card-title { font-size: 16px; font-weight: 600; color: var(--hs-text-primary, #0f1b20); margin-bottom: 12px; } .ds-card-body { font-size: 14px; color: var(--hs-text-regular, #324249); line-height: 1.5; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "1px 描边输入框,电波青聚焦;管理台限宽 560/320 档。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"按模型名过滤\">",
+      "css": ".ds-input { background: var(--hs-bg-card, #ffffff); border: 1px solid var(--hs-border, #e0e8ea); border-radius: 4px; height: 32px; padding: 0 12px; font-size: 14px; color: var(--hs-text-regular, #324249); transition: border-color 0.2s; width: 320px; } .ds-input::placeholder { color: var(--hs-text-placeholder, #91a3a8); } .ds-input:focus { outline: none; border-color: var(--hs-brand, #0c8078); }"
+    },
+    {
+      "name": "Status Badge(唯一状态灯)",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "全站唯一 endpoint 状态展示:语义色圆点 + 状态词双编码;告警态橙 + 闪烁。",
+      "html": "<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-degraded\"></span><span class=\"ds-word\" style=\"color:#d97706\">降级</span><span class=\"ds-cause\">· 可用性 + 延迟</span></span>&nbsp;&nbsp;<span class=\"ds-badge\"><span class=\"ds-dot ds-dot-failing\"></span><span class=\"ds-word\" style=\"color:#c2410c\">告警</span></span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; } .ds-dot-degraded { background: #d97706; } .ds-dot-failing { background: #c2410c; animation: ds-blink 1.2s infinite; } .ds-word { font-weight: 400; } .ds-cause { color: var(--hs-text-secondary, #617379); } @keyframes ds-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }"
+    },
+    {
+      "name": "24h 分段条",
+      "kind": "custom",
+      "description": "24 格填满式时间条,格=一小时,三档着色 + 无数据灰;xs(2px)圆角专属。",
+      "html": "<div class=\"ds-strip\"><i style=\"background:#059669\"></i><i style=\"background:#059669\"></i><i style=\"background:#d97706\"></i><i style=\"background:#059669\"></i><i style=\"background:#dc2626\"></i><i style=\"background:#059669\"></i><i style=\"background:#e0e8ea\"></i><i style=\"background:#059669\"></i></div>",
+      "css": ".ds-strip { display: flex; gap: 2px; } .ds-strip i { flex: 1; height: 16px; border-radius: 2px; display: block; }"
+    },
+    {
+      "name": "Navigation Header",
+      "kind": "nav",
+      "description": "品牌位左置,当前导航电波青 + 下划线,操作区右置。",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-brand\">⌾ HubScope</span><span class=\"ds-links\"><a class=\"ds-active\" href=\"#\">状态总览</a><a href=\"#\">评估榜单</a><a href=\"#\">任务中心</a></span><span class=\"ds-ops\">☾ 退出</span></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 24px; height: 56px; padding: 0 24px; background: var(--hs-bg-card, #fff); border-bottom: 1px solid var(--hs-border, #e0e8ea); font-size: 14px; } .ds-brand { font-family: ui-monospace, \"SF Mono\", Consolas, monospace; font-weight: 700; font-size: 16px; color: var(--hs-text-primary, #0f1b20); } .ds-links { display: flex; gap: 20px; flex: 1; } .ds-links a { color: var(--hs-text-regular, #324249); text-decoration: none; padding: 4px 2px; } .ds-links a.ds-active { color: var(--hs-brand, #0c8078); border-bottom: 2px solid var(--hs-brand, #0c8078); } .ds-ops { color: var(--hs-text-secondary, #617379); }"
+    },
+    {
+      "name": "计数 Chip(胶囊)",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "full(999px)圆角胶囊,计数/汇总入口;可点,再点取消。",
+      "html": "<span class=\"ds-chip\"><i style=\"background:#059669\"></i>正常 8</span> <span class=\"ds-chip\"><i style=\"background:#d97706\"></i>降级 15</span> <span class=\"ds-chip ds-chip-active\"><i style=\"background:#c2410c\"></i>告警 1</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 12px; border-radius: 999px; background: var(--hs-bg-hover, #eff4f5); font-size: 13px; color: var(--hs-text-regular, #324249); cursor: pointer; border: 1px solid transparent; } .ds-chip i { width: 8px; height: 8px; border-radius: 50%; } .ds-chip:hover { border-color: var(--hs-border, #e0e8ea); } .ds-chip-active { border-color: var(--hs-brand, #0c8078); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "值班室信号墙 (The On-Call Signal Wall)",
+    "overview": "HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动浮顶,一切为扫读与投屏服务。三类读者——3 秒看屏的状态板读者、高密度作业的管理台读者、隔着分享链接的外部接收者——墙对每个人都诚实:结论标注统计范围,没有数据就断线,失败不冒充空态。审美语调:克制、精确、冷峻。灰阶为主,用色克制,描边分层;情绪由语义色承担,不由装饰承担。",
+    "keyCharacteristics": [
+      "三层令牌架构,亮/暗双主题一等公民,暗色只覆盖语义层",
+      "Flat-by-default:静态靠 1px 描边分层,阴影只表达可点/浮层",
+      "4px 基准网格,密度按读者分档(消费页 16px / 管理台 12px)",
+      "状态双编码:色 + 词同场,闪烁是 failing 告警独占语义",
+      "Element Plus 组件体系,不自造表单/弹窗/表格/分页"
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "品牌电波青在任何单屏上是稀缺资源:主按钮一处、当前导航一处。它不渲染大背景、不染卡片、不作标题色——稀有性就是信号强度。",
+        "section": "colors"
+      },
+      {
+        "name": "The Double-Encoding Rule",
+        "body": "状态永远色 + 词双编码同场;只用颜色表达状态的呈现都是缺陷。",
+        "section": "colors"
+      },
+      {
+        "name": "The Blink-Is-Failing Rule",
+        "body": "全站唯一动画是 failing 告警的 hs-blink 闪烁;运行状态、字标、装饰一律静止。",
+        "section": "colors"
+      },
+      {
+        "name": "The Display Anchor Rule",
+        "body": "display 档(28px)是 3 秒读者的视觉锚点,一页至多一两处,永远是最值得记住的数字。",
+        "section": "typography"
+      },
+      {
+        "name": "The Density-By-Reader Rule",
+        "body": "密度档位看读者不看登录态:3 秒场景给呼吸(16px),作业场景给密度(12px)。",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "静态卡片 shadow=never + 1px 描边;阴影只在可点 hover 与浮层。静态吃阴影 = 谎报可点性。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Radius-By-Layer Rule",
+        "body": "圆角跟层级走:控件 4、面板 8、时间格 2、胶囊 999。",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do 只消费语义令牌;调色值改 tokens.css,调暗色观感改 semantics.css html.dark 块",
+      "Do 让严重度驱动组织:视觉权重 = 业务严重度",
+      "Do 用描边与表面色阶分层,静态元素保持 flat",
+      "Do 状态色 + 词双编码;长文本截断 + hover 全显;三态齐备",
+      "Do 导出物料恒亮主题;离屏捕获 absolute left:-10000px"
+    ],
+    "donts": [
+      "Don't 硬编码色值、书写 --el-*、用刻度外 z-index/间距/圆角字面量",
+      "Don't 引入调色板外新色相(failing 橙是唯一具名例外)",
+      "Don't 给运行状态/字标/装饰加动画——闪烁是告警独占语义",
+      "Don't 用渐变装饰/大圆角/彩色背景块/营销物料;BrandMark 渐变是唯一允许的渐变",
+      "Don't 让局部集合冒充全局结论;零匹配永不显示「全部正常」"
+    ]
+  }
+}

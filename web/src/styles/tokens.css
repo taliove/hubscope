@@ -1,7 +1,7 @@
 /* ==========================================================================
    tokens.css — Layer 1: raw scales (theme-independent "ruler").
    Only scales whose values are identical across light/dark themes live here.
-   Sole source of truth: .claude/rules/ui-guidelines.md §2 (ticket 73 brand
+   Sole source of truth: DESIGN.md (frontmatter, GH #49; ticket 73 brand
    merge into the ProxyHub "modern minimal tool" aesthetic).
    Components must NOT consume this layer directly — the single exception is
    BrandMark's gradient stops (a graphic mark, not semantic expression).

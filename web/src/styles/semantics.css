@@ -2,7 +2,7 @@
    semantics.css — Layer 2: semantic tokens ("what does this word mean").
    Pages and components consume ONLY this layer. The dark theme (html.dark)
    overrides just this layer — no page code changes on theme switch.
-   Sole source of truth: .claude/rules/ui-guidelines.md §2.
+   Sole source of truth: DESIGN.md (frontmatter, GH #49).
    ========================================================================== */
 :root {
   /* Brand: light primary is teal-600 (4.8:1 on white, WCAG AA). */
