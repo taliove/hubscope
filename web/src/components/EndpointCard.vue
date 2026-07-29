@@ -128,7 +128,7 @@ function dotTooltip(dot: OverviewDot): string {
      left to right, status comes first). Color mapping unchanged (§3). */
   border-left: 3px solid transparent;
   cursor: pointer;
-  transition: box-shadow 0.15s ease;
+  transition: box-shadow var(--hs-transition);
 }
 .endpoint-card:hover {
   box-shadow: var(--hs-shadow-md);

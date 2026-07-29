@@ -309,6 +309,12 @@ function onChipInspect(status: EndpointStatus) {
 .chip:hover {
   box-shadow: var(--hs-shadow-md);
 }
+/* Keyboard focus mirrors the strip's selected ring (audit 2026-07-29):
+   borderless chips otherwise leave keyboard users without a focus cue. */
+.chip:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--hs-brand), var(--hs-shadow-md);
+}
 .chip-status {
   flex: none;
   font-size: var(--hs-text-sm);
