@@ -27,11 +27,16 @@ const ImageRequestTimeout = 180 * time.Second
 // protocol (POST /v1/images/generations, spec 0014 / ADR 0012).
 const ProtocolImagesGeneration = "images_generation"
 
+// ProtocolImagesEdit is the OpenAI-compatible image edit protocol
+// (POST /v1/images/edits, multipart form with the embedded test image,
+// spec 0014 / ADR 0012 / GH #32).
+const ProtocolImagesEdit = "images_edit"
+
 // IsImageProtocol reports whether the protocol belongs to the image family:
 // one call per probe round, no streaming or TTFT, and the image request
-// budget. images_edit joins the family in a later ticket.
+// budget.
 func IsImageProtocol(protocol string) bool {
-	return protocol == ProtocolImagesGeneration
+	return protocol == ProtocolImagesGeneration || protocol == ProtocolImagesEdit
 }
 
 // errorSummaryLimit truncates error summaries to this many characters
@@ -139,6 +144,9 @@ func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, pr
 		// Image calls have no streaming mode and use their own fixed prompt;
 		// the chat prompt/token arguments do not apply.
 		return c.callImagesGeneration(ctx, baseURL, token, modelID)
+	case ProtocolImagesEdit:
+		// Same as generations: own fixed prompt plus the embedded test image.
+		return c.callImagesEdit(ctx, baseURL, token, modelID)
 	default:
 		msg := "unknown protocol: " + protocol
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}

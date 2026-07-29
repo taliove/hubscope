@@ -59,6 +59,13 @@ func (c *Client) callImagesGeneration(ctx context.Context, baseURL, token, model
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
+	return c.doImageCall(req)
+}
+
+// doImageCall executes one prepared image-API request and maps the response
+// into a Result. Shared by generations and edits: both return the same
+// data/usage payload shape and share the success determination.
+func (c *Client) doImageCall(req *http.Request) Result {
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

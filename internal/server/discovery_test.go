@@ -30,6 +30,15 @@ type discoveryStubHub struct {
 	// imageReqs records every /v1/images/generations request body per model,
 	// so tests can assert the wire shape and that no image traffic happened.
 	imageReqs map[string][]imageRequest
+	// editModes controls the /v1/images/edits answer per model, with the same
+	// values and 503 default as imageModes. The map is independent of
+	// imageModes so tests can express "generation works, edits does not"
+	// (and the reverse) — the two upstream paths fail separately in reality.
+	editModes map[string]string
+	// editReqs records every /v1/images/edits call per model: model, prompt,
+	// and whether a non-empty image file arrived. Headers (notably
+	// Authorization) are deliberately not recorded (W6).
+	editReqs map[string][]editRequest
 }
 
 // imageRequest is the recorded body of one /v1/images/generations call.
@@ -39,6 +48,14 @@ type imageRequest struct {
 	N      int
 }
 
+// editRequest is the recorded shape of one /v1/images/edits call: the
+// multipart fields the contract cares about, nothing else.
+type editRequest struct {
+	Model        string
+	Prompt       string
+	ImagePresent bool
+}
+
 func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 	t.Helper()
 	stub := &discoveryStubHub{
@@ -46,6 +63,8 @@ func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 		failing:    map[string]map[string]bool{},
 		imageModes: map[string]string{},
 		imageReqs:  map[string][]imageRequest{},
+		editModes:  map[string]string{},
+		editReqs:   map[string][]editRequest{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	t.Cleanup(stub.Close)
@@ -67,6 +86,23 @@ func (s *discoveryStubHub) imageRequests(modelID string) []imageRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]imageRequest(nil), s.imageReqs[modelID]...)
+}
+
+// setEditMode makes /v1/images/edits for the model answer per mode (same
+// values as setImageMode); any other value (including the zero value)
+// answers 503.
+func (s *discoveryStubHub) setEditMode(modelID, mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.editModes[modelID] = mode
+}
+
+// editRequests returns the recorded /v1/images/edits call shapes for the
+// model, in arrival order.
+func (s *discoveryStubHub) editRequests(modelID string) []editRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]editRequest(nil), s.editReqs[modelID]...)
 }
 
 // setModels replaces the model list returned by /v1/models.
@@ -162,6 +198,14 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The edits route is multipart and must be intercepted before the chat
+	// JSON parsing below — a multipart body fed to json.Unmarshal would be
+	// silently misread as an empty model and pollute the chat failure maps.
+	if strings.HasSuffix(r.URL.Path, "/v1/images/edits") {
+		s.handleImageEdit(w, r)
+		return
+	}
+
 	isAnthropic := strings.HasSuffix(r.URL.Path, "/v1/messages")
 	protocol := "openai"
 	if isAnthropic {
@@ -232,6 +276,57 @@ func (s *discoveryStubHub) handleImageGeneration(w http.ResponseWriter, r *http.
 		fmt.Fprint(w, `{"created":1720000000,"data":[]}`)
 	case "bad_shape":
 		fmt.Fprint(w, `{"created":1720000000,"data":[{"revised_prompt":"painted square"}]}`)
+	default:
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
+	}
+}
+
+// handleImageEdit answers POST /v1/images/edits. The multipart form is really
+// parsed (ParseMultipartForm) so the test proves the probe actually uploads
+// the embedded test image: model + prompt fields and a non-empty image file
+// part are required, anything missing or empty answers 400 — a client with
+// wrong field names (e.g. an image[]/file dialect) fails the trial instead
+// of passing it. The call is always recorded (model/prompt/image presence
+// only, never headers). The response shape is controlled per model via
+// setEditMode and defaults to 503.
+func (s *discoveryStubHub) handleImageEdit(w http.ResponseWriter, r *http.Request) {
+	model, prompt, imagePresent := "", "", false
+	if err := r.ParseMultipartForm(10 << 20); err == nil {
+		model = r.FormValue("model")
+		prompt = r.FormValue("prompt")
+		if file, _, err := r.FormFile("image"); err == nil {
+			n, _ := io.Copy(io.Discard, file)
+			file.Close()
+			imagePresent = n > 0
+		}
+	}
+
+	s.mu.Lock()
+	s.editReqs[model] = append(s.editReqs[model], editRequest{
+		Model: model, Prompt: prompt, ImagePresent: imagePresent,
+	})
+	mode := s.editModes[model]
+	fail := s.failing[model]["images_edit"]
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if model == "" || prompt == "" || !imagePresent {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"invalid image edit request"}}`)
+		return
+	}
+	if fail {
+		mode = ""
+	}
+	switch mode {
+	case "success":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"b64_json":"aGVsbG8="}],`+
+			`"usage":{"total_tokens":15,"input_tokens":12,"output_tokens":3}}`)
+	case "empty_data":
+		fmt.Fprint(w, `{"created":1720000000,"data":[]}`)
+	case "bad_shape":
+		fmt.Fprint(w, `{"created":1720000000,"data":[{"revised_prompt":"darker square"}]}`)
 	default:
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)

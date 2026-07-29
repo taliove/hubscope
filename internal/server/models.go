@@ -27,10 +27,11 @@ type createModelRequest struct {
 var modelProtocols = []string{"anthropic", "openai"}
 
 // trialProtocolsFor returns the protocols a model is trial-probed on: chat
-// protocols for every model, plus images_generation for image-capable models
-// (spec 0014 / ADR 0012). On a rule-read failure the chat-only list is
-// returned: a missed image trial is backfilled by the next discovery sync,
-// while a wrongly sent image trial would burn money per call.
+// protocols for every model, plus the image protocols for image-capable
+// models (spec 0014 / ADR 0012), generation before edit (GH #32). On a
+// rule-read failure the chat-only list is returned: a missed image trial is
+// backfilled by the next discovery sync, while a wrongly sent image trial
+// would burn money per call.
 func (s *Server) trialProtocolsFor(modelID string) []string {
 	list := append([]string(nil), modelProtocols...)
 	rules, err := s.db.ListClassificationRules()
@@ -40,7 +41,7 @@ func (s *Server) trialProtocolsFor(modelID string) []string {
 	}
 	capability, _ := classifier.Classify(modelID, rules)
 	if capability == "image" {
-		list = append(list, hubclient.ProtocolImagesGeneration)
+		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
 	}
 	return list
 }
@@ -249,11 +250,15 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 			missing = append(missing, protocol)
 		}
 	}
-	// Image-capable models also trial the image protocol (spec 0014); the
+	// Image-capable models also trial the image protocols (spec 0014); the
 	// stored capability is authoritative here because the model already
-	// exists.
-	if model.Capability == "image" && !have[hubclient.ProtocolImagesGeneration] {
-		missing = append(missing, hubclient.ProtocolImagesGeneration)
+	// exists. Generation and edit are independent trials (GH #32).
+	if model.Capability == "image" {
+		for _, protocol := range []string{hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit} {
+			if !have[protocol] {
+				missing = append(missing, protocol)
+			}
+		}
 	}
 
 	working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, missing)

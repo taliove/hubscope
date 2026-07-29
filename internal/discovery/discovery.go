@@ -23,15 +23,17 @@ import (
 var protocols = []string{"anthropic", "openai"}
 
 // trialProtocolsFor returns the protocols a model is trial-probed on: chat
-// protocols for every model, plus images_generation for image-capable models
-// only (spec 0014 / ADR 0012) — a wrong image trial would burn money per
-// call and produce upstream noise, so the gate stays strict. The image trial
-// runs after the chat trials: a fast-failing chat path costs nothing, and an
-// image trial only happens for models that classify as image anyway.
+// protocols for every model, plus the image protocols for image-capable
+// models only (spec 0014 / ADR 0012) — a wrong image trial would burn money
+// per call and produce upstream noise, so the gate stays strict. The image
+// trials run after the chat trials: a fast-failing chat path costs nothing,
+// and image trials only happen for models that classify as image anyway.
+// Generation comes before edit within the image family (GH #32): the two
+// are independent trials with independent outcomes.
 func trialProtocolsFor(capability string) []string {
 	list := append([]string(nil), protocols...)
 	if capability == "image" {
-		list = append(list, hubclient.ProtocolImagesGeneration)
+		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
 	}
 	return list
 }
