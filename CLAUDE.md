@@ -8,7 +8,7 @@
 |---|---|
 | `.claude/agents/` | 项目级代理(3 个,扁平无 Lead):`plan`(开工前影响分析 + UI 评审)/ `write`(ticket 实现)/ `check`(提交前三维度验证)。调用网与派发协议见 [.claude/rules/collaboration.md](./.claude/rules/collaboration.md) |
 | `.claude/skills/` | 5 个领域 skill,write agent 按任务组合使用:`product`(产品形态/读者/防作假/README 门面)/ `frontend`(前端开发流程)/ `backend`(后端开发流程)/ `database`(数据库变更)/ `ops`(发布与部署) |
-| `.claude/rules/` | 规则正文:load-bearing-walls.md(承重墙 W1–W8)、ui-guidelines.md(设计规范,由 `plan` agent 维护)、collaboration.md(协作协议 + 调用网)、graph-tools.md(graph 使用纪律) |
+| `.claude/rules/` | 规则正文:load-bearing-walls.md(承重墙 W1–W8)、ui-guidelines.md(业务语义手册,由 `plan` agent 维护)、collaboration.md(协作协议 + 调用网)、graph-tools.md(graph 使用纪律) |
 | `.claude/hooks/` | 自动化钩子:block-no-verify.sh(PreToolUse 拦 `--no-verify`)、format-go.sh(PostToolUse 格式化 Go)、format-web.sh(PostToolUse 格式化 `web/src`)、check-tokens.sh(PostToolUse 令牌纪律:禁硬编码色值 / 禁 `--el-*`,豁免 styles 层、BrandMark、chartColors、`--el-card-padding`,只报不拦) |
 
 ## 硬门禁
@@ -19,7 +19,7 @@ clone 后跑一次 `make hooks` 启用 `.githooks/`:pre-commit(凭证扫描 + `m
 
 ## 设计规范
 
-前端 UI/UX 唯一设计规范是 [.claude/rules/ui-guidelines.md](./.claude/rules/ui-guidelines.md),由 `plan` agent 维护;新视图/新交互/新复用组件开工前必过设计评审(经 frontend skill 调 `plan` 的 UI 评审子能力)。
+前端 UI/UX 设计规范为三层 artifact(GH #47 起,impeccable 体系):[DESIGN.md](./DESIGN.md)(视觉权威:令牌/字阶/布局/暗色/品牌,frontmatter 为 normative)、surface briefs(`web/.impeccable/surfaces/`,页面与组件构成规格)、[.claude/rules/ui-guidelines.md](./.claude/rules/ui-guidelines.md)(业务语义手册:词表/语义色映射/防作假约定/信息边界);产品真相在 [PRODUCT.md](./PRODUCT.md)。三处规范均由 `plan` agent 维护,`check` agent 按多源验收;新视图/新交互/新复用组件开工前必过设计评审(经 frontend skill 调 `plan` 的 UI 评审子能力);机械执行层见「硬门禁」节的 detector hook 与 check-tokens。
 
 ## Agent skills
 

@@ -1,6 +1,7 @@
-# UI Guidelines(设计规范)
+# UI Guidelines(业务语义手册)
 
-> **权威迁移中(2026-07-29,GH #47):** 本文件正按四层映射迁入 impeccable 体系——§1 → `PRODUCT.md`;§2/§2a/§2b/§4/§6 + 附录 A → `DESIGN.md`(视觉权威);§5 组件/页面规格 → surface briefs(状态板三页先行);本文件瘦身为**业务语义手册**(词表、语义映射关系、防作假约定、信息边界)。迁移期内条款以各节标注的落点为准,语义映射(状态色、词表)变更仍属承重语义变更,须设计评审。
+> **本文件 = 前端业务语义手册(GH #47 四层映射定稿,2026-07-29):** 只承载业务语义——两套状态词表、降级成因副词表、语义色映射关系(引用 DESIGN.md 令牌名)、防作假约定、分享面信息边界、成本中性化。视觉与布局权威在 [DESIGN.md](../../DESIGN.md)(令牌/字阶/圆角/阴影/布局/暗色/品牌);页面与组件构成规格在 surface briefs(`web/.impeccable/surfaces/`,状态板三页已建,其余页面随批次迁入);产品形态与读者模型在 [PRODUCT.md](../../PRODUCT.md)。三处均由 `plan` agent 维护,`check` agent 按多源验收。
+> **语义映射(状态色、词表)变更仍属承重语义变更,须在设计评审中说明理由。** 标注「保留备查,不再更新」的章节(§1/§2/§2a/§2b/§4 与 §5 部分条目)是迁移档案,内容以各自落点为准。
 > 视觉基线(ticket 73)并入 ProxyHub「现代极简工具风」(电波青 teal 品牌色、三层令牌、暗色一等公民);HubScope 词表、状态语义、防作假约定全部保留,仅做色值与刻度映射。
 
 ## 1. 产品形态与读者
@@ -275,9 +276,9 @@
 
 ## 8. 规范的维护
 
-- 本文件由 `plan` agent 维护;设计评审中做出的新约定须回写本文件,否则视为未约定。
-- 本文件与 [load-bearing-walls.md](./load-bearing-walls.md) 的关系:本文件管「体验一致性」,承重墙管「系统语义」;冲突时以承重墙为准(如状态机红黄绿语义由 W5 决定,本文件只做视觉映射)。
-- 与 ProxyHub 上游规范的关系:令牌刻度与审美纪律源自 proxyhub `docs/design-frontend.md`;HubScope 侧业务语义(状态词表、防作假约定、failing 例外、导出物料)以本文件为准,不回写上游;上游刻度修订时由 `plan` agent 评估同步。
+- 本文件(业务语义手册)由 `plan` agent 维护;设计评审中做出的新约定按层回写——视觉/布局 → DESIGN.md,页面/组件 → surface brief,业务语义 → 本文件(回写前置与批次节奏见 collaboration.md §3),不回写视为未约定。
+- 本文件与 [load-bearing-walls.md](./load-bearing-walls.md) 的关系:本文件管「业务语义一致性」,承重墙管「系统语义」;冲突时以承重墙为准(如状态机红黄绿语义由 W5 决定,本文件只做语义映射与词表约定)。
+- 与 ProxyHub 上游规范的关系:令牌刻度与审美纪律源自 proxyhub `docs/design-frontend.md`(视觉层已在 DESIGN.md 登记);HubScope 侧业务语义(状态词表、防作假约定、failing 例外、导出物料)以本文件为准,不回写上游;上游刻度修订时由 `plan` agent 评估同步(落 DESIGN.md)。
 
 ---
 
@@ -316,7 +317,9 @@
 | ECharts `CHART_COLORS`(TimeSeriesChart/TrendChart 各一份) | `utils/chartColors.ts` 单一来源,`CHART_COLORS_LIGHT/DARK` 双份 | 色值按 §3 新映射;brand→teal、failing→橙、文本/描边→青灰 |
 | `web/public/logo.png` | **删除** | BrandMark.vue + Wordmark.vue 替代(AppHeader/LoginView/StatusCard/favicon) |
 
-## 附录 B:裁决记录(12 项)
+## 附录 B:裁决记录(13 项)
+
+> **归属拆分(GH #59 定稿):** 视觉类裁决(2 字阶 / 3 圆角 / 5 BrandMark / 6 暗色 / 7 令牌架构 / 8 token 映射)规格本体已迁 DESIGN.md,此处保留裁决理由备查;11(LatencySparkline 形态)已迁 dashboard surface brief;语义与评估域裁决(1 failing 例外 / 4 批次运行色 / 9 榜单矩阵化 / 10 api-contract / 12 判分不完整 / 13 实时排名与成本)留存本文件。全部 13 项无丢失。
 
 1. **failing 色选档:** 亮 orange-700 `#c2410c` / 暗 orange-400 `#fb923c`。理由:amber 加深(#b45309)与 warning 同族仅差一档明度,降级/告警并排不可分辨,且「更深的黄」不比红更紧急;orange 在黄红之间建立色相级第三档,亮档白底 5.1:1 过 AA。登记为「不引入新色相」纪律的唯一例外(告警辨识度=W5 告警可信度,收益大于纪律成本)。
 2. **字阶:** 原六档平移 + 新增 `--hs-text-display` 28px;HealthBanner 大字结论与 StatusCard 可用率大数字升档(原 2xl 24px)。理由:消费页 3 秒场景的第一视觉锚点应由大数字承担,工具风层级靠字号表达;display 档禁用于管理台标题。
