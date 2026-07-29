@@ -55,6 +55,18 @@ export interface ClassificationRule {
   priority: number
 }
 
+// An image-probe cost-saving parameter rule (GH #33, spec 0014): image
+// probe requests for models whose ID contains keyword (case-insensitive)
+// carry the rule's params in addition to the minimal {model, prompt, n:1}
+// body. Every matching rule contributes; on a key collision the smaller
+// priority wins. Values are strings only.
+export interface ImageParamRule {
+  id: number
+  keyword: string
+  params: Record<string, string>
+  priority: number
+}
+
 // One administrative action record.
 export interface AuditLog {
   id: number
