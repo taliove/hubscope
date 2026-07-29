@@ -452,6 +452,13 @@ func (db *DB) migrate() error {
 	if err := db.enableBenchmarkSuitesAtCutover(); err != nil {
 		return err
 	}
+	// Mid-state fallback of the same cutover (GH #15): retire the v3 suites
+	// unconditionally, so databases whose generation-tracked retirement was
+	// short-circuited by pre-written purge tombstones still hand the v3
+	// suites to the purge below. Idempotent — steady state matches zero rows.
+	if err := db.retireV3SuitesAtOpen(); err != nil {
+		return err
+	}
 	// Ticket 93 (spec 0014 decision B, ADR 0012): disabled suites are
 	// hard-deleted with their cases, runs and results. Runs after seedSuites
 	// so a first-time retirement (retireAtGen — including the v3 retirement

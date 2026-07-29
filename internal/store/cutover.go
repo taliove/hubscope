@@ -59,3 +59,31 @@ func (db *DB) enableBenchmarkSuitesAtCutover() error {
 	}
 	return tx.Commit()
 }
+
+// retireV3SuitesAtOpen unconditionally retires the v3 capability suites on
+// every Open, immediately before the disabled-suite purge. It is the
+// mid-state fallback of the ticket-99 cutover (GH #15): a database that
+// reached the cutover through a half-applied path — v3 purge tombstones
+// already written, so seedSuites skips the v3 bank and the
+// generation-tracked retirement (retireAtGen 4) never fires, while the v3
+// rows themselves survived still enabled — would otherwise keep them
+// forever, because the purge deletes only enabled=0 suites. Flipping them
+// off here hands them to the purge in the same Open.
+//
+// Deliberately NOT gated on the one-shot benchmark_cutover settings key:
+// that key records the enable migration, not the v3 retirement, and the
+// mid-state has it already written. Unconditional is safe: the UPDATE is
+// idempotent (steady state matches zero rows), the keys come from the
+// capabilitySuites bank constants (never literals, never user input), and
+// no path can legitimately re-enable a v3 suite — the purge tombstones
+// already make "disabled means gone" irreversible for them.
+func (db *DB) retireV3SuitesAtOpen() error {
+	keys := make([]string, 0, len(capabilitySuites))
+	for _, s := range capabilitySuites {
+		keys = append(keys, "'"+s.key+"'")
+	}
+	_, err := db.conn.Exec(
+		"UPDATE suites SET enabled = 0 WHERE key IN (" + strings.Join(keys, ", ") + ")",
+	)
+	return err
+}
