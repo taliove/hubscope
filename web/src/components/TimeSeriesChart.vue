@@ -7,7 +7,9 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+// Modular echarts via the shared registered entry (utils/echarts.ts) — see
+// that file for the registration-to-setOption mapping.
+import { echarts } from '@/utils/echarts'
 import { useChartColors, seriesPalette } from '@/utils/chartColors'
 
 // Generic hourly-bucket line chart used by the endpoint detail page. The

@@ -13,6 +13,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split the two big dependencies into stable vendor chunks. Vite emits
+        // content-hashed filenames, so vendor chunks keep their hash across
+        // business-code releases and stay warm in immutable caches; only the
+        // app chunk changes. Keep this list conservative (no vue runtime
+        // splitting) to avoid module-initialization-order surprises.
+        manualChunks: {
+          echarts: ['echarts'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,
