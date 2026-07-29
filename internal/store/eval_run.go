@@ -325,6 +325,62 @@ func (db *DB) ListEvalResults(runID int64) ([]EvalResult, error) {
 	return results, rows.Err()
 }
 
+// LiveFeedEntry is one judged-case event of a campaign (issue #17): the
+// unit of the console live feed's cursor-pulled stream — model, suite and
+// case identity, verdict method, the raw 0~1 per-case score (nil when the
+// case could not be judged — W7's "judge failure is null, not zero"), the
+// answer latency and the verdict time. VerdictType/CasePrompt come from the
+// case row; a purged case leaves them empty rather than dropping the event.
+type LiveFeedEntry struct {
+	ID          int64
+	ModelID     string
+	SuiteKey    string
+	SuiteName   string
+	CaseID      int64
+	CasePrompt  string
+	VerdictType string
+	Score       *float64
+	LatencyMs   int
+	CreatedAt   time.Time
+}
+
+// ListCampaignLiveFeed returns up to limit judged-case events of the
+// campaign whose result id is strictly greater than sinceID, ascending by
+// id — the cursor increment behind GET /api/campaigns/{id}/live-feed. The
+// case join is LEFT so an event survives its case being purged (empty
+// prompt/verdict), matching the run-history retention rule.
+func (db *DB) ListCampaignLiveFeed(campaignID, sinceID int64, limit int) ([]LiveFeedEntry, error) {
+	rows, err := db.conn.Query(`
+		SELECT res.id, res.model_id, s.key, s.name, res.case_id,
+			COALESCE(c.prompt, ''), COALESCE(c.verdict_type, ''),
+			res.score, res.latency_ms, res.created_at
+		FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		JOIN suites s ON s.id = r.suite_id
+		LEFT JOIN cases c ON c.id = res.case_id
+		WHERE r.campaign_id = ? AND res.id > ?
+		ORDER BY res.id
+		LIMIT ?
+	`, campaignID, sinceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := []LiveFeedEntry{}
+	for rows.Next() {
+		var e LiveFeedEntry
+		var createdAt string
+		if err := rows.Scan(&e.ID, &e.ModelID, &e.SuiteKey, &e.SuiteName, &e.CaseID,
+			&e.CasePrompt, &e.VerdictType, &e.Score, &e.LatencyMs, &createdAt); err != nil {
+			return nil, err
+		}
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // SetEvalRunVerdictProfile re-tags every result of a run with the given
 // verdict profile. It exists so caliber migrations and tests can stage a
 // run as scored under an older profile (ADR 0008); production scoring always

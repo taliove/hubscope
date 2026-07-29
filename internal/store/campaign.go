@@ -220,6 +220,21 @@ func (db *DB) SettleCampaign(id int64, now time.Time) error {
 	return err
 }
 
+// CampaignVisibleToHub reports whether the campaign is reachable from the
+// given hub — its snapshotted membership includes at least one model
+// belonging to hubID. It is the single-campaign form of the
+// ListCampaignsByHub reachability rule, for access checks on
+// campaign-scoped reads (issue #17's live feed).
+func (db *DB) CampaignVisibleToHub(campaignID, hubID int64) (bool, error) {
+	var n int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM campaign_models cm
+		JOIN models m ON m.id = cm.model_id
+		WHERE cm.campaign_id = ? AND m.hub_id = ?
+	`, campaignID, hubID).Scan(&n)
+	return n > 0, err
+}
+
 // PreviousDoneCampaign returns the most recent done campaign strictly before
 // the given one, or nil when there is none. Only settled ("done") campaigns
 // serve as report baselines. Note this differs from the score-drop alert's

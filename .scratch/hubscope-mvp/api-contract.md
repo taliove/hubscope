@@ -111,6 +111,14 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `TaskLog = {"id": number, "at": string, "level": "info"|"warn"|"error", "message": string}`
 - 每次 Eval Run(手动 POST /api/evals 或每周定时)执行时注册一个 Task:开始 → running,逐 Case 写进度日志(完成带分数、裁判失败 warn),Run 终态映射 success/failed;进程重启时遗留 pending/running 的 Task 启动即置 failed。探测轮次不是 Task。
 
+## Eval Campaign 实时动态(issue #17,仅控制台)
+
+- `GET /api/campaigns/{id}/live-feed?since_id=N&limit=M` → `{"data": [LiveFeedEntry]}`。运行中批次的题目级判分动态流,游标增量拉取;**需登录会话,不进 publicReadPattern,分享页(share token)与公开榜单不提供本数据**(spec 0004 半成品边界)。
+- 游标语义:只返回 `id > since_id` 的记录(严格大于),`since_id` 缺省 0;按 `id` 升序;空增量返回空数组 `[]`。`since_id` 非整数或为负 → 400。`limit` 与 probes 同口径:默认 50、上限 200(超出截断),非法值回退默认。
+- 可见范围(hub 隔离,与 `GET /api/campaigns` 列表同口径):super_admin 可见全部批次;hub 用户仅可见成员模型含本 hub 模型的批次——他 hub 批次与不存在批次同答 404 `campaign not found`(无枚举预言);匿名 401。
+- `LiveFeedEntry = {"id": number, "model_id": string, "suite_key": string, "suite_name": string, "case_id": number, "case_prompt": string, "verdict_type": "rule"|"judge"|""(case 已被清理时为 ""), "score": number|null(0~1 原始分,裁判失败为 null;0-100 换算在前端), "latency_ms": number, "created_at": string(RFC3339)}`
+- 已 settle 批次同接口返回其最终快照(不再增长);作答原文/裁判理由等单题详情不在本接口范围(另议)。
+
 ## Eval Campaign Report 覆盖率门槛(ticket 91,spec 0014 决策 A)
 
 - 三个端点共用同一报告形状与排名口径:`GET /api/campaigns/{id}/report`(session)、`GET /api/public/eval/board`(公开,report 字段即最新 settle 批次报告)、`GET /api/shared-reports/{token}`(token 门控)。
