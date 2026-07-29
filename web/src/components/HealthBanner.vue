@@ -291,11 +291,12 @@ function onChipInspect(status: EndpointStatus) {
   min-width: 0;
   flex: 1;
 }
-/* Abnormal chip: surface-backed card on the tinted banner — no dot, no
+/* Abnormal chip: borderless surface card on the tinted ground — no dot, no
    blink, no status fill (W5 mirror: the alert-dot owns the sole animation).
-   bg-card lifts the chip off any tone-soft ground coherently (light/dark,
-   all four tones); a bare gray outline on a tinted ground reads as a
-   mismatched halo (user report 2026-07-29). */
+   Borderless bg-card + radius reads as a clean card on any tone-soft ground
+   (user feedback 2026-07-29: the outline was ugly even after the surface
+   fill); hover lifts with shadow-md — shadow means "clickable" per the
+   elevation rule. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -304,13 +305,13 @@ function onChipInspect(status: EndpointStatus) {
   padding: var(--hs-space-1) var(--hs-space-2);
   font: inherit;
   background: var(--hs-bg-card);
-  border: 1px solid var(--hs-border);
+  border: none;
   border-radius: var(--hs-radius-sm);
   cursor: pointer;
-  transition: border-color var(--hs-transition);
+  transition: box-shadow var(--hs-transition);
 }
 .chip:hover {
-  border-color: var(--hs-brand);
+  box-shadow: var(--hs-shadow-md);
 }
 .chip-status {
   flex: none;

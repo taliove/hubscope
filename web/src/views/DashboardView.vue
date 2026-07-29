@@ -253,18 +253,21 @@ onMounted(start)
 }
 .stat-clickable {
   cursor: pointer;
-  padding: 2px 6px;
+  padding: var(--hs-space-1) var(--hs-space-2);
   border-radius: var(--hs-radius-sm);
-  transition: color var(--hs-transition), background-color var(--hs-transition);
+  transition: color var(--hs-transition), background-color var(--hs-transition), box-shadow var(--hs-transition);
 }
 .stat-clickable:hover {
   color: var(--hs-brand-hover);
 }
-/* Selected filter = brand-soft fill + brand text (GH #55): a filter chip,
-   not a nav tab — the old 2px brand underline borrowed the tab language. */
+/* Selected filter = brand outline + transparent ground + brand text
+   (user feedback 2026-07-29): brand keeps the "active selection" language,
+   an inset ring avoids layout shift, and no fill block fights the status
+   dots' semantic colors. */
 .stat-active {
   color: var(--hs-brand);
-  background-color: var(--hs-brand-soft);
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--hs-brand);
 }
 .stat-num {
   font-weight: 600;

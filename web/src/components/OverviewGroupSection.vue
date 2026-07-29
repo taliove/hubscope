@@ -1,7 +1,7 @@
 <template>
   <el-card shadow="never" class="group-section">
     <div class="group-header" @click="collapsed = !collapsed">
-      <span class="group-arrow">{{ collapsed ? '▸' : '▾' }}</span>
+      <el-icon class="group-arrow"><ArrowRight v-if="collapsed" /><ArrowDown v-else /></el-icon>
       <span class="group-key">{{ group.key }}</span>
       <span class="group-count">{{ group.endpoint_count }} 端点</span>
       <!-- Uniform-protocol collapse (GH #54): when every filtered entry in
@@ -55,8 +55,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { Share } from '@element-plus/icons-vue'
+import { ref, computed, watch } from 'vue'
+import { Share, ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
 import { formatPercent, formatMs } from '@/utils/format'
@@ -73,6 +73,18 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'share'): void }>()
 
 const collapsed = ref(false)
+
+// Auto-collapse filtered-empty groups (user request 2026-07-29): a group
+// with no matching entries renders collapsed by default instead of a large
+// empty-state box; it re-expands the moment matches return, and stays
+// manually toggleable in both states.
+watch(
+  () => props.entries.length,
+  (n) => {
+    collapsed.value = n === 0
+  },
+  { immediate: true },
+)
 
 // Statuses present in this group, in the board's single severity caliber
 // (GH #55 — SEVERITY_ORDER, heavy → light, shared with the stats strip;
@@ -116,7 +128,7 @@ const collapseCardProtocolTag = computed(
 }
 .group-arrow {
   color: var(--hs-text-placeholder);
-  width: 14px;
+  font-size: 14px;
 }
 .group-key {
   font-size: var(--hs-text-lg);
