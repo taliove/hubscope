@@ -36,7 +36,7 @@
 |---|---|---|
 | 品牌电波青 9 级 | `--hs-teal-50..900` | `#effcfa` / `#d1f6f0` / `#a3ece1` / `#68dccf` / `#30c4b8` / `#0faea2` / `#0c8078` / `#0a6963` / `#085350` / `#063f3d` |
 | 中性青灰 10 级 | `--hs-gray-50..900` | `#f7fafb` / `#eff4f5` / `#e0e8ea` / `#c7d3d6` / `#91a3a8` / `#617379` / `#45565c` / `#324249` / `#1e2b31` / `#0f1b20` |
-| 功能色基色 | `--hs-success-base` / `--hs-warning-base` / `--hs-danger-base` / `--hs-info-base` | `#059669` / `#d97706` / `#dc2626` / `#45565c` |
+| 功能色基色 | `--hs-success-base` / `--hs-warning-base`(亮)`--hs-warning-dark`(暗) / `--hs-danger-base` / `--hs-info-base` | `#059669` / `#a16207`(亮)`#d97706`(暗,附录 B #14) / `#dc2626` / `#45565c` |
 | failing 橙刻度(独立例外,见 §3) | `--hs-orange-500` / `--hs-orange-700` / `--hs-orange-400` | `#f97316` / `#c2410c` / `#fb923c` |
 | 间距 4px 基网 | `--hs-space-1..8` | 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 |
 | 圆角 | `--hs-radius-xs/sm/lg/full` | 2 / 4 / 8 / 999(§2 圆角节) |
@@ -52,7 +52,7 @@
 | `--hs-brand-active` | teal-700 `#0a6963` | teal-600 `#0c8078` | 按下态 |
 | `--hs-brand-soft` | teal-50 `#effcfa` | teal-900 `#063f3d` | 品牌浅底:选中行、高亮块、BrandMark 旁衬底 |
 | `--hs-success` | `#059669` | 同值(暗底 3.5:1,状态灯+词双编码可用;文字场景降级用 dark-2 阶) | 正常/已完成/升 |
-| `--hs-warning` | `#d97706` | 同值 | 降级/可逆警示 |
+| `--hs-warning` | `#a16207`(附录 B #14) | `#d97706` | 降级/可逆警示 |
 | `--hs-danger` | `#dc2626` | 同值 | 宕机/失败/降/不可逆操作 |
 | `--hs-info` | `#45565c`(gray-600) | gray-500 `#617379`(暗底提一档保可读) | 中性提示 |
 | `--hs-status-failing` | orange-700 `#c2410c`(白底 5.1:1 过 AA;§3 裁决) | orange-400 `#fb923c`(暗底 ≈7:1) | 告警,唯一动画状态 |

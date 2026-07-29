@@ -40,14 +40,14 @@
         "displayName": "Warning 黄(yellow-700,2026-07-29 修订)",
         "canonical": "#a16207",
         "tonalRamp": [
-          "#78350f",
-          "#92400e",
-          "#b45309",
-          "#d97706",
-          "#f59e0b",
-          "#fbbf24",
-          "#fde68a",
-          "#fffbeb"
+          "#713f12",
+          "#854d0e",
+          "#a16207",
+          "#ca8a04",
+          "#eab308",
+          "#facc15",
+          "#fde047",
+          "#fefce8"
         ],
         "darkValue": "#d97706"
       },
