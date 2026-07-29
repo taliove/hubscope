@@ -74,7 +74,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { createEvalRun, createFullSweep } from '@/api/evals'
 import type { Campaign, Model, Suite } from '@/api/types'
 

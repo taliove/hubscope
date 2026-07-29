@@ -18,11 +18,14 @@ export default defineConfig({
         // Split the two big dependencies into stable vendor chunks. Vite emits
         // content-hashed filenames, so vendor chunks keep their hash across
         // business-code releases and stay warm in immutable caches; only the
-        // app chunk changes. Keep this list conservative (no vue runtime
-        // splitting) to avoid module-initialization-order surprises.
-        manualChunks: {
-          echarts: ['echarts'],
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+        // app chunk changes. Function form (audit 2026-07-29): the object form
+        // ('element-plus': ['element-plus']) force-included the whole package
+        // and defeated tree-shaking of the on-demand import in main.ts; the
+        // function only sees modules that survived shaking.
+        manualChunks(id) {
+          if (id.includes('node_modules/echarts')) return 'echarts'
+          if (id.includes('node_modules/element-plus') || id.includes('node_modules/@element-plus'))
+            return 'element-plus'
         },
       },
     },

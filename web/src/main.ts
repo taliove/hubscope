@@ -1,6 +1,72 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+// On-demand Element Plus (audit 2026-07-29: the full import produced a
+// 1007kB vendor chunk). Register only what web/src actually uses — the
+// inventory is grep-verified (`<el-*` tags, v-loading, ElMessage/ElMessageBox
+// services); when adding a new EP component, register it AND its style here.
+import { ElAlert } from 'element-plus/es/components/alert/index'
+import { ElButton } from 'element-plus/es/components/button/index'
+import { ElCard } from 'element-plus/es/components/card/index'
+import { ElCheckbox } from 'element-plus/es/components/checkbox/index'
+import { ElCollapse } from 'element-plus/es/components/collapse/index'
+import { ElCollapseItem } from 'element-plus/es/components/collapse/index'
+import { ElDialog } from 'element-plus/es/components/dialog/index'
+import { ElDivider } from 'element-plus/es/components/divider/index'
+import { ElDrawer } from 'element-plus/es/components/drawer/index'
+import { ElEmpty } from 'element-plus/es/components/empty/index'
+import { ElForm } from 'element-plus/es/components/form/index'
+import { ElFormItem } from 'element-plus/es/components/form/index'
+import { ElIcon } from 'element-plus/es/components/icon/index'
+import { ElInput } from 'element-plus/es/components/input/index'
+import { ElInputNumber } from 'element-plus/es/components/input-number/index'
+import { ElOption } from 'element-plus/es/components/select/index'
+import { ElPagination } from 'element-plus/es/components/pagination/index'
+import { ElProgress } from 'element-plus/es/components/progress/index'
+import { ElRadioButton } from 'element-plus/es/components/radio/index'
+import { ElRadioGroup } from 'element-plus/es/components/radio/index'
+import { ElSelect } from 'element-plus/es/components/select/index'
+import { ElSkeleton } from 'element-plus/es/components/skeleton/index'
+import { ElSwitch } from 'element-plus/es/components/switch/index'
+import { ElTable } from 'element-plus/es/components/table/index'
+import { ElTableColumn } from 'element-plus/es/components/table/index'
+import { ElTabPane } from 'element-plus/es/components/tabs/index'
+import { ElTabs } from 'element-plus/es/components/tabs/index'
+import { ElTag } from 'element-plus/es/components/tag/index'
+import { ElTooltip } from 'element-plus/es/components/tooltip/index'
+import { ElLoading } from 'element-plus/es/components/loading/index'
+// Base reset + per-component styles (on-demand replacement for dist/index.css).
+import 'element-plus/theme-chalk/base.css'
+import 'element-plus/es/components/alert/style/css'
+import 'element-plus/es/components/button/style/css'
+import 'element-plus/es/components/card/style/css'
+import 'element-plus/es/components/checkbox/style/css'
+import 'element-plus/es/components/collapse/style/css'
+import 'element-plus/es/components/collapse-item/style/css'
+import 'element-plus/es/components/dialog/style/css'
+import 'element-plus/es/components/divider/style/css'
+import 'element-plus/es/components/drawer/style/css'
+import 'element-plus/es/components/empty/style/css'
+import 'element-plus/es/components/form/style/css'
+import 'element-plus/es/components/form-item/style/css'
+import 'element-plus/es/components/icon/style/css'
+import 'element-plus/es/components/input/style/css'
+import 'element-plus/es/components/input-number/style/css'
+import 'element-plus/es/components/loading/style/css'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/option/style/css'
+import 'element-plus/es/components/pagination/style/css'
+import 'element-plus/es/components/progress/style/css'
+import 'element-plus/es/components/radio-button/style/css'
+import 'element-plus/es/components/radio-group/style/css'
+import 'element-plus/es/components/select/style/css'
+import 'element-plus/es/components/skeleton/style/css'
+import 'element-plus/es/components/switch/style/css'
+import 'element-plus/es/components/table/style/css'
+import 'element-plus/es/components/table-column/style/css'
+import 'element-plus/es/components/tab-pane/style/css'
+import 'element-plus/es/components/tabs/style/css'
+import 'element-plus/es/components/tag/style/css'
+import 'element-plus/es/components/tooltip/style/css'
 // EP's own dark-theme variables (html.dark). Load before our layers so the
 // ep-theme.css html.dark block wins the cascade (ui-guidelines §2).
 import 'element-plus/theme-chalk/dark/css-vars.css'
@@ -16,5 +82,38 @@ import App from './App.vue'
 
 const app = createApp(App)
 app.use(router)
-app.use(ElementPlus)
+const epComponents = [
+  ElAlert,
+  ElButton,
+  ElCard,
+  ElCheckbox,
+  ElCollapse,
+  ElCollapseItem,
+  ElDialog,
+  ElDivider,
+  ElDrawer,
+  ElEmpty,
+  ElForm,
+  ElFormItem,
+  ElIcon,
+  ElInput,
+  ElInputNumber,
+  ElOption,
+  ElPagination,
+  ElProgress,
+  ElRadioButton,
+  ElRadioGroup,
+  ElSelect,
+  ElSkeleton,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+  ElTabPane,
+  ElTabs,
+  ElTag,
+  ElTooltip,
+]
+for (const component of epComponents) app.use(component)
+// v-loading directive + Loading service (14 views use the directive).
+app.use(ElLoading)
 app.mount('#app')

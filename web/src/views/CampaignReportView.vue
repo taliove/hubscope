@@ -132,7 +132,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { ApiError } from '@/api/client'
 import { getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'

@@ -71,7 +71,7 @@
 // buttons usable — the buttons themselves are the retry path
 // (ui-guidelines §6).
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import StatusCard from '@/components/StatusCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
 import { captureCardImage, downloadCardImage, cardFilename } from '@/utils/cardImage'

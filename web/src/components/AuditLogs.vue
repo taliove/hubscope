@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { listAuditLogs, listAuditActions } from '@/api/audit'
 import type { AuditLog } from '@/api/types'
 import { formatTime } from '@/utils/format'

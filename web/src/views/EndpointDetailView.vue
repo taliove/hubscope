@@ -129,7 +129,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Share } from '@element-plus/icons-vue'
 import { getEndpointDetail, getEndpointSeries } from '@/api/endpoints'
 import { listProbeHistory } from '@/api/probes'

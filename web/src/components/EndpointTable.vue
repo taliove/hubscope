@@ -146,7 +146,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
 import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
 import { deleteModel, trialModel } from '@/api/models'

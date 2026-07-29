@@ -155,7 +155,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { getTask, listTasks } from '@/api/tasks'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign, CampaignStatus, TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'

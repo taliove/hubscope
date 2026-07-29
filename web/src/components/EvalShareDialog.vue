@@ -43,7 +43,7 @@
 // the shared report page mounts this without any session API, keeping the
 // ADR 0006 share-surface invariant.
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import EvalCard from '@/components/EvalCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
 import { captureCardImage, downloadCardImage, cardFilename } from '@/utils/cardImage'

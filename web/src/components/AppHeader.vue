@@ -76,7 +76,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { Loading, Moon, Sunny } from '@element-plus/icons-vue'
 import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'

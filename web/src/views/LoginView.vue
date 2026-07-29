@@ -81,7 +81,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { ApiError } from '@/api/client'
 import { fetchCaptcha, login } from '@/api/auth'
 import BrandMark from '@/components/BrandMark.vue'

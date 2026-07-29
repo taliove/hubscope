@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { useAdminData } from '@/composables/useAdminData'
 import { fetchAuthStatus } from '@/api/auth'
 import { parseAdminTabQuery, parseSettingsItemQuery } from '@/utils/adminNav'

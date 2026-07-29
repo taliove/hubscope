@@ -59,7 +59,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { listShareLinks, revokeShareLink, shareLinkUrl } from '@/api/shareLinks'
 import { formatTime } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'

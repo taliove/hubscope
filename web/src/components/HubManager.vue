@@ -76,7 +76,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { createHub, updateHub, deleteHub, syncHub } from '@/api/hubs'
 import type { Hub } from '@/api/types'
 import { formatTime } from '@/utils/format'
