@@ -51,7 +51,7 @@ func TestProtocolTimeoutDispatch(t *testing.T) {
 	// its own wrap).
 	fast := hubclient.NewWithTimeout(50 * time.Millisecond)
 
-	chat := fast.Probe(context.Background(), stub.URL, "test-token", "openai", "m", false)
+	chat := fast.Probe(context.Background(), stub.URL, "test-token", "openai", "m", false, nil)
 	if chat.OK {
 		t.Error("chat probe: expected timeout failure against the 300ms stub, got success")
 	}
@@ -65,7 +65,7 @@ func TestProtocolTimeoutDispatch(t *testing.T) {
 
 	// Image calls never use the client budget: they always get the 180s
 	// image timeout, so the same 50ms client still succeeds.
-	image := fast.Probe(context.Background(), stub.URL, "test-token", "images_generation", "m", false)
+	image := fast.Probe(context.Background(), stub.URL, "test-token", "images_generation", "m", false, nil)
 	if !image.OK {
 		t.Errorf("image probe: expected success despite the 50ms client budget, got %v", image.ErrorSummary)
 	}
@@ -74,10 +74,10 @@ func TestProtocolTimeoutDispatch(t *testing.T) {
 	// for either protocol, proving the failures above came from the budget
 	// and not from a broken stub shape.
 	standard := hubclient.New()
-	if res := standard.Probe(context.Background(), stub.URL, "test-token", "openai", "m", false); !res.OK {
+	if res := standard.Probe(context.Background(), stub.URL, "test-token", "openai", "m", false, nil); !res.OK {
 		t.Errorf("chat probe with standard budget: expected success, got %v", res.ErrorSummary)
 	}
-	if res := standard.Probe(context.Background(), stub.URL, "test-token", "images_generation", "m", false); !res.OK {
+	if res := standard.Probe(context.Background(), stub.URL, "test-token", "images_generation", "m", false, nil); !res.OK {
 		t.Errorf("image probe with standard budget: expected success, got %v", res.ErrorSummary)
 	}
 }

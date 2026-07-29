@@ -103,12 +103,24 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 // trialProtocols probes the model on the given protocols and returns the
 // protocols that answered plus a human-readable summary of the failures.
+// Image protocol trials carry the rule-merged extra parameters (GH #33) via
+// the single resolution entry (store.ImageParamsFor); a rules-table hiccup
+// degrades the trial to the minimal request body rather than failing it.
 func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string, protocols []string) ([]string, string) {
 	client := hubclient.New()
 	working := []string{}
 	failures := []string{}
 	for _, protocol := range protocols {
-		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false)
+		var imageParams map[string]string
+		if hubclient.IsImageProtocol(protocol) {
+			if params, err := s.db.ImageParamsFor(modelID); err != nil {
+				slog.Warn("models: image param rules unavailable, trialing with minimal body",
+					"model", modelID, "protocol", protocol, "error", err)
+			} else {
+				imageParams = params
+			}
+		}
+		result := client.Probe(ctx, hub.BaseURL, hub.Token, protocol, modelID, false, imageParams)
 		if result.OK {
 			working = append(working, protocol)
 			continue

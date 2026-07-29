@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"sort"
 	"strings"
 )
 
@@ -29,10 +30,12 @@ const editProbePrompt = "Make the teal square slightly darker"
 
 // callImagesEdit executes one POST /v1/images/edits call as a multipart form
 // with the OpenAI contract fields: image (the embedded test image), prompt,
-// model — singular field names, no image[]/file dialects. Success
+// model — singular field names, no image[]/file dialects — plus any
+// rule-merged extra parameters as plain form fields (spec 0014 / GH #33, the
+// same merged map generations puts into its JSON body). Success
 // determination and usage mapping are identical to generations (see
 // doImageCall); there is no streaming mode and no TTFT.
-func (c *Client) callImagesEdit(ctx context.Context, baseURL, token, modelID string) Result {
+func (c *Client) callImagesEdit(ctx context.Context, baseURL, token, modelID string, imageParams map[string]string) Result {
 	url := strings.TrimRight(baseURL, "/") + "/v1/images/edits"
 
 	var body bytes.Buffer
@@ -54,6 +57,19 @@ func (c *Client) callImagesEdit(ctx context.Context, baseURL, token, modelID str
 	}
 	for _, field := range [][2]string{{"prompt", editProbePrompt}, {"model", modelID}} {
 		if err := w.WriteField(field[0], field[1]); err != nil {
+			msg := truncate("build multipart: " + err.Error())
+			return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}
+		}
+	}
+	// Rule-merged extra params ride as plain form fields, in sorted key order
+	// so the wire shape stays deterministic across calls.
+	extraKeys := make([]string, 0, len(imageParams))
+	for k := range imageParams {
+		extraKeys = append(extraKeys, k)
+	}
+	sort.Strings(extraKeys)
+	for _, k := range extraKeys {
+		if err := w.WriteField(k, imageParams[k]); err != nil {
 			msg := truncate("build multipart: " + err.Error())
 			return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}
 		}

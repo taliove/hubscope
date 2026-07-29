@@ -13,7 +13,8 @@ import (
 // imageProbePrompt is the fixed generation instruction sent on every
 // images_generation probe. Each call generates a real image and costs money
 // (spec 0014), so the prompt stays trivial; model-specific cost-saving
-// parameters (e.g. quality:"low" for gpt-image models) are a later ticket.
+// parameters (e.g. quality:"low" for gpt-image models) arrive via the
+// rule-merged imageParams argument (GH #33).
 const imageProbePrompt = "A single solid teal square on a white background"
 
 // imageDataItem is one entry of the images API data array.
@@ -39,16 +40,21 @@ func imageDataComplete(data []imageDataItem) bool {
 
 // callImagesGeneration executes one POST /v1/images/generations call with the
 // minimal request body (model + prompt + n=1, the most portable shape across
-// upstreams). Success requires HTTP 2xx AND a complete data payload; upstream
-// usage, when present, maps into the existing token fields. There is no
-// streaming mode and no TTFT — LatencyMs carries the whole call.
-func (c *Client) callImagesGeneration(ctx context.Context, baseURL, token, modelID string) Result {
+// upstreams) plus any rule-merged extra parameters (spec 0014 / GH #33, e.g.
+// quality:"low" for gpt-image models). Success requires HTTP 2xx AND a
+// complete data payload; upstream usage, when present, maps into the existing
+// token fields. There is no streaming mode and no TTFT — LatencyMs carries
+// the whole call.
+func (c *Client) callImagesGeneration(ctx context.Context, baseURL, token, modelID string, imageParams map[string]string) Result {
 	url := strings.TrimRight(baseURL, "/") + "/v1/images/generations"
 
 	payload := map[string]interface{}{
 		"model":  modelID,
 		"prompt": imageProbePrompt,
 		"n":      1,
+	}
+	for k, v := range imageParams {
+		payload[k] = v
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))

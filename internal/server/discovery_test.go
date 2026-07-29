@@ -42,18 +42,24 @@ type discoveryStubHub struct {
 }
 
 // imageRequest is the recorded body of one /v1/images/generations call.
+// Raw carries the full decoded JSON object so tests can assert the exact key
+// set (GH #33: cost-saving params present only when a rule matches).
 type imageRequest struct {
 	Model  string
 	Prompt string
 	N      int
+	Raw    map[string]interface{}
 }
 
 // editRequest is the recorded shape of one /v1/images/edits call: the
-// multipart fields the contract cares about, nothing else.
+// multipart fields the contract cares about, nothing else. Fields carries
+// every form value (first value per key) so tests can assert rule-driven
+// extra fields (GH #33).
 type editRequest struct {
 	Model        string
 	Prompt       string
 	ImagePresent bool
+	Fields       map[string]string
 }
 
 func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
@@ -250,10 +256,12 @@ func (s *discoveryStubHub) handleImageGeneration(w http.ResponseWriter, r *http.
 		N      int    `json:"n"`
 	}
 	_ = json.Unmarshal(body, &req)
+	var raw map[string]interface{}
+	_ = json.Unmarshal(body, &raw)
 
 	s.mu.Lock()
 	s.imageReqs[req.Model] = append(s.imageReqs[req.Model], imageRequest{
-		Model: req.Model, Prompt: req.Prompt, N: req.N,
+		Model: req.Model, Prompt: req.Prompt, N: req.N, Raw: raw,
 	})
 	mode := s.imageModes[req.Model]
 	fail := s.failing[req.Model]["images_generation"]
@@ -292,9 +300,17 @@ func (s *discoveryStubHub) handleImageGeneration(w http.ResponseWriter, r *http.
 // setEditMode and defaults to 503.
 func (s *discoveryStubHub) handleImageEdit(w http.ResponseWriter, r *http.Request) {
 	model, prompt, imagePresent := "", "", false
+	fields := map[string]string{}
 	if err := r.ParseMultipartForm(10 << 20); err == nil {
 		model = r.FormValue("model")
 		prompt = r.FormValue("prompt")
+		if r.MultipartForm != nil {
+			for key, values := range r.MultipartForm.Value {
+				if len(values) > 0 {
+					fields[key] = values[0]
+				}
+			}
+		}
 		if file, _, err := r.FormFile("image"); err == nil {
 			n, _ := io.Copy(io.Discard, file)
 			file.Close()
@@ -304,7 +320,7 @@ func (s *discoveryStubHub) handleImageEdit(w http.ResponseWriter, r *http.Reques
 
 	s.mu.Lock()
 	s.editReqs[model] = append(s.editReqs[model], editRequest{
-		Model: model, Prompt: prompt, ImagePresent: imagePresent,
+		Model: model, Prompt: prompt, ImagePresent: imagePresent, Fields: fields,
 	})
 	mode := s.editModes[model]
 	fail := s.failing[model]["images_edit"]

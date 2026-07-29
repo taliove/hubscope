@@ -116,25 +116,32 @@ func probeTransport() *http.Transport {
 // protocol and model ID. When streaming is true it opens an SSE stream and
 // measures TTFT. Probe semantics (fixed prompt, tiny token budget) are
 // unchanged; it simply delegates to call with the probe constants.
-func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool) Result {
+//
+// imageParams carries the rule-merged extra parameters for image protocols
+// (spec 0014 / GH #33, e.g. quality:"low" for gpt-image models); chat
+// callers pass nil. The client stays database-free by construction: callers
+// resolve the rules (store.ImageParamsFor) and hand in the merged map, so
+// rule changes take effect on the very next call with no cache to invalidate.
+func (c *Client) Probe(ctx context.Context, baseURL, token, protocol, modelID string, streaming bool, imageParams map[string]string) Result {
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
 	defer cancel()
-	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming)
+	return c.call(ctx, baseURL, token, protocol, modelID, probePrompt, maxTokens, streaming, imageParams)
 }
 
 // Complete executes a single non-streaming completion with a custom prompt
 // and token budget. Used by the evaluator, where answers need room to be
 // complete (unlike the 16-token probe). The per-request timeout comes from
-// the client construction (see NewWithTimeout).
+// the client construction (see NewWithTimeout). Evaluation traffic stays on
+// chat protocols (spec 0014 R1), so no image parameters apply.
 func (c *Client) Complete(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int) Result {
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout(protocol))
 	defer cancel()
-	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false)
+	return c.call(ctx, baseURL, token, protocol, modelID, prompt, maxTok, false, nil)
 }
 
 // call dispatches to the protocol-specific implementation. Callers (Probe,
 // Complete) apply the protocol-family timeout budget before reaching it.
-func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool) Result {
+func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, prompt string, maxTok int, streaming bool, imageParams map[string]string) Result {
 	switch protocol {
 	case "anthropic":
 		return c.callAnthropic(ctx, baseURL, token, modelID, prompt, maxTok, streaming)
@@ -143,10 +150,10 @@ func (c *Client) call(ctx context.Context, baseURL, token, protocol, modelID, pr
 	case ProtocolImagesGeneration:
 		// Image calls have no streaming mode and use their own fixed prompt;
 		// the chat prompt/token arguments do not apply.
-		return c.callImagesGeneration(ctx, baseURL, token, modelID)
+		return c.callImagesGeneration(ctx, baseURL, token, modelID, imageParams)
 	case ProtocolImagesEdit:
 		// Same as generations: own fixed prompt plus the embedded test image.
-		return c.callImagesEdit(ctx, baseURL, token, modelID)
+		return c.callImagesEdit(ctx, baseURL, token, modelID, imageParams)
 	default:
 		msg := "unknown protocol: " + protocol
 		return Result{OK: false, HTTPStatus: 0, ErrorSummary: &msg}

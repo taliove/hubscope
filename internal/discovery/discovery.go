@@ -242,7 +242,7 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		if have[protocol] {
 			continue
 		}
-		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false)
+		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false, s.imageParamsFor(protocol, model.ModelID))
 		if !result.OK {
 			slog.Debug("discovery: protocol trial failed",
 				"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol,
@@ -263,6 +263,24 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		}
 	}
 	return created, nil
+}
+
+// imageParamsFor resolves the rule-merged extra probe parameters for image
+// protocol trials via the single resolution entry (store.ImageParamsFor,
+// GH #33); chat trials take nil. A rules-table hiccup must never break a
+// sync: on error the trial degrades to the minimal request body and the
+// failure is logged.
+func (s *Syncer) imageParamsFor(protocol, modelID string) map[string]string {
+	if !hubclient.IsImageProtocol(protocol) {
+		return nil
+	}
+	params, err := s.db.ImageParamsFor(modelID)
+	if err != nil {
+		slog.Warn("discovery: image param rules unavailable, trialing with minimal body",
+			"model", modelID, "protocol", protocol, "error", err)
+		return nil
+	}
+	return params
 }
 
 // errSummary dereferences a probe error summary for logging.
