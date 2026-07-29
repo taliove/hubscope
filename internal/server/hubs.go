@@ -64,6 +64,7 @@ func (s *Server) handleCreateHub(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(r, "hub.create", "hub", strconv.FormatInt(hub.ID, 10),
 		fmt.Sprintf("name=%q base_url=%q", hub.Name, hub.BaseURL), "success")
+	s.InvalidateOverview()
 	writeData(w, http.StatusCreated, toHubDTO(*hub))
 }
 
@@ -109,6 +110,7 @@ func (s *Server) handleUpdateHub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "hub.update", "hub", strconv.FormatInt(id, 10), hubUpdateDetail(req), "success")
+	s.InvalidateOverview()
 	writeData(w, http.StatusOK, toHubDTO(*hub))
 }
 
@@ -136,6 +138,7 @@ func (s *Server) handleDeleteHub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "hub.delete", "hub", strconv.FormatInt(id, 10), "", "success")
+	s.InvalidateOverview()
 	writeNoContent(w)
 }
 

@@ -36,6 +36,13 @@ type Syncer struct {
 	db     *store.DB
 	client *hubclient.Client
 
+	// AfterSync, when set, is invoked once after every hub sync (syncMarked),
+	// success or failure — a failed sync may already have written models and
+	// endpoints mid-loop, so listeners (the overview snapshot's invalidation,
+	// spec 0015 decision 3) must fire either way. It runs synchronously on
+	// the sync goroutine; keep it cheap.
+	AfterSync func(hubID int64)
+
 	mu       sync.Mutex
 	inflight map[int64]bool
 }
@@ -180,6 +187,11 @@ func (s *Syncer) release(hubID int64) {
 // sync registers a discovery_sync task so the task center shows what changed;
 // tracking failures never break the sync itself.
 func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub, source string) (Stats, error) {
+	defer func() {
+		if s.AfterSync != nil {
+			s.AfterSync(hub.ID)
+		}
+	}()
 	tracker := s.db.BeginTask(store.TaskTypeDiscoverySync, source, store.TaskEntityHub, hub.ID,
 		fmt.Sprintf("discovery sync started: hub=%q", hub.Name))
 

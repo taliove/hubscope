@@ -57,6 +57,7 @@ func (s *Server) handlePatchEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(r, "endpoint.patch", "endpoint", strconv.FormatInt(id, 10),
 		endpointPatchDetail(req, interval), "success")
+	s.InvalidateOverview()
 	writeData(w, http.StatusOK, toEndpointDTO(*endpoint))
 }
 
@@ -80,6 +81,7 @@ func (s *Server) handleDeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "endpoint.delete", "endpoint", strconv.FormatInt(id, 10), "", "success")
+	s.InvalidateOverview()
 	writeNoContent(w)
 }
 
@@ -95,6 +97,9 @@ func (s *Server) handlePruneDeadEndpoints(w http.ResponseWriter, r *http.Request
 
 	s.audit(r, "endpoint.prune_dead", "endpoint", "",
 		fmt.Sprintf("pruned=%d", pruned), "success")
+	if pruned > 0 {
+		s.InvalidateOverview()
+	}
 	writeData(w, http.StatusOK, map[string]int64{"pruned": pruned})
 }
 

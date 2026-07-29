@@ -148,6 +148,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.audit(r, "settings.update", "settings", "", "keys="+strings.Join(keys, ","), "success")
+	// Suite weights feed the total scores behind the overview's eval_score
+	// column; a weights change must rebuild the snapshot.
+	if patch.SuiteWeights != nil {
+		s.InvalidateOverview()
+	}
 	writeData(w, http.StatusOK, dto)
 }
 

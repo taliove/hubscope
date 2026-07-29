@@ -73,6 +73,7 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, "model.create", "model", strconv.FormatInt(model.ID, 10),
 		fmt.Sprintf("model_id=%q hub_id=%d protocols=%v capability=%s family=%s",
 			model.ModelID, model.HubID, working, model.Capability, model.Family), "success")
+	s.InvalidateOverview()
 	writeData(w, http.StatusCreated, toModelDTO(*model, endpoints))
 }
 
@@ -128,16 +129,22 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 // so this branch is unreachable for anonymous in practice), or the session
 // user's hub for hub-scoped roles.
 func (s *Server) listModelsForRequest(r *http.Request) ([]store.Model, error) {
-	u := sessionUser(r)
-	if u == nil || u.Role == store.RoleSuperAdmin {
+	return s.listModelsForScope(overviewScopeKey(r))
+}
+
+// listModelsForScope selects the models of one overview scope (the same
+// selection listModelsForRequest makes, keyed for the snapshot cache).
+func (s *Server) listModelsForScope(scope int64) ([]store.Model, error) {
+	switch scope {
+	case overviewScopeAll:
 		return s.db.ListModelsAll()
-	}
-	if u.HubID == nil {
+	case overviewScopeEmpty:
 		// A hub-scoped role without a hub_id is a data inconsistency; fall
 		// back to an empty result rather than leaking the full set.
 		return []store.Model{}, nil
+	default:
+		return s.db.ListModelsByHub(scope)
 	}
-	return s.db.ListModelsByHub(*u.HubID)
 }
 
 // handleDeleteModel handles DELETE /api/models/{id}. Only manual models can
@@ -166,6 +173,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "model.delete", "model", strconv.FormatInt(id, 10), "", "success")
+	s.InvalidateOverview()
 	writeNoContent(w)
 }
 
@@ -256,6 +264,9 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "model.trial", "model", strconv.FormatInt(model.ID, 10),
 		fmt.Sprintf("model_id=%q created=%v failures=%q", model.ModelID, created, failures), result)
+	if len(created) > 0 {
+		s.InvalidateOverview()
+	}
 	writeData(w, http.StatusOK, trialResultDTO{
 		Model:            toModelDTO(*model, endpoints),
 		CreatedProtocols: created,
