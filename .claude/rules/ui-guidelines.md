@@ -234,7 +234,7 @@
 
   管理权=brand 与 §2「品牌主色=主按钮/链接/当前导航/聚焦态」同向(强调=可支配),非管理=info 中性灰。super_admin 与 admin 同色:区分靠词表(「超级管理员」vs「管理员」)+ 数据域(全局不绑 Hub vs Hub 内),不靠颜色加权——super_admin 稀有但染红代价(告警串扰)高于收益(视觉强调)。与 §3「等待中 中性灰」同为中性语义但词表与语义域不同(角色 vs 批次等待),靠上下文与词表消歧,禁止把等待中灰借用到角色域。并入说明:`primary` type 随主色从蓝 #3B5BFD 切换为 teal(亮 teal-600/暗 teal-500),`info` type 映射到 `--hs-info`,组件零改动,仅 ep-theme.css 映射值变化。
 - **实现集中:** `roleLabel(role)` + `roleTagType(role)` 抽 `web/src/utils/role.ts` 纯函数,供 AppHeader / AdminView / UserManager 复用(口径同 `utils/format.ts` 的集中原则);el-tag 走 `type` 属性语义色、`size="small"`、默认 `effect="light"`,不自着色、不硬编码色值、不引入调色板外色相;未知/未登录角色回落 `info` + 「未知用户」占位(三态精神)。未登录态不渲染角色 tag(与「AppHeader 导航按登录态过滤」同时机)。
-- **协议 tag 是契约家族区分的唯一展示单元**(GH #34 登记,spec 0016):EndpointCard、EndpointTable、EndpointDetailView 三处一律复用同一映射,禁止各组件自写三元表达式。词表 = 协议原值(anthropic / openai / images_generation / images_edit),不翻译、不缩写。**映射表:**
+- **协议 tag 是契约家族区分的唯一展示单元**(GH #34 登记,spec 0016):EndpointCard、EndpointTable、EndpointDetailView 三处一律复用同一映射,禁止各组件自写三元表达式。**例外(GH #54 登记):** Dashboard 分组模式下,组内筛选后 entries 协议全部相同时,卡片协议 tag 收敛为组头一枚(组名即协议的 protocol 分组不渲染组头 tag 且卡片同样收敛;flat 模式与混搭组不收敛)——收敛是屏幕密度优化,映射与词表不动,规格见 dashboard surface brief。词表 = 协议原值(anthropic / openai / images_generation / images_edit),不翻译、不缩写。**映射表:**
 
 | 协议 | el-tag type | 语义 |
 |---|---|---|
