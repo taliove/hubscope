@@ -3,7 +3,7 @@
     <header class="detail-header">
       <template v-if="detail">
         <h1 class="model-title" :title="detail.model_id_str">{{ detail.model_id_str }}</h1>
-        <el-tag :type="detail.protocol === 'anthropic' ? 'success' : 'warning'" size="small">
+        <el-tag :type="protocolTagType(detail.protocol)" size="small">
           {{ detail.protocol }}
         </el-tag>
         <span class="hub-name">Hub:{{ detail.hub_name }}</span>
@@ -126,6 +126,7 @@ import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import { formatBucketTime, formatScore, formatTime } from '@/utils/format'
+import { protocolTagType } from '@/utils/protocol'
 import { availabilityTier, type AvailabilityTier } from '@/utils/statusCardSummary'
 import { createSingleModelSnapshot, type StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary, Suite, Model, Campaign } from '@/api/types'

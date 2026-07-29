@@ -205,6 +205,16 @@
 
   管理权=brand 与 §2「品牌主色=主按钮/链接/当前导航/聚焦态」同向(强调=可支配),非管理=info 中性灰。super_admin 与 admin 同色:区分靠词表(「超级管理员」vs「管理员」)+ 数据域(全局不绑 Hub vs Hub 内),不靠颜色加权——super_admin 稀有但染红代价(告警串扰)高于收益(视觉强调)。与 §3「等待中 中性灰」同为中性语义但词表与语义域不同(角色 vs 批次等待),靠上下文与词表消歧,禁止把等待中灰借用到角色域。并入说明:`primary` type 随主色从蓝 #3B5BFD 切换为 teal(亮 teal-600/暗 teal-500),`info` type 映射到 `--hs-info`,组件零改动,仅 ep-theme.css 映射值变化。
 - **实现集中:** `roleLabel(role)` + `roleTagType(role)` 抽 `web/src/utils/role.ts` 纯函数,供 AppHeader / AdminView / UserManager 复用(口径同 `utils/format.ts` 的集中原则);el-tag 走 `type` 属性语义色、`size="small"`、默认 `effect="light"`,不自着色、不硬编码色值、不引入调色板外色相;未知/未登录角色回落 `info` + 「未知用户」占位(三态精神)。未登录态不渲染角色 tag(与「AppHeader 导航按登录态过滤」同时机)。
+- **协议 tag 是契约家族区分的唯一展示单元**(GH #34 登记,spec 0014):EndpointCard、EndpointTable、EndpointDetailView 三处一律复用同一映射,禁止各组件自写三元表达式。词表 = 协议原值(anthropic / openai / images_generation / images_edit),不翻译、不缩写。**映射表:**
+
+| 协议 | el-tag type | 语义 |
+|---|---|---|
+| anthropic | `success`(绿) | chat 契约家族 A(存量配色保留) |
+| openai | `warning`(黄) | chat 契约家族 B(存量配色保留) |
+| images_generation | `info`(中性灰) | 图像契约(spec 0014) |
+| images_edit | `info`(中性灰) | 图像契约(spec 0014,前瞻登记,随后端落地自动生效) |
+
+  **配色语义是「契约家族区分」非「健康度」**——与角色 tag 先例(ticket 62)同构的语义域隔离:success/warning 在协议域读作「两个 chat 家族的区分色」,上下文是协议词而非状态词,不构成 §3 状态色的借用;failing 橙与 danger 红仍专属状态域,协议 tag 永不使用。**整体迁出状态色的替代方案被否(GH #34 设计评审裁决):** 全部改 info 会让 anthropic/openai 失去颜色区分(区分度只剩文字),且推翻已批 spec 0014 与 issue AC「anthropic/openai 配色不变」、动用户已建立的视觉习惯——消除理论张力的收益小于迁移成本;存量 chat 配色与状态色的张力登记为已知并接受,出现同卡串扰实证再议。图像双协议同 info 色:区分靠词表原值(images_generation vs images_edit 词本身不同),不为协议域引入新色相;与角色 tag 的 info 灰跨页面不相遇(协议 tag 在状态板/端点详情,角色 tag 在 header/管理台用户域),靠语义域与词表消歧。暗色:info 映射 `--hs-info`(暗色提 gray-500),success/warning 暗色同值,四协议可分辨性 = 色(绿/黄/灰)+ 词,双主题构造性成立。**实现集中:** `protocolTagType(protocol)` 抽 `web/src/utils/protocol.ts` 纯函数(role.ts 先例),未知协议回落 `info`(防御 + 与未来 images_edit 自动兼容);el-tag 走 `type` 属性 + `size="small"`,不自着色。StatusCard 范围 chips(描边文本 chip,含「协议 · {protocol}」)不消费本映射、保持不变。**附记(GH #34 同票):** ModelAdder 提示文案随本映射修订为「添加时系统自动试通该模型的候选协议(chat 模型:anthropic / openai;图像模型:另加 images_generation),试通成功的协议自动建立 Endpoint,全部不通则拒绝添加。」——前端添加时不知道 capability(分类在后端 trialProtocolsFor),动态按 capability 措辞不可行,故用中性准确措辞;原「自动建立 anthropic 与 openai 两条 Endpoint」双重失真(试通才建不一定两条;image 模型另加 images_generation)。
 - 反馈三件套:
   - 操作结果 → `ElMessage`(成功/失败/警告,见 HubManager 用法);
   - 破坏性操作(删除、禁用)→ `ElMessageBox.confirm` 二次确认;
