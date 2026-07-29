@@ -117,8 +117,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listCampaigns, getCampaignReport } from '@/api/campaigns'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
@@ -126,6 +126,7 @@ import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { failedBatchWarning } from '@/utils/evalWording'
+import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
 import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
 
 // Eval leaderboard page (ticket 45): a pure consumption page. The batch
@@ -133,8 +134,16 @@ import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, ReportRow
 // the progress grid by default with a live half-scored board behind the
 // view switch (ticket 52), and only they are polled (ui-guidelines §6). Ops
 // and the case library live in /admin since ticket 44; row drill-down opens
-// the shared ModelTrendDialog (ticket 32 pattern).
+// the shared ModelTrendDialog (ticket 32 pattern). A ?batch=<id> query
+// (issue #16, from the AppHeader progress entry) overrides the default so
+// the entry lands on the batch it was showing.
 const router = useRouter()
+const route = useRoute()
+
+// Batch requested via ?batch=<id>; null when absent or unparseable. Kept
+// reactive so a late navigation (clicking the header entry while already
+// on /eval) still re-targets the selection.
+const requestedBatchId = computed(() => parseBatchQuery(route.query.batch))
 
 const campaigns = ref<Campaign[]>([])
 const selectedId = ref<number | null>(null)
@@ -212,10 +221,13 @@ async function loadCampaigns(silent = false) {
   try {
     const list = await listCampaigns()
     campaigns.value = list
-    // Default: the newest done campaign; fall back to the newest batch of
-    // any state so a running first batch still shows its progress.
+    // Initial selection (issue #16): a valid ?batch=<id> query wins;
+    // otherwise the established default — the newest done campaign, falling
+    // back to the newest batch of any state so a running first batch still
+    // shows its progress. Re-entry only happens when the selection is empty
+    // or vanished, so polling never overrides a manual choice.
     if (selectedId.value === null || !list.some((c) => c.id === selectedId.value)) {
-      selectedId.value = (list.find((c) => c.status === 'done') ?? list[0])?.id ?? null
+      selectedId.value = resolveInitialBatchId(list, requestedBatchId.value)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -268,7 +280,8 @@ async function reload() {
   armPolling()
 }
 
-function onBatchChange() {
+function switchBatch(id: number) {
+  selectedId.value = id
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []
@@ -276,6 +289,24 @@ function onBatchChange() {
   trendModel.value = null
   void loadReport().then(armPolling)
 }
+
+function onBatchChange() {
+  if (selectedId.value === null) return
+  // A manual switch syncs the URL (issue #16): the stale entry query can
+  // never drag the user back, and a refresh keeps landing on the chosen
+  // batch.
+  void router.replace({ query: { ...route.query, batch: String(selectedId.value) } })
+  switchBatch(selectedId.value)
+}
+
+// Late navigation to /eval?batch=<id> while the page is already mounted
+// (e.g. clicking the AppHeader progress entry from /eval itself): re-target
+// the selection when the query names a different, existing batch.
+watch(requestedBatchId, (id) => {
+  if (id === null || id === selectedId.value) return
+  if (!campaigns.value.some((c) => c.id === id)) return
+  switchBatch(id)
+})
 
 function onQuery(q: { family?: string; sort: string }) {
   query.value = q
