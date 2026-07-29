@@ -291,8 +291,11 @@ function onChipInspect(status: EndpointStatus) {
   min-width: 0;
   flex: 1;
 }
-/* Abnormal chip: outline only — no dot, no blink, no fill (W5 mirror: the
-   alert-dot owns the sole animation). */
+/* Abnormal chip: surface-backed card on the tinted banner — no dot, no
+   blink, no status fill (W5 mirror: the alert-dot owns the sole animation).
+   bg-card lifts the chip off any tone-soft ground coherently (light/dark,
+   all four tones); a bare gray outline on a tinted ground reads as a
+   mismatched halo (user report 2026-07-29). */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -300,7 +303,7 @@ function onChipInspect(status: EndpointStatus) {
   max-width: 240px;
   padding: var(--hs-space-1) var(--hs-space-2);
   font: inherit;
-  background: transparent;
+  background: var(--hs-bg-card);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-sm);
   cursor: pointer;
@@ -330,13 +333,13 @@ function onChipInspect(status: EndpointStatus) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Inert overflow count: text-only, deliberately un-framed so it never reads
+   as a disabled chip next to the clickable, surface-backed ones. */
 .chip-overflow {
   flex: none;
-  padding: var(--hs-space-1) var(--hs-space-2);
+  padding: var(--hs-space-1) 0;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-placeholder);
-  border: 1px solid var(--hs-border);
-  border-radius: var(--hs-radius-sm);
 }
 /* Skeleton mirrors the loaded layout heights (28px display conclusion +
    availability block) so first paint does not shift content below. */
