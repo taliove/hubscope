@@ -55,10 +55,11 @@ func assertCell(t *testing.T, row map[string]interface{}, suiteKey, status strin
 // TestCampaignReportProgressGrid pins the ticket 52 report contract for an
 // unfinished campaign: the report exposes per-(model, suite) progress cells
 // (status + judged/expected coverage), the half-scored board lists every
-// model with recorded results in model-id lexicographic order (never a
-// ranking), unscored suites stay out of the totals, and no baseline/delta
-// information leaks before the batch settles. After the sweep completes,
-// the same endpoint serves the full ranked board with every cell done.
+// model with recorded results ranked by the half-scored total descending
+// (GH #40 — ties break by model id, null totals sink), unscored suites stay
+// out of the totals, and no baseline/delta information leaks before the
+// batch settles. After the sweep completes, the same endpoint serves the
+// full ranked board with every cell done.
 //
 // Scenario: a full sweep over three models where alpha's answer calls all
 // fail (unjudged results) and the judge model is frozen after three judge
@@ -112,16 +113,17 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 		t.Errorf("progress.running = %d, want 1 (cap_language mid-flight)", got)
 	}
 
-	// The live board lists every model with recorded results in model-id
-	// lexicographic order — never a score ranking: alpha judged nothing in
-	// any suite yet still leads the unfinished board.
+	// The live board ranks by the half-scored total descending (GH #40):
+	// beta and gamma both total 100 (their four done rule suites) and tie
+	// into model-id order; alpha judged nothing anywhere and sinks to the
+	// bottom with a null total.
 	rows := reportRows(t, report)
 	if len(rows) != 3 {
-		t.Fatalf("running report rows = %v, want alpha, beta, gamma", rows)
+		t.Fatalf("running report rows = %v, want beta, gamma, alpha", rows)
 	}
-	for i, want := range []string{"alpha-model", "beta-model", "gamma-model"} {
+	for i, want := range []string{"beta-model", "gamma-model", "alpha-model"} {
 		if rows[i]["model_id"] != want {
-			t.Errorf("live board row %d = %v, want %s (lexicographic)", i, rows[i]["model_id"], want)
+			t.Errorf("live board row %d = %v, want %s (partial total desc, null sunk)", i, rows[i]["model_id"], want)
 		}
 	}
 
@@ -129,10 +131,10 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	// alike): alpha judged nothing (null total), beta and gamma average
 	// their four scored rule suites only — cap_language is not done and must
 	// not dilute the total.
-	if rows[0]["total_score"] != nil {
-		t.Errorf("alpha total_score = %v, want null (nothing judged)", rows[0]["total_score"])
+	if rows[2]["total_score"] != nil {
+		t.Errorf("alpha total_score = %v, want null (nothing judged)", rows[2]["total_score"])
 	}
-	for _, row := range rows[1:] {
+	for _, row := range rows[:2] {
 		scores, _ := row["suite_scores"].(map[string]interface{})
 		if scores["cap_language"] != nil {
 			t.Errorf("model %v cap_language score = %v, want null (suite still running)", row["model_id"], scores["cap_language"])
@@ -168,7 +170,7 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 			assertCell(t, row, key, "done", judged, 10)
 		}
 	}
-	alpha, beta, gamma := rows[0], rows[1], rows[2]
+	alpha, beta, gamma := rows[2], rows[0], rows[1]
 	assertCell(t, alpha, "cap_language", "done", 0, 10)
 	assertCell(t, beta, "cap_language", "running", 7, 10)
 	assertCell(t, gamma, "cap_language", "pending", 0, 10)

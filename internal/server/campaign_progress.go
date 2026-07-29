@@ -18,12 +18,19 @@ import (
 // what the cases declare, not the judge calls that actually succeeded, so a
 // case whose judge samples partially failed still contributes its full
 // declared count and the marker can read high.
+// LatencyMs/InputTokens/OutputTokens carry the cell's cost sums (GH #42) —
+// console-only: they are pointers precisely so the shared/public board
+// leaves them absent rather than zeroed (operational data never crosses the
+// session boundary).
 type reportCellDTO struct {
 	SuiteKey      string `json:"suite_key"`
 	Status        string `json:"status"`
 	JudgedCases   int    `json:"judged_cases"`
 	ExpectedCases int    `json:"expected_cases"`
 	Samples       int    `json:"samples"`
+	LatencyMs     *int64 `json:"latency_ms,omitempty"`
+	InputTokens   *int64 `json:"input_tokens,omitempty"`
+	OutputTokens  *int64 `json:"output_tokens,omitempty"`
 }
 
 // enabledCaseCounts resolves the current enabled-case count of each suite —
@@ -49,9 +56,13 @@ func (s *Server) enabledCaseCounts(suites []reportSuiteDTO) (map[int64]int, erro
 // lands. The member list is unioned with the models that recorded results,
 // so a campaign whose snapshot missed someone (only possible for
 // pre-membership campaigns, backfilled from results) never hides a model
-// that has results. Scores come from done runs only, and rows stay in
-// model-id lexicographic order — no ranking information leaks before the
-// batch settles.
+// that has results. Scores come from done runs only. Rows rank by the
+// half-scored total descending (GH #40) — the ADR-0005 weighted mean over
+// the already-judged suites, never "null counts as zero" — with model-id
+// lexicographic tie-break, and null-total rows (nothing judged yet) sunk
+// below every scored row, lexicographic among themselves. The frontend
+// renders the ordinal as a de-emphasized live rank; the settled board's
+// ranking caliber is untouched.
 func liveReportRows(members []store.CampaignMember, progress []store.CampaignCellProgress, scores []store.CampaignSuiteScore, weights map[string]float64, nadirs map[string]float64) []reportRowDTO {
 	scoredByModel := map[int64]reportRowDTO{}
 	for _, row := range buildReportRows(scores, weights, nadirs) {
@@ -81,7 +92,16 @@ func liveReportRows(members []store.CampaignMember, progress []store.CampaignCel
 	for _, p := range progress {
 		appendRow(p.ModelDBID, p.ModelID, p.Family)
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].ModelID < rows[j].ModelID })
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i].TotalScore, rows[j].TotalScore
+		if (a == nil) != (b == nil) {
+			return a != nil // a judged total outranks no total at all
+		}
+		if a != nil && *a != *b {
+			return *a > *b
+		}
+		return rows[i].ModelID < rows[j].ModelID
+	})
 	return rows
 }
 
@@ -114,9 +134,10 @@ func newCellIndex(runs []store.EvalRun, progress []store.CampaignCellProgress) c
 
 // cellFor builds one model x suite progress cell; ok=false means the campaign
 // has no run for the suite (no cell rendered). withSamples=false keeps the
-// confidence marker at zero — required at the shared public boundary (ticket
-// 54), where samples are score-side metadata and never cross pre-settle.
-func (idx cellIndex) cellFor(suite reportSuiteDTO, modelDBID int64, planned int, withSamples bool) (cell reportCellDTO, ok bool) {
+// confidence marker at zero and withCost=false keeps the cost sums absent —
+// both required at the shared public boundary (ticket 54 / GH #42), where
+// score-side metadata and operational cost never cross pre-settle.
+func (idx cellIndex) cellFor(suite reportSuiteDTO, modelDBID int64, planned int, withSamples, withCost bool) (cell reportCellDTO, ok bool) {
 	run, ok := idx.runBySuite[suite.ID]
 	if !ok {
 		return reportCellDTO{}, false
@@ -130,6 +151,12 @@ func (idx cellIndex) cellFor(suite reportSuiteDTO, modelDBID int64, planned int,
 	}
 	if withSamples {
 		cell.Samples = p.Samples
+	}
+	if withCost {
+		latency, in, out := p.LatencyMs, p.InputTokens, p.OutputTokens
+		cell.LatencyMs = &latency
+		cell.InputTokens = &in
+		cell.OutputTokens = &out
 	}
 	return cell, true
 }
@@ -176,10 +203,10 @@ func sharedProgressRows(members []store.CampaignMember, suites []reportSuiteDTO,
 	for _, ref := range ordered {
 		cells := make([]reportCellDTO, 0, len(suites))
 		for _, suite := range suites {
-			// Samples deliberately excluded: the confidence marker is
-			// score-side metadata and never crosses the shared boundary
-			// pre-settle.
-			if cell, ok := idx.cellFor(suite, ref.dbID, expectedBySuite[suite.ID], false); ok {
+			// Samples and cost sums deliberately excluded: the confidence
+			// marker is score-side metadata and operational cost never
+			// crosses the shared boundary (ticket 54 / GH #42).
+			if cell, ok := idx.cellFor(suite, ref.dbID, expectedBySuite[suite.ID], false, false); ok {
 				cells = append(cells, cell)
 			}
 		}
@@ -196,15 +223,17 @@ func sharedProgressRows(members []store.CampaignMember, suites []reportSuiteDTO,
 
 // attachReportCells returns fresh rows with the per-suite progress cells
 // filled in (ticket 52); inputs stay untouched. Every row gets one cell per
-// campaign suite, so the grid always renders the full matrix.
-func attachReportCells(rows []reportRowDTO, suites []reportSuiteDTO, runs []store.EvalRun, progress []store.CampaignCellProgress, expectedBySuite map[int64]int) []reportRowDTO {
+// campaign suite, so the grid always renders the full matrix. withCost
+// attaches the per-cell cost sums (GH #42) — true only for the session
+// report, never for the shared/public surfaces.
+func attachReportCells(rows []reportRowDTO, suites []reportSuiteDTO, runs []store.EvalRun, progress []store.CampaignCellProgress, expectedBySuite map[int64]int, withCost bool) []reportRowDTO {
 	idx := newCellIndex(runs, progress)
 
 	out := make([]reportRowDTO, len(rows))
 	for i, row := range rows {
 		cells := make([]reportCellDTO, 0, len(suites))
 		for _, suite := range suites {
-			if cell, ok := idx.cellFor(suite, row.ModelDBID, expectedBySuite[suite.ID], true); ok {
+			if cell, ok := idx.cellFor(suite, row.ModelDBID, expectedBySuite[suite.ID], true, withCost); ok {
 				cells = append(cells, cell)
 			}
 		}

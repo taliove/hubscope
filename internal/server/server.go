@@ -362,6 +362,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/campaigns/{id}/report", s.handleGetCampaignReport)
 			r.Get("/campaigns/{id}/trends", s.handleGetCampaignTrends)
 			r.Get("/campaigns/{id}/live-feed", s.handleGetCampaignLiveFeed)
+			r.Get("/campaigns/{id}/live-feed/{resultID}", s.handleGetCampaignLiveFeedResult)
 
 			// Public eval board (spec 0010): anonymous like the status board
 			// via the publicReadPattern whitelist; serves the newest settled

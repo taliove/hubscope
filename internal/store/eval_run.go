@@ -381,6 +381,44 @@ func (db *DB) ListCampaignLiveFeed(campaignID, sinceID int64, limit int) ([]Live
 	return entries, rows.Err()
 }
 
+// LiveFeedResultDetail is the on-demand expansion of one live-feed event
+// (GH #41): the case's full prompt, the expectation by verdict method (the
+// rule standard answer for rule cases, the rubric scoring points for judge
+// cases), the model's answer text, the score and the verdict detail. The
+// case join is LEFT so a purged case leaves prompt/expectation empty rather
+// than dropping the result, matching the feed's retention rule.
+type LiveFeedResultDetail struct {
+	ID            int64
+	CasePrompt    string
+	VerdictType   string
+	Expected      *string
+	AnswerText    *string
+	Score         *float64
+	VerdictDetail *string
+}
+
+// GetCampaignLiveFeedResult returns the detail of one result of the
+// campaign, or sql.ErrNoRows when the result does not exist or belongs to
+// another campaign (the handler folds both into the same 404 — no cross-
+// campaign oracle).
+func (db *DB) GetCampaignLiveFeedResult(campaignID, resultID int64) (*LiveFeedResultDetail, error) {
+	var d LiveFeedResultDetail
+	err := db.conn.QueryRow(`
+		SELECT res.id, COALESCE(c.prompt, ''), COALESCE(c.verdict_type, ''),
+			CASE WHEN c.verdict_type = 'judge' THEN c.rubric ELSE c.rule_expected END,
+			res.answer_text, res.score, res.verdict_detail
+		FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		LEFT JOIN cases c ON c.id = res.case_id
+		WHERE r.campaign_id = ? AND res.id = ?
+	`, campaignID, resultID).Scan(
+		&d.ID, &d.CasePrompt, &d.VerdictType, &d.Expected, &d.AnswerText, &d.Score, &d.VerdictDetail)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
 // SetEvalRunVerdictProfile re-tags every result of a run with the given
 // verdict profile. It exists so caliber migrations and tests can stage a
 // run as scored under an older profile (ADR 0008); production scoring always

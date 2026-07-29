@@ -328,6 +328,17 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("eval_results", "verdict_profile", "TEXT NOT NULL DEFAULT 'v1'"); err != nil {
 		return err
 	}
+	// Token usage columns (added to the create-table DDL alongside latency):
+	// nullable by design — a hub that does not report usage leaves them NULL,
+	// and cost sums count those NULLs as 0 (GH #42). Backfilling old
+	// databases with the columns is what lets the cost aggregates read every
+	// historical result without a special case.
+	if err := db.ensureColumn("eval_results", "input_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_results", "output_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
 	// Ticket 50 (ADR 0010): question-bank v3 organizes suites by capability,
 	// stores a per-suite nadir constant for normalized scoring (backfilled 0,
 	// which degenerates to the legacy raw-mean caliber), and adds an enabled

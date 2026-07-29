@@ -126,8 +126,20 @@ func TestPublicEvalBoardLatestSettled(t *testing.T) {
 
 	// Same shape as the session-gated report — the public endpoint reuses
 	// the same serialization, so the two payloads are identical for a
-	// settled campaign (default total-desc ranking, no family filter).
+	// settled campaign (default total-desc ranking, no family filter) once
+	// the console-only cost metrics (GH #42) and the per-cell cost sums they
+	// attach are stripped from the session payload.
 	sessionReport := getCampaignReport(t, ts.URL, campaignID, "")
+	delete(sessionReport, "cost")
+	delete(sessionReport, "cost_rows")
+	for _, row := range sessionReport["rows"].([]interface{}) {
+		for _, c := range row.(map[string]interface{})["cells"].([]interface{}) {
+			cell := c.(map[string]interface{})
+			delete(cell, "latency_ms")
+			delete(cell, "input_tokens")
+			delete(cell, "output_tokens")
+		}
+	}
 	if !reflect.DeepEqual(report, sessionReport) {
 		t.Errorf("public report differs from the session report:\npublic:  %v\nsession: %v", report, sessionReport)
 	}
