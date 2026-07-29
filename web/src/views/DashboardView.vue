@@ -122,6 +122,7 @@ import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
+import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, enabledEndpoints, availability24h, loading, error, statusCounts, start } = useOverview()
@@ -184,20 +185,27 @@ function onBannerInspect(status: EndpointStatus) {
   matrixRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-// Apply the three filters; an empty filter matches everything.
+// Apply the three filters; an empty filter matches everything. The result
+// is severity-ranked (GH #52) so the flat matrix leads with the most severe
+// endpoints; group sections re-derive their own ordering from this set.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  return entries.value.filter(entry => {
-    if (kw && !entry.model_id.toLowerCase().includes(kw)) return false
-    if (protocolFilter.value && entry.protocol !== protocolFilter.value) return false
-    if (statusFilter.value && entry.status !== statusFilter.value) return false
-    return true
-  })
+  return sortEntriesBySeverity(
+    entries.value.filter(entry => {
+      if (kw && !entry.model_id.toLowerCase().includes(kw)) return false
+      if (protocolFilter.value && entry.protocol !== protocolFilter.value) return false
+      if (statusFilter.value && entry.status !== statusFilter.value) return false
+      return true
+    }),
+  )
 })
 
-// Pair each group aggregate with its filtered entries. Groups with no
-// matching entries after filtering stay visible (they show an empty hint).
-const groupSections = computed<{ group: OverviewGroup; entries: OverviewEntry[] }[]>(() => {
+// Pair each group aggregate with its filtered entries, then severity-rank
+// (GH #52): groups by their most severe ENABLED entry (ties by group key,
+// empty-after-filter groups sink), entries within each group by severity.
+// Groups with no matching entries after filtering stay visible (they show
+// an empty hint).
+const groupSections = computed<GroupSection[]>(() => {
   const groups =
     grouping.value === 'family'
       ? byFamily.value
@@ -206,10 +214,12 @@ const groupSections = computed<{ group: OverviewGroup; entries: OverviewEntry[] 
         : byProtocol.value
   const keyOf = (e: OverviewEntry) =>
     grouping.value === 'family' ? e.family : grouping.value === 'capability' ? e.capability : e.protocol
-  return groups.map(group => ({
-    group,
-    entries: filteredEntries.value.filter(e => keyOf(e) === group.key),
-  }))
+  return sortGroupSections(
+    groups.map(group => ({
+      group,
+      entries: filteredEntries.value.filter(e => keyOf(e) === group.key),
+    })),
+  )
 })
 
 onMounted(start)

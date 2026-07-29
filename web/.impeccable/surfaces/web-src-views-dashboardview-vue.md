@@ -49,11 +49,11 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 - **防作假:** 任何汇总结论必须标注统计范围;筛选快照不得引用未筛选聚合字段;空态中性,永不读作「全部正常」。
 - **轮询:** overview 走 utils/visibilityPoll.ts(10s,标签页隐藏降频 60s,回前台立即刷新),卸载必清理。
 - **状态排序口径:** stats strip 与组头共享同一严重度秩(failing>down>degraded>healthy);**GH #55 统一为重→轻,届时以回写为准。**
-- **首屏组织:** **GH #52 severitySort——组间按组内最高严重度降序、组内严重度前置,届时以回写为准。**
+- **首屏严重度组织(GH #52 登记):** 状态板组间/组内/flat 三处统一走 `utils/severitySort.ts` 的严重度秩(`SEVERITY_RANK`:failing>down>degraded>healthy,全站唯一来源,StatusCard 异常明细同引);**口径一律按筛选后 entries 计算**。组间秩 = 组内 enabled entries 的最小秩,tie 按组键字典序(`<`,不用 localeCompare);组内秩升序,tie 按 model_id → protocol → endpoint_id;flat 模式同经 `sortEntriesBySeverity`。**已停用端点(`DISABLED_RANK`)恒沉底**——disabled 的 down/failing 不抬组秩、不参与首屏竞争;**筛选后空组沉底**(组键字典序,空 hint 现行为保留)。轮询/筛选引起的数据驱动重排不做动画(与榜单行重排同纪律)。STRIP_ORDER 与组头 STATUS_PRIORITY 的计数顺序不在本约定内(归 GH #55)。
 
 ## 体检基线与已排改进
 - critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
-- 已排票:#52 severitySort / #53 HealthBanner 重构 / #54 卡片层级 / #55 一致性批。
+- 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构 / #54 卡片层级 / #55 一致性批。
 
 ## 未决(另立批次)
 - a11y(click-only 主交互键盘可达、dots aria 等价)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。

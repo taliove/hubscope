@@ -63,10 +63,11 @@
 // functions; the parent only supplies the empty-state wording (it depends
 // on the disabled-inclusive count, which lives upstream).
 import { computed } from 'vue'
-import type { EndpointStatus, OverviewEntry } from '@/api/types'
+import type { OverviewEntry } from '@/api/types'
 import { formatPercent } from '@/utils/format'
 import { STATUS_LABELS } from '@/utils/healthConclusion'
 import { availabilityTier, dotTier, healthyRangeText } from '@/utils/statusCardSummary'
+import { SEVERITY_RANK } from '@/utils/severitySort'
 
 const props = defineProps<{
   entries: OverviewEntry[] // scoped ENABLED entries only
@@ -81,14 +82,14 @@ const props = defineProps<{
 // tall image; the footer origin is the escape hatch to the live board.
 const MAX_DETAIL_ROWS = 10
 
-const SEVERITY_ORDER: Record<EndpointStatus, number> = { failing: 0, down: 1, degraded: 2, healthy: 3 }
-
+// Severity table comes from the single source (utils/severitySort, GH #52);
+// the detail list keeps its own localeCompare name tie-break.
 const abnormalEntries = computed(() =>
   props.entries
     .filter(e => e.status !== 'healthy')
     .sort(
       (a, b) =>
-        SEVERITY_ORDER[a.status] - SEVERITY_ORDER[b.status] || a.model_id.localeCompare(b.model_id),
+        SEVERITY_RANK[a.status] - SEVERITY_RANK[b.status] || a.model_id.localeCompare(b.model_id),
     ),
 )
 const topAbnormal = computed(() => abnormalEntries.value.slice(0, MAX_DETAIL_ROWS))
