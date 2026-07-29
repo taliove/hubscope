@@ -54,12 +54,15 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 ## 数据与行为约束
 - **防作假:** 任何汇总结论必须标注统计范围;筛选快照不得引用未筛选聚合字段;空态中性,永不读作「全部正常」。
 - **轮询:** overview 走 utils/visibilityPoll.ts(10s,标签页隐藏降频 60s,回前台立即刷新),卸载必清理。
-- **状态排序口径:** stats strip 与组头共享同一严重度秩(failing>down>degraded>healthy);**GH #55 统一为重→轻,届时以回写为准。**
-- **首屏严重度组织(GH #52 登记):** 状态板组间/组内/flat 三处统一走 `utils/severitySort.ts` 的严重度秩(`SEVERITY_RANK`:failing>down>degraded>healthy,全站唯一来源,StatusCard 异常明细同引);**口径一律按筛选后 entries 计算**。组间秩 = 组内 enabled entries 的最小秩,tie 按组键字典序(`<`,不用 localeCompare);组内秩升序,tie 按 model_id → protocol → endpoint_id;flat 模式同经 `sortEntriesBySeverity`。**已停用端点(`DISABLED_RANK`)恒沉底**——disabled 的 down/failing 不抬组秩、不参与首屏竞争;**筛选后空组沉底**(组键字典序,空 hint 现行为保留)。轮询/筛选引起的数据驱动重排不做动画(与榜单行重排同纪律)。STRIP_ORDER 与组头 STATUS_PRIORITY 的计数顺序不在本约定内(归 GH #55)。
+- **状态排序口径(GH #55 定稿):** stats strip 与组头共享同一严重度序,重→轻(failing>down>degraded>healthy);单一来源 = `utils/severitySort.ts` 的 `SEVERITY_ORDER` 数组(与 `SEVERITY_RANK` 秩序一致,vitest 断言守护),strip 原轻→重 `STRIP_ORDER` 与组头 `STATUS_PRIORITY` 两处本地口径已删除。
+- **首屏严重度组织(GH #52 登记):** 状态板组间/组内/flat 三处统一走 `utils/severitySort.ts` 的严重度秩(`SEVERITY_RANK`:failing>down>degraded>healthy,全站唯一来源,StatusCard 异常明细同引);**口径一律按筛选后 entries 计算**。组间秩 = 组内 enabled entries 的最小秩,tie 按组键字典序(`<`,不用 localeCompare);组内秩升序,tie 按 model_id → protocol → endpoint_id;flat 模式同经 `sortEntriesBySeverity`。**已停用端点(`DISABLED_RANK`)恒沉底**——disabled 的 down/failing 不抬组秩、不参与首屏竞争;**筛选后空组沉底**(组键字典序,空 hint 现行为保留)。轮询/筛选引起的数据驱动重排不做动画(与榜单行重排同纪律)。
+- **statusFilter 双控(GH #55 登记,有意为之):** stats strip 状态项点击(再点取消)与筛选行状态下拉绑定同一 `statusFilter` ref,双向同步构造性成立;strip 是快捷路径,banner inspect 写同一 ref;三者共享单一过滤源。选中态 = `--hs-brand-soft` 浅底 + brand 文字 + radius-sm(脱离下划线语言——原 2px brand 下划线读作导航 tab 而非「已选过滤条件」,且与导航 tab 语言撞车)。
+- **「本组」前缀(GH #55):** 组头 group-metrics 以「本组:」容器级前缀一次统领 24h 可用率与均延两项,与 HealthBanner 的全局口径区分归属,两个可用率不再裸名并列。
+- **筛选行下拉内联 label(GH #55,Dashboard 局部约定,不推广):** 协议/状态两个 select 前置内联 label(sm/secondary「协议:」「状态:」,与 select 同行),不再以 placeholder 兼任 label;关键词输入框与分组 select 不动。
 
 ## 体检基线与已排改进
 - critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
-- 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构(**已完成 2026-07-29**,约定见「组件规格」HealthBanner 节)/ #54 卡片层级重构(**已完成 2026-07-29**,约定见「组件规格」EndpointCard 节)/ #55 一致性批。
+- 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构(**已完成 2026-07-29**,约定见「组件规格」HealthBanner 节)/ #54 卡片层级重构(**已完成 2026-07-29**,约定见「组件规格」EndpointCard 节)/ #55 一致性批(**已完成 2026-07-29**,约定见「数据与行为约束」状态排序口径/双控/「本组」前缀/下拉 label 各条)。
 
 ## 未决(另立批次)
 - a11y(click-only 主交互键盘可达、dots aria 等价)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。

@@ -26,9 +26,11 @@
         </el-tag>
       </span>
 
+      <!-- "本组:" prefix (GH #55): one container-level scope marker for both
+           metrics, so the group's availability/latency can never be read as
+           the global figures the banner carries. -->
       <span class="group-metrics">
-        <span>24h 可用率 {{ formatPercent(group.availability_24h) }}</span>
-        <span>均延 {{ formatMs(group.avg_latency_ms) }}</span>
+        本组:24h 可用率 {{ formatPercent(group.availability_24h) }} · 均延 {{ formatMs(group.avg_latency_ms) }}
       </span>
 
       <!-- Per-group share (ticket 59): text button so it never competes with
@@ -59,7 +61,8 @@ import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
 import { formatPercent, formatMs } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
-import type { OverviewGroup, OverviewEntry, EndpointStatus, Protocol } from '@/api/types'
+import { SEVERITY_ORDER } from '@/utils/severitySort'
+import type { OverviewGroup, OverviewEntry, Protocol } from '@/api/types'
 
 const props = defineProps<{
   group: OverviewGroup
@@ -71,10 +74,11 @@ const emit = defineEmits<{ (e: 'share'): void }>()
 
 const collapsed = ref(false)
 
-// Statuses present in this group, in display priority order.
-const STATUS_PRIORITY: EndpointStatus[] = ['down', 'failing', 'degraded', 'healthy']
+// Statuses present in this group, in the board's single severity caliber
+// (GH #55 — SEVERITY_ORDER, heavy → light, shared with the stats strip;
+// the local STATUS_PRIORITY list is deleted).
 const presentStatuses = computed(() =>
-  STATUS_PRIORITY.filter(s => (props.group.status_counts[s] ?? 0) > 0)
+  SEVERITY_ORDER.filter(s => (props.group.status_counts[s] ?? 0) > 0)
 )
 
 // Uniform-protocol collapse (GH #54): the protocol shared by every filtered
@@ -135,8 +139,6 @@ const collapseCardProtocolTag = computed(
 }
 .group-metrics {
   margin-left: auto;
-  display: flex;
-  gap: 14px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
