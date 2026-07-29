@@ -33,6 +33,26 @@ _Avoid_: 品牌蓝、#3B5BFD(并入前旧品牌色,已废弃)
 failing 告警语义色,亮主题 `#c2410c` / 暗主题 `#fb923c`,是「调色板外不引入新色相」纪律的唯一具名例外(ui-guidelines §3 裁决)——告警辨识度 = 告警可信度(W5)。仅用于 failing 告警语义,不得泛化为装饰色。
 _Avoid_: 橙红、#FF4500(并入前旧告警色,已废弃)
 
+## Language — 设计治理(2026-07-29 起,权威迁移试点)
+
+**视觉权威 (DESIGN.md)**:
+视觉与布局规范的唯一事实源,impeccable 格式(YAML 令牌 frontmatter + 八章节),承载令牌刻度、字阶、圆角/阴影/间距、暗色机制、品牌标识视觉、布局规范、视觉交互细则;配套 `.impeccable/design.json` sidecar。由 ui-guidelines §2/§2a/§2b/§4/§6 迁入。
+_Avoid_: 设计规范(旧称,泛指 ui-guidelines 全文的时期已结束)
+
+**业务语义手册**:
+迁移后 ui-guidelines.md 的角色——只承载业务语义:两套状态词表、降级成因副词表、语义色映射关系(引用 DESIGN.md 令牌名,不写色值字面量)、防作假约定、分享面信息边界、成本中性化。语义映射变更仍属承重语义变更,需设计评审。
+_Avoid_: 设计规范、UI 规范
+
+**Surface Brief(表面简报)**:
+impeccable 体系中按页面/表面的规格文件,承载组件与页面级构成规格(原 ui-guidelines §5 组件条目,如 StatusCard 构成、Leaderboard 矩阵规格),随状态板试点首批建立。
+
+**PRODUCT.md**:
+impeccable 体系中的产品真相文件,承载产品形态与读者模型(原 ui-guidelines §1:双形态、两类读者、桌面优先、工具风基调)。
+
+**Refinement(精化)**:
+在既有视觉世界(teal 工具风、三层令牌)内演进层级/布局/交互的改造方式;与 Redesign(推翻视觉世界)相对。HubScope 本轮 UI/UX 改造 = Refinement。
+_Avoid_: 重设计、改版
+
 ## Language — 评估
 
 **Suite**:
