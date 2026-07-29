@@ -10,8 +10,8 @@
 // same report response, never from any other page aggregate. An empty
 // filtered result keeps all chips and shows a neutral "暂无匹配模型", never
 // a "全部上榜"-style conclusion.
-import type { CampaignReport, CampaignStatus, EvalTrigger, ReportCell, ReportSuite } from '@/api/types'
-import { baselineChipText, failedBatchWarning, incompleteWatermark } from '@/utils/evalWording'
+import type { CampaignReport, CampaignStatus, ReportCell, ReportSuite } from '@/api/types'
+import { baselineChipText, campaignTriggerLabel, failedBatchWarning, incompleteWatermark } from '@/utils/evalWording'
 
 // Cap on leaderboard rows rendered into the card; the rest collapse into a
 // single overflow line (same shape as the StatusCard detail overflow).
@@ -63,10 +63,8 @@ const STATUS_LABELS: Record<CampaignStatus, string> = {
   pending: '等待中',
 }
 
-const TRIGGER_LABELS: Record<EvalTrigger, string> = {
-  scheduled: '定时',
-  manual: '手动',
-}
+// Trigger wording comes from the shared campaignTriggerLabel (evalWording,
+// GH #57) — the card chip and the board meta line must never drift.
 
 function suiteName(suites: ReportSuite[], key: string): string {
   return suites.find((s) => s.key === key)?.name ?? key
@@ -81,7 +79,7 @@ function buildChips(report: CampaignReport, query: { family?: string; sort: stri
   const chips: EvalCardChip[] = [
     {
       label: '批次',
-      value: `#${report.id} · ${TRIGGER_LABELS[report.trigger]} · ${STATUS_LABELS[report.status]}`,
+      value: `#${report.id} · ${campaignTriggerLabel(report.trigger)} · ${STATUS_LABELS[report.status]}`,
     },
   ]
   if (query.family) chips.push({ label: '系列', value: query.family })

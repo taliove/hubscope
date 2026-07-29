@@ -7,7 +7,24 @@
 // baseline chip) for the baseline note. Wordings NOT shared on purpose:
 // the settle-transition ElMessage ("批次 #N 已结束:…") and the delta-arrow
 // hover titles use different sentence shapes and stay local.
-import type { ReportBaseline, ReportRow } from '@/api/types'
+import type { CampaignStatus, EvalTrigger, ReportBaseline, ReportRow } from '@/api/types'
+
+// Batch trigger vocabulary (ui-guidelines §7 batch domain): scheduled→定时,
+// manual→手动. Consumers: BoardView batch meta line (GH #57) and the
+// EvalCard 批次 chip (evalCardSnapshot). Unknown values fall back to the raw
+// trigger string (defensive — the contract is a closed union).
+export function campaignTriggerLabel(trigger: EvalTrigger): string {
+  if (trigger === 'scheduled') return '定时'
+  if (trigger === 'manual') return '手动'
+  return trigger
+}
+
+// Settle verb for the board batch meta line (GH #57): /board always shows a
+// settled batch — done reads 完成于, failed 失败于. The failed wording is
+// anti-fake caliber: a failed batch must never read as completed.
+export function campaignSettleVerb(status: CampaignStatus): string {
+  return status === 'failed' ? '失败于' : '完成于'
+}
 
 // Failed-batch warning, identical to the page alert title (ui-guidelines §5
 // EvalCard entry: the card line carries the same wording and caliber).

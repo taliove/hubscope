@@ -13,8 +13,8 @@ related_targets: ["web/src/components/Leaderboard.vue","web/src/components/Score
 
 ## 页面构成
 1. AppHeader(公开侧形态,同 Dashboard 简报)
-2. 页头:`评估榜单` 标题行(xl/600,工具风层级,非营销 hero)+ **批次 meta 行(GH #57 起生效:**「批次 #N · 定时/手动 · 完成于 YYYY-MM-DD HH:mm」,sm/secondary 中性不着色,§7 批次词表;无 settle 批次空态不渲染)
-3. running-note(仅运行中批次时):「新一批评估进行中,当前展示已完成批次 #N」(sm secondary,无底色无边框)
+2. 页头:`评估榜单` 标题行(xl/600,工具风层级,非营销 hero)+ 批次 meta 行(GH #57,2026-07-29 落地):「批次 #N · 定时/手动 · 完成于|失败于 YYYY-MM-DD HH:mm」(done→完成于、failed→失败于,防作假口径;finished_at null 时时间整段省略;仅 report 已加载分支渲染,loading/error/空态不渲染;sm/secondary 中性不着色,无底色无边框;触发词走 evalWording.campaignTriggerLabel、时间走 format.formatTimeMinute)
+3. running-note(仅运行中批次时):「新一批评估进行中,当前展示已完成批次」(sm secondary,无底色无边框;批次号由上方 meta 行承担,不重复)
 4. Leaderboard(shared 口径「保存图片」)
 5. PublicFooter
 
@@ -23,7 +23,7 @@ related_targets: ["web/src/components/Leaderboard.vue","web/src/components/Score
 
 ## 体检基线与已排改进
 - critique 基线 26/36(2026-07-29):页面不标批次身份/时效(P1)、公开读者零解释层(P1)、涨跌理解依赖记忆桥(P2)、排序无可发现性(P2)、状态不进 URL(P3)。
-- 已排票:#57(批次 meta 行,已按修后口径登记于构成)。
+- 已排票:#57(批次 meta 行)✅ 已完成(2026-07-29,规格已并入上方构成)。
 
 ## 未决(另立批次)
 - 解释层(一句话副标题 + 工具条图例 popover,与 ScoreCell tooltip 同源)、列头排序常驻弱化指示、视图状态 URL 深链、空态期望管理(「评估多久跑一次」)。

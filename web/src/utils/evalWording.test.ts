@@ -2,8 +2,39 @@
 // These strings have multiple consumers (page alerts, the toolbar note and
 // the EvalCard), so the verbatim copy is pinned here against drift.
 import { describe, it, expect } from 'vitest'
-import type { ReportRow } from '@/api/types'
-import { failedBatchWarning, baselineNoteText, baselineChipText, incompleteWatermark } from '@/utils/evalWording'
+import type { EvalTrigger, ReportRow } from '@/api/types'
+import {
+  failedBatchWarning,
+  baselineNoteText,
+  baselineChipText,
+  campaignSettleVerb,
+  campaignTriggerLabel,
+  incompleteWatermark,
+} from '@/utils/evalWording'
+
+describe('campaignTriggerLabel', () => {
+  it.each([
+    ['scheduled', '定时'],
+    ['manual', '手动'],
+  ] as [EvalTrigger, string][])('maps %s verbatim', (trigger, expected) => {
+    expect(campaignTriggerLabel(trigger)).toBe(expected)
+  })
+
+  it('falls back to the raw value for an unknown trigger', () => {
+    expect(campaignTriggerLabel('webhook' as EvalTrigger)).toBe('webhook')
+  })
+})
+
+describe('campaignSettleVerb', () => {
+  it('reads 失败于 for a failed batch (anti-fake: never reads as completed)', () => {
+    expect(campaignSettleVerb('failed')).toBe('失败于')
+  })
+
+  it('reads 完成于 otherwise (board batches are always settled)', () => {
+    expect(campaignSettleVerb('done')).toBe('完成于')
+    expect(campaignSettleVerb('running')).toBe('完成于')
+  })
+})
 
 describe('failedBatchWarning', () => {
   it('matches the page alert title verbatim', () => {

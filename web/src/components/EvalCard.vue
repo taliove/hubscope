@@ -110,7 +110,7 @@
 import { computed } from 'vue'
 import type { EvalCardRow, EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import type { ReportCell } from '@/api/types'
-import { formatScore, formatScoreDelta, formatTime } from '@/utils/format'
+import { formatScore, formatScoreDelta, formatTimeMinute } from '@/utils/format'
 import ScoreCell from '@/components/ScoreCell.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import Wordmark from '@/components/Wordmark.vue'
@@ -121,11 +121,8 @@ const props = defineProps<{
   origin: string
 }>()
 
-// "YYYY-MM-DD HH:mm" out of the shared formatTime helper.
-const timeText = computed(() => {
-  const full = formatTime(props.snapshot.generatedAt)
-  return full.length >= 16 ? full.slice(0, 16) : full
-})
+// "YYYY-MM-DD HH:mm" via the shared minute-precision helper (GH #57).
+const timeText = computed(() => formatTimeMinute(props.snapshot.generatedAt))
 
 // The grid template shared by the header and every row (same alignment
 // discipline as the page matrix). Fixed widths: rank 24 / model 150 /

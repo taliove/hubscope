@@ -21,7 +21,11 @@
          drill-down on the public page), and the share-image entry reads
          "保存图片" for the recipient reader (shared caliber). -->
     <template v-else>
-      <p v-if="running" class="running-note">新一批评估进行中,当前展示已完成批次 #{{ report.id }}</p>
+      <!-- Batch identity + data freshness (GH #57): one neutral meta line
+           under the title, only on the loaded-report branch; the failed
+           batch must read 失败于 (anti-fake caliber). -->
+      <p class="batch-meta">{{ batchMeta }}</p>
+      <p v-if="running" class="running-note">新一批评估进行中,当前展示已完成批次</p>
       <Leaderboard
         v-if="boardReport"
         :report="boardReport"
@@ -51,6 +55,8 @@ import type { CampaignReport } from '@/api/types'
 import Leaderboard from '@/components/Leaderboard.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import { familyOptionsOf, filterRowsByFamily, sortRows } from '@/utils/boardSort'
+import { campaignSettleVerb, campaignTriggerLabel } from '@/utils/evalWording'
+import { formatTimeMinute } from '@/utils/format'
 
 const report = ref<CampaignReport | null>(null)
 const running = ref(false)
@@ -64,6 +70,17 @@ const family = ref('')
 const sortKey = ref('total')
 
 const familyOptions = computed(() => (report.value ? familyOptionsOf(report.value.rows) : []))
+
+// Batch meta line (GH #57):「批次 #N · 定时/手动 · 完成于/失败于 HH:mm」.
+// The settle segment is omitted entirely when finished_at is null (a
+// theoretical edge — /board only ever shows settled batches).
+const batchMeta = computed(() => {
+  const r = report.value
+  if (!r) return ''
+  const base = `批次 #${r.id} · ${campaignTriggerLabel(r.trigger)}`
+  if (!r.finished_at) return base
+  return `${base} · ${campaignSettleVerb(r.status)} ${formatTimeMinute(r.finished_at)}`
+})
 
 // The board the Leaderboard renders: the fetched report with its rows
 // re-ranked and filtered locally — same shape, never a second caliber.
@@ -111,6 +128,13 @@ onMounted(load)
 }
 .state-block {
   margin-bottom: var(--hs-space-4);
+}
+/* Batch meta line (GH #57): hugs the title as a subtitle, neutral and
+   uncolored like the running note. */
+.batch-meta {
+  margin: calc(-1 * var(--hs-space-2)) 0 var(--hs-space-4);
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
 }
 /* In-flight hint (spec 0010): one neutral line, no background, no border,
    no polling. */

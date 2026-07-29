@@ -15,6 +15,22 @@ export function formatTime(value: string | null): string {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
 }
 
+// Render an RFC3339 timestamp as "YYYY-MM-DD HH:mm" — minute precision for
+// batch/生成 timestamps (GH #57 board batch meta, share-card footers) where
+// seconds are noise. Components must not slice formatTime output themselves.
+export function formatTimeMinute(value: string | null | undefined): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const y = date.getFullYear()
+  const m = pad(date.getMonth() + 1)
+  const d = pad(date.getDate())
+  const hh = pad(date.getHours())
+  const mm = pad(date.getMinutes())
+  return `${y}-${m}-${d} ${hh}:${mm}`
+}
+
 // Render an RFC3339 timestamp as a bare local clock reading "HH:mm:ss" —
 // for dense, same-session feeds (issue #17 live feed) where the date is
 // noise. Falls back to the raw value on an unparseable input.

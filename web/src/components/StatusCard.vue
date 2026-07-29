@@ -82,7 +82,7 @@
 import { computed } from 'vue'
 import type { EndpointStatus, ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
-import { formatTime } from '@/utils/format'
+import { formatTimeMinute } from '@/utils/format'
 import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
 import { scopedAvailability, singleModelSummaryText, summaryText } from '@/utils/statusCardSummary'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
@@ -151,11 +151,8 @@ const scopeChips = computed<ScopeChip[]>(() => {
   return chips
 })
 
-// "YYYY-MM-DD HH:mm" out of the shared formatTime helper.
-const timeText = computed(() => {
-  const full = formatTime(props.generatedAt)
-  return full.length >= 16 ? full.slice(0, 16) : full
-})
+// "YYYY-MM-DD HH:mm" via the shared minute-precision helper (GH #57).
+const timeText = computed(() => formatTimeMinute(props.generatedAt))
 
 // Empty-state wording ('' when the scope has enabled entries).
 const emptyDetailText = computed(() => {
