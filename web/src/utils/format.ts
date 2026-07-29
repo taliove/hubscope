@@ -1,18 +1,28 @@
 // Small formatting helpers shared across admin components.
 
+// Shared local-date parts for the time formatters below; null/undefined →
+// null, unparseable → the raw value echoed back as-is (callers render it).
+function localParts(value: string | null | undefined): { y: string; m: string; d: string; hh: string; mm: string; ss: string } | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return {
+    y: String(date.getFullYear()),
+    m: pad(date.getMonth() + 1),
+    d: pad(date.getDate()),
+    hh: pad(date.getHours()),
+    mm: pad(date.getMinutes()),
+    ss: pad(date.getSeconds()),
+  }
+}
+
 // Render an RFC3339 timestamp as a compact local datetime string.
 export function formatTime(value: string | null): string {
   if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  const ss = pad(date.getSeconds())
-  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
+  const p = localParts(value)
+  if (!p) return value
+  return `${p.y}-${p.m}-${p.d} ${p.hh}:${p.mm}:${p.ss}`
 }
 
 // Render an RFC3339 timestamp as "YYYY-MM-DD HH:mm" — minute precision for
@@ -20,15 +30,9 @@ export function formatTime(value: string | null): string {
 // seconds are noise. Components must not slice formatTime output themselves.
 export function formatTimeMinute(value: string | null | undefined): string {
   if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  return `${y}-${m}-${d} ${hh}:${mm}`
+  const p = localParts(value)
+  if (!p) return value as string
+  return `${p.y}-${p.m}-${p.d} ${p.hh}:${p.mm}`
 }
 
 // Render an RFC3339 timestamp as a bare local clock reading "HH:mm:ss" —
@@ -36,10 +40,19 @@ export function formatTimeMinute(value: string | null | undefined): string {
 // noise. Falls back to the raw value on an unparseable input.
 export function formatClockTime(value: string | null): string {
   if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  const p = localParts(value)
+  if (!p) return value
+  return `${p.hh}:${p.mm}:${p.ss}`
+}
+
+// Render an RFC3339 timestamp as a bare "HH:mm" clock reading — same-session
+// freshness labels (HealthBanner 更新于) where both date and seconds are
+// noise. Components must not slice formatTime/formatClockTime output.
+export function formatClockMinute(value: string | null | undefined): string {
+  if (!value) return '-'
+  const p = localParts(value)
+  if (!p) return value as string
+  return `${p.hh}:${p.mm}`
 }
 
 // Render a nullable numeric metric, falling back to a dash.

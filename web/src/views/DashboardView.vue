@@ -12,8 +12,8 @@
 
     <!-- Stats strip (replaces the old summary cards): one slim row of counts.
          Status items keep the click-to-filter / click-again-to-clear toggle;
-         the active item gets a brand-soft fill (GH #55 — the old brand
-         underline read as a nav tab, not a selected filter). -->
+         the active item gets a 1px brand inset ring on a transparent ground
+         (user feedback 2026-07-29 — no fill block fighting the status dots). -->
     <div class="stats-strip">
       <span
         class="stat-item stat-clickable"
@@ -209,8 +209,8 @@ const filteredEntries = computed(() => {
 // Pair each group aggregate with its filtered entries, then severity-rank
 // (GH #52): groups by their most severe ENABLED entry (ties by group key,
 // empty-after-filter groups sink), entries within each group by severity.
-// Groups with no matching entries after filtering stay visible (they show
-// an empty hint).
+// Filtered-empty groups stay visible as headers and auto-collapse (user
+// request 2026-07-29) instead of showing a large empty-state box.
 const groupSections = computed<GroupSection[]>(() => {
   const groups =
     grouping.value === 'family'
@@ -235,16 +235,16 @@ onMounted(start)
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: var(--hs-space-5) var(--hs-space-4) var(--hs-space-7);
 }
 .stats-strip {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--hs-space-4);
   flex-wrap: wrap;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-regular);
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-4);
 }
 .stat-item {
   display: inline-flex;
@@ -279,8 +279,8 @@ onMounted(start)
 .filter-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--hs-space-3);
+  margin-bottom: var(--hs-space-4);
   flex-wrap: wrap;
 }
 .filter-keyword {
@@ -297,12 +297,12 @@ onMounted(start)
   margin-left: auto;
 }
 .error-alert {
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-4);
 }
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+  gap: var(--hs-space-3);
   min-height: 120px;
 }
 </style>

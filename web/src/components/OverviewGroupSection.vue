@@ -115,7 +115,7 @@ const collapseCardProtocolTag = computed(
 
 <style scoped>
 .group-section {
-  margin-bottom: 12px;
+  margin-bottom: var(--hs-space-3);
 }
 .group-header {
   display: flex;

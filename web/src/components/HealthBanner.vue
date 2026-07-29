@@ -45,7 +45,7 @@
         </div>
         <!-- Which endpoints are abnormal (GH #53): most severe first, capped
              at MAX_ABNORMAL_CHIPS with a neutral "+N" overflow. No dots, no
-             blink, no fill — the alert-dot above owns the animation. -->
+             blink — the alert-dot above owns the animation. -->
         <div v-if="abnormal.chips.length > 0" class="chips">
           <button
             v-for="chip in abnormal.chips"
@@ -76,7 +76,7 @@
 // never the active filters.
 import { computed } from 'vue'
 import type { OverviewEntry, EndpointStatus } from '@/api/types'
-import { formatPercentDigits, formatTime } from '@/utils/format'
+import { formatPercentDigits, formatClockMinute } from '@/utils/format'
 import {
   STATUS_LABELS,
   abnormalChips,
@@ -129,12 +129,8 @@ const abnormal = computed(() => abnormalChips(enabledEntries.value))
 
 const pollSeconds = POLL_INTERVAL_MS / 1000
 
-// "HH:mm" sliced out of the shared formatTime helper ("YYYY-MM-DD HH:mm:ss").
-const updatedAt = computed(() => {
-  if (!props.generatedAt) return null
-  const full = formatTime(props.generatedAt)
-  return full.length >= 16 ? full.slice(11, 16) : full
-})
+// Bare "HH:mm" freshness reading via the shared clock helper (no slicing).
+const updatedAt = computed(() => (props.generatedAt ? formatClockMinute(props.generatedAt) : null))
 
 function onClick() {
   if (!clickable.value) return
@@ -153,8 +149,8 @@ function onChipInspect(status: EndpointStatus) {
 .health-banner {
   border-radius: var(--hs-radius-lg);
   padding: 16px 20px;
-  margin-bottom: 16px;
-  transition: box-shadow 0.15s ease;
+  margin-bottom: var(--hs-space-4);
+  transition: box-shadow var(--hs-transition);
 }
 .banner-clickable {
   cursor: pointer;
@@ -239,7 +235,7 @@ function onChipInspect(status: EndpointStatus) {
   background: var(--hs-bg-card);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-sm);
-  padding: 0 6px;
+  padding: 0 var(--hs-space-2);
 }
 /* Row 2: availability big number + abnormal chips. */
 .detail-row {

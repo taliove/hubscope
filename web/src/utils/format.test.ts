@@ -5,8 +5,9 @@
 //   tokens raw below 1000, then one-decimal k/M.
 // - formatTimeMinute (GH #57): minute-precision timestamp for the /board
 //   batch meta line.
+// - formatClockMinute (polish 2026-07-29): bare HH:mm for freshness labels.
 import { describe, it, expect } from 'vitest'
-import { formatDuration, formatTokens, formatTimeMinute } from '@/utils/format'
+import { formatDuration, formatTokens, formatTimeMinute, formatClockMinute } from '@/utils/format'
 
 describe('formatDuration', () => {
   it('renders sub-minute durations as one-decimal seconds', () => {
@@ -72,5 +73,24 @@ describe('formatTimeMinute', () => {
 
   it('falls back to the raw value on an unparseable input', () => {
     expect(formatTimeMinute('not-a-time')).toBe('not-a-time')
+  })
+})
+
+describe('formatClockMinute', () => {
+  it('renders a bare HH:mm clock reading', () => {
+    expect(formatClockMinute('2026-07-29T14:35:42')).toBe('14:35')
+  })
+
+  it('pads single-digit fields', () => {
+    expect(formatClockMinute('2026-01-05T03:07:59')).toBe('03:07')
+  })
+
+  it('renders a dash for null and undefined', () => {
+    expect(formatClockMinute(null)).toBe('-')
+    expect(formatClockMinute(undefined)).toBe('-')
+  })
+
+  it('falls back to the raw value on an unparseable input', () => {
+    expect(formatClockMinute('not-a-time')).toBe('not-a-time')
   })
 })
