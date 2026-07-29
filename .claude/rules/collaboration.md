@@ -53,6 +53,8 @@ main 或 agent 向另一个 agent 派发任务时,prompt 必须包含以下字�
 
 被调用方发现输入不足时,**停下来返回缺口清单**,不凭猜测补齐。
 
+**设计裁决的回写前置(GH #42 check 登记):** main 在 issue/会话中做出的设计裁决若变更 ui-guidelines 已冻结条款,回写 ui-guidelines 是 write 开工前置——write 开工前核对裁决与指南一致性,不一致先调 plan 回写再实现(首例:main 的 wall-clock 裁决在 issue comment 落锤但设计文档未同步,文档/裁决/代码三方脱节被 check 抓为 HIGH)。
+
 ## 4. 职责重叠裁决
 
 - **同一份知识只写一次**,谁 owner 谁写,其余引用(先例:影响分析四节归 plan,write 调用而非复制;测试纪律源头在 AGENTS.md 铁律 + 测试三层,backend skill 只展开后端特定纪律)。

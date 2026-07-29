@@ -48,7 +48,7 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	suites := suiteCount(t, ts.URL)
 
 	// Freeze point by construction, not by stepping: the first suite in the
-	// rotation (cap_instruction) is all rule cases answered exactly once, so
+	// rotation (mmlu) is all rule cases answered exactly once, so
 	// its three cells cost exactly 3 × enabled-cases completion calls.
 	// Arming the count-based global gate after that many calls blocks suite
 	// 2's first answer deterministically — the N+1-th call is recorded
@@ -58,7 +58,7 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	// The gate is armed BEFORE the worker starts: arming mid-flight would
 	// let the fast local execution overshoot the threshold first.
 	stub.resetCalls()
-	suiteOneCalls := 3 * enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "cap_instruction"))
+	suiteOneCalls := 3 * enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
 	stub.blockCallsAfter(suiteOneCalls)
 
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
@@ -141,15 +141,15 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	// per-suite cells — the completed suite done with full coverage, the
 	// aborted suites failed for every model with zero judged cases but the
 	// suite's planned case count as expected. The first two suites in the
-	// rotation are cap_instruction (done) and cap_reasoning (aborted).
+	// rotation are mmlu (done) and agieval_zh (aborted).
 	report := getCampaignReport(t, ts.URL, campaignID, "")
 	rows := reportRows(t, report)
 	if len(rows) != 3 {
 		t.Fatalf("failed campaign report rows = %v, want all three models", rows)
 	}
 	for _, row := range rows {
-		assertCell(t, row, "cap_instruction", "done", 10, 10)
-		assertCell(t, row, "cap_reasoning", "failed", 0, 10)
+		assertCell(t, row, "mmlu", "done", 100, 100)
+		assertCell(t, row, "agieval_zh", "failed", 0, 100)
 	}
 }
 

@@ -130,3 +130,23 @@ hands it to this purge at the next Open, tombstoned against resurrection;
 that is the ticket-93 semantics the operator approved ("disabled means
 gone"). The v3 capability suites at the cutover need no second code path:
 disable them and this purge removes them.
+
+## Addendum (2026-07-29, GH #15 cutover execution and mid-state fallback)
+
+The ticket-99 benchmark cutover executed through this purge exactly as
+designed: the v3 capability suites were retired by the generation-tracked
+seed (`retireAtGen: 4`) and this purge cascaded them away in the same Open,
+tombstoned against re-seeding (merge commit dca691d, ADR 0013 addendum).
+
+One gap surfaced in the wild: a database can reach a MID-STATE where the
+`purged_suite_cap_*` tombstones are already written (so `seedSuites` skips
+the v3 bank and the generation-tracked retirement never fires) while the v3
+rows themselves survived still enabled — and this purge, which only deletes
+`enabled = 0`, would then keep them forever. Fallback: a new unconditional
+`retireV3SuitesAtOpen` step runs at every Open between the cutover enable
+migration and this purge, flipping the v3 bank keys to `enabled = 0`. It is
+deliberately NOT gated on the one-shot `benchmark_cutover` settings key
+(that key records the enable migration, not the v3 retirement, and the
+mid-state has it already written); idempotent, steady state matches zero
+rows, keys come from the `capabilitySuites` bank constants. Pinned by
+`TestBenchmarkCutoverMidState` and `TestBenchmarkCutoverIdempotent`.

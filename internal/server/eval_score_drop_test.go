@@ -62,12 +62,17 @@ func campaignOfRun(t *testing.T, base string, runID int64) int64 {
 // webhook and persisted with endpoint_id null — then that disabling the
 // switch silences a later identical drop.
 func TestScoreDropAlert(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	lark := newStubLarkServer(t)
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// Two custom exact-rule cases (seeded cases retired): campaign 1
+	// aggregates 1.0, campaign 2 with the model gone bad aggregates 0.0.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "DROP-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "DROP-B:请作答", "好的", nil)
 
 	// Campaign 1: everything correct (aggregate 1.0); no baseline, no alert.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
@@ -88,7 +93,7 @@ func TestScoreDropAlert(t *testing.T) {
 		return len(lark.messages()) == 1
 	})
 	msg := lark.messages()[0]
-	for _, want := range []string{"drop-model", "指令遵循", "1.00", "0.00"} {
+	for _, want := range []string{"drop-model", "推理（GSM8K）", "1.00", "0.00"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("score_drop message should contain %q, got: %s", want, msg)
 		}
@@ -111,7 +116,7 @@ func TestScoreDropAlert(t *testing.T) {
 	// The persisted message stays plain text (ticket 101 regression: the
 	// alert history table renders it unchanged) — never the card JSON.
 	eventMsg, _ := event["message"].(string)
-	for _, want := range []string{"【HubScope】评估分数大跌", "drop-model", "指令遵循", "Case#"} {
+	for _, want := range []string{"【HubScope】评估分数大跌", "drop-model", "推理（GSM8K）", "Case#"} {
 		if !strings.Contains(eventMsg, want) {
 			t.Errorf("event message should contain %q, got: %s", want, eventMsg)
 		}
@@ -179,11 +184,12 @@ func TestScoreDropAlert(t *testing.T) {
 // asserts the alert consolidates every dropped suite of the model into one
 // message rather than spamming one message per suite.
 func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	lark := newStubLarkServer(t)
 	enableScoreDropAlerts(t, ts, lark)
 
 	createEvalModel(t, ts.URL, stub.URL, "sweep-model")
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
 
 	// Sweep 1: all-good baseline across every suite.
 	sweep1 := triggerFullSweep(t, ts.URL)
@@ -192,10 +198,9 @@ func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 		t.Fatalf("first sweep: expected no alerts without a baseline, got %d", got)
 	}
 
-	// Sweep 2: the model turns bad. Every rule case drops 1.0 -> 0.0, so all
-	// five capability suites drop (the language suite's judge cases keep their
-	// 0.75 stub verdicts, but its rule cases drag the suite mean below the
-	// threshold too). All five drops must consolidate into one message.
+	// Sweep 2: the model turns bad. Every custom case drops 1.0 -> 0.0, so
+	// all five benchmark suites drop. All five drops must consolidate into
+	// one message.
 	stub.markBad("sweep-model", true)
 	sweep2 := triggerFullSweep(t, ts.URL)
 	waitCampaignStatus(t, ts.URL, int64(sweep2["id"].(float64)), "done")
@@ -204,7 +209,7 @@ func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 		return len(lark.messages()) == 1
 	})
 	msg := lark.messages()[0]
-	for _, want := range []string{"sweep-model", "指令遵循", "推理", "代码", "知识问答", "语言理解与生成"} {
+	for _, want := range []string{"sweep-model", "指令遵循（IFEval）", "推理（GSM8K）", "代码（CRUXEval）", "知识（MMLU）", "中文（AGIEval）"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("consolidated message should contain %q, got: %s", want, msg)
 		}
@@ -220,19 +225,23 @@ func TestScoreDropAlertSweepConsolidatesSuites(t *testing.T) {
 // the skip annotated both as an alert event and in the run's task log. A
 // later campaign at the unchanged version alerts normally again.
 func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	lark := newStubLarkServer(t)
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "ver-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom exact-rule case (seeded cases retired): campaigns 1 and 3
+	// score it 1.0 / 0.0 around the version bump.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "VER-SKIP:请作答", "好的", nil)
 
-	// Campaign 1 at suite version 1.
+	// Campaign 1 at the installed case set's version.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)
 	waitEvalDone(t, ts.URL, run1)
 	waitCampaignStatus(t, ts.URL, campaignOfRun(t, ts.URL, run1), "done")
 
-	// A new case bumps the suite to version 2.
+	// A new case bumps the suite version.
 	caseResp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
 		"suite_id":     suiteID,
 		"prompt":       "版本变更标记题:只回复 ok",
@@ -244,7 +253,8 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 		t.Fatalf("create case: expected 201, got %d", caseResp.StatusCode)
 	}
 
-	// Campaign 2 at version 2: the cross-version comparison must be skipped.
+	// Campaign 2 at the bumped version: the cross-version comparison must be
+	// skipped.
 	run2 := triggerEval(t, ts.URL, suiteID, modelID)
 	waitEvalDone(t, ts.URL, run2)
 	waitCampaignStatus(t, ts.URL, campaignOfRun(t, ts.URL, run2), "done")
@@ -293,7 +303,7 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 		t.Errorf("cross-version comparison: expected no score_drop event, got %d", got)
 	}
 
-	// Campaign 3 at the same version 2 compares against campaign 2 and alerts.
+	// Campaign 3 at the same version compares against campaign 2 and alerts.
 	stub.markBad("ver-model", true)
 	run3 := triggerEval(t, ts.URL, suiteID, modelID)
 	waitEvalDone(t, ts.URL, run3)
@@ -310,23 +320,17 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 // from scored to unjudged and another drops heavily, and asserts the alert
 // message spells out both per-case changes while leaving stable cases out.
 func TestScoreDropAlertCaseDetails(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	lark := newStubLarkServer(t)
 	enableScoreDropAlerts(t, ts, lark)
 
 	modelID := createEvalModel(t, ts.URL, stub.URL, "detail-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	// Replace the seeded case set with three scripted judge cases so the test
 	// controls every score. Disabling bumps the version; both campaigns then
 	// run at the same one.
-	for _, c := range suiteByKey(t, ts.URL, "cap_instruction")["cases"].([]interface{}) {
-		cm := c.(map[string]interface{})
-		if enabled, _ := cm["enabled"].(bool); !enabled {
-			continue
-		}
-		patchCase(t, ts.URL, int64(cm["id"].(float64)), map[string]interface{}{"enabled": false})
-	}
+	retireSuiteCases(t, db, suiteID)
 	createJudgeCase := func(marker string) {
 		t.Helper()
 		resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{

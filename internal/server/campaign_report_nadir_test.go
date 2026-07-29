@@ -29,18 +29,6 @@ func createRuleCase(t *testing.T, base string, suiteID int64, prompt, expected s
 	}
 }
 
-// disableEnabledCases retires every enabled case of the suite via the API,
-// leaving the suite's case set exactly under the test's control.
-func disableEnabledCases(t *testing.T, base, suiteKey string) {
-	t.Helper()
-	for _, c := range suiteByKey(t, base, suiteKey)["cases"].([]interface{}) {
-		cm := c.(map[string]interface{})
-		if enabled, _ := cm["enabled"].(bool); enabled {
-			patchCase(t, base, int64(cm["id"].(float64)), map[string]interface{}{"enabled": false})
-		}
-	}
-}
-
 // rowCell extracts one suite's progress cell from a leaderboard row.
 func rowCell(t *testing.T, row map[string]interface{}, suiteKey string) map[string]interface{} {
 	t.Helper()
@@ -79,33 +67,45 @@ func suiteScoreOf(row map[string]interface{}, suiteKey string) (float64, bool) {
 // side by side, unscored suites drop out of the total (numerator and
 // denominator alike), and every score carries its coverage/sample
 // confidence markers.
+//
+// Post-cutover (ticket 99) the fixtures are custom exact-rule case sets
+// installed over the benchmark suites (seeded cases retired): mmlu carries
+// the four-option 0.25 nadir, gsm8k the zero floor.
 func TestCampaignReportNadirNormalization(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	createEvalModel(t, ts.URL, stub.URL, "dumb-model")
 	createEvalModel(t, ts.URL, stub.URL, "broken-model")
 	stub.markBroken("broken-model", true)
 
-	// cap_knowledge is seeded with nadir 0.25 (random-guess floor of its
-	// four-option cases). Replace its case set with four exact-rule cases the
-	// stub answers deterministically: the smart model defaults to "好的",
-	// the dumb model to "随便说点什么", so smart judges 3/4 (mean 0.75) and
+	// mmlu is seeded with nadir 0.25 (random-guess floor of its four-option
+	// cases). Replace its case set with four exact-rule cases the stub
+	// answers deterministically: the smart model defaults to "好的", the
+	// dumb model to "随便说点什么", so smart judges 3/4 (mean 0.75) and
 	// dumb exactly 1/4 (mean 0.25 — the nadir boundary itself).
-	knowledgeID := suiteIDByKey(t, ts.URL, "cap_knowledge")
-	disableEnabledCases(t, ts.URL, "cap_knowledge")
+	knowledgeID := suiteIDByKey(t, ts.URL, "mmlu")
+	retireSuiteCases(t, db, knowledgeID)
 	two := 2
 	createRuleCase(t, ts.URL, knowledgeID, "NADIR-K1:请作答", "好的", &two)
 	createRuleCase(t, ts.URL, knowledgeID, "NADIR-K2:请作答", "好的", nil)
 	createRuleCase(t, ts.URL, knowledgeID, "NADIR-K3:请作答", "好的", nil)
 	createRuleCase(t, ts.URL, knowledgeID, "NADIR-K4:请作答", "随便说点什么", nil)
 
-	// cap_instruction is seeded with nadir 0: its scores must stay on the
-	// legacy raw-mean caliber. Two cases, smart judges 1/2 (mean 0.5) — 50 on
-	// the raw scale, where a nadir of 0.25 would have produced 33.3.
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
-	disableEnabledCases(t, ts.URL, "cap_instruction")
+	// gsm8k is seeded with nadir 0: its scores must stay on the raw-mean
+	// caliber. Two cases, smart judges 1/2 (mean 0.5) — 50 on the raw scale,
+	// where a nadir of 0.25 would have produced 33.3.
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, instructionID)
 	createRuleCase(t, ts.URL, instructionID, "NADIR-I1:请作答", "好的", nil)
 	createRuleCase(t, ts.URL, instructionID, "NADIR-I2:请作答", "站住", nil)
+
+	// The remaining three rotation suites each get one custom case the smart
+	// model scores, so every dimension lands on the board.
+	for _, key := range []string{"agieval_zh", "cruxeval", "ifeval"} {
+		id := suiteIDByKey(t, ts.URL, key)
+		retireSuiteCases(t, db, id)
+		createRuleCase(t, ts.URL, id, "NADIR-"+key+":请作答", "好的", nil)
+	}
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
@@ -120,24 +120,24 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 	// Nadir formula: (0.75 - 0.25) / (1 - 0.25) * 100 = 66.67 for smart;
 	// the dumb model sits exactly on the nadir boundary and scores 0.
 	knowledgeWant := (0.75 - 0.25) / (1 - 0.25) * 100
-	if got, ok := suiteScoreOf(smart, "cap_knowledge"); !ok || math.Abs(got-knowledgeWant) > 1e-9 {
-		t.Errorf("smart cap_knowledge = %v (ok=%v), want %v", got, ok, knowledgeWant)
+	if got, ok := suiteScoreOf(smart, "mmlu"); !ok || math.Abs(got-knowledgeWant) > 1e-9 {
+		t.Errorf("smart mmlu = %v (ok=%v), want %v", got, ok, knowledgeWant)
 	}
-	if got, ok := suiteScoreOf(dumb, "cap_knowledge"); !ok || got != 0 {
-		t.Errorf("dumb cap_knowledge = %v (ok=%v), want exactly 0 at the nadir boundary", got, ok)
+	if got, ok := suiteScoreOf(dumb, "mmlu"); !ok || got != 0 {
+		t.Errorf("dumb mmlu = %v (ok=%v), want exactly 0 at the nadir boundary", got, ok)
 	}
 
 	// nadir=0 degenerates to the legacy caliber: raw mean x 100.
-	if got, ok := suiteScoreOf(smart, "cap_instruction"); !ok || got != 50 {
-		t.Errorf("smart cap_instruction = %v (ok=%v), want 50 (raw-mean caliber)", got, ok)
+	if got, ok := suiteScoreOf(smart, "gsm8k"); !ok || got != 50 {
+		t.Errorf("smart gsm8k = %v (ok=%v), want 50 (raw-mean caliber)", got, ok)
 	}
-	if got, ok := suiteScoreOf(dumb, "cap_instruction"); !ok || got != 0 {
-		t.Errorf("dumb cap_instruction = %v (ok=%v), want 0", got, ok)
+	if got, ok := suiteScoreOf(dumb, "gsm8k"); !ok || got != 0 {
+		t.Errorf("dumb gsm8k = %v (ok=%v), want 0", got, ok)
 	}
 
-	// Dimension scores side by side: every covered suite key is present on
+	// Dimension scores side by side: every rotation suite key is present on
 	// the row, not just behind a suite switch.
-	suiteKeys := []string{"cap_instruction", "cap_reasoning", "cap_coding", "cap_knowledge", "cap_language"}
+	suiteKeys := benchmarkRotation
 	for _, key := range suiteKeys {
 		if _, ok := suiteScoreOf(smart, key); !ok {
 			t.Errorf("smart row missing dimension score for %q: %v", key, smart["suite_scores"])
@@ -158,14 +158,14 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 
 	// Confidence markers: coverage plus judged-sample count per cell. K1
 	// samples twice, the other three cases once each: 5 judged samples.
-	smartCell := rowCell(t, smart, "cap_knowledge")
+	smartCell := rowCell(t, smart, "mmlu")
 	if smartCell["judged_cases"] != 4.0 || smartCell["expected_cases"] != 4.0 {
 		t.Errorf("smart knowledge cell coverage = %v/%v, want 4/4", smartCell["judged_cases"], smartCell["expected_cases"])
 	}
 	if smartCell["samples"] != 5.0 {
 		t.Errorf("smart knowledge cell samples = %v, want 5 (2+1+1+1)", smartCell["samples"])
 	}
-	brokenCell := rowCell(t, broken, "cap_knowledge")
+	brokenCell := rowCell(t, broken, "mmlu")
 	if brokenCell["judged_cases"] != 0.0 || brokenCell["expected_cases"] != 4.0 || brokenCell["samples"] != 0.0 {
 		t.Errorf("broken knowledge cell = %v, want judged 0/4 with 0 samples", brokenCell)
 	}
@@ -175,7 +175,7 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 	trendKnowledge := 0.0
 	found := false
 	for _, suite := range trendSuites(t, trends) {
-		if suite["key"] != "cap_knowledge" {
+		if suite["key"] != "mmlu" {
 			continue
 		}
 		points := suite["points"].([]interface{})
@@ -186,44 +186,43 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 		found = true
 	}
 	if !found {
-		t.Fatalf("trend missing cap_knowledge series: %v", trends["suites"])
+		t.Fatalf("trend missing mmlu series: %v", trends["suites"])
 	}
 	if math.Abs(trendKnowledge-knowledgeWant) > 1e-9 {
 		t.Errorf("knowledge trend score = %v, want normalized %v", trendKnowledge, knowledgeWant)
 	}
 
 	// The run-level aggregate speaks the same normalized caliber on the eval
-	// API's 0~1 wire scale: knowledge averages the raw case scores (smart
-	// 1,1,1,0; dumb 0,0,0,1; broken unscored) to 0.5, normalized
-	// (0.5 - 0.25) / (1 - 0.25) = 1/3; instruction stays the legacy raw mean
-	// 0.25 under nadir 0.
+	// API's 0~1 wire scale: mmlu averages the raw case scores (smart 1,1,1,0;
+	// dumb 0,0,0,1; broken unscored) to 0.5, normalized (0.5 - 0.25) /
+	// (1 - 0.25) = 1/3; gsm8k stays the raw mean 0.25 under nadir 0.
 	runsByKey := map[string]map[string]interface{}{}
 	for _, run := range campaignRuns(t, getCampaign(t, ts.URL, campaignID)) {
 		key := suiteByID(t, ts.URL, int64(run["suite_id"].(float64)))["key"].(string)
 		runsByKey[key] = run
 	}
-	if got := runsByKey["cap_knowledge"]["score"].(float64); math.Abs(got-1.0/3.0) > 1e-9 {
-		t.Errorf("knowledge run aggregate = %v, want 1/3 (nadir-normalized)", got)
+	if got := runsByKey["mmlu"]["score"].(float64); math.Abs(got-1.0/3.0) > 1e-9 {
+		t.Errorf("mmlu run aggregate = %v, want 1/3 (nadir-normalized)", got)
 	}
-	if got := runsByKey["cap_instruction"]["score"].(float64); got != 0.25 {
-		t.Errorf("instruction run aggregate = %v, want 0.25 (raw-mean caliber)", got)
+	if got := runsByKey["gsm8k"]["score"].(float64); got != 0.25 {
+		t.Errorf("gsm8k run aggregate = %v, want 0.25 (raw-mean caliber)", got)
 	}
 
-	// Campaign 2: cap_reasoning loses its entire case set, so its run
-	// records no results and the suite drops out of every total. If unscored
-	// suites were diluted in as zeros, the total would sag by a fifth.
-	disableEnabledCases(t, ts.URL, "cap_reasoning")
+	// Campaign 2: gsm8k loses its entire case set, so its run records no
+	// results and the suite drops out of every total. If unscored suites
+	// were diluted in as zeros, the total would sag by a fifth.
+	retireSuiteCases(t, db, instructionID)
 	second := triggerFullSweep(t, ts.URL)
 	secondID := int64(second["id"].(float64))
 	waitCampaignStatus(t, ts.URL, secondID, store.CampaignStatusDone)
 
 	report2 := getCampaignReport(t, ts.URL, secondID, "")
 	smart2 := rowByModel(t, reportRows(t, report2), "smart-model")
-	if got, ok := suiteScoreOf(smart2, "cap_reasoning"); ok {
-		t.Errorf("cap_reasoning without results must be unscored, got %v", got)
+	if got, ok := suiteScoreOf(smart2, "gsm8k"); ok {
+		t.Errorf("gsm8k without results must be unscored, got %v", got)
 	}
 	var sum, n float64
-	for _, key := range []string{"cap_instruction", "cap_coding", "cap_knowledge", "cap_language"} {
+	for _, key := range []string{"mmlu", "agieval_zh", "cruxeval", "ifeval"} {
 		got, ok := suiteScoreOf(smart2, key)
 		if !ok {
 			t.Fatalf("smart campaign-2 row missing scored suite %q: %v", key, smart2["suite_scores"])
@@ -248,7 +247,7 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 func TestCampaignReportDeltaProfileChanged(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	// Batch 1 scores under what history calls the v1 caliber.
 	run1 := triggerEval(t, ts.URL, suiteID, modelID)

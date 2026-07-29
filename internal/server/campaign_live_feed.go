@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -42,24 +43,23 @@ func toLiveFeedEntryDTO(e store.LiveFeedEntry) liveFeedEntryDTO {
 	}
 }
 
-// handleGetCampaignLiveFeed handles GET /api/campaigns/{id}/live-feed: the
-// cursor-pulled judged-case event stream of one campaign (issue #17),
-// console-only — session-gated (never in publicReadPattern) and hub-isolated
-// with the campaigns list reachability rule: a hub-scoped session only sees
-// campaigns whose membership includes one of its hub's models, and anything
-// else answers the same 404 as an unknown campaign (no enumeration oracle).
-// since_id is exclusive (default 0); limit follows the probes caliber
-// (default 50, cap 200). Entries come back ascending by id, an empty
-// increment as an empty array.
-func (s *Server) handleGetCampaignLiveFeed(w http.ResponseWriter, r *http.Request) {
+// loadVisibleCampaign resolves the campaign of the {id} path param and
+// enforces the console-side visibility rule shared by the campaign read
+// endpoints: session-gated (the routes never enter publicReadPattern) and
+// hub-isolated with the campaigns list reachability rule — a hub-scoped
+// session only sees campaigns whose membership includes one of its hub's
+// models, and anything else answers the same 404 as an unknown campaign (no
+// enumeration oracle). On failure it writes the error and returns false.
+func (s *Server) loadVisibleCampaign(w http.ResponseWriter, r *http.Request) (*store.Campaign, bool) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid campaign id")
-		return
+		return nil, false
 	}
-	if _, err := s.db.GetCampaign(id); err != nil {
+	campaign, err := s.db.GetCampaign(id)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "campaign not found")
-		return
+		return nil, false
 	}
 
 	u := sessionUser(r)
@@ -69,17 +69,31 @@ func (s *Server) handleGetCampaignLiveFeed(w http.ResponseWriter, r *http.Reques
 		// as the campaigns list's empty result).
 		if u.HubID == nil {
 			writeError(w, http.StatusNotFound, "campaign not found")
-			return
+			return nil, false
 		}
 		visible, err := s.db.CampaignVisibleToHub(id, *u.HubID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to check campaign scope")
-			return
+			return nil, false
 		}
 		if !visible {
 			writeError(w, http.StatusNotFound, "campaign not found")
-			return
+			return nil, false
 		}
+	}
+	return campaign, true
+}
+
+// handleGetCampaignLiveFeed handles GET /api/campaigns/{id}/live-feed: the
+// cursor-pulled judged-case event stream of one campaign (issue #17),
+// console-only — visibility per loadVisibleCampaign.
+// since_id is exclusive (default 0); limit follows the probes caliber
+// (default 50, cap 200). Entries come back ascending by id, an empty
+// increment as an empty array.
+func (s *Server) handleGetCampaignLiveFeed(w http.ResponseWriter, r *http.Request) {
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
+		return
 	}
 
 	sinceID, err := parseSinceID(r.URL.Query().Get("since_id"))
@@ -89,7 +103,7 @@ func (s *Server) handleGetCampaignLiveFeed(w http.ResponseWriter, r *http.Reques
 	}
 	limit := parseLimit(r.URL.Query().Get("limit"))
 
-	entries, err := s.db.ListCampaignLiveFeed(id, sinceID, limit)
+	entries, err := s.db.ListCampaignLiveFeed(campaign.ID, sinceID, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load live feed")
 		return
@@ -99,6 +113,59 @@ func (s *Server) handleGetCampaignLiveFeed(w http.ResponseWriter, r *http.Reques
 		dtos = append(dtos, toLiveFeedEntryDTO(e))
 	}
 	writeData(w, http.StatusOK, dtos)
+}
+
+// liveFeedResultDTO is the on-demand expansion of one live-feed event
+// (GH #41): the case's full prompt, the expectation by verdict method (rule
+// cases get the standard answer, judge cases the rubric scoring points —
+// the frontend labels the block from verdict_type with the same fork), the
+// model's answer text, the raw 0~1 score and the verdict detail. Nulls
+// survive as JSON nulls (no answer record, unscored, purged case).
+type liveFeedResultDTO struct {
+	ID            int64    `json:"id"`
+	CasePrompt    string   `json:"case_prompt"`
+	VerdictType   string   `json:"verdict_type"`
+	Expected      *string  `json:"expected"`
+	AnswerText    *string  `json:"answer_text"`
+	Score         *float64 `json:"score"`
+	VerdictDetail *string  `json:"verdict_detail"`
+}
+
+// handleGetCampaignLiveFeedResult handles GET
+// /api/campaigns/{id}/live-feed/{resultID}: the console-only per-result
+// detail behind the feed's row expansion (GH #41). Visibility follows the
+// feed list exactly (loadVisibleCampaign); a result that does not exist or
+// belongs to another campaign answers the same 404 (no cross-campaign
+// oracle). The endpoint never enters the shared/public surface — the
+// expectation fields are question-bank content (spec 0004 / W7).
+func (s *Server) handleGetCampaignLiveFeedResult(w http.ResponseWriter, r *http.Request) {
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
+		return
+	}
+	resultID, err := parseIDParam(r, "resultID")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid result id")
+		return
+	}
+	d, err := s.db.GetCampaignLiveFeedResult(campaign.ID, resultID)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "result not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load result detail")
+		return
+	}
+	writeData(w, http.StatusOK, liveFeedResultDTO{
+		ID:            d.ID,
+		CasePrompt:    d.CasePrompt,
+		VerdictType:   d.VerdictType,
+		Expected:      d.Expected,
+		AnswerText:    d.AnswerText,
+		Score:         d.Score,
+		VerdictDetail: d.VerdictDetail,
+	})
 }
 
 // parseSinceID parses the exclusive live-feed cursor: empty means 0 (from

@@ -491,7 +491,7 @@ func TestEvalNeverUsesImageProtocol(t *testing.T) {
 		}
 	}
 
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 	runID := triggerEval(t, ts.URL, suiteID, modelDBID)
 	run := waitEvalDone(t, ts.URL, runID)
 	if run["status"] != "done" {
@@ -916,7 +916,7 @@ func TestEvalNeverUsesImageEditProtocol(t *testing.T) {
 		}
 	}
 
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 	runID := triggerEval(t, ts.URL, suiteID, modelDBID)
 	run := waitEvalDone(t, ts.URL, runID)
 	if run["status"] != "done" {

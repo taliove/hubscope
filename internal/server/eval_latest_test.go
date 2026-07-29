@@ -40,8 +40,10 @@ func findLatest(t *testing.T, rows []map[string]interface{}, suiteKey, modelID s
 // TestEvalLatestScores runs two rounds over the same suite plus one over a
 // second suite and asserts every (suite, model) pair reports the aggregate
 // of its most recent done run — including pairs absent from the newest run.
+// Both suites carry custom exact-rule case sets (seeded cases retired), so
+// the smart model scores 1 and the dumb model 0 deterministically.
 func TestEvalLatestScores(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	dumbID := createEvalModel(t, ts.URL, stub.URL, "dumb-model")
 
@@ -50,7 +52,10 @@ func TestEvalLatestScores(t *testing.T) {
 		t.Fatalf("expected no latest scores before any run, got %v", rows)
 	}
 
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, instructionID)
+	createRuleCase(t, ts.URL, instructionID, "LATEST-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, instructionID, "LATEST-B:请作答", "好的", nil)
 
 	// Round 1: both models over the instruction suite.
 	run1 := triggerEval(t, ts.URL, instructionID, smartID, dumbID)
@@ -60,7 +65,7 @@ func TestEvalLatestScores(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("after run 1: expected 2 pairs, got %v", rows)
 	}
-	smart := findLatest(t, rows, "cap_instruction", "smart-model")
+	smart := findLatest(t, rows, "gsm8k", "smart-model")
 	if smart["score"] != 1.0 {
 		t.Errorf("smart instruction score = %v, want 1", smart["score"])
 	}
@@ -73,7 +78,7 @@ func TestEvalLatestScores(t *testing.T) {
 	if smart["finished_at"] == nil || smart["finished_at"] == "" {
 		t.Error("finished_at should be set on a done run")
 	}
-	dumb := findLatest(t, rows, "cap_instruction", "dumb-model")
+	dumb := findLatest(t, rows, "gsm8k", "dumb-model")
 	if dumb["score"] != 0.0 {
 		t.Errorf("dumb instruction score = %v, want 0", dumb["score"])
 	}
@@ -87,17 +92,19 @@ func TestEvalLatestScores(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("after run 2: expected still 2 pairs, got %v", rows)
 	}
-	smart = findLatest(t, rows, "cap_instruction", "smart-model")
+	smart = findLatest(t, rows, "gsm8k", "smart-model")
 	if int64(smart["eval_run_id"].(float64)) != run2 {
 		t.Errorf("smart instruction run = %v, want %d", smart["eval_run_id"], run2)
 	}
-	dumb = findLatest(t, rows, "cap_instruction", "dumb-model")
+	dumb = findLatest(t, rows, "gsm8k", "dumb-model")
 	if int64(dumb["eval_run_id"].(float64)) != run1 {
 		t.Errorf("dumb instruction run = %v, want %d (untouched by run 2)", dumb["eval_run_id"], run1)
 	}
 
 	// A run over a second suite adds its pairs without disturbing the first.
-	reasoningID := suiteIDByKey(t, ts.URL, "cap_reasoning")
+	reasoningID := suiteIDByKey(t, ts.URL, "cruxeval")
+	retireSuiteCases(t, db, reasoningID)
+	createRuleCase(t, ts.URL, reasoningID, "LATEST-C:请作答", "好的", nil)
 	run3 := triggerEval(t, ts.URL, reasoningID, smartID)
 	waitEvalDone(t, ts.URL, run3)
 
@@ -105,11 +112,11 @@ func TestEvalLatestScores(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("after run 3: expected 3 pairs, got %v", rows)
 	}
-	reasoning := findLatest(t, rows, "cap_reasoning", "smart-model")
+	reasoning := findLatest(t, rows, "cruxeval", "smart-model")
 	if reasoning["score"] != 1.0 {
-		t.Errorf("smart cap_reasoning score = %v, want 1", reasoning["score"])
+		t.Errorf("smart cruxeval score = %v, want 1", reasoning["score"])
 	}
 	if int64(reasoning["suite_id"].(float64)) != reasoningID {
-		t.Errorf("cap_reasoning suite_id = %v, want %d", reasoning["suite_id"], reasoningID)
+		t.Errorf("cruxeval suite_id = %v, want %d", reasoning["suite_id"], reasoningID)
 	}
 }

@@ -122,11 +122,14 @@ func assertRowTotals(t *testing.T, report map[string]interface{}) {
 // weights by default, custom weights via settings, descending order with
 // unscored models last, family filtering, and suite-column sorting.
 func TestCampaignReportWeightingAndSorting(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	createEvalModel(t, ts.URL, stub.URL, "dumb-model")
 	createEvalModel(t, ts.URL, stub.URL, "broken-model")
 	stub.markBroken("broken-model", true)
+	// One custom exact-rule case per rotation suite: the smart model scores
+	// 100 everywhere, the dumb model 0, the broken one nothing.
+	installCustomBank(t, ts.URL, db, oneCasePerSuite())
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
@@ -166,30 +169,30 @@ func TestCampaignReportWeightingAndSorting(t *testing.T) {
 	}
 	assertRowTotals(t, report)
 
-	// Custom weights via settings: cap_instruction counts triple.
+	// Custom weights via settings: gsm8k counts triple.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"suite_weights": map[string]interface{}{"cap_instruction": 3},
+		"suite_weights": map[string]interface{}{"gsm8k": 3},
 	})
 	putResp.Body.Close()
 	if putResp.StatusCode != http.StatusOK {
 		t.Fatalf("PUT suite_weights: expected 200, got %d", putResp.StatusCode)
 	}
 	weighted := getCampaignReport(t, ts.URL, campaignID, "")
-	if got := reportWeights(t, weighted)["cap_instruction"]; got != 3 {
-		t.Errorf("effective weight for cap_instruction = %v, want 3", got)
+	if got := reportWeights(t, weighted)["gsm8k"]; got != 3 {
+		t.Errorf("effective weight for gsm8k = %v, want 3", got)
 	}
 	assertRowTotals(t, weighted)
 
 	// Sorting by a suite column keeps the same descending contract.
-	byInstruction := getCampaignReport(t, ts.URL, campaignID, "sort=cap_instruction")
-	instructionRows := reportRows(t, byInstruction)
-	if instructionRows[0]["model_id"] != "smart-model" || instructionRows[2]["model_id"] != "broken-model" {
-		t.Errorf("sort=cap_instruction order = [%v %v %v], want smart first, broken last",
-			instructionRows[0]["model_id"], instructionRows[1]["model_id"], instructionRows[2]["model_id"])
+	byReasoning := getCampaignReport(t, ts.URL, campaignID, "sort=gsm8k")
+	reasoningRows := reportRows(t, byReasoning)
+	if reasoningRows[0]["model_id"] != "smart-model" || reasoningRows[2]["model_id"] != "broken-model" {
+		t.Errorf("sort=gsm8k order = [%v %v %v], want smart first, broken last",
+			reasoningRows[0]["model_id"], reasoningRows[1]["model_id"], reasoningRows[2]["model_id"])
 	}
-	instructionScores, _ := instructionRows[0]["suite_scores"].(map[string]interface{})
-	if instructionScores["cap_instruction"] != 100.0 {
-		t.Errorf("smart cap_instruction suite score = %v, want 100", instructionScores["cap_instruction"])
+	reasoningScores, _ := reasoningRows[0]["suite_scores"].(map[string]interface{})
+	if reasoningScores["gsm8k"] != 100.0 {
+		t.Errorf("smart gsm8k suite score = %v, want 100", reasoningScores["gsm8k"])
 	}
 
 	// Unknown sort column is rejected.
@@ -248,7 +251,7 @@ func TestCampaignReportHidesDeletedModels(t *testing.T) {
 	}
 	vanishID := int64(vanish["id"].(float64))
 
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
 	runID := triggerEval(t, ts.URL, instructionID, keepID, vanishID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))
@@ -302,9 +305,9 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	// Unknown suite keys and non-positive or absurd weights are rejected.
 	for _, body := range []map[string]interface{}{
 		{"suite_weights": map[string]interface{}{"nosuch": 1}},
-		{"suite_weights": map[string]interface{}{"cap_instruction": 0}},
-		{"suite_weights": map[string]interface{}{"cap_instruction": -2}},
-		{"suite_weights": map[string]interface{}{"cap_instruction": 1e308}},
+		{"suite_weights": map[string]interface{}{"gsm8k": 0}},
+		{"suite_weights": map[string]interface{}{"gsm8k": -2}},
+		{"suite_weights": map[string]interface{}{"gsm8k": 1e308}},
 	} {
 		resp := doPut(t, ts.URL+"/api/settings", body)
 		resp.Body.Close()
@@ -315,7 +318,7 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 
 	// A valid map round-trips through the settings API.
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"suite_weights": map[string]interface{}{"cap_instruction": 2, "cap_reasoning": 0.5},
+		"suite_weights": map[string]interface{}{"gsm8k": 2, "mmlu": 0.5},
 	})
 	putResp.Body.Close()
 	if putResp.StatusCode != http.StatusOK {
@@ -327,8 +330,8 @@ func TestCampaignReportSettingsValidation(t *testing.T) {
 	settings = nil
 	_ = json.Unmarshal(env.Data, &settings)
 	saved, _ := settings["suite_weights"].(map[string]interface{})
-	if saved["cap_instruction"] != 2.0 || saved["cap_reasoning"] != 0.5 {
-		t.Errorf("saved suite_weights = %v, want cap_instruction=2 cap_reasoning=0.5", saved)
+	if saved["gsm8k"] != 2.0 || saved["mmlu"] != 0.5 {
+		t.Errorf("saved suite_weights = %v, want gsm8k=2 mmlu=0.5", saved)
 	}
 
 	// Unknown campaign: report is a 404, like the campaign detail.
@@ -355,7 +358,7 @@ func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
 	stub.blockCalls()
 	t.Cleanup(stub.release)
 
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
 	enabledCases := enabledCaseCount(t, ts.URL, instructionID)
 	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	waitFor(t, "eval call reaching the stub", func() bool {
@@ -372,7 +375,7 @@ func TestCampaignReportRunningBatchListsMembers(t *testing.T) {
 	if len(rows) != 1 || rows[0]["model_id"] != "smart-model" {
 		t.Fatalf("running campaign rows = %v, want the single member smart-model pending", rows)
 	}
-	assertCell(t, rows[0], "cap_instruction", "pending", 0, enabledCases)
+	assertCell(t, rows[0], "gsm8k", "pending", 0, enabledCases)
 	progress := campaignProgress(t, report)
 	if int(progress["total"].(float64)) != 1 {
 		t.Errorf("running campaign progress.total = %v, want 1", progress)

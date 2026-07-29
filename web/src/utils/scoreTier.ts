@@ -8,7 +8,7 @@
 // (ui-guidelines §3); the absolute 0-100 scale is the visual mirror of the
 // W7 absolute-score system.
 import type { ReportCell } from '@/api/types'
-import { formatScore } from '@/utils/format'
+import { formatMs, formatScore, formatTokens } from '@/utils/format'
 
 export type ScoreBand = 'success' | 'warning' | 'danger'
 
@@ -31,12 +31,34 @@ export function watermarkOf(cell: ReportCell | undefined): string {
 }
 
 // Confidence tooltip (ticket 51 caliber): suite name, score, judged-case
-// coverage and the number of judged answer attempts. A scored suite always
-// has judged cases, but the shape degrades gracefully if the cell is absent.
+// coverage and the number of judged answer attempts, plus the GH #42 cost
+// fragment when the cell carries cost sums (console payloads; the
+// shared/public cells omit the fields and so does the tooltip).
 export function tooltipOf(name: string, score: number, cell: ReportCell | undefined): string {
   const head = `${name} · ${formatScore(score)}`
   if (!cell || cell.judged_cases <= 0) return head
-  return `${head} · 判分 ${cell.judged_cases}/${cell.expected_cases} 题 · 采样 ${cell.samples} 次`
+  const base = `${head} · 判分 ${cell.judged_cases}/${cell.expected_cases} 题 · 采样 ${cell.samples} 次`
+  const cost = cellCostText(cell)
+  return cost === '' ? base : `${base} · ${cost}`
+}
+
+// The shared tooltip cost fragment (GH #42): "耗时 X · Token Y" with the
+// token total (input + output). Empty when the cell carries no cost sums —
+// the shared/public payloads omit the fields, and cost never crosses that
+// boundary even in a tooltip.
+export function cellCostText(cell: ReportCell | undefined): string {
+  if (!cell || cell.latency_ms === undefined) return ''
+  const tokens = (cell.input_tokens ?? 0) + (cell.output_tokens ?? 0)
+  return `耗时 ${formatMs(cell.latency_ms)} · Token ${formatTokens(tokens)}`
+}
+
+// Live-board rank display (GH #40, ui-guidelines §5 运行中半成品模式): the
+// row ordinal is the live rank for a model with a half-scored total; a
+// null-total row (nothing judged yet) keeps the placeholder dash. Rendered
+// de-emphasized (sm/secondary, no top-3 ceremony) so a partial total never
+// reads as a final grade.
+export function liveRankText(total: number | null, index: number): string {
+  return total === null ? '–' : String(index + 1)
 }
 
 // Live-cell status wording for unscored cells (spec 0009 live section): the

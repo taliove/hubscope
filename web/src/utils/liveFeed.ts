@@ -44,6 +44,16 @@ export function liveFeedDisplay(entries: LiveFeedEntry[]): LiveFeedEntry[] {
   return [...entries].reverse()
 }
 
+// Row-expansion toggle (GH #41): the expansion set is keyed by entry id, so
+// polling prepends never collapse an open row. Returns a fresh set; the
+// input stays untouched.
+export function toggleExpansion(expanded: ReadonlySet<number>, id: number): Set<number> {
+  const next = new Set(expanded)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
 // Verdict-method vocabulary (ui-guidelines §7: wording centralized in
 // utils). An empty type (the case was purged after judging) renders a
 // neutral dash, same as the unknown-word fallback discipline.

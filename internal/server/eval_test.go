@@ -194,14 +194,22 @@ func resultsByModel(run map[string]interface{}, modelID string) []map[string]int
 	return out
 }
 
-// TestEvalRuleVerdicts runs the instruction suite (exact + regex modes)
-// against a smart and a dumb model and asserts per-case scores plus the
-// aggregate.
+// TestEvalRuleVerdicts runs a suite of custom exact-match rule cases against
+// a smart and a dumb model and asserts per-case scores plus the aggregate.
+// The case set is installed over the gsm8k suite (seeded cases retired):
+// post-cutover the seeded bank answers only benchmark-shaped prompts, so
+// rule-verdict coverage drives its own deterministic cases.
 func TestEvalRuleVerdicts(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	dumbID := createEvalModel(t, ts.URL, stub.URL, "dumb-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, suiteID)
+	// Three exact cases the smart model nails (its default answer is the
+	// expectation) and the dumb model misses.
+	createRuleCase(t, ts.URL, suiteID, "RULEV-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "RULEV-B:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "RULEV-C:请作答", "好的", nil)
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID, dumbID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -214,8 +222,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "smart-model")
-	if len(smart) != 10 {
-		t.Fatalf("smart model has %d results, want 10", len(smart))
+	if len(smart) != 3 {
+		t.Fatalf("smart model has %d results, want 3", len(smart))
 	}
 	for _, r := range smart {
 		if r["score"] != 1.0 {
@@ -233,8 +241,8 @@ func TestEvalRuleVerdicts(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "dumb-model")
-	if len(dumb) != 10 {
-		t.Fatalf("dumb model has %d results, want 10", len(dumb))
+	if len(dumb) != 3 {
+		t.Fatalf("dumb model has %d results, want 3", len(dumb))
 	}
 	for _, r := range dumb {
 		if r["score"] != 0.0 {
@@ -242,7 +250,7 @@ func TestEvalRuleVerdicts(t *testing.T) {
 		}
 	}
 
-	// Aggregate: (12 x 1 + 12 x 0) / 24 = 0.5.
+	// Aggregate: (3 x 1 + 3 x 0) / 6 = 0.5.
 	if score, ok := run["score"].(float64); !ok || score != 0.5 {
 		t.Errorf("run score = %v, want 0.5", run["score"])
 	}

@@ -51,8 +51,9 @@
          Dimension cells are the shared ScoreCell: band-colored score over a
          thin bar on a fixed 0-100 track. Rows are clickable: a click emits
          select for the trend drill-down dialog (ticket 32, no inline row
-         expansion per §4). Live mode keeps the backend's model-id
-         lexicographic order and swaps the rank slot for a placeholder dash. -->
+         expansion per §4). Live mode ranks by the half-scored total
+         descending (GH #40) and shows the position in a de-emphasized
+         style; null-total rows keep the placeholder dash. -->
     <div v-else>
       <div class="lb-grid lb-header" :style="gridStyle">
         <span class="h-rank">名次</span>
@@ -62,7 +63,7 @@
              click the active column to fall back to the total. Ranking goes
              through the server-side query.sort unchanged. In live mode the
              headers are inert — no pointer, no indicator — because the
-             half-scored board keeps the backend's lexicographic order. -->
+             half-scored board has a single live order (GH #40). -->
         <span
           class="h-total h-sortable"
           :class="{ 'h-active': !live && sortKey === 'total', 'h-disabled': live }"
@@ -104,9 +105,20 @@
           @keydown.enter="selectable && emit('select', row)"
           @keydown.space.prevent="selectable && emit('select', row)"
         >
-          <span class="rank" :class="{ 'rank-dash': live || row.complete === false, 'rank-top': isTopRank(row, index) }">{{
-            live || row.complete === false ? '–' : index + 1
-          }}</span>
+          <!-- Rank slot (GH #40 live ranking): live mode shows the row
+               ordinal as a de-emphasized live rank (base .rank is already
+               sm/secondary; the top-3 ceremony stays off — isTopRank is
+               false in live), and a null-total row (nothing judged yet)
+               keeps the placeholder dash. Settled incomplete rows (ticket
+               92) keep their dash as before. -->
+          <span
+            class="rank"
+            :class="{
+              'rank-dash': live ? row.total_score === null : row.complete === false,
+              'rank-top': isTopRank(row, index),
+            }"
+            >{{ live ? liveRankText(row.total_score, index) : row.complete === false ? '–' : index + 1 }}</span
+          >
           <span class="model">
             <span class="model-line">
               <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
@@ -146,6 +158,7 @@
             :name="s.name"
             :score="row.suite_scores[s.key] ?? null"
             :cell="cellOf(row, s.key)"
+            :live="live"
           />
           <span v-if="live" class="live-note">
             <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
@@ -170,7 +183,7 @@ import { formatScore, formatScoreDelta } from '@/utils/format'
 import type { CampaignReport, EvalBoardView, ReportCell, ReportRow } from '@/api/types'
 import ScoreCell from '@/components/ScoreCell.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
-import { scoreBand, liveCounts } from '@/utils/scoreTier'
+import { scoreBand, liveCounts, liveRankText } from '@/utils/scoreTier'
 import { nextSortKey } from '@/utils/sortHeader'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText, incompleteWatermark } from '@/utils/evalWording'
@@ -182,12 +195,14 @@ import { baselineNoteText, incompleteWatermark } from '@/utils/evalWording'
 // filtering lives in the toolbar, never inside cells. The parent fetches
 // data; this component only re-emits query changes.
 //
-// Live mode (ticket 52, half-scored board of an unfinished batch): the rank
-// slot shows a placeholder dash (no rank badges pre-settle), rows keep the
-// backend's model-id lexicographic order, the ranking controls are disabled,
-// and the delta column hides entirely. Scored suites render normally;
-// unscored cells are a dash over an empty track and surface in the row-end
-// "N 个维度进行中 / N 个失败" note.
+// Live mode (ticket 52, half-scored board of an unfinished batch; GH #40
+// ranking revision): rows arrive ranked by the half-scored total descending
+// (backend caliber — the frontend never re-sorts) and the rank slot shows
+// the ordinal de-emphasized (no top-3 ceremony); null-total rows keep the
+// placeholder dash. The ranking controls stay disabled and the delta column
+// hides entirely. Scored suites render normally; unscored cells carry the
+// inline batch status word over an empty track (never a second status lamp)
+// and surface in the row-end "N 个维度进行中 / N 个失败" note.
 //
 // Judged-incomplete mode (ticket 92, spec 0014 decision A — settled batches
 // only, mutually exclusive with live by construction): a row with
@@ -239,7 +254,7 @@ function openShare() {
 }
 
 // Column-header sorting (descending-only ruling): live mode never re-ranks —
-// the rows keep the backend's lexicographic order.
+// the rows keep the backend's single live order (half-scored total, GH #40).
 function onSort(key: string) {
   if (props.live) return
   sortKey.value = nextSortKey(sortKey.value, key)

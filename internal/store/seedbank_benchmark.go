@@ -16,11 +16,11 @@ import (
 // template tickets 95-98 replicate: one embedded JSONL subset, one
 // ATTRIBUTION file beside it, one entry in this list.
 //
-// Every benchmark suite seeds DISABLED via retireAtGen 1: the benchmark bank
-// replaces the v3 self-written suites only at the deliberate cutover
-// (ticket 99), so until then the new suites stay out of full sweeps and the
-// weekly batch while manual triggers and admin re-enable stay available.
-// The generation record makes an admin re-enable sticky across restarts.
+// Post-cutover (ticket 99) every benchmark suite seeds ENABLED (retireAtGen
+// 0): the benchmark bank IS the evaluation rotation. Databases that seeded
+// these suites disabled under tickets 94-98 (retireAtGen 1) are flipped by
+// the one-time cutover migration (enableBenchmarkSuitesAtCutover), which
+// runs between seedSuites and the disabled-suite purge at Open.
 //
 //go:embed benchmark/mmlu/subset.jsonl
 var mmluSubset string
@@ -143,7 +143,7 @@ func mustMCQSuite(spec mcqSuiteSpec) seedSuite {
 		name:        spec.name,
 		capability:  spec.capability,
 		nadir:       spec.nadir,
-		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+		retireAtGen: 0, // post-cutover the benchmark bank seeds enabled; see benchmarkSuites comment
 	}
 	seen := map[string]bool{}
 	for lineNo, line := range strings.Split(spec.data, "\n") {
@@ -226,7 +226,7 @@ func mustNumericSuite(spec numericSuiteSpec) seedSuite {
 		name:        spec.name,
 		capability:  spec.capability,
 		nadir:       spec.nadir,
-		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+		retireAtGen: 0, // post-cutover the benchmark bank seeds enabled; see benchmarkSuites comment
 	}
 	seen := map[string]bool{}
 	for lineNo, line := range strings.Split(spec.data, "\n") {
@@ -305,7 +305,7 @@ func mustCruxEvalSuite(spec cruxevalSuiteSpec) seedSuite {
 		name:        spec.name,
 		capability:  spec.capability,
 		nadir:       spec.nadir,
-		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+		retireAtGen: 0, // post-cutover the benchmark bank seeds enabled; see benchmarkSuites comment
 	}
 	seen := map[string]bool{}
 	for lineNo, line := range strings.Split(spec.data, "\n") {
@@ -380,7 +380,7 @@ func mustIFEvalSuite(spec ifevalSuiteSpec) seedSuite {
 		name:        spec.name,
 		capability:  spec.capability,
 		nadir:       spec.nadir,
-		retireAtGen: 1, // seeds disabled pre-cutover; see benchmarkSuites comment
+		retireAtGen: 0, // post-cutover the benchmark bank seeds enabled; see benchmarkSuites comment
 	}
 	seen := map[string]bool{}
 	for lineNo, line := range strings.Split(spec.data, "\n") {

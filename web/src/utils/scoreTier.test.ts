@@ -4,7 +4,7 @@
 // pinned here — they mirror the backend score badge and never move.
 import { describe, it, expect } from 'vitest'
 import type { ReportCell } from '@/api/types'
-import { cellStatusText, liveCounts, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
+import { cellCostText, cellStatusText, liveCounts, liveRankText, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
 
 function makeCell(suiteKey: string, overrides: Partial<ReportCell> = {}): ReportCell {
   return {
@@ -47,9 +47,40 @@ describe('tooltipOf', () => {
     )
   })
 
+  it('appends the GH #42 cost fragment when the cell carries cost sums', () => {
+    expect(
+      tooltipOf(
+        '推理',
+        75,
+        makeCell('a', { judged_cases: 8, expected_cases: 10, latency_ms: 1200, input_tokens: 240, output_tokens: 100 }),
+      ),
+    ).toBe('推理 · 75.0 · 判分 8/10 题 · 采样 30 次 · 耗时 1.20s · Token 340')
+  })
+
   it('degrades gracefully when the cell is absent or has no judged cases', () => {
     expect(tooltipOf('推理', 75, undefined)).toBe('推理 · 75.0')
     expect(tooltipOf('推理', 75, makeCell('a', { judged_cases: 0 }))).toBe('推理 · 75.0')
+  })
+})
+
+describe('cellCostText', () => {
+  it('renders latency and the token total', () => {
+    expect(cellCostText(makeCell('a', { latency_ms: 1200, input_tokens: 240, output_tokens: 100 }))).toBe(
+      '耗时 1.20s · Token 340',
+    )
+  })
+
+  it('is empty when the cell carries no cost sums (shared/public payloads)', () => {
+    expect(cellCostText(makeCell('a'))).toBe('')
+    expect(cellCostText(undefined)).toBe('')
+  })
+})
+
+describe('liveRankText', () => {
+  it('renders the row ordinal for a scored total and a dash for null', () => {
+    expect(liveRankText(87.5, 0)).toBe('1')
+    expect(liveRankText(40, 2)).toBe('3')
+    expect(liveRankText(null, 0)).toBe('–')
   })
 })
 

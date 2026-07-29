@@ -43,7 +43,7 @@ func (s *Server) handleGetPublicEvalBoard(w http.ResponseWriter, r *http.Request
 	// take effect.
 	qr := r.Clone(r.Context())
 	qr.URL.RawQuery = ""
-	report, berr := s.buildCampaignReport(qr, campaign, false)
+	report, berr := s.buildCampaignReport(qr, campaign, false, false)
 	if berr != nil {
 		writeError(w, berr.status, berr.msg)
 		return

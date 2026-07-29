@@ -84,6 +84,26 @@ export function formatMs(value: number | null): string {
   return `${(value / 1000).toFixed(2)}s`
 }
 
+// Render an accumulated duration in milliseconds (GH #42, ui-guidelines §5
+// 成本指标条): the batch-level caliber — sub-minute as one-decimal seconds,
+// sub-hour as "M 分 S 秒", beyond as "H 小时 M 分". Dash when null.
+export function formatDuration(ms: number | null): string {
+  if (ms === null || ms === undefined) return '-'
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${Math.round(seconds % 60)} 秒`
+  return `${Math.floor(seconds / 3600)} 小时 ${Math.round((seconds % 3600) / 60)} 分`
+}
+
+// Render a token count (GH #42, same registration): raw below 1000, then
+// one-decimal k/M abbreviations. Dash when null.
+export function formatTokens(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  if (value < 1000) return String(value)
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`
+  return `${(value / 1_000_000).toFixed(1)}M`
+}
+
 // Render an hour-aligned bucket timestamp as a compact local "MM-dd HH:mm"
 // label for chart axes.
 export function formatBucketTime(value: string): string {

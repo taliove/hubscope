@@ -3,6 +3,7 @@ package evaluator
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -19,6 +20,16 @@ import (
 // trigger is stamped onto every run so runs and their campaign always agree
 // on provenance.
 func (e *Evaluator) RunCampaign(ctx context.Context, campaignID int64, trigger string, suites []store.Suite, modelDBIDs []int64, judgeModel string) {
+	// Zero suites in the rotation (the cutover's empty-rotation window,
+	// ticket 99 risk 3): degrade to an empty done batch instead of letting
+	// the aggregate rule settle the campaign as failed.
+	if len(suites) == 0 {
+		slog.Warn("evaluator: no suites in the evaluation rotation, settling an empty batch", "campaign_id", campaignID)
+		if err := e.db.SettleEmptyCampaign(campaignID, time.Now().UTC()); err != nil {
+			slog.Error("evaluator: settle empty campaign", "campaign_id", campaignID, "error", err)
+		}
+		return
+	}
 	var prepared []*preparedRun
 	for _, suite := range suites {
 		if ctx.Err() != nil {

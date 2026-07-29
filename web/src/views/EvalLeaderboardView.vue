@@ -98,6 +98,7 @@
                batches never show it — the simple form of the brief's
                "settle 后停止增长" choice). -->
           <EvalLiveFeed
+            :campaign-id="report.id"
             :entries="liveFeed"
             :loading="liveFeedLoading"
             :error="liveFeedError"

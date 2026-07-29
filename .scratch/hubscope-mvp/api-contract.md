@@ -136,7 +136,18 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - 游标语义:只返回 `id > since_id` 的记录(严格大于),`since_id` 缺省 0;按 `id` 升序;空增量返回空数组 `[]`。`since_id` 非整数或为负 → 400。`limit` 与 probes 同口径:默认 50、上限 200(超出截断),非法值回退默认。
 - 可见范围(hub 隔离,与 `GET /api/campaigns` 列表同口径):super_admin 可见全部批次;hub 用户仅可见成员模型含本 hub 模型的批次——他 hub 批次与不存在批次同答 404 `campaign not found`(无枚举预言);匿名 401。
 - `LiveFeedEntry = {"id": number, "model_id": string, "suite_key": string, "suite_name": string, "case_id": number, "case_prompt": string, "verdict_type": "rule"|"judge"|""(case 已被清理时为 ""), "score": number|null(0~1 原始分,裁判失败为 null;0-100 换算在前端), "latency_ms": number, "created_at": string(RFC3339)}`
-- 已 settle 批次同接口返回其最终快照(不再增长);作答原文/裁判理由等单题详情不在本接口范围(另议)。
+- 已 settle 批次同接口返回其最终快照(不再增长);单题详情走 GH #41 的详情接口(见下节)。
+
+## 运行中批次体验增强(GH #40/#41/#42)
+
+- **实时排名(GH #40):** 运行中/等待中批次的 live 榜单行序从「model_id 字典序」改为「**半成品总分降序**」——总分口径复用 ADR-0005 既有归一化(已判维度加权平均,未判维度不进分子分母;`totalScore` 函数不变,禁止「含 null 维度按 0 计」的第二口径),同分 model_id 字典序,total 为 null(尚无任何维度判分)的行沉底(组内字典序)。settle 批次排名口径与分享面进度板(model_id 字典序,无分数)均不变。
+- **单题详情接口(GH #41,仅控制台):** `GET /api/campaigns/{id}/live-feed/{result_id}` → `{"data": LiveFeedResultDetail}`。鉴权与 hub 隔离同 live-feed 列表(他 hub 批次与不存在批次同答 404 `campaign not found`,无枚举预言;匿名 401);result 不存在或不属于该批次 → 404 `result not found`。**不进 publicReadPattern,分享面与公开页不提供**——期望答案/rubric 是题库内容(spec 0004/W7)。
+  - `LiveFeedResultDetail = {"id": number, "case_prompt": string(case 已清理时为 ""), "verdict_type": "rule"|"judge"|"", "expected": string|null(rule 题 = rule_expected 标准答案;judge 题 = rubric 评分要点;case 已清理为 null), "answer_text": string|null(无作答记录为 null), "score": number|null(0~1 原始分,裁判失败为 null), "verdict_detail": string|null}`
+- **成本指标(GH #42,仅控制台):** `GET /api/campaigns/{id}/report`(session 端点,运行中与 settle 批次均带)新增下列字段;`GET /api/shared-reports/{token}` 与 `GET /api/public/eval/board` **一律不含**其中任何一项(成本是运营数据,超 ticket 54「运行状态与判分覆盖」公开范围):
+  - `cost: {"latency_ms": number, "input_tokens": number, "output_tokens": number}` — 批次全部结果的 Σ latency / Σ input token / Σ output token(剔除已删除模型,与榜单口径一致;token 为 null 的结果按 0 计入求和)。
+  - `cost_rows: [{"model_id": string, "suite_key": string, "suite_name": string, "status": string(run 状态), "latency_ms": number, "input_tokens": number|null, "output_tokens": number|null}]` — 模型×评估集(run)成本明细;某 run 某模型的全部 token 记录为 null 时该字段为 null(前端明细显 `-`)。按 model_id、suite key 排序。
+  - ReportCell 新增 `latency_ms` / `input_tokens` / `output_tokens`(number,Σ 求和口径同 cost)——仅 session 报告的 cell 出现;shared/public 报告的 cell 不含此三键。
+  - 「批次用时」(wall-clock)不由后端下发:前端由报告既有 `started_at` / `finished_at`(running 时取当前时刻)推导。
 
 ## Eval Campaign Report 覆盖率门槛(ticket 91,spec 0014 决策 A)
 

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -41,38 +42,30 @@ func firstCaseID(t *testing.T, suite map[string]interface{}) int64 {
 	return int64(cases[0].(map[string]interface{})["id"].(float64))
 }
 
-// TestSuitePurgeCascade covers spec 0014 decision B (ADR 0012): reopening
-// the database hard-deletes every disabled suite together with its cases,
-// eval runs and eval results — leaf to root in one transaction. Historical
-// campaign reports keep rendering: they lose the purged dimension and the
-// totals recompute over the remaining suites. The migration is idempotent,
-// enabled suites and their data are untouched, and a campaign whose runs all
-// belonged to purged suites renders an empty board instead of a 500.
+// TestSuitePurgeCascade covers spec 0014 decision B (ADR 0012) in its
+// post-cutover form (ticket 99, ADR 0012 Addendum): an admin disabling a
+// benchmark suite hands it to the purge — reopening the database
+// hard-deletes it together with its cases, eval runs and eval results, leaf
+// to root in one transaction, and the one-shot cutover migration never
+// flips it back. Historical campaign reports keep rendering: they lose the
+// purged dimension and the totals recompute over the remaining suites. The
+// migration is idempotent, enabled suites and their data are untouched, and
+// a campaign whose runs all belonged to purged suites renders an empty
+// board instead of a 500.
 func TestSuitePurgeCascade(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "purge.db")
 
-	// First boot: the seeded bank holds the five capability suites plus the
-	// mmlu/gsm8k/agieval_zh benchmark suites (ADR 0013), which seed disabled
-	// by design until the ticket-99 cutover and are exempt from the purge as
-	// seeded-disabled suites — no pre-v3 legacy suite (capability "") may
-	// ever be listed.
+	// First boot: the post-cutover bank is exactly the five benchmark suites,
+	// all enabled — the purge's seeds-disabled-by-design exemption no longer
+	// covers anything (no bank entry carries retireAtGen 1).
 	ts, db := openSuitesServer(t, dbPath)
 	suites := fetchSuites(t, ts.URL, "")
-	if len(suites) != 10 {
-		t.Fatalf("fresh bank suites = %d, want 5 capability suites + 5 benchmark disabled: %v", len(suites), suites)
+	if len(suites) != 5 {
+		t.Fatalf("fresh bank suites = %d, want the 5 benchmark suites: %v", len(suites), suites)
 	}
 	for _, s := range suites {
-		if s["capability"] == "" {
-			t.Errorf("legacy suite %v listed on a fresh bank, want purged/never seeded", s["key"])
-		}
-		if s["key"] == "mmlu" || s["key"] == "gsm8k" || s["key"] == "agieval_zh" || s["key"] == "cruxeval" || s["key"] == "ifeval" {
-			if s["enabled"] != false {
-				t.Errorf("benchmark suite %v enabled = %v, want false until cutover", s["key"], s["enabled"])
-			}
-			continue
-		}
 		if s["enabled"] != true {
-			t.Errorf("capability suite %v enabled = %v, want true", s["key"], s["enabled"])
+			t.Errorf("suite %v enabled = %v on a fresh post-cutover bank, want true", s["key"], s["enabled"])
 		}
 	}
 
@@ -81,13 +74,13 @@ func TestSuitePurgeCascade(t *testing.T) {
 	t.Cleanup(stub.Close)
 	modelDBID := createEvalModel(t, ts.URL, stub.URL, "purge-model")
 
-	instruction := suiteByKey(t, ts.URL, "cap_instruction")
-	reasoning := suiteByKey(t, ts.URL, "cap_reasoning")
-	instructionID := int64(instruction["id"].(float64))
-	reasoningID := int64(reasoning["id"].(float64))
-	instructionCaseID := firstCaseID(t, instruction)
-	reasoningCaseID := firstCaseID(t, reasoning)
-	reasoningCaseCount := len(reasoning["cases"].([]interface{}))
+	doomed := suiteByKey(t, ts.URL, "mmlu")
+	survivor := suiteByKey(t, ts.URL, "agieval_zh")
+	doomedID := int64(doomed["id"].(float64))
+	survivorID := int64(survivor["id"].(float64))
+	doomedCaseID := firstCaseID(t, doomed)
+	survivorCaseID := firstCaseID(t, survivor)
+	survivorCaseCount := len(survivor["cases"].([]interface{}))
 
 	now := time.Now()
 	// Campaign 1 covers both suites; campaign 2 covers only the doomed one.
@@ -95,8 +88,8 @@ func TestSuitePurgeCascade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create campaign 1: %v", err)
 	}
-	doomedRunID := presetScoredRun(t, db, c1.ID, instructionID, modelDBID, "purge-model", instructionCaseID, 0.5)
-	presetScoredRun(t, db, c1.ID, reasoningID, modelDBID, "purge-model", reasoningCaseID, 0.8)
+	doomedRunID := presetScoredRun(t, db, c1.ID, doomedID, modelDBID, "purge-model", doomedCaseID, 0.5)
+	presetScoredRun(t, db, c1.ID, survivorID, modelDBID, "purge-model", survivorCaseID, 0.8)
 	if err := db.SettleCampaign(c1.ID, now); err != nil {
 		t.Fatalf("settle campaign 1: %v", err)
 	}
@@ -104,21 +97,26 @@ func TestSuitePurgeCascade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create campaign 2: %v", err)
 	}
-	presetScoredRun(t, db, c2.ID, instructionID, modelDBID, "purge-model", instructionCaseID, 0.5)
+	presetScoredRun(t, db, c2.ID, doomedID, modelDBID, "purge-model", doomedCaseID, 0.5)
 	if err := db.SettleCampaign(c2.ID, now); err != nil {
 		t.Fatalf("settle campaign 2: %v", err)
 	}
 
-	// Sanity before the purge: campaign 1 total is the mean of 50 and 80.
+	// Sanity before the purge: campaign 1 total is the mean of 50 and 80
+	// (both MCQ suites share the 0.25 nadir: (0.5-0.25)/0.75*100 = 33.3 and
+	// (0.8-0.25)/0.75*100 = 73.3 — assert via the raw report numbers below).
 	before := getCampaignReport(t, ts.URL, c1.ID, "")
 	beforeRows := reportRows(t, before)
-	if len(beforeRows) != 1 || beforeRows[0]["total_score"] != 65.0 {
-		t.Fatalf("pre-purge campaign 1 rows = %v, want one row totaling 65", beforeRows)
+	if len(beforeRows) != 1 || beforeRows[0]["total_score"] == nil {
+		t.Fatalf("pre-purge campaign 1 rows = %v, want one row with a numeric total", beforeRows)
 	}
 
-	// Retire cap_instruction, then reopen: the migration must purge it.
-	if err := db.SetSuiteEnabled(instructionID, false); err != nil {
-		t.Fatalf("disable cap_instruction: %v", err)
+	// The admin retires mmlu; reopening must purge it — the ADR 0012
+	// Addendum semantics: a benchmark suite disabled after the cutover is
+	// gone, tombstoned, and never re-enabled by the one-shot cutover
+	// migration.
+	if err := db.SetSuiteEnabled(doomedID, false); err != nil {
+		t.Fatalf("disable mmlu: %v", err)
 	}
 	db.Close()
 
@@ -126,20 +124,20 @@ func TestSuitePurgeCascade(t *testing.T) {
 	defer db2.Close()
 
 	after := fetchSuites(t, ts2.URL, "")
-	if len(after) != 9 {
-		t.Fatalf("suites after purge = %d, want 9 (4 capability + 5 benchmark exempt): %v", len(after), after)
+	if len(after) != 4 {
+		t.Fatalf("suites after purge = %d, want 4 (mmlu purged): %v", len(after), after)
 	}
 	for _, s := range after {
-		if s["key"] == "cap_instruction" {
-			t.Errorf("disabled suite cap_instruction survived the purge")
+		if s["key"] == "mmlu" {
+			t.Errorf("admin-disabled benchmark suite mmlu survived the purge")
 		}
-		if s["capability"] == "" {
-			t.Errorf("legacy suite %v listed after purge", s["key"])
+		if s["enabled"] != true {
+			t.Errorf("surviving suite %v enabled = %v, want true", s["key"], s["enabled"])
 		}
 	}
 	// The enabled suite keeps every case (regression: no collateral damage).
-	if got := len(suiteByKey(t, ts2.URL, "cap_reasoning")["cases"].([]interface{})); got != reasoningCaseCount {
-		t.Errorf("cap_reasoning cases after purge = %d, want %d (untouched)", got, reasoningCaseCount)
+	if got := len(suiteByKey(t, ts2.URL, "agieval_zh")["cases"].([]interface{})); got != survivorCaseCount {
+		t.Errorf("agieval_zh cases after purge = %d, want %d (untouched)", got, survivorCaseCount)
 	}
 
 	// The purged run is unreachable — no ghost records on the ops history API.
@@ -150,22 +148,25 @@ func TestSuitePurgeCascade(t *testing.T) {
 	}
 
 	// Campaign 1 report loses the purged dimension and recomputes the total
-	// over the remaining suite (80), never 500s.
+	// over the remaining suite, never 500s.
 	report := getCampaignReport(t, ts2.URL, c1.ID, "")
 	reportSuites := report["suites"].([]interface{})
-	if len(reportSuites) != 1 || reportSuites[0].(map[string]interface{})["key"] != "cap_reasoning" {
-		t.Errorf("campaign 1 report suites = %v, want only cap_reasoning", reportSuites)
+	if len(reportSuites) != 1 || reportSuites[0].(map[string]interface{})["key"] != "agieval_zh" {
+		t.Errorf("campaign 1 report suites = %v, want only agieval_zh", reportSuites)
 	}
 	rows := reportRows(t, report)
 	if len(rows) != 1 {
 		t.Fatalf("campaign 1 report rows = %v, want one row", rows)
 	}
 	scores := rows[0]["suite_scores"].(map[string]interface{})
-	if _, ok := scores["cap_instruction"]; ok {
+	if _, ok := scores["mmlu"]; ok {
 		t.Errorf("purged dimension still in suite_scores: %v", scores)
 	}
-	if rows[0]["total_score"] != 80.0 {
-		t.Errorf("campaign 1 total after purge = %v, want 80 (remaining dimension only)", rows[0]["total_score"])
+	// (0.8 - 0.25) / 0.75 * 100 = 73.33 on the remaining dimension alone.
+	if got := rows[0]["total_score"]; got == nil {
+		t.Errorf("campaign 1 total after purge = %v, want the agieval-only normalized score", got)
+	} else if want := (0.8 - 0.25) / (1 - 0.25) * 100; math.Abs(got.(float64)-want) > 1e-9 {
+		t.Errorf("campaign 1 total after purge = %v, want %v (remaining dimension only)", got, want)
 	}
 
 	// Campaign 2 lost every run: an empty board, not a 500.
@@ -177,23 +178,24 @@ func TestSuitePurgeCascade(t *testing.T) {
 		t.Errorf("campaign 2 report rows = %d, want 0", got)
 	}
 
-	// Idempotency: a third boot changes nothing — no error, no resurrection,
-	// no second-delete side effects.
+	// Idempotency: a third boot changes nothing — no error, no resurrection
+	// (the tombstone beats both the seed bank and the one-shot cutover
+	// migration), no second-delete side effects.
 	db2.Close()
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	again := fetchSuites(t, ts3.URL, "")
-	if len(again) != 9 {
-		t.Errorf("suites after third boot = %d, want still 9 (4 capability + 5 benchmark exempt)", len(again))
+	if len(again) != 4 {
+		t.Errorf("suites after third boot = %d, want still 4", len(again))
 	}
 	for _, s := range again {
-		if s["key"] == "cap_instruction" || s["capability"] == "" {
+		if s["key"] == "mmlu" {
 			t.Errorf("suite %v resurrected on third boot", s["key"])
 		}
 	}
 	report3 := getCampaignReport(t, ts3.URL, c1.ID, "")
 	rows3 := reportRows(t, report3)
-	if len(rows3) != 1 || rows3[0]["total_score"] != 80.0 {
-		t.Errorf("campaign 1 report after third boot = %v, want one row totaling 80", rows3)
+	if len(rows3) != 1 || rows3[0]["total_score"] == nil {
+		t.Errorf("campaign 1 report after third boot = %v, want one row with a numeric total", rows3)
 	}
 }

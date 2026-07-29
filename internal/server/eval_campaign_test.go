@@ -256,7 +256,7 @@ func TestFullSweepCampaign(t *testing.T) {
 func TestManualSingleSuiteCampaign(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	waitEvalDone(t, ts.URL, runID)

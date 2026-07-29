@@ -1,9 +1,7 @@
 package server_test
 
 import (
-	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/taliove/hubscope/internal/server"
@@ -24,63 +22,10 @@ func openSuitesServer(t *testing.T, dbPath string) (*httptest.Server, *store.DB)
 	return ts, db
 }
 
-// TestSeedGen3Idempotent reopens a seeded database and asserts the gen-3
-// seed never duplicates cases and never reverts admin case edits.
-func TestSeedGen3Idempotent(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "gen3.db")
-
-	// First boot: seed lands. An admin then curates the bank — a content edit
-	// (retire + mint) and one extra case on cap_reasoning.
-	ts, db := openSuitesServer(t, dbPath)
-	before := suiteByKey(t, ts.URL, "cap_reasoning")
-	if got := len(before["cases"].([]interface{})); got != 10 {
-		t.Fatalf("cap_reasoning first-issue cases = %v, want 10", got)
-	}
-	seed := before["cases"].([]interface{})[0].(map[string]interface{})
-	seedID := int64(seed["id"].(float64))
-	patchCase(t, ts.URL, seedID, map[string]interface{}{"prompt": "1 加 1 等于几？只回复数字"})
-	createResp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
-		"suite_id":     int64(before["id"].(float64)),
-		"prompt":       "管理员补充题：2 加 2 等于几？只回复数字",
-		"verdict_type": "rule",
-		"rule_config":  map[string]string{"mode": "exact", "expected": "4"},
-	})
-	createResp.Body.Close()
-	if createResp.StatusCode != http.StatusCreated {
-		t.Fatalf("create admin case: expected 201, got %d", createResp.StatusCode)
-	}
-	db.Close()
-
-	// Second boot: nothing is re-seeded or edited.
-	ts2, db2 := openSuitesServer(t, dbPath)
-	defer db2.Close()
-
-	after := suiteByKey(t, ts2.URL, "cap_reasoning")
-	cases := after["cases"].([]interface{})
-	if got := len(cases); got != 12 {
-		t.Errorf("cap_reasoning cases after reopen = %d, want 12 (no seed duplicates)", got)
-	}
-	if v := after["version"]; v != 3.0 {
-		t.Errorf("cap_reasoning version after reopen = %v, want 3 (seed must not rebump)", v)
-	}
-	retired := caseByID(t, after, seedID)
-	if retired["enabled"] != false || retired["prompt"] != seed["prompt"] {
-		t.Errorf("admin edit reverted by reseed: %v", retired)
-	}
-
-	// Third boot for good measure: generation records keep it a no-op.
-	db2.Close()
-	ts3, db3 := openSuitesServer(t, dbPath)
-	defer db3.Close()
-	again := suiteByKey(t, ts3.URL, "cap_reasoning")
-	if got := len(again["cases"].([]interface{})); got != 12 {
-		t.Errorf("cap_reasoning cases after third boot = %d, want still 12", got)
-	}
-}
-
-// TestSeedGen3SweepExcludesRetired asserts a full sweep runs exactly the five
-// capability suites and never the retired legacy ones.
-func TestSeedGen3SweepExcludesRetired(t *testing.T) {
+// TestBenchmarkSweepCoversRotation asserts a full sweep runs exactly the
+// five authoritative-benchmark suites of the post-cutover rotation (ticket
+// 99) — never a retired v3 or legacy suite.
+func TestBenchmarkSweepCoversRotation(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "smart-model")
 
@@ -90,9 +35,9 @@ func TestSeedGen3SweepExcludesRetired(t *testing.T) {
 		t.Fatalf("sweep campaign status = %v, want done", final["status"])
 	}
 
-	want := map[string]bool{
-		"cap_instruction": false, "cap_reasoning": false, "cap_coding": false,
-		"cap_knowledge": false, "cap_language": false,
+	want := map[string]bool{}
+	for _, key := range benchmarkRotation {
+		want[key] = false
 	}
 	for _, run := range campaignRuns(t, final) {
 		suite := suiteByID(t, ts.URL, int64(run["suite_id"].(float64)))
@@ -105,7 +50,7 @@ func TestSeedGen3SweepExcludesRetired(t *testing.T) {
 	}
 	for key, ran := range want {
 		if !ran {
-			t.Errorf("sweep did not run capability suite %q", key)
+			t.Errorf("sweep did not run benchmark suite %q", key)
 		}
 	}
 }
@@ -122,16 +67,16 @@ func suiteByID(t *testing.T, base string, id int64) map[string]interface{} {
 	return nil
 }
 
-// TestSeedGen3Rotation covers the rotation contract on a capability suite
-// (ADR 0010): retiring a case and minting its replacement bumps the suite
+// TestBenchmarkSuiteRotation covers the rotation contract on a benchmark
+// suite (W7): retiring a case and minting its replacement bumps the suite
 // version, the new run executes the replacement, and the historical run
 // keeps rendering the retired case's original prompt.
-func TestSeedGen3Rotation(t *testing.T) {
+func TestBenchmarkSuiteRotation(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_reasoning")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
-	before := suiteByKey(t, ts.URL, "cap_reasoning")
+	before := suiteByKey(t, ts.URL, "gsm8k")
 	target := before["cases"].([]interface{})[0].(map[string]interface{})
 	targetID := int64(target["id"].(float64))
 	oldPrompt := target["prompt"].(string)
@@ -147,7 +92,7 @@ func TestSeedGen3Rotation(t *testing.T) {
 		"prompt": "10 加 5 等于几？只回复数字",
 	})
 	newID := int64(replacement["id"].(float64))
-	if v := suiteByKey(t, ts.URL, "cap_reasoning")["version"]; v != 2.0 {
+	if v := suiteByKey(t, ts.URL, "gsm8k")["version"]; v != 2.0 {
 		t.Fatalf("after rotation version = %v, want 2", v)
 	}
 
@@ -163,7 +108,7 @@ func TestSeedGen3Rotation(t *testing.T) {
 	if !sawOld {
 		t.Error("run1 should still reference the retired case id")
 	}
-	oldRow := caseByID(t, suiteByKey(t, ts.URL, "cap_reasoning"), targetID)
+	oldRow := caseByID(t, suiteByKey(t, ts.URL, "gsm8k"), targetID)
 	if oldRow["prompt"] != oldPrompt || oldRow["enabled"] != false {
 		t.Errorf("retired case lost its original prompt: %v", oldRow)
 	}
@@ -191,75 +136,26 @@ func TestSeedGen3Rotation(t *testing.T) {
 	}
 }
 
-// TestSeedGen3JudgeSampling runs the seeded language suite and asserts its
-// judge cases are each answered three times with the score averaged over the
-// samples, while rule cases are answered exactly once (ADR 0010).
-func TestSeedGen3JudgeSampling(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "sample-model")
-
-	suite := suiteByKey(t, ts.URL, "cap_language")
-	suiteID := int64(suite["id"].(float64))
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-
-	byCase := map[int64]map[string]interface{}{}
-	for _, r := range resultsByModel(run, "sample-model") {
-		byCase[int64(r["case_id"].(float64))] = r
-	}
-
-	judgeCases, ruleCases := 0, 0
-	for _, c := range suite["cases"].([]interface{}) {
-		cm := c.(map[string]interface{})
-		prompt := cm["prompt"].(string)
-		res := byCase[int64(cm["id"].(float64))]
-		if res == nil {
-			t.Fatalf("seed case %v missing from results", cm["id"])
-		}
-		calls := stub.callCount("sample-model", prompt)
-		if cm["verdict_type"] == "judge" {
-			judgeCases++
-			if calls != 3 {
-				t.Errorf("judge case answered %d times, want 3 (sample_count=3)", calls)
-			}
-			// Three samples at the stub's default 0.75 verdict average to 0.75.
-			if res["score"] != 0.75 {
-				t.Errorf("judge case score = %v, want 0.75 (mean of sampled verdicts)", res["score"])
-			}
-		} else {
-			ruleCases++
-			if calls != 1 {
-				t.Errorf("rule case answered %d times, want 1 (sample_count=1)", calls)
-			}
-		}
-	}
-	if judgeCases == 0 || ruleCases == 0 {
-		t.Fatalf("cap_language should mix judge (%d) and rule (%d) cases", judgeCases, ruleCases)
-	}
-}
-
-// TestSeedGen3NadirSnapshot asserts a run snapshots its suite's nadir at
-// creation, read back through the eval API: the multiple-choice knowledge
-// suite records 0.25, a zero-floor suite records 0.
-func TestSeedGen3NadirSnapshot(t *testing.T) {
+// TestBenchmarkNadirSnapshot asserts a run snapshots its suite's nadir at
+// creation, read back through the eval API: the four-option MCQ suites
+// record the 0.25 random-guess floor, an open-ended suite records 0 (ADR
+// 0009, ticket 99 calibration).
+func TestBenchmarkNadirSnapshot(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 
-	knowledgeID := suiteIDByKey(t, ts.URL, "cap_knowledge")
+	knowledgeID := suiteIDByKey(t, ts.URL, "mmlu")
 	runID := triggerEval(t, ts.URL, knowledgeID, modelID)
 	waitEvalDone(t, ts.URL, runID)
 	if nadir := getEvalRun(t, ts.URL, runID)["nadir"]; nadir != 0.25 {
-		t.Errorf("cap_knowledge run nadir = %v, want 0.25", nadir)
+		t.Errorf("mmlu run nadir = %v, want 0.25", nadir)
 	}
 
-	// A zero-floor suite snapshots nadir 0 (the legacy raw-mean caliber).
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
-	instructionRunID := triggerEval(t, ts.URL, instructionID, modelID)
-	waitEvalDone(t, ts.URL, instructionRunID)
-	if nadir := getEvalRun(t, ts.URL, instructionRunID)["nadir"]; nadir != 0.0 {
-		t.Errorf("cap_instruction run nadir = %v, want 0", nadir)
+	// An open-ended suite snapshots nadir 0 (the raw-mean caliber).
+	reasoningID := suiteIDByKey(t, ts.URL, "gsm8k")
+	reasoningRunID := triggerEval(t, ts.URL, reasoningID, modelID)
+	waitEvalDone(t, ts.URL, reasoningRunID)
+	if nadir := getEvalRun(t, ts.URL, reasoningRunID)["nadir"]; nadir != 0.0 {
+		t.Errorf("gsm8k run nadir = %v, want 0", nadir)
 	}
 }

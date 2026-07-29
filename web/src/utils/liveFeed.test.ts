@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJudgeFailure, LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, verdictTypeLabel } from './liveFeed'
+import { isJudgeFailure, LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, toggleExpansion, verdictTypeLabel } from './liveFeed'
 import type { LiveFeedEntry } from '@/api/types'
 
 function entry(id: number): LiveFeedEntry {
@@ -91,5 +91,21 @@ describe('isJudgeFailure', () => {
 
   it('is false for a purged case (empty verdict type)', () => {
     expect(isJudgeFailure({ ...entry(1), verdict_type: '', score: null })).toBe(false)
+  })
+})
+
+describe('toggleExpansion', () => {
+  it('expands and collapses by entry id, returning a fresh set', () => {
+    const open = new Set<number>()
+    const expanded = toggleExpansion(open, 7)
+    expect([...expanded]).toEqual([7])
+    expect(open.size).toBe(0) // input untouched
+    const collapsed = toggleExpansion(expanded, 7)
+    expect(collapsed.size).toBe(0)
+  })
+
+  it('keeps existing expansions keyed by id — new entries never collapse them', () => {
+    const open = toggleExpansion(new Set([3, 9]), 12)
+    expect([...open].sort((a, b) => a - b)).toEqual([3, 9, 12])
   })
 })

@@ -9,9 +9,13 @@ import (
 // TestJudgeModelFromSettings changes settings.judge_model and asserts the
 // next run records the new judge and routes its judge calls through it.
 func TestJudgeModelFromSettings(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom judge case (seeded cases retired): the post-cutover bank
+	// seeds zero judge cases, so judge-path tests install their own.
+	retireSuiteCases(t, db, suiteID)
+	createJudgeCaseForTest(t, ts.URL, suiteID, "JUDGE-SETTINGS:请回答")
 
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
 		"judge_model": "alt-judge-model",

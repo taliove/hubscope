@@ -337,6 +337,17 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("eval_results", "verdict_profile", "TEXT NOT NULL DEFAULT 'v1'"); err != nil {
 		return err
 	}
+	// Token usage columns (added to the create-table DDL alongside latency):
+	// nullable by design — a hub that does not report usage leaves them NULL,
+	// and cost sums count those NULLs as 0 (GH #42). Backfilling old
+	// databases with the columns is what lets the cost aggregates read every
+	// historical result without a special case.
+	if err := db.ensureColumn("eval_results", "input_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_results", "output_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
 	// Ticket 50 (ADR 0010): question-bank v3 organizes suites by capability,
 	// stores a per-suite nadir constant for normalized scoring (backfilled 0,
 	// which degenerates to the legacy raw-mean caliber), and adds an enabled
@@ -433,10 +444,26 @@ func (db *DB) migrate() error {
 	if err := db.seedSuites(); err != nil {
 		return err
 	}
+	// Ticket 99 (spec 0014 decision C): the benchmark cutover flips the five
+	// authoritative-benchmark suites into the rotation. Runs after seedSuites
+	// (the suites must exist) and BEFORE the purge: databases that seeded
+	// them disabled under tickets 94-98 would otherwise lose them to the
+	// purge in the same boot that retires the v3 suites.
+	if err := db.enableBenchmarkSuitesAtCutover(); err != nil {
+		return err
+	}
+	// Mid-state fallback of the same cutover (GH #15): retire the v3 suites
+	// unconditionally, so databases whose generation-tracked retirement was
+	// short-circuited by pre-written purge tombstones still hand the v3
+	// suites to the purge below. Idempotent — steady state matches zero rows.
+	if err := db.retireV3SuitesAtOpen(); err != nil {
+		return err
+	}
 	// Ticket 93 (spec 0014 decision B, ADR 0012): disabled suites are
 	// hard-deleted with their cases, runs and results. Runs after seedSuites
-	// so a first-time retirement (retireAtGen) is purged in the same boot;
-	// idempotent, so every later Open is a no-op.
+	// so a first-time retirement (retireAtGen — including the v3 retirement
+	// at the ticket-99 cutover) is purged in the same boot; idempotent, so
+	// every later Open is a no-op.
 	if err := db.purgeDisabledSuites(); err != nil {
 		return err
 	}

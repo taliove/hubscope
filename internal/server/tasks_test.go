@@ -167,10 +167,15 @@ func waitTaskStatus(t *testing.T, base string, runID int64, want ...string) map[
 // TestEvalRunRegistersTask verifies that a manual eval run registers a task
 // which flows to success, carrying per-case progress logs.
 func TestEvalRunRegistersTask(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	dumbID := createEvalModel(t, ts.URL, stub.URL, "dumb-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// Two custom exact-rule cases (seeded cases retired): the smart model
+	// scores 1.00 on both, the dumb model 0.00.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "TASK-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "TASK-B:请作答", "好的", nil)
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID, dumbID)
 	waitEvalDone(t, ts.URL, runID)
@@ -230,12 +235,19 @@ func TestEvalRunRegistersTask(t *testing.T) {
 // TestEvalRunTaskLogsJudgeFailure verifies judge failures land in the task
 // log as warn lines while judged cases log their score.
 func TestEvalRunTaskLogsJudgeFailure(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_language")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
-	// The product-intro judge case gets unparseable verdicts on every sample.
-	stub.setJudgeSeq("保温杯", "I cannot produce a score for this.")
+	// Four custom judge cases (seeded cases retired — the post-cutover bank
+	// seeds zero judge cases); the scripted one gets unparseable verdicts on
+	// every sample.
+	retireSuiteCases(t, db, suiteID)
+	createJudgeCaseForTest(t, ts.URL, suiteID, "TASKJUDGE-OK-A:请回答")
+	createJudgeCaseForTest(t, ts.URL, suiteID, "TASKJUDGE-OK-B:请回答")
+	createJudgeCaseForTest(t, ts.URL, suiteID, "TASKJUDGE-OK-C:请回答")
+	createJudgeCaseForTest(t, ts.URL, suiteID, "TASKJUDGE-GARBAGE:请回答")
+	stub.setJudgeSeq("TASKJUDGE-GARBAGE", "I cannot produce a score for this.")
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	waitEvalDone(t, ts.URL, runID)
@@ -244,9 +256,9 @@ func TestEvalRunTaskLogsJudgeFailure(t *testing.T) {
 	detail := getTaskDetail(t, ts.URL, int64(task["id"].(float64)))
 	logs := taskLogs(t, detail)
 
-	// The language suite's four judge cases are scored 0.75 by the stub
-	// except the scripted product-intro case, whose garbage judge replies
-	// must surface as a warn-level judge failure line, never as score 0.
+	// Three judge cases are scored 0.75 by the stub; the scripted one's
+	// garbage judge replies must surface as a warn-level judge failure line,
+	// never as score 0.
 	if got := countLogLines(logs, "info", "score=0.75"); got != 3 {
 		t.Errorf("expected 3 judged score=0.75 lines, got %d (logs: %v)", got, logs)
 	}
@@ -360,7 +372,7 @@ func TestFailedEvalRunTaskMarkedFailed(t *testing.T) {
 func TestTaskListPaginationAndFilters(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	run1 := triggerEval(t, ts.URL, suiteID, smartID)
 	waitTaskStatus(t, ts.URL, run1, "success")

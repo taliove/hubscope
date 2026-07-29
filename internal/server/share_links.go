@@ -155,5 +155,5 @@ func (s *Server) handleGetSharedReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, shareLinkNotFound)
 		return
 	}
-	s.writeCampaignReport(w, r, campaign, true)
+	s.writeCampaignReport(w, r, campaign, true, false)
 }

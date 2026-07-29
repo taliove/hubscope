@@ -115,8 +115,8 @@ func gsm8kWrongVariants(i int, expected string) string {
 }
 
 // TestGSM8KSuiteSeeded asserts the benchmark seed casts the gsm8k suite from
-// the embedded subset: capability reasoning, pre-cutover disabled, zero
-// nadir floor, and 100 single-sample numeric cases.
+// the embedded subset: capability reasoning, in the rotation since the
+// ticket-99 cutover, zero nadir floor, and 100 single-sample numeric cases.
 func TestGSM8KSuiteSeeded(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
@@ -124,11 +124,9 @@ func TestGSM8KSuiteSeeded(t *testing.T) {
 	if suite["capability"] != "reasoning" {
 		t.Errorf("gsm8k capability = %v, want reasoning", suite["capability"])
 	}
-	// Pre-cutover (ticket 99 flips the rotation): the benchmark suite seeds
-	// disabled, so full sweeps and the weekly batch skip it until the
-	// deliberate switch. Manual triggers stay allowed.
-	if suite["enabled"] != false {
-		t.Errorf("gsm8k enabled = %v, want false (seeds disabled pre-cutover)", suite["enabled"])
+	// Post-cutover (ticket 99): the benchmark suite is the rotation.
+	if suite["enabled"] != true {
+		t.Errorf("gsm8k enabled = %v, want true (post-cutover rotation)", suite["enabled"])
 	}
 	if suite["nadir"] != 0.0 {
 		t.Errorf("gsm8k nadir = %v, want 0 (open-ended numeric has no random-guess floor; ticket 99 calibrates)", suite["nadir"])
@@ -320,40 +318,12 @@ func TestGSM8KExtractionBoundaries(t *testing.T) {
 	}
 }
 
-// TestGSM8KManualTriggerOnDisabledSuite documents the pre-cutover contract:
-// the seeded-disabled benchmark suite is excluded from the rotation but a
-// manual single-suite trigger still runs it (same as the mmlu precedent).
-func TestGSM8KManualTriggerOnDisabledSuite(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
-	modelID := createEvalModel(t, ts.URL, stub.URL, "gsm8k-manual")
-
-	suite, cases := gsm8kSuiteCases(t, ts.URL)
-	suiteID := int64(suite["id"].(float64))
-	for _, c := range cases {
-		stub.setAnswerSeq(c.prompt, "#### "+c.expected)
-	}
-	runID := triggerEval(t, ts.URL, suiteID, modelID)
-	run := waitEvalDone(t, ts.URL, runID)
-	if run["status"] != "done" {
-		t.Fatalf("run status = %v, want done", run["status"])
-	}
-	if n := len(resultsByModel(run, "gsm8k-manual")); n != 100 {
-		t.Errorf("manual trigger on disabled suite ran %d cases, want 100", n)
-	}
-	if v := run["suite_version"]; v != 1.0 {
-		t.Errorf("run suite_version = %v, want 1", v)
-	}
-	if nadir := run["nadir"]; nadir != 0.0 {
-		t.Errorf("run nadir snapshot = %v, want 0", nadir)
-	}
-}
-
 // TestGSM8KNumericCaseValidation covers the admin API boundary for numeric
 // cases (ADR 0013): the expectation must canonicalize to a plain number,
 // anything else could never score a hit and is rejected at creation.
 func TestGSM8KNumericCaseValidation(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
-	suiteID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	create := func(expected string) int {
 		resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
@@ -378,9 +348,9 @@ func TestGSM8KNumericCaseValidation(t *testing.T) {
 	}
 }
 
-// TestGSM8KCapabilityFilterPinsReasoning documents that the gsm8k suite
-// lands in the reasoning dimension alongside cap_reasoning, so the
-// capability filter now lists both.
+// TestGSM8KCapabilityFilterPinsReasoning documents that the gsm8k suite is
+// the reasoning dimension of the post-cutover rotation (the v3 cap_reasoning
+// it replaced is gone), so the capability filter lists exactly it.
 func TestGSM8KCapabilityFilterPinsReasoning(t *testing.T) {
 	ts, _, _ := setupEvalEnv(t)
 
@@ -389,8 +359,8 @@ func TestGSM8KCapabilityFilterPinsReasoning(t *testing.T) {
 	for _, s := range suites {
 		keys[s["key"].(string)] = true
 	}
-	if len(suites) != 2 || !keys["cap_reasoning"] || !keys["gsm8k"] {
-		t.Errorf("capability=reasoning suites = %v, want cap_reasoning and gsm8k", suites)
+	if len(suites) != 1 || !keys["gsm8k"] {
+		t.Errorf("capability=reasoning suites = %v, want exactly gsm8k", suites)
 	}
 }
 

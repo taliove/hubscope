@@ -81,7 +81,7 @@ func setupDoneCampaign(t *testing.T) (*httptest.Server, int64) {
 	t.Helper()
 	ts, stub, _ := setupEvalEnv(t)
 	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
-	instructionID := suiteIDByKey(t, ts.URL, "cap_instruction")
+	instructionID := suiteIDByKey(t, ts.URL, "gsm8k")
 	runID := triggerEval(t, ts.URL, instructionID, modelID)
 	run := waitEvalDone(t, ts.URL, runID)
 	campaignID := int64(run["campaign_id"].(float64))
@@ -325,13 +325,13 @@ func TestSharedReportRateLimited(t *testing.T) {
 // the batch settles, the shared view renders the full ranked board like the
 // session view.
 //
-// Scenario mirrors TestCampaignReportProgressGrid: the judge model is frozen
-// after three judge calls, catching the sweep mid-cap_language with results
-// already recorded; gamma is a discovered model retired mid-flight.
+// Scenario mirrors TestCampaignReportProgressGrid: beta is frozen after 407
+// answer calls, catching the sweep mid-ifeval with results already recorded;
+// gamma is a discovered model retired mid-flight.
 func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	// Async eval: observes the shared report while the sweep is frozen
-	// mid-flight (judge gate); drained by releaseModel +
-	// waitCampaignStatus(done).
+	// mid-flight (beta's answer gate after 407 calls); drained by
+	// releaseModel + waitCampaignStatus(done).
 	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
@@ -343,16 +343,21 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	createHubViaAPI(t, ts.URL, discovery.URL)
 	runDiscovery(t, ts.URL)
 
+	// Serial cell order (GH #26 pool at 1): the 407-call freeze point maps
+	// to "four suites settled, beta mid-ifeval" only when cells execute
+	// suite by suite, model by model (alpha, beta, gamma inside each run).
+	setEvalConcurrency(t, ts.URL, 1)
+
 	stub.resetCalls()
-	stub.blockModelAfter(store.DefaultJudgeModel, 3)
-	t.Cleanup(func() { stub.releaseModel(store.DefaultJudgeModel) })
+	stub.blockModelAfter("beta-model", 407)
+	t.Cleanup(func() { stub.releaseModel("beta-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// The fourth judge call being recorded proves the freeze point: the
-	// campaign is running with results already on record.
-	waitFor(t, "fourth judge call reaching the stub", func() bool {
-		return stub.callTotal(store.DefaultJudgeModel) >= 4
+	// Beta's 408th call being recorded proves the freeze point: the campaign
+	// is running with results already on record.
+	waitFor(t, "beta's 408th call reaching the stub", func() bool {
+		return stub.callTotal("beta-model") >= 408
 	})
 
 	link := createShareLink(t, ts.URL, campaignID)
@@ -416,19 +421,19 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	}
 
 	// Cell states and coverage mirror the session grid's caliber: the four
-	// rule-only suites are done, cap_language is mid-flight (alpha's broken
-	// results fully recorded, beta seven of ten judged).
+	// earlier suites are done, ifeval is mid-flight (alpha's broken results
+	// fully recorded, beta seven of a hundred judged).
 	alpha, beta := rows[0], rows[1]
-	for _, key := range []string{"cap_instruction", "cap_reasoning", "cap_coding", "cap_knowledge"} {
-		assertCell(t, alpha, key, "done", 0, 10)
-		assertCell(t, beta, key, "done", 10, 10)
+	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
+		assertCell(t, alpha, key, "done", 0, 100)
+		assertCell(t, beta, key, "done", 100, 100)
 	}
-	assertCell(t, alpha, "cap_language", "done", 0, 10)
-	assertCell(t, beta, "cap_language", "running", 7, 10)
+	assertCell(t, alpha, "ifeval", "done", 0, 100)
+	assertCell(t, beta, "ifeval", "running", 7, 100)
 
 	// Settled: the shared view renders the same full board as the session
 	// view, cells included.
-	stub.releaseModel(store.DefaultJudgeModel)
+	stub.releaseModel("beta-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
 
 	sharedRows := reportRows(t, getSharedReport(t, ts.URL, token))

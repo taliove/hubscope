@@ -33,8 +33,10 @@ type reportBaselineDTO struct {
 // campaign (null when there is no comparable baseline or no score on either
 // side). Cells carry the per-suite progress detail (ticket 52) plus the
 // coverage/sample confidence markers (ticket 51); on an unfinished campaign
-// the row list is the live half-scored board — model-id lexicographic
-// order, no ranking information (spec 0004).
+// the row list is the live half-scored board — ranked by the half-scored
+// total descending with null totals sunk (GH #40), rendered de-emphasized
+// on the frontend so a partial total never reads as a final grade
+// (spec 0004).
 //
 // On a settled campaign the coverage gate applies (spec 0014 decision A):
 // Complete reports whether every covered suite produced a non-null score
@@ -55,13 +57,38 @@ type reportRowDTO struct {
 	MissingSuites int                 `json:"missing_suites,omitempty"`
 }
 
+// campaignCostDTO is the batch-level cost summary (GH #42, console-only):
+// Σ latency / Σ input / Σ output tokens over the campaign's results, null
+// tokens counted as 0.
+type campaignCostDTO struct {
+	LatencyMs    int64 `json:"latency_ms"`
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+}
+
+// costRowDTO is one line of the report page's cost detail table (GH #42,
+// console-only): one model's cost inside one run. Token fields are null
+// when the model recorded no token at all in that run (the table renders a
+// dash), while the batch and cell sums count those same nulls as 0.
+type costRowDTO struct {
+	ModelID      string `json:"model_id"`
+	SuiteKey     string `json:"suite_key"`
+	SuiteName    string `json:"suite_name"`
+	Status       string `json:"status"`
+	LatencyMs    int64  `json:"latency_ms"`
+	InputTokens  *int64 `json:"input_tokens"`
+	OutputTokens *int64 `json:"output_tokens"`
+}
+
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
 // suites it covers, the effective weights used for the totals, the
 // leaderboard rows, and the previous-batch baseline the rows' deltas
 // compare against (null when no earlier done campaign exists).
 // FailedResults counts the batch's null-score (failed) result rows (GH #28):
 // on a settled campaign, failed_results > 0 is the retry-failed button's
-// render condition.
+// render condition. Cost and CostRows carry the GH #42 cost metrics; both
+// are session-only and stay absent on the shared/public surfaces
+// (operational data, outside the ticket-54 public caliber).
 type campaignReportDTO struct {
 	campaignDTO
 	Suites        []reportSuiteDTO   `json:"suites"`
@@ -69,16 +96,18 @@ type campaignReportDTO struct {
 	Rows          []reportRowDTO     `json:"rows"`
 	Baseline      *reportBaselineDTO `json:"baseline"`
 	FailedResults int                `json:"failed_results"`
+	Cost          *campaignCostDTO   `json:"cost,omitempty"`
+	CostRows      []costRowDTO       `json:"cost_rows,omitempty"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
 // runs contribute scores; deleted models (ticket 26 semantics) never rank.
 // Settled campaigns serve the ranked board; unfinished campaigns serve the
-// live half-scored board (lexicographic, no ranking) plus the per-(model,
-// suite) progress cells (ticket 52). Query params: family filters rows to
-// one model family; sort picks the ranking column of a settled board
-// ("total" by default, or a covered suite key), always descending with
-// unscored models last.
+// live half-scored board (ranked by partial total descending, GH #40) plus
+// the per-(model, suite) progress cells (ticket 52). Query params: family
+// filters rows to one model family; sort picks the ranking column of a
+// settled board ("total" by default, or a covered suite key), always
+// descending with unscored models last.
 func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -92,7 +121,7 @@ func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.writeCampaignReport(w, r, campaign, false)
+	s.writeCampaignReport(w, r, campaign, false, true)
 }
 
 // reportBuildError carries an HTTP failure out of buildCampaignReport so
@@ -114,8 +143,11 @@ type reportBuildError struct {
 // scores, rankings, deltas and the samples confidence marker are evaluation
 // conclusions and never leave the session boundary before the batch
 // settles, so the live half-scored board (ticket 52) stays session-only.
-func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign, shared bool) {
-	report, berr := s.buildCampaignReport(r, campaign, shared)
+// withCost attaches the GH #42 cost metrics (batch totals, per-run detail
+// rows and per-cell sums); it is true only for the session-gated endpoint —
+// cost is operational data and never crosses to the shared or public board.
+func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, campaign *store.Campaign, shared, withCost bool) {
+	report, berr := s.buildCampaignReport(r, campaign, shared, withCost)
 	if berr != nil {
 		writeError(w, berr.status, berr.msg)
 		return
@@ -128,7 +160,7 @@ func (s *Server) writeCampaignReport(w http.ResponseWriter, r *http.Request, cam
 // params: family filters rows to one model family; sort picks the ranking
 // column of a settled board ("total" by default, or a covered suite key),
 // always descending with unscored models last.
-func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, shared bool) (campaignReportDTO, *reportBuildError) {
+func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, shared, withCost bool) (campaignReportDTO, *reportBuildError) {
 	fail := func(status int, msg string) (campaignReportDTO, *reportBuildError) {
 		return campaignReportDTO{}, &reportBuildError{status: status, msg: msg}
 	}
@@ -219,7 +251,7 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 			}
 			rows = withDeltas
 		}
-		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
+		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite, withCost)
 	} else if shared {
 		// Public shared view of an unfinished campaign (ticket 54): progress
 		// metadata only — the stripped progress board whose constructor
@@ -233,9 +265,9 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	} else {
 		// Spec 0004 (revising spec 0002 review condition 3): an unfinished
 		// campaign serves a live half-scored board — every snapshotted member
-		// (ticket 53), model-id lexicographic order, no ranking, no baseline
-		// deltas. Unscored suites stay out of the totals (they drop from
-		// numerator and denominator alike, ADR 0005).
+		// (ticket 53), ranked by partial total descending (GH #40), no
+		// baseline deltas. Unscored suites stay out of the totals (they drop
+		// from numerator and denominator alike, ADR 0005).
 		members, err := s.db.ListCampaignMembers(id)
 		if err != nil {
 			return fail(http.StatusInternalServerError, "failed to load campaign members")
@@ -244,7 +276,7 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		if family != "" {
 			rows = filterReportRowsByFamily(rows, family)
 		}
-		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite)
+		rows = attachReportCells(rows, suites, runs, cellProgress, expectedBySuite, withCost)
 	}
 
 	progress := store.CampaignWithProgress{Campaign: *campaign}
@@ -265,6 +297,39 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		return fail(http.StatusInternalServerError, "failed to count failed results")
 	}
 
+	// GH #42 cost metrics: session-only. The shared-report and public-board
+	// callers pass withCost=false, so the fields stay absent there by
+	// construction (never serialized as zeroed values).
+	var cost *campaignCostDTO
+	var costRows []costRowDTO
+	if withCost {
+		totals, err := s.db.CampaignCostTotals(id)
+		if err != nil {
+			return fail(http.StatusInternalServerError, "failed to aggregate campaign cost")
+		}
+		cost = &campaignCostDTO{
+			LatencyMs:    totals.LatencyMs,
+			InputTokens:  totals.InputTokens,
+			OutputTokens: totals.OutputTokens,
+		}
+		rows2, err := s.db.ListCampaignCostRows(id)
+		if err != nil {
+			return fail(http.StatusInternalServerError, "failed to load campaign cost rows")
+		}
+		costRows = make([]costRowDTO, 0, len(rows2))
+		for _, cr := range rows2 {
+			costRows = append(costRows, costRowDTO{
+				ModelID:      cr.ModelID,
+				SuiteKey:     cr.SuiteKey,
+				SuiteName:    cr.SuiteName,
+				Status:       cr.RunStatus,
+				LatencyMs:    cr.LatencyMs,
+				InputTokens:  cr.InputTokens,
+				OutputTokens: cr.OutputTokens,
+			})
+		}
+	}
+
 	return campaignReportDTO{
 		campaignDTO:   toCampaignDTO(progress),
 		Suites:        suites,
@@ -272,6 +337,8 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		Rows:          rows,
 		Baseline:      baseline,
 		FailedResults: failedResults,
+		Cost:          cost,
+		CostRows:      costRows,
 	}, nil
 }
 

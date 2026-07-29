@@ -18,15 +18,28 @@ package store
 // to bootstrap each capability. Ticket 50's full bank (30-50 cases per
 // capability) goes through manual review before replacing them.
 //
+// RETIRED AT THE BENCHMARK CUTOVER (ticket 99, spec 0014 decision C): the
+// authoritative-benchmark bank replaced these self-written suites. Every
+// suite below carries retireAtGen 4 — strictly greater than the bank's
+// highest case generation (3), so the generation-tracked retirement fires on
+// every database that ever received the v3 seed (a retireAtGen of 1 would
+// never trigger: 1 > received(3) is false — and would collide with the
+// purge's seeds-disabled-by-design exemption, double-silencing the
+// retirement). The same Open's disabled-suite purge (ADR 0012) then deletes
+// the suites with their cases, runs and results, and tombstones them against
+// re-seeding; this bank stays listed only so existing databases learn the
+// retirement.
+//
 // builtinSuites is composed in seedbank.go (capability suites only since
 // ticket 93 — the pre-v3 legacy bank was removed when disabled suites became
 // hard-deleted, ADR 0012).
 var capabilitySuites = []seedSuite{
 	{
-		key:        "cap_instruction",
-		name:       "指令遵循",
-		capability: CapabilityInstruction,
-		nadir:      0,
+		key:         "cap_instruction",
+		name:        "指令遵循",
+		capability:  CapabilityInstruction,
+		nadir:       0,
+		retireAtGen: 4, // retired at the benchmark cutover; see file comment
 		cases: []seedCase{
 			{
 				gen: 3, difficulty: "basic", sampleCount: intptr(1),
@@ -101,10 +114,11 @@ var capabilitySuites = []seedSuite{
 		},
 	},
 	{
-		key:        "cap_reasoning",
-		name:       "推理",
-		capability: CapabilityReasoning,
-		nadir:      0,
+		key:         "cap_reasoning",
+		name:        "推理",
+		capability:  CapabilityReasoning,
+		nadir:       0,
+		retireAtGen: 4, // retired at the benchmark cutover; see file comment
 		cases: []seedCase{
 			{
 				gen: 3, difficulty: "basic", sampleCount: intptr(1),
@@ -179,10 +193,11 @@ var capabilitySuites = []seedSuite{
 		},
 	},
 	{
-		key:        "cap_coding",
-		name:       "代码",
-		capability: CapabilityCoding,
-		nadir:      0,
+		key:         "cap_coding",
+		name:        "代码",
+		capability:  CapabilityCoding,
+		nadir:       0,
+		retireAtGen: 4, // retired at the benchmark cutover; see file comment
 		cases: []seedCase{
 			{
 				gen: 3, difficulty: "basic", sampleCount: intptr(1),
@@ -262,7 +277,8 @@ var capabilitySuites = []seedSuite{
 		capability: CapabilityKnowledge,
 		// Four-option multiple choice throughout: the random-guess floor is
 		// 0.25, so the suite's nadir is calibrated to it (ADR 0009).
-		nadir: 0.25,
+		nadir:       0.25,
+		retireAtGen: 4, // retired at the benchmark cutover; see file comment
 		cases: []seedCase{
 			{
 				gen: 3, difficulty: "basic", sampleCount: intptr(1),
@@ -337,10 +353,11 @@ var capabilitySuites = []seedSuite{
 		},
 	},
 	{
-		key:        "cap_language",
-		name:       "语言理解与生成",
-		capability: CapabilityLanguage,
-		nadir:      0,
+		key:         "cap_language",
+		name:        "语言理解与生成",
+		capability:  CapabilityLanguage,
+		nadir:       0,
+		retireAtGen: 4, // retired at the benchmark cutover; see file comment
 		cases: []seedCase{
 			{
 				gen: 3, difficulty: "basic", sampleCount: intptr(1),

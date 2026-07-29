@@ -12,7 +12,15 @@
        rule as the page, and the tooltip's confidence info stays out of the
        material (registered information gap, ui-guidelines §5). -->
   <div ref="rootRef" class="score-cell" :title="tooltip">
-    <span class="cell-value" :class="valueClass">
+    <!-- Live-mode unscored cell (GH #40, ui-guidelines §5 运行中半成品模式
+         ④): the batch status word inline instead of a bare dash — plain text
+         at xs, colored by the batch/run status mapping, never a dot (dots +
+         words are the progress grid's shape; the scores view must not grow a
+         second status lamp). The empty track stays below. -->
+    <span v-if="isLiveUnscored" class="cell-value cell-live-status" :class="`live-${cell?.status}`">
+      {{ liveStatusWord }}
+    </span>
+    <span v-else class="cell-value" :class="valueClass">
       {{ label }}<span v-if="showWatermark" class="cell-watermark">{{ watermark }}</span>
     </span>
     <div class="cell-track">
@@ -40,16 +48,22 @@ const WATERMARK_MIN_PX = 80
 // inputs without the row shape. `staticMode` is the exported-material mode
 // (no tooltip; width measured once, never observed). A null score is a
 // dash over an empty track in every mode; the unscored tooltip wording
-// comes from the cell's own status.
+// comes from the cell's own status. `live` (GH #40, unfinished-batch board
+// only) swaps the null-score dash for the inline batch status word — the
+// settled board and the static material never pass it.
 const props = withDefaults(
   defineProps<{
     name: string
     score: number | null
     cell: ReportCell | undefined
     staticMode?: boolean
+    live?: boolean
   }>(),
-  { staticMode: false },
+  { staticMode: false, live: false },
 )
+
+const isLiveUnscored = computed(() => props.live && props.score === null && props.cell !== undefined)
+const liveStatusWord = computed(() => cellStatusText(props.cell))
 
 const label = computed(() => (props.score === null ? '–' : formatScore(props.score)))
 const band = computed(() => (props.score === null ? null : scoreBand(props.score)))
@@ -116,6 +130,26 @@ const tooltip = computed(() => {
   color: var(--hs-danger);
 }
 .cell-value.is-null {
+  color: var(--hs-text-placeholder);
+}
+/* Live-mode unscored status word (GH #40): xs plain text on the batch/run
+   status color mapping (§3) — running brand, pending placeholder, failed
+   danger; a done-but-unscored cell falls back to the neutral placeholder.
+   Never a dot, never a flash. */
+.cell-live-status {
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+}
+.cell-live-status.live-running {
+  color: var(--hs-brand);
+}
+.cell-live-status.live-pending {
+  color: var(--hs-text-placeholder);
+}
+.cell-live-status.live-failed {
+  color: var(--hs-danger);
+}
+.cell-live-status.live-done {
   color: var(--hs-text-placeholder);
 }
 /* The compressed coverage watermark rides the score in the same band ink at
