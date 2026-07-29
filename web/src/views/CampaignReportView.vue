@@ -89,6 +89,36 @@
           @query="onQuery"
           @select="openTrend"
         />
+
+        <!-- Cost detail table (GH #42, console-only): one row per model x
+             suite run — status, latency, input/output tokens. Neutral
+             numbers, never band-colored (cost is not a quality metric); the
+             batch summary rides the title row (main ruling: judging time
+             and wall-clock side by side). Not .no-print — the table is part
+             of the settled report's PDF export. The shared view and the
+             public board never render it (operational data). -->
+        <el-card v-if="!shared && report.cost" shadow="never" class="cost-card">
+          <div class="cost-head">
+            <span class="cost-title">运行成本明细</span>
+            <span class="cost-summary">{{ costSummary }}</span>
+          </div>
+          <el-table :data="report.cost_rows ?? []" size="small">
+            <el-table-column prop="model_id" label="模型" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="suite_name" label="评估集" min-width="140" show-overflow-tooltip />
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">{{ statusLabel(row.status as CampaignStatus) }}</template>
+            </el-table-column>
+            <el-table-column label="耗时" width="110" align="right">
+              <template #default="{ row }">{{ formatDuration(row.latency_ms) }}</template>
+            </el-table-column>
+            <el-table-column label="输入 Token" width="120" align="right">
+              <template #default="{ row }">{{ formatTokens(row.input_tokens) }}</template>
+            </el-table-column>
+            <el-table-column label="输出 Token" width="120" align="right">
+              <template #default="{ row }">{{ formatTokens(row.output_tokens) }}</template>
+            </el-table-column>
+          </el-table>
+        </el-card>
       </template>
 
       <!-- Trend dialog mounts outside the status branches (same as /eval) so
@@ -109,8 +139,9 @@ import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
-import { formatTime } from '@/utils/format'
+import { formatDuration, formatTime, formatTokens } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
+import { batchCostSummary } from '@/utils/evalCost'
 import { failedBatchWarning } from '@/utils/evalWording'
 import { rowDrilldownEnabled } from '@/utils/reportDrilldown'
 import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
@@ -244,6 +275,13 @@ function statusTagType(status: CampaignStatus): 'info' | 'success' | 'danger' {
   return status === 'done' ? 'success' : status === 'failed' ? 'danger' : 'info'
 }
 
+// Batch cost summary for the detail table's title row (GH #42, main ruling:
+// judging time and wall-clock side by side, plus the token split).
+const costSummary = computed(() => {
+  if (!report.value?.cost) return ''
+  return batchCostSummary(report.value.cost, report.value.started_at, report.value.finished_at, Date.now())
+})
+
 function onQuery(q: { family?: string; sort: string }) {
   query.value = q
   void reload()
@@ -369,5 +407,28 @@ onMounted(reload)
 }
 .failed-link:hover {
   color: var(--hs-brand-hover);
+}
+/* Cost detail table (GH #42): the title row carries the batch summary at
+   the right, same secondary caliber as the grid's card-top line. */
+.cost-card {
+  --el-card-padding: 16px;
+  margin-bottom: 16px;
+}
+.cost-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cost-title {
+  font-size: var(--hs-text-lg);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+}
+.cost-summary {
+  margin-left: auto;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
 }
 </style>

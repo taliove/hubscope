@@ -1,6 +1,14 @@
 // Eval Campaign API calls (ticket 29).
 import { http } from './client'
-import type { Campaign, CampaignDetail, CampaignReport, CampaignTrends, LiveFeedEntry, PublicEvalBoard } from './types'
+import type {
+  Campaign,
+  CampaignDetail,
+  CampaignReport,
+  CampaignTrends,
+  LiveFeedEntry,
+  LiveFeedResultDetail,
+  PublicEvalBoard,
+} from './types'
 
 export async function listCampaigns(): Promise<Campaign[]> {
   return http.get<Campaign[]>('/campaigns')
@@ -43,6 +51,14 @@ export async function getPublicEvalBoard(): Promise<PublicEvalBoard> {
 // calls this. limit caps the page (server default 50, max 200).
 export async function getCampaignLiveFeed(id: number, sinceId = 0, limit = 200): Promise<LiveFeedEntry[]> {
   return http.get<LiveFeedEntry[]>(`/campaigns/${id}/live-feed?since_id=${sinceId}&limit=${limit}`)
+}
+
+// Live-feed result detail (GH #41): one feed row's expansion — full prompt,
+// expectation (rule answer / judge rubric), model answer, verdict detail.
+// Fetched on demand when a row expands, never as part of the polling
+// payload. Console-only, same hub isolation as the feed list.
+export async function getCampaignLiveFeedResult(campaignId: number, resultId: number): Promise<LiveFeedResultDetail> {
+  return http.get<LiveFeedResultDetail>(`/campaigns/${campaignId}/live-feed/${resultId}`)
 }
 
 // Retry-failed (GH #28): re-evaluate a settled batch's failed (null-score)

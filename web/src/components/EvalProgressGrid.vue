@@ -18,6 +18,12 @@
       <span class="batch-note">
         批次{{ statusWord }}:已完成 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行
       </span>
+      <!-- Batch cost summary (GH #42, console-only): judging time and
+           wall-clock side by side plus the token split; accumulates with
+           polling while in flight, terminal once settled. Neutral secondary
+           text, never band-colored (cost is not a quality metric). The
+           shared read-only view never renders it. -->
+      <span v-if="!readonly && costSummary" class="batch-note">{{ costSummary }}</span>
     </div>
     <el-progress
       :percentage="progressPercent"
@@ -66,6 +72,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CampaignReport, EvalBoardView, ReportCell, ReportCellStatus } from '@/api/types'
+import { batchCostSummary } from '@/utils/evalCost'
+import { cellCostText } from '@/utils/scoreTier'
 
 // EvalProgressGrid is the single batch-progress matrix component
 // (ui-guidelines §5): one row per model, one column per suite, four-state
@@ -119,12 +127,25 @@ function showCoverage(cell: ReportCell): boolean {
 }
 
 // Cell tooltip: the status word plus the judged-case coverage ("运行中 ·
-// 2/12 题"); a waiting cell has no meaningful coverage yet.
+// 2/12 题") and, on the console, the GH #42 cost fragment ("· 耗时 X · Token
+// Y"); a waiting cell has no meaningful coverage yet. The shared read-only
+// view never shows cost (the shared payload omits the fields anyway; the
+// readonly gate is the explicit boundary).
 function cellTitle(cell: ReportCell): string {
   const word = cellStatusWord(cell.status)
   if (!showCoverage(cell)) return word
-  return `${word} · ${cell.judged_cases}/${cell.expected_cases} 题`
+  const base = `${word} · ${cell.judged_cases}/${cell.expected_cases} 题`
+  const cost = props.readonly ? '' : cellCostText(cell)
+  return cost === '' ? base : `${base} · ${cost}`
 }
+
+// Batch cost summary (GH #42): judging time and wall-clock side by side
+// (main ruling 2026-07-29) plus the token split. Empty when the payload
+// carries no cost (shared/public surfaces).
+const costSummary = computed(() => {
+  if (!props.report.cost) return ''
+  return batchCostSummary(props.report.cost, props.report.started_at, props.report.finished_at, Date.now())
+})
 </script>
 
 <style scoped>

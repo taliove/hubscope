@@ -291,6 +291,22 @@ export interface LiveFeedEntry {
   created_at: string // RFC3339
 }
 
+// Live-feed result detail (GH #41): the on-demand expansion of one feed row
+// (GET /campaigns/{id}/live-feed/{resultId}, console-only — the expectation
+// is question-bank content and never crosses to the shared/public surface).
+// expected forks by verdict_type server-side: rule cases carry the standard
+// answer, judge cases the rubric scoring points; null when the case was
+// purged. answer_text is null when no answer was recorded.
+export interface LiveFeedResultDetail {
+  id: number
+  case_prompt: string
+  verdict_type: string
+  expected: string | null
+  answer_text: string | null
+  score: number | null // raw 0~1 per-case score
+  verdict_detail: string | null
+}
+
 // Campaign report types (ticket 31): the leaderboard over a campaign's done
 // runs. All scores are on the 0-100 scale, nadir-normalized per suite (ADR
 // 0009); null means unscored.
@@ -314,6 +330,12 @@ export interface ReportCell {
   judged_cases: number
   expected_cases: number
   samples: number
+  // Cost sums (GH #42): Σ latency / Σ tokens over the model's results in
+  // the run, null tokens counted as 0. Console-only — the shared/public
+  // payloads omit all three keys, so consumers must tolerate undefined.
+  latency_ms?: number
+  input_tokens?: number
+  output_tokens?: number
 }
 
 export interface ReportRow {
@@ -357,6 +379,32 @@ export interface CampaignReport extends Campaign {
   // Null-score (failed) result rows of the batch (GH #28); on a settled
   // batch, failed_results > 0 renders the「重跑失败项」entry.
   failed_results: number
+  // Cost metrics (GH #42), console-only: the session report carries them on
+  // running and settled batches alike; the shared/public payloads omit both
+  // keys (operational data never crosses the session boundary).
+  cost?: CampaignCost
+  cost_rows?: CampaignCostRow[]
+}
+
+// Batch-level cost summary (GH #42): Σ latency / Σ input / Σ output tokens
+// over the campaign's results, null tokens counted as 0.
+export interface CampaignCost {
+  latency_ms: number
+  input_tokens: number
+  output_tokens: number
+}
+
+// One line of the report page's cost detail table (GH #42): one model's
+// cost inside one run. Token fields are null when the model recorded no
+// token at all in the run (the table renders a dash).
+export interface CampaignCostRow {
+  model_id: string
+  suite_key: string
+  suite_name: string
+  status: string // run status: pending/running/done/failed
+  latency_ms: number
+  input_tokens: number | null
+  output_tokens: number | null
 }
 
 // Public eval board (ticket 81, spec 0010): GET /api/public/eval/board —
