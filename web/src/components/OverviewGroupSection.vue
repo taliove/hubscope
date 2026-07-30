@@ -29,7 +29,10 @@
 
         <span class="group-stats">
           <template v-for="s in presentStatuses" :key="s">
-            <StatusBadge :status="s" />
+            <!-- Count chips dotless (GH #82, closed-list scene ③): the
+                 state-colored word alone carries the double encoding; dots
+                 here would be a wall of repeated lamps. -->
+            <StatusBadge :status="s" dotless />
             <span class="stat-num">{{ group.status_counts[s] }}</span>
           </template>
           <el-tag v-if="group.status_counts['disabled']" type="info" size="small">

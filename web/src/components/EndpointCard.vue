@@ -22,13 +22,11 @@
         <span class="model-head">{{ modelSplit.head }}</span>
         <span v-if="modelSplit.tail" class="model-tail">{{ modelSplit.tail }}</span>
       </span>
-      <el-tag v-if="showProtocolTag" :type="protocolTagType(entry.protocol)" size="small">
-        {{ entry.protocol }}
-      </el-tag>
-      <!-- Signal-wall lamp (GH #72, surface brief EndpointCard 节): only
+      <!-- Signal-wall lamp (GH #72; GH #82 tag moved to the status row): the
+           head row is now model name + lamp only — the lamp is the card's
+           sole status light, so the StatusBadge below renders dotless. Only
            non-healthy channels light up. aria-hidden — the StatusBadge word
-           already reports status; this is a card-level glance marker, not a
-           second StatusBadge. Renders regardless of showProtocolTag: the
+           already reports status. Renders regardless of showProtocolTag: the
            group protocol-tag collapse (GH #54) must not take the lamp down. -->
       <span
         v-if="entry.status !== 'healthy'"
@@ -41,9 +39,15 @@
     <div class="card-status">
       <el-tooltip :content="entry.status_reason" placement="top" :show-after="200">
         <span class="status-wrap">
-          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" size="md" />
+          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" size="md" dotless />
         </span>
       </el-tooltip>
+      <!-- Protocol tag (GH #82): moved here from the head row so the head row
+           yields its width to the model name. The showProtocolTag collapse
+           logic (GH #54 three exceptions) moves with it unchanged. -->
+      <el-tag v-if="showProtocolTag" :type="protocolTagType(entry.protocol)" size="small">
+        {{ entry.protocol }}
+      </el-tag>
       <el-tooltip placement="top" :show-after="200">
         <template #content>
           <div class="score-reasons">{{ scoreTooltip }}</div>
@@ -186,15 +190,17 @@ const scoreTooltip = computed(() => {
   flex: none;
   white-space: nowrap;
 }
-.card-head .el-tag {
-  flex: none;
-}
 .card-status {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: var(--hs-space-2);
+}
+/* Tags in the status row (protocol + disabled) never shrink — when the row
+   wraps they drop whole to the next line instead of being compressed. */
+.card-status .el-tag {
+  flex: none;
 }
 .status-wrap {
   cursor: help;
