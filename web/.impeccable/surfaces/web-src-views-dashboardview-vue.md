@@ -22,7 +22,7 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 ## 组件规格
 
 ### StatusBadge(唯一状态灯,迁自 ui-guidelines §5)
-全站唯一 endpoint 状态展示组件,需要展示状态处一律复用,禁止第二个状态灯实现。四态圆点 + 状态词双编码;failing 为唯一动画(hs-blink)。**词随灯着色(2026-07-30,GH #71,shape 定稿):** 状态词颜色从 `--hs-text-regular` 改为状态语义色——degraded=`--hs-warning`、down=`--hs-danger`、failing=`--hs-status-failing`(本体,白底 4.92/4.8/5.1 均过 AA)、healthy=`--hs-success-text`(亮 #047857 5.48:1 / 暗 #10b981 6.94:1;本体 #059669 白底 3.77 不过 AA,深阶化即 GH #62 落点,语义裁决见 ui-guidelines 附录 B #15)。圆点尺寸微调:sm 10→9px、md 12→11px。全站消费方(hero 带计数行、组头、详情页、速览弹窗、管理台表格)零改动继承(GH #71 时点——实机迭代批起,计数行/组头/卡片状态行三处按 dotless 变体去点,见本节末段),不构成第二状态灯。**dotless 变体(2026-07-30 实机迭代批,shape 定稿;GH 票号待建):** 词随灯着色后,着色词自身即色+词双编码的文本形态——聚合/重复场景允许去点渲染(仅着色词),防一屏多灯稀释信号(用户实机反馈「灯看花眼」)。封闭适用清单(仅三处,禁止扩散):① EndpointCard 状态行(头行信号墙灯是全卡唯一状态灯);② Hero 带计数行;③ 组头计数 chips。详情页与速览弹窗的 Badge 保留点(实体信号位,该对象的首要状态信号,非重复场景);管理台表格等其余消费方保持现状不动。prop 形态由实现定(建议布尔 prop,默认带点),规范只登记语义;failing dotless 词不闪烁(闪烁是灯的语言,闪烁位置封闭清单见 DESIGN.md「信号墙灯与词分层」节)。**a11y 无回退:** 状态词本来就是 Badge 的可访问名,圆点是无词装饰(头灯 aria-hidden),dotless 与带点的 a11y 树等价。
+全站唯一 endpoint 状态展示组件,需要展示状态处一律复用,禁止第二个状态灯实现。四态圆点 + 状态词双编码;failing 为唯一动画(hs-blink)。**词随灯着色(2026-07-30,GH #71,shape 定稿):** 状态词颜色从 `--hs-text-regular` 改为状态语义色——degraded=`--hs-warning`、down=`--hs-danger`、failing=`--hs-status-failing`(本体,白底 4.92/4.8/5.1 均过 AA)、healthy=`--hs-success-text`(亮 #047857 5.48:1 / 暗 #10b981 6.94:1;本体 #059669 白底 3.77 不过 AA,深阶化即 GH #62 落点,语义裁决见 ui-guidelines 附录 B #15)。圆点尺寸微调:sm 10→9px、md 12→11px。全站消费方(hero 带计数行、组头、详情页、速览弹窗、管理台表格)零改动继承(GH #71 时点——实机迭代批起,计数行/组头/卡片状态行三处按 dotless 变体去点,见本节末段),不构成第二状态灯。**dotless 变体(2026-07-30 实机迭代批 GH #80,shape 定稿;GH #81/#82):** 词随灯着色后,着色词自身即色+词双编码的文本形态——聚合/重复场景允许去点渲染(仅着色词),防一屏多灯稀释信号(用户实机反馈「灯看花眼」)。封闭适用清单(仅三处,禁止扩散):① EndpointCard 状态行(头行信号墙灯是全卡唯一状态灯);② Hero 带计数行;③ 组头计数 chips。详情页与速览弹窗的 Badge 保留点(实体信号位,该对象的首要状态信号,非重复场景);管理台表格等其余消费方保持现状不动。prop 形态由实现定(建议布尔 prop,默认带点),规范只登记语义;failing dotless 词不闪烁(闪烁是灯的语言,闪烁位置封闭清单见 DESIGN.md「信号墙灯与词分层」节)。**a11y 无回退:** 状态词本来就是 Badge 的可访问名,圆点是无词装饰(头灯 aria-hidden),dotless 与带点的 a11y 树等价。
 **降级成因副标签**(ticket #7,spec 0013):可选 prop `causes?: DegradeCause[]`,非空且 status=degraded 时在状态词后行内渲染「· 可用性」「· 延迟」,双命中「· 可用性 + 延迟」(顺序固定,与后端 degrade_causes 一致)。副标签是 Badge 文字一部分:无独立圆点/图标/底色/动画;字号同档 sm,颜色 secondary(不随词着色)。防御:causes 非空但 status≠degraded 不渲染;聚合场景(Dashboard 计数行、分组头部、Hero 带)永不传 causes——成因是端点粒度信息,聚合层不下钻。
 
 ### 24h 分段条(批 59 口径)
@@ -33,9 +33,9 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 
 ### Hero 指挥台带(2026-07-30,GH #73,shape 定稿;由 HealthBanner 原地演进,取代 GH #53 banner 卡 + stats strip 两段)
 单表面指挥带 = 全局结论 + 异常 chips + 状态计数 + 24h 可用率合一。**带形态:** 内容列全宽平带,无圆角、无描边盒,底部 1px `--hs-border-light` hairline 收边;上下内边距 `--hs-space-4`(16px),左右 `--hs-space-4`(浅底色块内文字不吃边,与卡片内边距同节奏)。带底沿用 GH #53 tone-soft 四态(healthy=success-soft / degraded=warning-soft / abnormal=danger-soft;空态与首载 skeleton=中性 bg-page,永不读作全部正常)——plan 评审裁决(2026-07-30):中性无 tint 方案被否,tone-soft 是严重度双编码的一部分(信号墙「整墙点亮」语义),且 chips 的 bg-card 表面底在浅底上构造性成立。
-**构图(2026-07-30 实机迭代批修订,用户实机反馈「可用率沉底」;取代「左列纵排 + 右列垂直居中沉底」两列构图,GH 票号待建):**
+**构图(2026-07-30 实机迭代批修订,用户实机反馈「可用率沉底」;取代「左列纵排 + 右列垂直居中沉底」两列构图,GH #81):**
 - **行 1:** [alert-dot 仅 failing,hs-blink 闪烁全带独占] + 大字结论 display 档(tone 着色)+ 可用率大数字(display 档,行右端 `margin-left:auto`,与结论同基线;墨色 `--hs-text-primary` 不着色——带底 + 结论已是双编码;null → 占位色「-」)。
-- **行 1 之下(可用率子行,右对齐于大数字下方):** 「24h 可用率」label(xs)+ meta([stale chip「数据非最新」] + 「更新于 HH:mm · 每 10s 自动刷新」,xs/placeholder,溢出优先截断 cadence 段);可用率 null 时此处渲染「24h 内无探测数据」。
+- **行 1 之下(可用率子行,右对齐于大数字下方):** 「24h 可用率」label(xs)+ meta([stale chip「数据非最新」] + 「更新于 HH:mm · 每 10s 自动刷新」,xs/placeholder,溢出优先截断 cadence 段);子行 = label + meta,在 null/非 null 下构图稳定、内容不变。可用率 null 时注记「24h 内无探测数据」**不下放子行**,与占位「-」同处行 1 内联于 availability-line(2026-07-30 main 裁决维持行 1 内联;GH #81 check LOW-1 口径差登记)。
 - **行 2(全宽):** 异常端点 chips 横排(集合/排序/上限/形态/点击口径见下「沿用口径」,不变)。
 - **行 3(全宽):** 计数行。
 - **skeleton 锚定重算(2026-07-30 实机迭代批,硬要求):** 原 114px 锚定(结论 42 + chips 28 + counts 28 + 两个 8px 间距,check GH #73 LOW-1 登记)随构图修订失效——首载 skeleton 定高必须按新构图 chips-present 布局(行 1 + 可用率子行 + chips + counts)从最终 CSS 算术重算,重算值写入代码注释并与本节登记一致;锚定哲学不变(锚定偏向异常态,healthy 首载无 chips 行短一截为已登记取舍——一条定高匹配不了四态,加载时状态未知)。
@@ -60,7 +60,7 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 折叠箭头用 EP `ArrowDown/ArrowRight` 图标(2026-07-29 用户反馈,取代文本三角形 ▾/▸);**筛选后空组自动折叠**(2026-07-29 用户裁决:空组不再渲染大空态盒,匹配恢复即自动展开,两态均可手动折叠)。
 **折叠披露过渡(2026-07-29 设计评审,克制版动效,/impeccable animate):** 卡片矩阵容器走 ui-guidelines §6 披露容器三件套(grid `0fr→1fr` + 内层 `min-height:0/overflow:hidden` + `visibility` 延迟切换:折叠向 `0s 0.2s`、展开向 `0s 0s`),时长 `--hs-transition`;visibility 保证折叠态退出 tab 序与 a11y 树(与 v-show 等价,a11y harden 成果不回退),不支持 grid 轨道动画的浏览器退化为瞬切。折叠箭头改单图标(ArrowRight)`transform: rotate(0↔90deg)` 过渡,取代 ArrowRight/ArrowDown 双图标瞬切;终态语义不变。**仅用户点击触发过渡;watch(entries.length) 的筛选空组自动折叠/恢复展开走 no-motion 瞬切**(延伸 GH #52 数据驱动不动画纪律,防筛选连续击键时多组同时高度补间噪音)。
 **组头节奏(2026-07-30,GH #74,shape 定稿):** 组名字号 `--hs-text-lg` → `--hs-text-xl`(20px/600,Title 档——分组标题是状态板次层级锚点);端点计数、状态计数 chips、「本组:」聚合指标、协议收敛 tag、分享按钮规格不动,随新字号基线对齐。**组头下 1px `--hs-border-light` hairline 分隔**(装饰性分隔用 border-light,不用 border):组头行 `padding-bottom: var(--hs-space-2)`(8px)+ hairline + `margin-bottom: var(--hs-space-3)`(12px)到卡片矩阵。**组上下呼吸:** section 间距 `--hs-space-3`(12px)→ `--hs-space-6`(32px)。折叠披露三件套、no-motion 双轨、空组自动折叠、组头分享入口、协议收敛全部不动。
-**折叠组头修订(2026-07-30 实机迭代批,用户实机反馈「折叠线」;GH 票号待建):**
+**折叠组头修订(2026-07-30 实机迭代批,用户实机反馈「折叠线」;GH #83):**
 - **hairline 仅展开态显示:** 折叠态为干净单行,hairline 隐藏;**几何稳定硬要求**——折叠态以 1px 透明边占位(border-bottom 保留、颜色 transparent 或等价机制),折叠/展开两态组头行高度逐像素一致,禁高度跳变(与 ui-guidelines §6 披露容器「禁布局跳动」同纪律)。
 - **组头行垂直居中修正:** padding 上下对称(重心回中;原仅 padding-bottom 8px 的不对称内边距使行内容偏上)。
 - **状态计数 chips dotless(封闭清单场景③):** 去点,状态词语义色着色词 + 数字不变,着色词自身承担双编码(语义见 StatusBadge 节 dotless 变体)。
@@ -107,7 +107,7 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 - critique 基线 22/36(2026-07-29,快照 .impeccable/critique/):严重度不驱动首屏、banner/strip 信息重复、卡片墙均质化(P1);排序口径两套、下拉 placeholder 当 label(P2)。
 - 已排票:#52 severitySort(**已完成 2026-07-29**,约定见「数据与行为约束」)/ #53 HealthBanner 重构(**已完成 2026-07-29**;2026-07-30 随 GH #73 演进为 Hero 指挥台带,约定见「组件规格」Hero 带节)/ #54 卡片层级重构(**已完成 2026-07-29**,约定见「组件规格」EndpointCard 节)/ #55 一致性批(**已完成 2026-07-29**,约定见「数据与行为约束」状态排序口径/双控/「本组」前缀/下拉 label 各条)。
 - **GH #69–#74 重构批(2026-07-30 /impeccable shape 定稿,plan 回写完成):** #70 T1 色调同族精修(令牌值见 DESIGN.md 同族精修登记)/ #71 T2 StatusBadge 词随灯着色 + 点微调(见 StatusBadge 节)/ #72 T3 EndpointCard 信号墙化(左条退役/异常灯/矮化/4 列 272px,见 EndpointCard 节)/ #73 T4 Hero 指挥台带(见 Hero 带节)/ #74 T5 分组节奏(组头 xl + hairline + space-6 呼吸,见 OverviewGroupSection 节)。依赖序 T1→T2→T3、T1→T4、T1→T5。
-- **实机迭代批(2026-07-30,用户实机反馈逐项裁决,GH 票号待建):** GH #69–#74 发布测试线后的四项定稿——① Hero 带构图:可用率大数字上提行 1 与结论同基线,label/meta 在其下,chips/计数行全宽居下(见 Hero 带节;实机证据「可用率沉底」);② 每卡一灯 + Badge dotless 三处封闭清单(见 StatusBadge 节与 DESIGN.md「信号墙灯与词分层」;实机证据「灯看花眼」);③ 协议 tag 移状态行,头行 = 模型名 + 灯(见 EndpointCard 节;实机证据「模型名截断」);④ 折叠组头:hairline 仅展开态 + 1px 透明边占位 + 组头行垂直居中(见 OverviewGroupSection 节;实机证据「折叠线」)。skeleton 锚定随①重算(硬要求,见 Hero 带节)。
+- **实机迭代批(2026-07-30,批次 GH #80,用户实机反馈逐项裁决):** GH #69–#74 发布测试线后的四项定稿——① Hero 带构图(GH #81):可用率大数字上提行 1 与结论同基线,label/meta 在其下,chips/计数行全宽居下(见 Hero 带节;实机证据「可用率沉底」);② 每卡一灯 + Badge dotless 三处封闭清单(GH #81 计数行 / GH #82 卡片状态行;见 StatusBadge 节与 DESIGN.md「信号墙灯与词分层」;实机证据「灯看花眼」);③ 协议 tag 移状态行,头行 = 模型名 + 灯(GH #82;见 EndpointCard 节;实机证据「模型名截断」);④ 折叠组头:hairline 仅展开态 + 1px 透明边占位 + 组头行垂直居中(GH #83;见 OverviewGroupSection 节;实机证据「折叠线」)。skeleton 锚定随①重算(硬要求,见 Hero 带节)。
 
 ## 未决(另立批次)
 - dots aria 等价(24h 分段条的屏幕阅读器等价信息)、URL 深链(筛选进 query)、非均质矩阵方向(异常卡大/健康卡小,Provocative Q3 未裁决)。a11y harden 批(键盘可达/h1/reduced-motion)已完成 2026-07-29,约定见「可访问性」节。
