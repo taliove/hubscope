@@ -29,6 +29,14 @@
       </el-button>
     </div>
 
+    <!-- Group-level 24h segmented availability bar (spec 0017, GH #64):
+         always visible, collapsed or not, so group health stays scannable
+         without expanding the card matrix. Aggregated from the same
+         page-filtered scope, enabled endpoints only (the matrix below also
+         renders disabled cards, explicitly tagged), so the strip can never
+         contradict the matrix. -->
+    <UptimeStrip :dots="groupDots" />
+
     <div v-show="!collapsed" class="card-grid">
       <EndpointCard v-for="entry in entries" :key="entry.endpoint_id" :entry="entry" />
       <el-empty v-if="entries.length === 0" description="该组无匹配的 Endpoint" :image-size="60" />
@@ -41,7 +49,9 @@ import { ref, computed } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
+import UptimeStrip from './UptimeStrip.vue'
 import { formatPercent, formatMs } from '@/utils/format'
+import { aggregateDots24h } from '@/utils/overviewDots'
 import type { OverviewGroup, OverviewEntry, EndpointStatus } from '@/api/types'
 
 const props = defineProps<{ group: OverviewGroup; entries: OverviewEntry[] }>()
@@ -55,6 +65,10 @@ const STATUS_PRIORITY: EndpointStatus[] = ['down', 'failing', 'degraded', 'healt
 const presentStatuses = computed(() =>
   STATUS_PRIORITY.filter(s => (props.group.status_counts[s] ?? 0) > 0)
 )
+
+// Group strip scope (batch-59 rule, ui-guidelines §5): ENABLED entries only —
+// a disabled endpoint's stale probes must not color the group's health bar.
+const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.enabled)))
 </script>
 
 <style scoped>
@@ -102,6 +116,11 @@ const presentStatuses = computed(() =>
 }
 .group-share {
   margin-left: 4px;
+}
+/* Breathing room between the group strip and the card matrix (the header's
+   own margin-bottom handles the gap above the strip). */
+.group-section .uptime-strip {
+  margin-bottom: 10px;
 }
 .card-grid {
   display: grid;

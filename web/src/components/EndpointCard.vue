@@ -64,8 +64,9 @@ import { useRouter } from 'vue-router'
 import type { OverviewEntry, OverviewDot } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
 import LatencySparkline from './LatencySparkline.vue'
-import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
+import { formatPercent, formatMs, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
+import { dotTier, dotTooltipText } from '@/utils/overviewDots'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
 // Clicking navigates to the endpoint detail page.
@@ -91,18 +92,15 @@ const scoreTooltip = computed(() => {
   return reasons.length > 0 ? reasons.join('\n') : '无扣分项'
 })
 
-// 24h stability dot coloring: gray = no probes, green = success rate ≥95%,
-// red = all failed, yellow = below 95%.
+// 24h stability dot coloring and tooltip wording come from the shared
+// utils/overviewDots pure functions (spec 0017, GH #64) so this strip and
+// the group-level UptimeStrip are consistent by construction.
 function dotClass(dot: OverviewDot): string {
-  if (dot.total === 0) return 'dot-none'
-  if (dot.failures === dot.total) return 'dot-fail'
-  return (dot.total - dot.failures) / dot.total >= 0.95 ? 'dot-ok' : 'dot-partial'
+  return `dot-${dotTier(dot.total, dot.failures)}`
 }
 
 function dotTooltip(dot: OverviewDot): string {
-  const label = `${formatBucketTime(dot.bucket_start)} 时段`
-  if (dot.total === 0) return `${label} · 无数据`
-  return `${label} · 成功 ${dot.total - dot.failures}/${dot.total}`
+  return dotTooltipText(dot)
 }
 </script>
 
