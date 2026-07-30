@@ -20,80 +20,32 @@
       <div class="skeleton-line skeleton-sub" />
     </div>
     <div v-else class="band-body">
-      <div class="band-left">
-        <div class="conclusion-row">
-          <!-- Failing endpoints reuse the StatusBadge alert blink (W5 semantics);
-               the blink lives ONLY here — chips and counts never animate. -->
-          <span v-if="hasFailing" class="alert-dot" title="存在告警端点" />
-          <span class="conclusion">{{ conclusion }}</span>
-        </div>
-        <!-- Which endpoints are abnormal (GH #53): most severe first, capped
-             at MAX_ABNORMAL_CHIPS with a neutral "+N" overflow. No dots, no
-             blink — the alert-dot above owns the animation. -->
-        <div v-if="abnormal.chips.length > 0" class="chips">
-          <button
-            v-for="chip in abnormal.chips"
-            :key="chip.endpoint_id"
-            type="button"
-            class="chip"
-            :title="`${chip.model_id} · ${chip.protocol} · ${STATUS_LABELS[chip.status]}`"
-            @click.stop="onChipInspect(chip.status)"
-          >
-            <span class="chip-status" :class="`chip-status-${chip.status}`">{{ STATUS_LABELS[chip.status] }}</span>
-            <span class="chip-model">{{ chip.model_id }}</span>
-          </button>
-          <span v-if="abnormal.overflow > 0" class="chip-overflow">+{{ abnormal.overflow }}</span>
-        </div>
-        <!-- Counts row (GH #73, migrated from the stats strip; behavior kept
-             verbatim): total + four status counts (SEVERITY_ORDER heavy →
-             light, the board's single severity caliber, GH #55) + disabled.
-             Status items toggle the filter / click again to clear; the active
-             item gets a 1px brand inset ring on a transparent ground. Items
-             are real <button>s (keyboard Enter/Space + focus ring). Clicks
-             stop at the item so they never trigger the whole-band inspect. -->
-        <div class="counts-row">
-          <button
-            type="button"
-            class="count-item count-clickable"
-            :class="{ 'count-active': statusFilter === '' }"
-            @click.stop="emit('toggle-status', '')"
-          >
-            总数 <span class="count-num">{{ entries.length }}</span>
-          </button>
-          <button
-            v-for="status in SEVERITY_ORDER"
-            :key="status"
-            type="button"
-            class="count-item count-clickable"
-            :class="{ 'count-active': statusFilter === status }"
-            @click.stop="emit('toggle-status', status)"
-          >
-            <StatusBadge :status="status" />
-            <span class="count-num">{{ statusCounts[status] }}</span>
-          </button>
-          <span v-if="disabledCount > 0" class="count-item count-disabled">
-            已停用 <span class="count-num">{{ disabledCount }}</span>
+      <!-- Row 1 (GH #81): conclusion on the left + the display-tier 24h
+           availability big number pinned right on the SAME baseline
+           (margin-left:auto; the availability block wraps below the
+           conclusion on narrow widths without breaking alignment). The
+           failing alert-dot owns the band's sole animation — chips and
+           counts never animate. The big number is ink, never tinted: the
+           band ground + conclusion already double-encode severity; null
+           renders a placeholder dash with an inline no-data note. -->
+      <div class="headline-row">
+        <span v-if="hasFailing" class="alert-dot" title="存在告警端点" />
+        <span class="conclusion">{{ conclusion }}</span>
+        <span class="availability-line">
+          <span class="availability-value" :class="{ 'availability-null': availability === null }">
+            <template v-if="availability !== null">
+              {{ formatPercentDigits(availability) }}<span class="availability-unit">%</span>
+            </template>
+            <template v-else>-</template>
           </span>
-        </div>
+          <span v-if="availability === null" class="availability-note">24h 内无探测数据</span>
+        </span>
       </div>
-      <!-- Right column: display-tier 24h availability big number (ink — never
-           tinted: the band ground + conclusion already double-encode
-           severity) plus the meta line (stale chip + updated-at + poll
-           cadence; the cadence segment truncates first). margin-left:auto
-           pins it right; narrow screens wrap it below the left column. -->
-      <div class="band-right">
-        <div class="availability">
-          <span class="availability-label">24h 可用率</span>
-          <span class="availability-line">
-            <span class="availability-value" :class="{ 'availability-null': availability === null }">
-              <template v-if="availability !== null">
-                {{ formatPercentDigits(availability) }}<span class="availability-unit">%</span>
-              </template>
-              <template v-else>-</template>
-            </span>
-            <span v-if="availability === null" class="availability-note">24h 内无探测数据</span>
-          </span>
-        </div>
+      <!-- Availability sub-row (GH #81): right-aligned under the big
+           number — the xs label + meta (stale chip + updated-at + poll
+           cadence; the cadence segment truncates first). -->
+      <div class="availability-subrow">
+        <span class="availability-label">24h 可用率</span>
         <div class="meta">
           <span v-if="stale" class="stale-note">数据非最新</span>
           <span class="meta-text">
@@ -105,6 +57,58 @@
           </span>
         </div>
       </div>
+      <!-- Row 2 (full width): which endpoints are abnormal (GH #53) — most
+           severe first, capped at MAX_ABNORMAL_CHIPS with a neutral "+N"
+           overflow. No dots, no blink — the alert-dot above owns the
+           animation. -->
+      <div v-if="abnormal.chips.length > 0" class="chips">
+        <button
+          v-for="chip in abnormal.chips"
+          :key="chip.endpoint_id"
+          type="button"
+          class="chip"
+          :title="`${chip.model_id} · ${chip.protocol} · ${STATUS_LABELS[chip.status]}`"
+          @click.stop="onChipInspect(chip.status)"
+        >
+          <span class="chip-status" :class="`chip-status-${chip.status}`">{{ STATUS_LABELS[chip.status] }}</span>
+          <span class="chip-model">{{ chip.model_id }}</span>
+        </button>
+        <span v-if="abnormal.overflow > 0" class="chip-overflow">+{{ abnormal.overflow }}</span>
+      </div>
+      <!-- Row 3 (full width): counts row (GH #73, migrated from the stats
+           strip; behavior kept verbatim): total + four status counts
+           (SEVERITY_ORDER heavy → light, the board's single severity
+           caliber, GH #55) + disabled. Status items toggle the filter /
+           click again to clear; the active item gets a 1px brand inset
+           ring on a transparent ground. Items are real <button>s
+           (keyboard Enter/Space + focus ring). Clicks stop at the item so
+           they never trigger the whole-band inspect. Count badges are
+           dotless (GH #81, closed-list scene ②): the state-colored word
+           is itself the double encoding; dots would multiply lamps. -->
+      <div class="counts-row">
+        <button
+          type="button"
+          class="count-item count-clickable"
+          :class="{ 'count-active': statusFilter === '' }"
+          @click.stop="emit('toggle-status', '')"
+        >
+          总数 <span class="count-num">{{ entries.length }}</span>
+        </button>
+        <button
+          v-for="status in SEVERITY_ORDER"
+          :key="status"
+          type="button"
+          class="count-item count-clickable"
+          :class="{ 'count-active': statusFilter === status }"
+          @click.stop="emit('toggle-status', status)"
+        >
+          <StatusBadge :status="status" dotless />
+          <span class="count-num">{{ statusCounts[status] }}</span>
+        </button>
+        <span v-if="disabledCount > 0" class="count-item count-disabled">
+          已停用 <span class="count-num">{{ disabledCount }}</span>
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -112,11 +116,14 @@
 <script setup lang="ts">
 // Hero command band: the first visual layer of the Dashboard, one flat
 // surface (GH #73 — the GH #53 banner card and the stats strip merged).
-// Left column: one-sentence conclusion (all healthy / N degraded / N
-// abnormal) + abnormal-endpoint chips + the status-counts row (click to
-// filter, click again to clear — the same statusFilter ref as the filter-row
-// select, GH #55 dual-control discipline). Right column: display-tier 24h
-// availability + meta (stale chip / updated-at / cadence). Four states per
+// Four-row composition (GH #81, user feedback "the availability sank to the
+// bottom-right"): row 1 = one-sentence conclusion (all healthy / N degraded
+// / N abnormal) + the display-tier 24h availability big number on the same
+// baseline, then the availability sub-row (label + meta: stale chip /
+// updated-at / cadence), row 2 = abnormal-endpoint chips full width,
+// row 3 = the status-counts row full width (click to filter, click again to
+// clear — the same statusFilter ref as the filter-row select, GH #55
+// dual-control discipline; count badges dotless, GH #81). Four states per
 // spec 0003 §5.1: healthy / degraded / abnormal / loading. The band always
 // reflects the global picture and never the active filters.
 import { computed } from 'vue'
@@ -264,32 +271,20 @@ function onChipInspect(status: EndpointStatus) {
 .banner-abnormal .conclusion {
   color: var(--hs-danger);
 }
-/* Two columns; the right one wraps below the left on narrow widths. */
+/* Four-row vertical stack (GH #81): headline row (conclusion + same-baseline
+   availability) / availability sub-row / chips / counts. Rows 2–3 span the
+   full band width; the availability block wraps below the conclusion on
+   narrow widths and stays right-aligned via margin-left:auto. */
 .band-body {
   display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-2);
+}
+.headline-row {
+  display: flex;
   flex-wrap: wrap;
-  gap: var(--hs-space-2) var(--hs-space-5);
-}
-.band-left {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--hs-space-2);
-}
-.band-right {
-  flex: 0 0 auto;
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--hs-space-2);
-  min-width: 0;
-}
-.conclusion-row {
-  display: flex;
-  align-items: center;
-  gap: var(--hs-space-2);
+  align-items: baseline;
+  gap: var(--hs-space-1) var(--hs-space-3);
 }
 .conclusion {
   font-size: var(--hs-text-display);
@@ -297,8 +292,10 @@ function onChipInspect(status: EndpointStatus) {
   line-height: 1.5;
 }
 /* Same pulse as StatusBadge's failing dot (sole animated state, §3);
-   --hs-blink (semantics.css) goes still under prefers-reduced-motion. */
+   --hs-blink (semantics.css) goes still under prefers-reduced-motion.
+   Baseline-aligned rows would drop the dot oddly — it self-centers. */
 .alert-dot {
+  align-self: center;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -306,7 +303,21 @@ function onChipInspect(status: EndpointStatus) {
   background: var(--hs-status-failing);
   animation: var(--hs-blink);
 }
-/* Meta line (right column, under availability). The cadence segment
+/* Availability sub-row: right-aligned directly under the big number —
+   the xs label plus the meta cluster. */
+.availability-subrow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--hs-space-2);
+  min-width: 0;
+}
+.availability-label {
+  flex: none;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+/* Meta cluster (stale chip + updated-at + cadence). The cadence segment
    truncates first when space runs out. */
 .meta {
   display: flex;
@@ -342,17 +353,11 @@ function onChipInspect(status: EndpointStatus) {
   border-radius: var(--hs-radius-sm);
   padding: 0 var(--hs-space-2);
 }
-.availability {
-  display: flex;
-  flex-direction: column;
-  gap: var(--hs-space-1);
-  flex: none;
-}
-.availability-label {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
-}
+/* The big number rides row 1 on the conclusion's baseline; margin-left:auto
+   pins it to the row's right end (and keeps it right-aligned when the row
+   wraps on narrow widths). */
 .availability-line {
+  margin-left: auto;
   display: flex;
   align-items: baseline;
   gap: var(--hs-space-2);
@@ -492,20 +497,28 @@ function onChipInspect(status: EndpointStatus) {
 .count-disabled {
   color: var(--hs-text-secondary);
 }
-/* Skeleton mirrors the loaded band height (conclusion 42 + chips 28 +
-   counts 28 + two 8px gaps = 114px) so first paint does not shift content
-   below. Registered trade-off (check GH #73 LOW-1): the 114px anchor is
+/* Skeleton mirrors the loaded band height under the GH #81 four-row
+   composition (chips-present layout, arithmetic from the final CSS):
+   headline row 42 (conclusion display 28px × line-height 1.5; the
+   availability value 28 × 1.2 = 33.6 rides the same row, baseline-aligned)
+   + availability sub-row 18 (xs label/meta 12px × 1.5; the stale chip
+   reaches 20 when present, base arithmetic uses the text line)
+   + chips row 28 (sm word 13 × 1.5 = 19.5 + 2×4px padding ≈ 28)
+   + counts row 28 (same build as chips)
+   + three 8px gaps (band-body gap --hs-space-2 between four rows)
+   = 42 + 18 + 28 + 28 + 24 = 140px.
+   Registered trade-off (check GH #73 LOW-1, carried over): the anchor is
    the chips-present layout (degraded/abnormal); a healthy first load has
-   no chips row, so the loaded band lands ~30px shorter and content below
-   rises slightly. One fixed height cannot match all four states (the
-   state is unknown while loading) — the anchor favors the abnormal
-   states, where layout stability matters most. */
+   no chips row, so the loaded band lands ~36px shorter (140 − 28 chips −
+   8 one-less-gap) and content below rises slightly. One fixed height
+   cannot match all four states (the state is unknown while loading) — the
+   anchor favors the abnormal states, where layout stability matters most. */
 .banner-skeleton {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 12px;
-  min-height: 114px;
+  min-height: 140px;
 }
 .skeleton-line {
   border-radius: var(--hs-radius-sm);

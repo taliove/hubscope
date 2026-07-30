@@ -1,6 +1,6 @@
 <template>
   <span class="status-badge" :class="[`status-${status}`, `badge-${size}`]" :title="reason">
-    <span class="dot" />
+    <span v-if="!dotless" class="dot" />
     <span class="label">{{ label }}</span>
     <span v-if="causeSuffix" class="causes">{{ causeSuffix }}</span>
   </span>
@@ -20,9 +20,27 @@ import { degradeCauseSuffix } from '@/utils/degradeCauses'
 // the status row is the card's primary line (EndpointCard). The md stop is
 // a size variant of the same badge — same dot, same label — never a second
 // status light; callers must not :deep-override it.
+// dotless variant (GH #81, DESIGN.md StatusBadge 节 / dashboard surface
+// brief): since GH #71 the state-colored word is itself the text form of
+// the color+word double encoding, so aggregate/repeated scenes may drop the
+// dot and render the colored word alone — keeping one screen from diluting
+// the signal with many lights. Closed applicability list (exactly three
+// consumers, no spreading): ① EndpointCard status row (the header signal-
+// wall lamp is the card's sole status light), ② Hero band counts row,
+// ③ group-header count chips. Detail page / quick-view dialog / admin
+// tables keep the dot (entity signal positions). A failing dotless word
+// never blinks — the blink lives on .dot, so removing the dot removes the
+// animation with no residual path. No a11y regression: the word is the
+// accessible name either way; the dot is decoration.
 const props = withDefaults(
-  defineProps<{ status: EndpointStatus; reason?: string; causes?: DegradeCause[]; size?: 'sm' | 'md' }>(),
-  { size: 'sm' },
+  defineProps<{
+    status: EndpointStatus
+    reason?: string
+    causes?: DegradeCause[]
+    size?: 'sm' | 'md'
+    dotless?: boolean
+  }>(),
+  { size: 'sm', dotless: false },
 )
 
 const label = computed(() => STATUS_LABELS[props.status])
