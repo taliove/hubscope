@@ -157,6 +157,8 @@ HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动
 | text-placeholder(gray-400) | #91a3a8 / #5c616a | **#8a99a0 / 不变** | 2.62 → 2.94(占位档刻意 muted) |
 | info(gray-600) | #45565c / =gray-500 | **#40525a / #6b7d84** | 7.67 → 8.16 / 3.55 → 4.10(解耦提亮) |
 | success-text(新增) | — | **#047857 / #10b981** | 白底 5.48 / 暗卡 6.94 |
+| gray-300(刻度插值) | #c7d3d6 / 同值 | **#c3ced2** / 同值 | 零消费方,check T1 LOW-2 批末补登 |
+| gray-800(刻度插值) | #1e2b31 / 同值 | **#1a262c** / 同值 | 零消费方,check T1 LOW-2 批末补登 |
 
 精修纪律:① brand 只许加深不许提亮(AA 红线 4.5:1,精修后 5.20 有余量);② hairline 必须保持在白卡与暗卡上可辨(投屏/远距红线,亮 ≥1.10 / 暗 ≥1.08);③ 暗色表面三层两两可分辨(page .0043 / card .0097 / hover .0190 亮度阶);④ 暗色 soft 浅底 color-mix 基底随 bg-page 同步(#0f1115 → #0c0e11);⑤ BrandMark/favicon 渐变 stop 表现属性随 teal-700 同步(#0a6963 → #095f59,令牌链兜底纪律不变);⑥ **chartColors 镜像同步清单**(utils/chartColors.ts,check 按本清单逐字段验收):LIGHT 六字段——brand `#0c8078`→`#0b7a72`、textRegular `#324249`→`#2c3b42`、textSecondary `#617379`→`#5a6a71`、placeholder `#91a3a8`→`#8a99a0`、border `#e0e8ea`→`#dde4e7`、bgHover `#eff4f5`→`#e9eef0`;DARK 三字段——textRegular `#c3c7cd`→`#c9ced4`、textSecondary `#8a8f98`→`#9298a2`、bgHover `#1f2227`→`#22262b`。不动项:success / warning / danger / failing 亮暗双份、dark 侧 brand / placeholder / border;不增设 successText 镜像字段(图表内无 success 文字场景)。
 

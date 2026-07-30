@@ -56,6 +56,8 @@ main 或 agent 向另一个 agent 派发任务时,prompt 必须包含以下字�
 **设计裁决的回写前置(GH #42 check 登记,GH #59 修订为三层分流):** main 在 issue/会话中做出的设计裁决须回写规范,回写是 write 开工前置——write 开工前核对裁决与规范一致性,不一致先调 plan 回写再实现(首例:main 的 wall-clock 裁决在 issue comment 落锤但设计文档未同步,文档/裁决/代码三方脱节被 check 抓为 HIGH)。**回写对象按层分流(GH #47 起):** 视觉/布局裁决 → `DESIGN.md`;页面/组件构成裁决 → 对应 surface brief(`web/.impeccable/surfaces/`);业务语义裁决(词表/语义映射/防作假/信息边界) → `.claude/rules/ui-guidelines.md`;读者模型/产品真相 → `PRODUCT.md`。变更已冻结条款时先回写再实现。
 **批次式 overhaul 的回写节奏(GH #54 check 沉淀,同条登记):** 批次式设计改造(impeccable surface 驱动)允许批末统一回写,但每票 commit 前须在票面或 surface 文档显式登记「待回写清单」,使 check 有据可核、批末不回漏。
 **并行会话污染处置(GH #55 check 沉淀,同条登记):** 并行会话开工一律用独立 worktree;同一 worktree 内有在制 ticket 时,提交前必须 `git status` + `git diff --stat` 核对每个待提交文件是否也被在制票触碰;若一个提交为自洽必须吸收他票 WIP,commit message 必须显式披露被扫入的票号与范围,且该票 check 把「swept 部分 + 余量」合并为验证对象(2026-07-29 本分支 bc5e016 为模板)。
+**「全覆盖」类关闭口径的分配到票(GH #71 check 沉淀,2026-07-30 登记):** 裁决记录(附录 B / 规范条款)含「一切文字场景」「全站一律」类全覆盖关闭口径时,批次总览票必须把每个覆盖场景显式分配到具体票,check 按分配表逐票验收、末票才允许关闭关联 issue(首例:success text 令牌的关闭口径跨票,#71 单票 commit 时 closure 悬空被抓为 HIGH,残量转 follow-up #77)。
+**定量 AC 的可达性预验(GH #72 check 沉淀,2026-07-30 登记):** UI 票验收标准含定量体验指标(如「卡高降 20–25%」)时,plan 回写 brief 阶段必须用 CSS 算术预验该数字可达;AC 数字与 brief 规格脱节时以 brief 为准并在票面注明(首例:卡高 AC 20–25% vs 规格算术 11–12%,check 阶段才发现口径冲突)。
 
 ## 4. 职责重叠裁决
 
