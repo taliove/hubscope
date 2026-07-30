@@ -30,8 +30,8 @@ func toAlertEventDTO(e store.AlertEvent) alertEventDTO {
 }
 
 // handleListAlerts handles GET /api/alerts?limit=N. Public (read), scoped to
-// the session's hub for non-super_admin. Hub-less score_drop events (no
-// endpoint) are visible only to super_admin via the *All store variant.
+// the session's hub for non-super_admin. Hub-less events (score_drop, batch;
+// no endpoint) are visible only to super_admin via the *All store variant.
 func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"))
 

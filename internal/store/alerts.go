@@ -11,13 +11,16 @@ import (
 // runs ran different suite versions (nothing is sent for a skip). "test" is
 // the manual channel check from POST /api/settings/test-lark (ticket 100):
 // it carries a NULL endpoint_id and never joins the down/recovered state
-// rebuild (LatestDownRecoveryEvent filters by that whitelist).
+// rebuild (LatestDownRecoveryEvent filters by that whitelist). "batch"
+// (spec 0017, ADR 0014) records one aggregated window flush: the actual
+// text sent and the real delivery result; it carries a NULL endpoint_id.
 const (
 	AlertKindDown             = "down"
 	AlertKindRecovered        = "recovered"
 	AlertKindScoreDrop        = "score_drop"
 	AlertKindScoreDropSkipped = "score_drop_skipped"
 	AlertKindTest             = "test"
+	AlertKindBatch            = "batch"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.
@@ -150,6 +153,24 @@ func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 		events = append(events, e)
 	}
 	return events, rows.Err()
+}
+
+// UpdateAlertEventsSentOK writes the delivery result back to events that
+// were recorded at transition time with sent_ok=false ("delivery
+// unconfirmed", spec 0017 / ADR 0014): the window flush confirms them after
+// the aggregated send. A failed send leaves them false — no retry, and the
+// false stays honest (the outage may never have reached Lark).
+func (db *DB) UpdateAlertEventsSentOK(ids []int64, sentOK bool) error {
+	v := 0
+	if sentOK {
+		v = 1
+	}
+	for _, id := range ids {
+		if _, err := db.conn.Exec(`UPDATE alert_events SET sent_ok = ? WHERE id = ?`, v, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LatestDownRecoveryEvent returns the newest down/recovered event recorded
