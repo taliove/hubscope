@@ -9,7 +9,6 @@
   <el-card
     shadow="never"
     class="endpoint-card"
-    :class="`card-${entry.status}`"
     role="button"
     tabindex="0"
     aria-haspopup="dialog"
@@ -26,6 +25,17 @@
       <el-tag v-if="showProtocolTag" :type="protocolTagType(entry.protocol)" size="small">
         {{ entry.protocol }}
       </el-tag>
+      <!-- Signal-wall lamp (GH #72, surface brief EndpointCard 节): only
+           non-healthy channels light up. aria-hidden — the StatusBadge word
+           already reports status; this is a card-level glance marker, not a
+           second StatusBadge. Renders regardless of showProtocolTag: the
+           group protocol-tag collapse (GH #54) must not take the lamp down. -->
+      <span
+        v-if="entry.status !== 'healthy'"
+        class="lamp"
+        :class="`lamp-${entry.status}`"
+        aria-hidden="true"
+      ></span>
     </div>
 
     <div class="card-status">
@@ -41,6 +51,10 @@
         <span class="score-badge" :class="scoreClass">{{ scoreText }}</span>
       </el-tooltip>
       <el-tag v-if="!entry.enabled" type="info" size="small">已停用</el-tag>
+      <!-- "最近探测" moved up from the retired footer row (GH #72 card
+           shortening); margin-left: auto keeps it right-aligned even when
+           the row wraps under the score badge / disabled tag. -->
+      <span class="card-foot">最近探测:{{ formatTime(entry.last_probe_at) }}</span>
     </div>
 
     <div class="card-metrics">
@@ -59,8 +73,6 @@
     </div>
 
     <EndpointUptimePanel :dots="entry.dots_24h" :baseline-ms="entry.baseline_p50_ms" />
-
-    <div class="card-foot">最近探测:{{ formatTime(entry.last_probe_at) }}</div>
   </el-card>
 </template>
 
@@ -113,39 +125,45 @@ const scoreTooltip = computed(() => {
 
 <style scoped>
 .endpoint-card {
-  /* Status indicator: a 3px vertical bar on the leading edge (eyes scan
-     left to right, status comes first). Color mapping unchanged (§3). */
-  border-left: 3px solid transparent;
   cursor: pointer;
   transition: box-shadow var(--hs-transition);
 }
 .endpoint-card:hover {
   box-shadow: var(--hs-shadow-md);
 }
-/* Keyboard focus = the board's single focus language (1px brand inset ring);
-   box-shadow coexists with the 3px status border-left, no layout shift. */
+/* Keyboard focus = the board's single focus language (1px brand inset ring,
+   zero layout shift); the ring carries focus alone now that the leading-edge
+   status bar is retired (GH #72). */
 .endpoint-card:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--hs-brand), var(--hs-shadow-md);
 }
-.card-healthy {
-  border-left-color: var(--hs-success);
+/* Signal-wall lamp (GH #72): the leading-edge status bar is retired; status
+   signaling is the two-channel "head-row lamp + StatusBadge colored word".
+   The lamp lights only for abnormal channels (healthy renders nothing);
+   failing owns the blink (--hs-blink token, reduced-motion zeroes it). */
+.lamp {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--hs-radius-full);
+  flex: none;
 }
-.card-degraded {
-  border-left-color: var(--hs-warning);
+.lamp-degraded {
+  background: var(--hs-warning);
 }
-.card-down {
-  border-left-color: var(--hs-danger);
+.lamp-down {
+  background: var(--hs-danger);
 }
-.card-failing {
-  border-left-color: var(--hs-status-failing);
+.lamp-failing {
+  background: var(--hs-status-failing);
+  animation: var(--hs-blink);
 }
 .card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: var(--hs-space-2);
 }
 .model-id {
   /* Middle truncation (GH #54): the parent is a shrinkable flex row; the
@@ -176,7 +194,7 @@ const scoreTooltip = computed(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: var(--hs-space-2);
 }
 .status-wrap {
   cursor: help;
@@ -214,7 +232,7 @@ const scoreTooltip = computed(() => {
 .card-metrics {
   display: flex;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: var(--hs-space-2);
 }
 .metric {
   display: flex;
@@ -246,5 +264,8 @@ const scoreTooltip = computed(() => {
 .card-foot {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+  /* Moved into the status row (GH #72 shortening); auto margin pins it to
+     the right, including on a wrapped second line. */
+  margin-left: auto;
 }
 </style>

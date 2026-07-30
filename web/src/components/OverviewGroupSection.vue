@@ -253,7 +253,10 @@ const collapseCardProtocolTag = computed(
 }
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* 272px floor keeps a stable 4-column matrix at the 1200px content width
+     (GH #72, surface brief EndpointCard 卡片网格节; DashboardView flat
+     grid mirrors this). */
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
   gap: 12px;
 }
 </style>
