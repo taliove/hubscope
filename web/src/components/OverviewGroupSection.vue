@@ -10,7 +10,9 @@
         :aria-expanded="!collapsed"
         @click="collapsed = !collapsed"
       >
-        <el-icon class="group-arrow"><ArrowRight v-if="collapsed" /><ArrowDown v-else /></el-icon>
+        <el-icon class="group-arrow" :class="{ 'group-arrow-open': !collapsed }">
+          <ArrowRight />
+        </el-icon>
         <span class="group-key">{{ group.key }}</span>
         <span class="group-count">{{ group.endpoint_count }} 端点</span>
         <!-- Uniform-protocol collapse (GH #54): when every filtered entry in
@@ -52,21 +54,33 @@
       </el-button>
     </div>
 
-    <div v-show="!collapsed" class="card-grid">
-      <EndpointCard
-        v-for="entry in entries"
-        :key="entry.endpoint_id"
-        :entry="entry"
-        :show-protocol-tag="!collapseCardProtocolTag"
-      />
-      <el-empty v-if="entries.length === 0" description="该组无匹配的 Endpoint" :image-size="60" />
+    <!-- Disclosure container (2026-07-29 /impeccable animate, ui-guidelines
+         §6 扩展条): grid 0fr↔1fr height transition + inner min-height:0 /
+         overflow:hidden + directional visibility delay. Collapsed state exits
+         the tab order and a11y tree exactly as v-show's display:none did.
+         el-empty stays INSIDE the container so auto-collapsed empty groups
+         hide it, matching the old v-show behavior. -->
+    <div class="collapse-wrap" :class="{ 'is-collapsed': collapsed, 'no-motion': noMotion }">
+      <div class="collapse-inner">
+        <div class="card-grid">
+          <EndpointCard
+            v-for="entry in entries"
+            :key="entry.endpoint_id"
+            :entry="entry"
+            :show-protocol-tag="!collapseCardProtocolTag"
+            :flipped="flippedId === entry.endpoint_id"
+            @open="emit('open', $event)"
+          />
+          <el-empty v-if="entries.length === 0" description="该组无匹配的 Endpoint" :image-size="60" />
+        </div>
+      </div>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Share, ArrowDown, ArrowRight } from '@element-plus/icons-vue'
+import { Share, ArrowRight } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
 import { formatPercent, formatMs } from '@/utils/format'
@@ -78,20 +92,38 @@ const props = defineProps<{
   group: OverviewGroup
   entries: OverviewEntry[]
   grouping?: 'family' | 'capability' | 'protocol'
+  // Flip choreography (2026-07-29): the dashboard drills its flip state down
+  // so the opened card rotates edge-on while the quick-view dialog is up.
+  flippedId?: number | null
 }>()
 
-const emit = defineEmits<{ (e: 'share'): void }>()
+const emit = defineEmits<{ (e: 'share'): void; (e: 'open', entry: OverviewEntry): void }>()
 
 const collapsed = ref(false)
+
+// No-motion dual track (ui-guidelines §6 扩展条双轨纪律, GH #52 延伸): only
+// user clicks animate; data/filter-driven collapse & re-expand switch
+// instantly. While true, .no-motion strips all transitions on the wrap.
+const noMotion = ref(false)
 
 // Auto-collapse filtered-empty groups (user request 2026-07-29): a group
 // with no matching entries renders collapsed by default instead of a large
 // empty-state box; it re-expands the moment matches return, and stays
 // manually toggleable in both states.
+// BOTH paths (collapse and re-expand) go through noMotion: apply the
+// collapsed styles transition-free first, then re-enable transitions after
+// two frames so the state change is never tweened (miss one path and
+// clearing a filter tweens every empty group open at once — noise).
 watch(
   () => props.entries.length,
   (n) => {
+    noMotion.value = true
     collapsed.value = n === 0
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        noMotion.value = false
+      })
+    })
   },
   { immediate: true },
 )
@@ -160,6 +192,39 @@ const collapseCardProtocolTag = computed(
 .group-arrow {
   color: var(--hs-text-placeholder);
   font-size: 14px;
+  transition: transform var(--hs-transition);
+}
+/* Single-icon disclosure indicator (2026-07-29 /impeccable animate):
+   ArrowRight rotates 0→90deg on expand, replacing the two-icon hard swap. */
+.group-arrow-open {
+  transform: rotate(90deg);
+}
+/* Disclosure container (ui-guidelines §6 扩展条): grid 0fr↔1fr + inner
+   min-height:0/overflow:hidden + directional visibility delay. No
+   reduced-motion media block here — the global zero lives in semantics.css. */
+.collapse-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* visibility 0s 0s: expand direction becomes visible instantly. The 0.2s
+     literal mirrors the --hs-transition duration (tokens.css) — the two
+     reference each other and must change together. */
+  transition: grid-template-rows var(--hs-transition), visibility 0s 0s;
+}
+.collapse-wrap.is-collapsed {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  /* Collapse direction: hide only after the height has finished collapsing
+     (0.2s); visibility keeps the collapsed content out of tab order and the
+     a11y tree (equivalent to the old v-show display:none semantics). */
+  transition: grid-template-rows var(--hs-transition), visibility 0s 0.2s;
+}
+.collapse-wrap.no-motion,
+.collapse-wrap.no-motion.is-collapsed {
+  transition: none;
+}
+.collapse-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .group-key {
   font-size: var(--hs-text-lg);
@@ -194,5 +259,9 @@ const collapseCardProtocolTag = computed(
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
+  /* Flip choreography: the 3D stage for the card rotateY. The 1600px twin is
+     QUICKVIEW_FLIP_PERSPECTIVE_PX in utils/quickViewChoreo.ts (same value on
+     DashboardView's flat grid) — keep all three in sync. */
+  perspective: 1600px;
 }
 </style>

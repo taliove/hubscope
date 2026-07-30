@@ -1,17 +1,22 @@
 <template>
-  <!-- Whole-card drill-down (a11y harden 2026-07-29): the card navigates, so
-       it exposes role="link" + tabindex; Enter/Space run the same goDetail
-       as click. The card holds no nested interactive controls (tooltips
-       only), so the link role is safe. -->
+  <!-- Whole-card quick-view trigger (2026-07-29 /impeccable animate, surface
+       brief a11y 节): the card opens the EndpointQuickViewDialog in place, so
+       it exposes role="button" + aria-haspopup="dialog"; Enter/Space run the
+       same open as click. The card holds no nested interactive controls
+       (tooltips only), so the button role is safe. data-endpoint-id lets the
+       dashboard return focus after the dialog closes (polling re-renders must
+       not strand keyboard users). -->
   <el-card
     shadow="never"
     class="endpoint-card"
-    :class="`card-${entry.status}`"
-    role="link"
+    :class="[`card-${entry.status}`, { 'is-flipped': flipped }]"
+    role="button"
     tabindex="0"
-    @click="goDetail"
-    @keydown.enter="goDetail"
-    @keydown.space.prevent="goDetail"
+    aria-haspopup="dialog"
+    :data-endpoint-id="entry.endpoint_id"
+    @click="emit('open', entry)"
+    @keydown.enter="emit('open', entry)"
+    @keydown.space.prevent="emit('open', entry)"
   >
     <div class="card-head">
       <span class="model-id" :title="entry.model_id">
@@ -53,22 +58,7 @@
       </div>
     </div>
 
-    <div class="card-dots">
-      <span class="dots-label">24h</span>
-      <span class="dots-strip">
-        <el-tooltip
-          v-for="dot in entry.dots_24h"
-          :key="dot.bucket_start"
-          :content="dotTooltip(dot)"
-          placement="top"
-          :show-after="100"
-        >
-          <span class="dot" :class="dotClass(dot)" />
-        </el-tooltip>
-      </span>
-    </div>
-
-    <LatencySparkline :dots="entry.dots_24h" :baseline-ms="entry.baseline_p50_ms" />
+    <EndpointUptimePanel :dots="entry.dots_24h" :baseline-ms="entry.baseline_p50_ms" />
 
     <div class="card-foot">最近探测:{{ formatTime(entry.last_probe_at) }}</div>
   </el-card>
@@ -76,27 +66,24 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
-import type { OverviewEntry, OverviewDot } from '@/api/types'
+import type { OverviewEntry } from '@/api/types'
 import StatusBadge from './StatusBadge.vue'
-import LatencySparkline from './LatencySparkline.vue'
-import { formatPercent, formatMs, formatTime, formatBucketTime } from '@/utils/format'
+import EndpointUptimePanel from './EndpointUptimePanel.vue'
+import { formatPercent, formatMs, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
 import { splitMiddle } from '@/utils/truncate'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
-// Clicking navigates to the endpoint detail page.
+// Clicking opens the quick-view dialog (the parent owns the flip state and
+// the dialog; `flipped` only drives the rotateY choreography face).
 // showProtocolTag defaults to true; a uniform-protocol group section
 // collapses the per-card tag and shows one tag in the group header instead
 // (GH #54) — flat mode and mixed-protocol groups keep the card tag.
-const props = withDefaults(defineProps<{ entry: OverviewEntry; showProtocolTag?: boolean }>(), {
-  showProtocolTag: true,
-})
-const router = useRouter()
-
-function goDetail() {
-  router.push(`/endpoints/${props.entry.endpoint_id}`)
-}
+const props = withDefaults(
+  defineProps<{ entry: OverviewEntry; showProtocolTag?: boolean; flipped?: boolean }>(),
+  { showProtocolTag: true, flipped: false },
+)
+const emit = defineEmits<{ (e: 'open', entry: OverviewEntry): void }>()
 
 // Middle truncation (GH #54): the head takes the CSS ellipsis while the
 // tail (usually the version/variant part) stays fully visible. Split is
@@ -119,20 +106,6 @@ const scoreTooltip = computed(() => {
   const reasons = props.entry.score_reasons
   return reasons.length > 0 ? reasons.join('\n') : '无扣分项'
 })
-
-// 24h stability dot coloring: gray = no probes, green = success rate ≥95%,
-// red = all failed, yellow = below 95%.
-function dotClass(dot: OverviewDot): string {
-  if (dot.total === 0) return 'dot-none'
-  if (dot.failures === dot.total) return 'dot-fail'
-  return (dot.total - dot.failures) / dot.total >= 0.95 ? 'dot-ok' : 'dot-partial'
-}
-
-function dotTooltip(dot: OverviewDot): string {
-  const label = `${formatBucketTime(dot.bucket_start)} 时段`
-  if (dot.total === 0) return `${label} · 无数据`
-  return `${label} · 成功 ${dot.total - dot.failures}/${dot.total}`
-}
 </script>
 
 <style scoped>
@@ -141,7 +114,16 @@ function dotTooltip(dot: OverviewDot): string {
      left to right, status comes first). Color mapping unchanged (§3). */
   border-left: 3px solid transparent;
   cursor: pointer;
-  transition: box-shadow var(--hs-transition);
+  transition: box-shadow var(--hs-transition), transform var(--hs-transition);
+  /* Flip choreography (2026-07-29 /impeccable animate): the card rotates
+     edge-on while the quick-view dialog takes focus. The parent .card-grid
+     carries the perspective (1600px twin = QUICKVIEW_FLIP_PERSPECTIVE_PX in
+     utils/quickViewChoreo.ts — keep in sync). */
+  backface-visibility: hidden;
+}
+.endpoint-card.is-flipped {
+  transform: rotateY(-90deg);
+  pointer-events: none;
 }
 .endpoint-card:hover {
   box-shadow: var(--hs-shadow-md);
@@ -264,57 +246,6 @@ function dotTooltip(dot: OverviewDot): string {
 .metric-p95 {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-}
-.card-dots {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.dots-label {
-  /* Fixed label width shared with LatencySparkline's 延迟 label so both
-     strips start at the same x. */
-  width: 26px;
-  flex: none;
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
-}
-.dots-strip {
-  display: flex;
-  align-items: center;
-  /* The 2px gap is the twin of SPARKLINE_GAP_PX in utils/latencySparkline.ts
-     (the sparkline derives its bucket centers from it) — keep them in sync. */
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-/* Flexible slots: 24 dots always fit the card, never overflow into a
-   horizontal scrollbar. Flex goes on the direct children (el-tooltip
-   trigger wrappers), the dot fills its slot. */
-.dots-strip > * {
-  flex: 1 1 0;
-  min-width: 0;
-  display: inline-flex;
-}
-.dot {
-  /* Segmented uptime bar: each slot fills its flex cell so the strip reads
-     as one continuous 24h timeline (status-page convention), not loose dots. */
-  width: 100%;
-  height: 10px;
-  border-radius: var(--hs-radius-xs);
-  display: inline-block;
-}
-.dot-none {
-  background: var(--hs-border);
-}
-.dot-ok {
-  background: var(--hs-success);
-}
-.dot-partial {
-  background: var(--hs-warning);
-}
-.dot-fail {
-  background: var(--hs-danger);
 }
 .card-foot {
   font-size: var(--hs-text-xs);

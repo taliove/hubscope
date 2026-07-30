@@ -79,7 +79,12 @@
   --el-fill-color-lighter: var(--hs-bg-hover);
   --el-fill-color-extra-light: var(--hs-bg-page);
   --el-fill-color-blank: var(--hs-bg-card);
-  --el-mask-color: rgba(15, 27, 32, 0.5);
+  /* Scrim: the single overlay language is --hs-overlay-bg (DESIGN.md Overlay
+     Scrim). EP 2.14 draws dialog/drawer scrims from --el-overlay-color-lighter
+     while --el-mask-color still covers loading masks — map both so no second
+     scrim color survives anywhere. */
+  --el-mask-color: var(--hs-overlay-bg);
+  --el-overlay-color-lighter: var(--hs-overlay-bg);
 
   /* Radius: controls default to radius-sm (4px); cards/dialogs use
      radius-lg (8px) via the component selectors below. */
@@ -104,6 +109,55 @@
 
 .el-card {
   box-shadow: none;
+}
+
+/* ==========================================================================
+   Endpoint quick-view dialog (2026-07-29 /impeccable animate, dashboard
+   surface brief): the custom `hs-flip` transition replaces dialog-fade
+   wholesale via the el-dialog `transition` prop — the classes land on the
+   .el-overlay root, the dialog is styled through descendant selectors. The
+   hs-quickview-overlay scrim adds the frosted blur (quick-view exclusive,
+   DESIGN.md Overlay Scrim: admin dialogs are never frosted; blur survives
+   reduced-motion because it is not motion).
+   Choreography constants (140ms open stagger / 70ms close overlap / 1600px
+   perspective / 8px blur) are single-sourced in utils/quickViewChoreo.ts —
+   the literals here are their CSS twins and must change together.
+   ========================================================================== */
+.hs-quickview-dialog {
+  max-width: 92vw;
+}
+
+.hs-quickview-overlay {
+  /* -webkit- twin: one harmless insurance line for older Safari (the LAN
+     audience is Chrome-first). */
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.hs-flip-enter-active {
+  transition: opacity var(--hs-transition);
+}
+.hs-flip-leave-active {
+  /* Overlay fade delayed so its TOTAL (0.2s + 0.12s = 0.32s, the focal stop)
+     matches the dialog flip-out: Vue's Transition end-detection keys off the
+     overlay root (transitionend bubbling up from the dialog child is ignored
+     — e.target check), so a shorter overlay transition would fire afterLeave
+     early and cut the dialog rotation. */
+  transition: opacity var(--hs-transition) 0.12s;
+}
+.hs-flip-enter-from,
+.hs-flip-leave-to {
+  opacity: 0;
+}
+.hs-flip-enter-active .el-dialog,
+.hs-flip-leave-active .el-dialog {
+  transition: transform var(--hs-transition-focal);
+}
+.hs-flip-enter-from .el-dialog,
+.hs-flip-leave-to .el-dialog {
+  /* Inline perspective() keeps the flip 3D without depending on a stacking
+     ancestor; the 1600px twin is QUICKVIEW_FLIP_PERSPECTIVE_PX. */
+  transform: perspective(1600px) rotateY(90deg);
 }
 
 /* Dark theme: repeat the full mapping so the semantic overrides win over
@@ -178,7 +232,9 @@
   --el-fill-color-lighter: var(--hs-bg-hover);
   --el-fill-color-extra-light: var(--hs-bg-page);
   --el-fill-color-blank: var(--hs-bg-card);
-  --el-mask-color: rgba(0, 0, 0, 0.6);
+  /* Scrim on dark grounds (same single-language mapping as the light block). */
+  --el-mask-color: var(--hs-overlay-bg);
+  --el-overlay-color-lighter: var(--hs-overlay-bg);
 
   --el-border-radius-base: var(--hs-radius-sm);
   --el-border-radius-small: var(--hs-radius-xs);

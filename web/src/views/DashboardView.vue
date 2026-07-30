@@ -105,16 +105,33 @@
           :group="section.group"
           :entries="section.entries"
           :grouping="grouping"
+          :flipped-id="flippedFaceDownId"
           @share="openGroupShare(section)"
+          @open="openQuickView"
         />
         <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
       </template>
 
       <!-- Flat status matrix: one card per endpoint. -->
       <div v-else class="card-grid" v-loading="loading && entries.length === 0">
-        <EndpointCard v-for="entry in filteredEntries" :key="entry.endpoint_id" :entry="entry" />
+        <EndpointCard
+          v-for="entry in filteredEntries"
+          :key="entry.endpoint_id"
+          :entry="entry"
+          :flipped="flippedFaceDownId === entry.endpoint_id"
+          @open="openQuickView"
+        />
         <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
       </div>
+
+      <!-- Endpoint quick view (2026-07-29 /impeccable animate): card click
+           opens this frozen-snapshot glance instead of navigating away. -->
+      <EndpointQuickViewDialog
+        v-model:visible="quickViewVisible"
+        :entry="quickViewEntry"
+        @close="onQuickViewClose"
+        @closed="onQuickViewClosed"
+      />
 
       <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
       <PublicFooter />
@@ -123,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview } from '@/composables/useOverview'
 import HealthBanner from '@/components/HealthBanner.vue'
@@ -131,10 +148,13 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
+import EndpointQuickViewDialog from '@/components/EndpointQuickViewDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
 import { sortEntriesBySeverity, sortGroupSections, SEVERITY_ORDER, type GroupSection } from '@/utils/severitySort'
+import { quickViewChoreo } from '@/utils/quickViewChoreo'
+import { freezeEntrySnapshot } from '@/utils/quickViewSnapshot'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
@@ -183,6 +203,78 @@ function openGroupShare(section: { group: OverviewGroup; entries: OverviewEntry[
   shareVisible.value = true
 }
 
+// Quick-view flip state (2026-07-29 /impeccable animate, surface brief):
+// flipCardId remembers WHICH card opened the dialog (cleared ONLY in the
+// dialog's @closed — ESC / scrim click / close button / route jump all
+// converge there); cardFlipped drives the rotateY face so the close overlap
+// (card flipping back while the dialog is still leaving) never touches the
+// identity memory. quickViewEntry is the frozen snapshot — polling must
+// never update the open dialog (snapshot freeze, same philosophy as the
+// StatusCard snapshot).
+const flipCardId = ref<number | null>(null)
+const cardFlipped = ref(false)
+const quickViewVisible = ref(false)
+const quickViewEntry = ref<OverviewEntry | null>(null)
+let quickViewTimers: ReturnType<typeof setTimeout>[] = []
+
+// The face-down card id as seen by the grids: flipCardId masked by the
+// flip-face flag, so the close overlap can turn the card back without
+// clearing flipCardId early.
+const flippedFaceDownId = computed(() => (cardFlipped.value ? flipCardId.value : null))
+
+// One-shot reduced-motion check per interaction (onBannerInspect precedent —
+// no change listener). The JS stage delays are gated here; CSS transitions
+// are already zeroed globally by semantics.css.
+function prefersReducedMotionNow(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function clearQuickViewTimers() {
+  quickViewTimers.forEach(clearTimeout)
+  quickViewTimers = []
+}
+
+function openQuickView(entry: OverviewEntry) {
+  clearQuickViewTimers()
+  const choreo = quickViewChoreo(prefersReducedMotionNow())
+  quickViewEntry.value = freezeEntrySnapshot(entry)
+  flipCardId.value = entry.endpoint_id
+  cardFlipped.value = true
+  // The card flips out first; the dialog follows after the open stagger
+  // (0 under reduced motion — present immediately, never wait).
+  quickViewTimers.push(setTimeout(() => {
+    quickViewVisible.value = true
+  }, choreo.openDialogDelayMs))
+}
+
+// EP @close fires in beforeLeave (the leave transition just started):
+// schedule the card flip-back with the close overlap from the choreo table.
+function onQuickViewClose() {
+  const choreo = quickViewChoreo(prefersReducedMotionNow())
+  quickViewTimers.push(setTimeout(() => {
+    cardFlipped.value = false
+  }, choreo.closeCardDelayMs))
+}
+
+// EP @closed fires after the leave transition: the single reset point for
+// flipCardId. Focus returns to the trigger card manually as a belt-and-
+// suspenders on top of EP's focus-trap restore — polling re-renders (keyed
+// by endpoint_id) keep the card node alive, but if the card left the board
+// (filter change) the lookup simply no-ops.
+function onQuickViewClosed() {
+  const id = flipCardId.value
+  flipCardId.value = null
+  cardFlipped.value = false
+  quickViewEntry.value = null
+  if (id !== null) {
+    nextTick(() => {
+      document.querySelector<HTMLElement>(`[data-endpoint-id="${id}"]`)?.focus()
+    })
+  }
+}
+
+onBeforeUnmount(clearQuickViewTimers)
+
 // Disabled endpoints show up in the strip as a non-clickable count.
 const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
 
@@ -193,9 +285,13 @@ function toggleStatusFilter(status: EndpointStatus) {
 }
 
 // Abnormal-banner click: apply the status filter and scroll to the matrix.
+// reduced-motion degrades smooth scroll to instant (2026-07-29 /impeccable
+// animate 批:修补 a11y harden 批漏网,与 semantics.css 全局过渡归零同批;
+// one-shot check per click, no change listener).
 function onBannerInspect(status: EndpointStatus) {
   statusFilter.value = status
-  matrixRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  matrixRef.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
 // Apply the three filters; an empty filter matches everything. The result
@@ -337,5 +433,9 @@ onMounted(start)
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--hs-space-3);
   min-height: 120px;
+  /* Flip choreography: the 3D stage for the card rotateY. The 1600px twin is
+     QUICKVIEW_FLIP_PERSPECTIVE_PX in utils/quickViewChoreo.ts (same value on
+     OverviewGroupSection's grid) — keep all three in sync. */
+  perspective: 1600px;
 }
 </style>

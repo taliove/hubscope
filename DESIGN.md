@@ -139,7 +139,7 @@ HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动
 
 **The Double-Encoding Rule.** 状态永远色 + 词双编码同场:圆点/图标承担色,文字承担词。任何只用颜色表达状态的呈现都是缺陷(静态导出物料用着色文字转译,不复制状态灯)。
 
-**The Blink-Is-Failing Rule.** 全站唯一动画是 failing 告警的 hs-blink 闪烁。运行状态、字标、装饰元素一律静止——「有东西在闪」的直觉解读必须是「有情况」。
+**The Blink-Is-Failing Rule.** 全站唯一动画是 failing 告警的 hs-blink 闪烁。运行状态、字标、装饰元素一律静止——「有东西在闪」的直觉解读必须是「有情况」。本条管**持续/循环/环境动效**;用户触发的单次状态过渡(披露、hover、聚焦)走 `--hs-transition`,不受本条限制(2026-07-29 /impeccable animate 评审澄清)。
 
 ## Typography
 
@@ -186,6 +186,10 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 
 **The Flat-By-Default Rule.** 静态卡片 `shadow="never"` + 1px 描边。阴影出现当且仅当:hover 的可点卡片,或浮层。静态元素吃阴影 = 谎报可点性。
 
+### Overlay Scrim(2026-07-29 登记)
+- **`--hs-overlay-bg`**(亮 `rgba(15,27,32,.40)` / 暗 `rgba(0,0,0,.55)`):全站唯一浮层衬底色,EP overlay 经 ep-theme.css 统一映射,不存第二套衬底语言。
+- **雾化(backdrop-filter blur 8px)是速览弹窗专属例外**:blur 承载「卡片墙还在后面」的连续性隐喻,与翻转编舞同源;管理台弹窗是作业工具,不雾化。blur 值为实现常量,不进令牌刻度。
+
 ## Shapes
 
 圆角四档,按元素层级分配,无默认档(6px 已退役):
@@ -200,6 +204,24 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 ### Named Rules
 
 **The Radius-By-Layer Rule.** 圆角跟着层级走,不跟着喜好走:控件 4、面板 8、时间格 2、胶囊 999。新元素先问自己属于哪一层,再取圆角。
+
+## Motion
+
+动效是克制的:全站持续动画只有一例(failing 闪烁,Blink-Is-Failing Rule),其余动效全部是用户触发的单次过渡,且只有两档速度。
+
+### Transition Scale(tokens.css)
+- **default**(`--hs-transition`,0.2s cubic-bezier(0.4, 0, 0.2, 1)):一切默认过渡——hover/focus 反馈、披露容器、状态切换。
+- **focal**(`--hs-transition-focal`,0.32s cubic-bezier(0.16, 1, 0.3, 1)):焦点入场专用——用户触发的「主体进入视野中心」单次过渡(首例:速览弹窗翻入)。不用于 hover、披露、装饰。
+
+编舞延迟(stagger/delay/搭接)不进刻度:是单次编舞的常量,集中在编舞实现处定义并注释互指(首例:速览弹窗 140ms stagger、perspective 1600px)。
+
+focal 档第二形态登记(2026-07-30,速览弹窗 morph 批):**共享元素 morph**——用户点名的主体从原位连续变形进入视野中心(位移 + 缩放 + 翻转同拍,首例:速览弹窗从被点卡片矩形 morph 进场)。morph 是 focal 档的合法负载,不新增速度档;几何(dx/dy/scale)走纯函数,锚点连续性(起点 = 触发元素矩形、终点 = 恒等终态)优先于路径直线性;动态变换经 CSS 变量注入,fallback 恒为原地入场(reduced-motion 由全局归零 + JS 门控覆盖,不新增分支)。
+
+### Named Rules
+
+**The Two-Speed Rule.** 全站只有两档过渡速度:0.2s 给反馈,0.32s 给焦点入场。不引入第三档;拿不准就用 default——focal 只颁给「用户点名要看的东西正在登场」。
+
+**The Gate-The-Phases Rule.** reduced-motion 下 CSS 过渡由全局归零兜底,但 JS 阶段时序(setTimeout/rAF 编舞延迟)必须单独门控:reduced-motion 时全部延迟归零、终态直呈——延迟不是装饰,是等待。
 
 ## Components
 
@@ -235,7 +257,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - 全站唯一的 endpoint 状态展示组件:语义色圆点 + 状态词,四态(正常/降级/宕机/告警),告警态橙 + hs-blink 闪烁;degraded 可挂成因副标签(「· 可用性」「· 延迟」),副标签无独立圆点/底色。需要展示状态处一律复用,禁止第二个状态灯实现。
 
 ### Signature: 24h 分段条
-- 24 格填满式时间条(格高 16px/8px,xs 圆角,2px 间距),格 = 一小时,三档着色(≥95% 绿 / <95% 黄 / 0% 红 / 无数据灰);聚合口径 = 按小时求和,禁止按端点简单平均。
+- 24 格填满式时间条(格高 16px/8px,xs 圆角,2px 间距),格 = 一小时,三档着色(≥95% 绿 / <95% 黄 / 0% 红 / 无数据灰);聚合口径 = 按小时求和,禁止按端点简单平均。交互面(EndpointCard、速览弹窗)一律消费共享组件 EndpointUptimePanel;StatusCard 静态物料保持独立实现(快照渲染契约,ticket 76 先例)。
 
 ## Do's and Don'ts
 

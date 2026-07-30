@@ -114,7 +114,7 @@ function bucketTooltip(dot: OverviewDot): string {
 </script>
 
 <style scoped>
-/* Row construction mirrors .card-dots in EndpointCard.vue: fixed-width
+/* Row construction mirrors .card-dots in EndpointUptimePanel.vue: fixed-width
    label + flexible strip. The label width (26px) is shared with the dots
    label so both strips start at the same x. */
 .latency-row {
