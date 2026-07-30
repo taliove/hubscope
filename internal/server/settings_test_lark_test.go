@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/taliove/hubscope/internal/scheduler"
 )
 
 // These tests cover ticket 100 (the "send test" button for the Lark alert
@@ -221,10 +224,12 @@ func TestTestLarkTargetsBodyAddressAndIgnoresSwitch(t *testing.T) {
 // kind="test" events must stay out of the down/recovered lazy state rebuild
 // (LatestDownRecoveryEvent filters by a down/recovered whitelist). With test
 // events in the log, the endpoint lifecycle still fires exactly one down
-// alert and one recovered notice.
+// alert and one recovered notice — sent via the aggregation window (spec
+// 0017), so the fake clock flushes before asserting.
 func TestTestLarkDoesNotPolluteAlertState(t *testing.T) {
 	db := openTempDB(t)
-	ts := newTestAPIServer(t, db)
+	clock := scheduler.NewFakeClock(time.Now())
+	ts := newAlertClockServer(t, db, clock)
 	lark := newStubLarkServer(t)
 	stubHub := newStubHubServer()
 	defer stubHub.Close()
@@ -252,7 +257,8 @@ func TestTestLarkDoesNotPolluteAlertState(t *testing.T) {
 	// events must not read as an open (or closed) outage.
 	runProbeRound(t, ts, endpointID)
 	runProbeRound(t, ts, endpointID)
-	msgs := lark.messages()
+	clock.Advance(alertWindowForTest)
+	msgs := waitForLarkMessages(t, lark, 3)
 	// 2 test messages + 1 down alert.
 	if len(msgs) != 3 {
 		t.Fatalf("after crossing threshold: expected 3 messages (2 test + 1 down), got %d", len(msgs))
@@ -264,19 +270,20 @@ func TestTestLarkDoesNotPolluteAlertState(t *testing.T) {
 	// Recovery fires exactly once as well.
 	stubHub.SetMode("success")
 	runProbeRound(t, ts, endpointID)
-	if got := len(lark.messages()); got != 4 {
-		t.Fatalf("after recovery: expected 4 messages, got %d", got)
-	}
+	clock.Advance(alertWindowForTest)
+	waitForLarkMessages(t, lark, 4)
 
 	events := listAlerts(t, ts, "")
-	if len(events) != 4 {
-		t.Fatalf("expected 4 events (2 test + down + recovered), got %d", len(events))
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events (2 test + down + batch + recovered + batch), got %d", len(events))
 	}
-	// Newest first: recovered, down, then the two test events.
-	if events[0]["kind"].(string) != "recovered" || events[1]["kind"].(string) != "down" {
-		t.Errorf("expected recovered+down leading, got %v / %v", events[0]["kind"], events[1]["kind"])
+	if got := alertEventsOfKind(t, ts, "down"); len(got) != 1 {
+		t.Errorf("expected 1 down event, got %d", len(got))
 	}
-	if events[2]["kind"].(string) != "test" || events[3]["kind"].(string) != "test" {
-		t.Errorf("expected trailing test events, got %v / %v", events[2]["kind"], events[3]["kind"])
+	if got := alertEventsOfKind(t, ts, "recovered"); len(got) != 1 {
+		t.Errorf("expected 1 recovered event, got %d", len(got))
+	}
+	if got := alertEventsOfKind(t, ts, "test"); len(got) != 2 {
+		t.Errorf("expected 2 test events, got %d", len(got))
 	}
 }

@@ -57,6 +57,14 @@
       </el-button>
     </div>
 
+    <!-- Group-level 24h segmented availability bar (spec 0017, GH #64):
+         always visible, collapsed or not, so group health stays scannable
+         without expanding the card matrix. Aggregated from the same
+         page-filtered scope, enabled endpoints only (the matrix below also
+         renders disabled cards, explicitly tagged), so the strip can never
+         contradict the matrix. -->
+    <UptimeStrip :dots="groupDots" />
+
     <!-- Disclosure container (2026-07-29 /impeccable animate, ui-guidelines
          §6 扩展条): grid 0fr↔1fr height transition + inner min-height:0 /
          overflow:hidden + directional visibility delay. Collapsed state exits
@@ -85,9 +93,11 @@ import { ref, computed, watch } from 'vue'
 import { Share, ArrowRight } from '@element-plus/icons-vue'
 import StatusBadge from './StatusBadge.vue'
 import EndpointCard from './EndpointCard.vue'
+import UptimeStrip from './UptimeStrip.vue'
 import { formatPercent, formatMs } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
 import { SEVERITY_ORDER } from '@/utils/severitySort'
+import { aggregateDots24h } from '@/utils/overviewDots'
 import type { OverviewGroup, OverviewEntry, Protocol } from '@/api/types'
 
 const props = defineProps<{
@@ -152,6 +162,10 @@ const uniformProtocol = computed<Protocol | null>(() => {
 const collapseCardProtocolTag = computed(
   () => props.grouping === 'protocol' || uniformProtocol.value !== null,
 )
+
+// Group strip scope (batch-59 rule, ui-guidelines §5): ENABLED entries only —
+// a disabled endpoint's stale probes must not color the group's health bar.
+const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.enabled)))
 </script>
 
 <style scoped>
@@ -276,6 +290,11 @@ const collapseCardProtocolTag = computed(
   /* Sibling of the collapse button; the header row's 4px gap carries the
      spacing (was margin-left: 4px while nested in the old header div). */
   flex: none;
+}
+/* Breathing room between the group strip and the card matrix (the header's
+   own margin-bottom handles the gap above the strip). */
+.group-section .uptime-strip {
+  margin-bottom: 10px;
 }
 .card-grid {
   display: grid;

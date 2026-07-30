@@ -125,3 +125,9 @@ export function formatBucketTime(value: string): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:00`
 }
+
+// Render an integer hour 0–23 as an "HH:00" label (spec 0017 quiet-hours
+// bounds selects).
+export function formatHour(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`
+}

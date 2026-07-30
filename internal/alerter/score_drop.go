@@ -130,9 +130,47 @@ func (e *Evaluator) HandleCampaign(ctx context.Context, campaignID int64) {
 	}
 
 	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
-	for _, modelDBID := range order {
-		e.sendModelAlert(ctx, webhook, campaign, alerts[modelDBID])
+
+	// Quiet gate (spec 0017 ticket 4, GH #67): inside quiet hours the
+	// score_drop event is recorded (sent_ok=false, "delivery unconfirmed")
+	// and deferred to the end-of-window summary instead of being sent; the
+	// boundary timer is kept in sync at this decision point. login_alert is
+	// the only quiet-exempt path and does not pass through here.
+	e.syncQuietTimerLocked()
+	quiet := false
+	q, err := e.quietHoursLocked()
+	if err != nil {
+		slog.Error("alerter: read quiet-hours settings for score-drop check", "error", err)
+		return
 	}
+	quiet = q.active() && q.contains(e.clock.Now())
+
+	for _, modelDBID := range order {
+		message := buildModelAlertMessage(campaign, alerts[modelDBID])
+		if quiet {
+			e.deferScoreDropLocked(message)
+			continue
+		}
+		e.sendModelAlert(ctx, webhook, campaign, alerts[modelDBID], message)
+	}
+}
+
+// deferScoreDropLocked records a score_drop alert decided inside quiet
+// hours without sending it: the event lands with sent_ok=false ("delivery
+// unconfirmed") and the frozen message text queues for the end-of-window
+// summary, which confirms it. Called with e.mu held.
+func (e *Evaluator) deferScoreDropLocked(message Message) {
+	event, err := e.db.CreateAlertEvent(store.AlertEvent{
+		Kind:    store.AlertKindScoreDrop,
+		Message: message.Text,
+		SentOK:  false, // delivery unconfirmed until the quiet summary
+	})
+	if err != nil {
+		slog.Error("alerter: record deferred score_drop event", "error", err)
+		return
+	}
+	e.quietScoreDrops = append(e.quietScoreDrops, quietScoreDrop{eventID: event.ID, text: message.Text})
+	slog.Info("alerter: score_drop deferred by quiet hours", "event_id", event.ID)
 }
 
 // modelSuiteDrop pairs one model's identity with its drop inside one suite.
@@ -289,9 +327,10 @@ func runVerdictProfile(results []store.EvalResult) string {
 }
 
 // sendModelAlert delivers the consolidated per-model alert and records it.
-func (e *Evaluator) sendModelAlert(ctx context.Context, webhook string, campaign *store.Campaign, alert *modelAlert) {
-	message := buildModelAlertMessage(campaign, alert)
-
+// The message is built by the caller so the quiet gate can freeze the same
+// rendering for the deferred path (ticket 101: single source for both
+// renderings).
+func (e *Evaluator) sendModelAlert(ctx context.Context, webhook string, campaign *store.Campaign, alert *modelAlert, message Message) {
 	sentOK := true
 	if err := e.sender.Send(ctx, webhook, message); err != nil {
 		slog.Error("alerter: send score_drop alert", "campaign_id", campaign.ID, "model", alert.modelID, "error", err)

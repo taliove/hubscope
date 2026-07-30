@@ -10,48 +10,22 @@
 // latency aggregate at all). The dots-based availability below is identical
 // to the backend figure by construction (probe-weighted ok/total, same as
 // internal/server/overview.go's groupAccumulator).
-import type { OverviewDot, OverviewEntry } from '@/api/types'
+import type { OverviewEntry } from '@/api/types'
 import { formatPercent, formatPercentDigits } from '@/utils/format'
 import { STATUS_LABELS, type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
+import { dotTier, type AvailabilityTier } from '@/utils/overviewDots'
 
-// Availability tiers (ui-guidelines §3): same thresholds as EndpointCard
-// dots — no data gray, 0% red, ≥95% green, below 95% yellow.
-export type AvailabilityTier = 'none' | 'fail' | 'partial' | 'ok'
-
-export function dotTier(total: number, failures: number): AvailabilityTier {
-  if (total === 0) return 'none'
-  if (failures >= total) return 'fail'
-  return (total - failures) / total >= 0.95 ? 'ok' : 'partial'
-}
+// dotTier / aggregateDots24h / AvailabilityTier live in utils/overviewDots.ts
+// since spec 0017 (GH #64) so the group-level UptimeStrip shares the batch-59
+// probe-weighted aggregation by construction; re-exported here to keep the
+// existing import sites (StatusCard* components, EndpointDetailView) stable.
+export { aggregateDots24h, dotTier } from '@/utils/overviewDots'
+export type { AvailabilityTier } from '@/utils/overviewDots'
 
 export function availabilityTier(rate: number | null): AvailabilityTier {
   if (rate === null) return 'none'
   if (rate <= 0) return 'fail'
   return rate >= 0.95 ? 'ok' : 'partial'
-}
-
-// Sum per-hour totals/failures across entries, oldest hour first. This is
-// probe-weighted by construction — a plain per-endpoint average would let a
-// low-traffic endpoint hide a high-traffic outage.
-export function aggregateDots24h(entries: OverviewEntry[]): OverviewDot[] {
-  const withDots = entries.find(e => e.dots_24h.length > 0)
-  const length = withDots ? withDots.dots_24h.length : 24
-  const out: OverviewDot[] = []
-  for (let i = 0; i < length; i++) {
-    let total = 0
-    let failures = 0
-    for (const entry of entries) {
-      const dot = entry.dots_24h[i]
-      if (!dot) continue
-      total += dot.total
-      failures += dot.failures
-    }
-    // Aggregated dots carry counts only: a cross-endpoint P50 cannot be
-    // derived from per-bucket percentiles, so p50_ms stays null (the
-    // StatusCard material renders availability, never the sparkline).
-    out.push({ bucket_start: withDots?.dots_24h[i]?.bucket_start ?? '', total, failures, p50_ms: null })
-  }
-  return out
 }
 
 // Probe-weighted availability of the whole window; null when nothing probed.

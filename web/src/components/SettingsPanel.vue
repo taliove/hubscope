@@ -25,13 +25,38 @@
             触发,告警附各评估集跌幅与变动题目明细;题目版本变更的对比自动跳过,并标注「题目已变更,分数不可比」
           </div>
         </el-form-item>
+        <el-form-item label="静默时段" data-item="quiet_hours_enabled">
+          <el-switch v-model="form.quiet_hours_enabled" active-text="开" inactive-text="关" />
+          <div class="field-hint block-hint">
+            启用后,静默时段内告警只记录不发送,时段结束时发送一条摘要(仅列仍故障端点/厂商组与期内分数大跌);登录爆破告警不受静默约束,保持即时
+          </div>
+        </el-form-item>
+        <el-form-item label="静默起止" data-item="quiet_hours_start">
+          <el-select v-model="form.quiet_hours_start" :disabled="!form.quiet_hours_enabled">
+            <el-option v-for="h in hourOptions" :key="h" :label="formatHour(h)" :value="h" />
+          </el-select>
+          <span class="field-hint">至</span>
+          <el-select v-model="form.quiet_hours_end" :disabled="!form.quiet_hours_enabled">
+            <el-option v-for="h in hourOptions" :key="h" :label="formatHour(h)" :value="h" />
+          </el-select>
+          <div class="field-hint block-hint">
+            按服务器本地时区的整点小时,支持跨日(如 23 时至次日 7 时);开始与结束相同视为未启用
+          </div>
+        </el-form-item>
       </el-form>
 
       <el-divider content-position="left">近期告警事件</el-divider>
       <el-table :data="alerts" size="small" empty-text="暂无告警事件">
         <el-table-column prop="kind" label="类型" width="110">
           <template #default="{ row }">
-            <el-tag :type="kindTagType(row.kind)" size="small">{{ kindLabel(row.kind) }}</el-tag>
+            <el-tag :type="alertKindTagType(row.kind)" size="small">{{ alertKindLabel(row.kind) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="厂商" width="120">
+          <template #default="{ row }">
+            <!-- Vendor family name rides group_key (spec 0017 group alerts);
+                 blank on every endpoint- or hub-scoped event. -->
+            <span v-if="row.group_key" class="vendor-cell" :title="row.group_key">{{ row.group_key }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="message" label="内容" min-width="240" show-overflow-tooltip />
@@ -102,7 +127,8 @@ import {
   type AppSettings,
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
-import { formatTime } from '@/utils/format'
+import { formatTime, formatHour } from '@/utils/format'
+import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
 
@@ -160,32 +186,23 @@ const form = reactive<AppSettings>({
   default_sample_count: 1,
   eval_concurrency: 4,
   suite_weights: {},
+  quiet_hours_enabled: false,
+  quiet_hours_start: 23,
+  quiet_hours_end: 7,
 })
+
+// Quiet-hours bounds: integer hours 0–23 rendered as HH:00 via formatHour
+// (utils/format.ts, §7 集中纪律; spec 0017 ticket 4). el-select keeps its
+// component default width (§4 admin form tiers: el-switch / el-select are
+// not width-capped).
+const hourOptions = Array.from({ length: 24 }, (_, h) => h)
 const suites = ref<Suite[]>([])
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
 const testing = ref(false)
 
-const KIND_LABELS: Record<AlertEvent['kind'], string> = {
-  down: '故障',
-  recovered: '恢复',
-  score_drop: '分数大跌',
-  score_drop_skipped: '对比跳过',
-  test: '测试',
-}
-
-function kindLabel(kind: AlertEvent['kind']): string {
-  return KIND_LABELS[kind] ?? kind
-}
-
-// The manual channel check is not a health signal: it takes the neutral
-// info tone rather than a status color.
-function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning' | 'info' {
-  if (kind === 'down') return 'danger'
-  if (kind === 'recovered') return 'success'
-  if (kind === 'test') return 'info'
-  return 'warning'
-}
+// Kind word/tag mapping lives in utils/alertKind.ts (GH #68): the alert
+// event vocabulary is a single source of truth, never component literals.
 
 // Only suites in the evaluation rotation take a weight input: retired
 // suites no longer join campaigns, so weighting them would be misleading.
@@ -343,5 +360,13 @@ onMounted(async () => {
 /* A recorded-but-unsent event (skipped comparison) reads neutral. */
 .sent-skip {
   color: var(--hs-text-secondary);
+}
+/* Vendor family name (spec 0017 group alerts): long names truncate with
+   title hover carrying the full string (§6). */
+.vendor-cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

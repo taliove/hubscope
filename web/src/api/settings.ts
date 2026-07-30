@@ -13,17 +13,42 @@ export interface AppSettings {
   // Leaderboard total-score weight per suite key (ticket 31); suites absent
   // from the map weigh 1 (equal weighting is the default).
   suite_weights: Record<string, number>
+  // Quiet hours (spec 0017 ticket 4): inside the daily window alert sends
+  // are held and a summary goes out when the window ends. Hours are
+  // integers 0–23 in the server's local timezone; start == end means "not
+  // enabled" even when the switch is on.
+  quiet_hours_enabled: boolean
+  quiet_hours_start: number
+  quiet_hours_end: number
 }
 
 export type UpdateSettingsPayload = Partial<AppSettings>
 
+// Alert event kinds: the five legacy kinds plus the spec 0017 noise-
+// reduction kinds — group_down / group_recovered (vendor group state
+// transitions), batch (one aggregated window flush delivery), quiet_summary
+// (quiet-hours end summary delivery).
+export type AlertKind =
+  | 'down'
+  | 'recovered'
+  | 'score_drop'
+  | 'score_drop_skipped'
+  | 'test'
+  | 'group_down'
+  | 'group_recovered'
+  | 'batch'
+  | 'quiet_summary'
+
 export interface AlertEvent {
   id: number
   endpoint_id: number | null
-  kind: 'down' | 'recovered' | 'score_drop' | 'score_drop_skipped' | 'test'
+  kind: AlertKind
   message: string
   sent_ok: boolean
   created_at: string
+  // Vendor family name; non-null only on group_down / group_recovered
+  // (spec 0017 ticket 3). Null on every endpoint- or hub-scoped event.
+  group_key: string | null
 }
 
 // Result of POST /api/settings/test-lark (ticket 100): error carries the

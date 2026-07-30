@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/taliove/hubscope/internal/scheduler"
 	"github.com/taliove/hubscope/internal/status"
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -15,10 +17,18 @@ import (
 //
 // Alerting rules:
 //   - failures reach status.DownThreshold and the endpoint is not yet alerted →
-//     send one "down" alert and record the event;
+//     record one "down" event and buffer the transition into the aggregation
+//     window;
 //   - the outage continues → stay silent (no repeat alerts);
-//   - the endpoint was alerted and a success arrives → send one "recovered"
-//     notice and record the event.
+//   - the endpoint was alerted and a success arrives → record one
+//     "recovered" event and buffer the transition.
+//
+// Sending is decoupled from the decision (spec 0017, ADR 0014): the event
+// lands in alert_events at decision time with sent_ok=false ("delivery
+// unconfirmed") and the alerted flag flips immediately, so the W5 lazy
+// state rebuild never depends on a send having happened; the buffered
+// transitions flush 60s later as one aggregated card per kind, which writes
+// the events' sent_ok back and records a batch event with the actual text.
 //
 // The per-endpoint alerted flag lives in memory; when an endpoint has no
 // cached state it is rebuilt from alert_events (a trailing "down" event means
@@ -26,25 +36,70 @@ import (
 type Evaluator struct {
 	db     *store.DB
 	sender *LarkSender
+	clock  scheduler.Clock
 
-	// mu serializes evaluation per process. HandleRound/HandleCampaign
-	// sends happen under the lock; they are rare (transitions only) and
-	// bounded by the sender timeout, and the store is single-connection
-	// anyway, so a global lock is the simplest correct choice. The login
-	// brute-force path (login_alert.go) sends off-lock instead: it has no
-	// alerted state to protect and must never block the login request path.
+	// mu serializes evaluation per process. HandleRound/HandleCampaign and
+	// window-flush sends happen under the lock; they are rare (transitions
+	// only) and bounded by the sender timeout, and the store is
+	// single-connection anyway, so a global lock is the simplest correct
+	// choice. The login brute-force path (login_alert.go) sends off-lock
+	// instead: it has no alerted state to protect and must never block the
+	// login request path.
 	mu      sync.Mutex
 	alerted map[int64]bool
+
+	// Vendor group alerts (spec 0017 ticket 3, GH #66): the group-open flag
+	// per family, lazily rebuilt from persisted group events after a restart
+	// (the group counterpart of alerted). Evaluated at every endpoint
+	// transition's decision point in group.go.
+	groupAlerted map[string]bool
+
+	// Alert aggregation window (spec 0017): transitions buffer here at
+	// decision time and flush as one aggregated card per kind when the
+	// timer fires. A process restart drops the buffer but never the events,
+	// so nothing is re-reported. groupPending holds the buffered group
+	// transitions (group_down / group_recovered) sharing the same window.
+	// windowFiresAt is the scheduled fire time of the armed window — the
+	// quiet gate evaluates it rather than the handler's run time, so a
+	// flush executed late (fake-clock jumps in tests) still honors the
+	// quiet state of the moment the window was due.
+	pending       []bufferedTransition
+	groupPending  []bufferedGroupTransition
+	windowTimer   scheduler.Timer
+	windowFiresAt time.Time
+
+	// Quiet hours (spec 0017 ticket 4, GH #67): the single boundary timer
+	// fires at the next window edge (start or end); quietBoundaryAt is what
+	// it is armed for. quietDone is closed when the armed timer is
+	// superseded or disarmed, releasing its waiter goroutine — invariant:
+	// quietTimer != nil ⟺ quietDone != nil. quietScoreDrops holds the
+	// score_drop events deferred inside the window, riding the
+	// end-of-window summary.
+	quietTimer      scheduler.Timer
+	quietBoundaryAt time.Time
+	quietDone       chan struct{}
+	quietScoreDrops []quietScoreDrop
 }
 
 // NewEvaluator creates an Evaluator persisting events through db and sending
-// via sender.
+// via sender. The aggregation window runs on the real clock; tests swap in a
+// fake one via UseClock.
 func NewEvaluator(db *store.DB, sender *LarkSender) *Evaluator {
 	return &Evaluator{
-		db:      db,
-		sender:  sender,
-		alerted: make(map[int64]bool),
+		db:           db,
+		sender:       sender,
+		clock:        scheduler.RealClock{},
+		alerted:      make(map[int64]bool),
+		groupAlerted: make(map[string]bool),
 	}
+}
+
+// UseClock swaps the clock driving the aggregation window (W4). It is a
+// construction-time seam (the server's WithAlertClock option applies it
+// before the server serves traffic) and is not safe against concurrent
+// rounds.
+func (e *Evaluator) UseClock(clock scheduler.Clock) {
+	e.clock = clock
 }
 
 // HandleRound evaluates one finished probe round for alerting. It never
@@ -66,11 +121,11 @@ func (e *Evaluator) HandleRound(ctx context.Context, endpointID int64, _ []store
 
 	switch {
 	case !alerted && consecutive >= status.DownThreshold:
-		e.transition(ctx, endpointID, store.AlertKindDown, true)
+		e.transition(endpointID, store.AlertKindDown, true)
 	case alerted && consecutive < status.DownThreshold:
 		// A success since the down alert ended the outage (consecutive
 		// failures reset below the threshold).
-		e.transition(ctx, endpointID, store.AlertKindRecovered, false)
+		e.transition(endpointID, store.AlertKindRecovered, false)
 	}
 }
 
@@ -91,15 +146,31 @@ func (e *Evaluator) isAlerted(endpointID int64) (bool, error) {
 	return flagged, nil
 }
 
-// transition sends the alert (when configured), records the event, and
-// updates the alerted flag. The flag flips even when the webhook is
-// unconfigured or the send fails: an unconfigured webhook produces no event
-// at all, while a failed send produces one with sent_ok=false — in both
-// cases the outage counts as reported and is not retried.
-func (e *Evaluator) transition(ctx context.Context, endpointID int64, kind string, alerted bool) {
-	message, err := e.buildMessage(endpointID, kind)
+// transition records the alert event at decision time, flips the alerted
+// flag, evaluates the endpoint's vendor group at the same decision point
+// (spec 0017 ticket 3: the group share is computed from the just-flipped
+// flags and the just-recorded event, so endpoint and group transitions
+// share one consistent snapshot), and buffers the transition into the
+// aggregation window (ADR 0014). The event lands with sent_ok=false —
+// "delivery unconfirmed" — and the window flush later sends one aggregated
+// card per kind, writes the real results back, and records a batch event
+// with the actual text sent.
+//
+// The endpoint transition is marked absorbed when its group is open before
+// or opens/closes with this very transition: absorbed transitions never
+// render into endpoint cards — their story is told by the group cards —
+// and their events honestly stay sent_ok=false (never individually
+// delivered).
+//
+// The flag flips even when the webhook is unconfigured or alerts are
+// disabled: the outage counts as reported and is not retried (W5); an
+// unconfigured webhook still records no event at all. Group evaluation runs
+// either way — the group flag makes the same trade inside
+// groupTransitionLocked.
+func (e *Evaluator) transition(endpointID int64, kind string, alerted bool) {
+	alert, err := e.buildEndpointAlert(endpointID, kind)
 	if err != nil {
-		slog.Error("alerter: build alert message", "kind", kind, "endpoint_id", endpointID, "error", err)
+		slog.Error("alerter: build alert content", "kind", kind, "endpoint_id", endpointID, "error", err)
 		return
 	}
 	e.alerted[endpointID] = alerted
@@ -114,72 +185,87 @@ func (e *Evaluator) transition(ctx context.Context, endpointID int64, kind strin
 		slog.Error("alerter: read alert_enabled setting", "error", err)
 		return
 	}
-	if webhook == "" || !enabled {
+	configured := webhook != "" && enabled
+
+	var eventID int64
+	if configured {
+		event, err := e.db.CreateAlertEvent(store.AlertEvent{
+			EndpointID: &endpointID,
+			Kind:       kind,
+			Message:    alert.text,
+			SentOK:     false, // delivery unconfirmed until the window flush
+		})
+		if err != nil {
+			slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
+			return
+		}
+		eventID = event.ID
+	} else {
 		// Not configured: the transition happened but no event is recorded.
 		slog.Debug("alerter: alert skipped (webhook not configured or alerts disabled)", "kind", kind, "endpoint_id", endpointID)
+	}
+
+	groupWasOpen, err := e.isGroupAlerted(alert.family)
+	if err != nil {
+		slog.Error("alerter: rebuild group alert state", "family", alert.family, "error", err)
 		return
 	}
+	e.evaluateGroupLocked(alert.family)
 
-	sentOK := true
-	if err := e.sender.Send(ctx, webhook, message); err != nil {
-		slog.Error("alerter: send alert", "kind", kind, "endpoint_id", endpointID, "error", err)
-		sentOK = false
-	} else {
-		slog.Info("alerter: alert sent", "kind", kind, "endpoint_id", endpointID)
+	if !configured {
+		return
 	}
-
-	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
-		EndpointID: &endpointID,
-		Kind:       kind,
-		Message:    message.Text,
-		SentOK:     sentOK,
-	}); err != nil {
-		slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
+	groupOpenNow, err := e.isGroupAlerted(alert.family)
+	if err != nil {
+		slog.Error("alerter: rebuild group alert state", "family", alert.family, "error", err)
+		return
 	}
+	e.bufferLocked(bufferedTransition{
+		eventID:  eventID,
+		kind:     kind,
+		alert:    alert,
+		absorbed: groupWasOpen || groupOpenNow,
+	})
 }
 
-// buildMessage composes the alert with the model ID, protocol, and the
-// latest error summary for down alerts — once, as a Message whose plain text
-// is persisted and whose fields render the card (ticket 101: the two
-// renderings share this single source).
-func (e *Evaluator) buildMessage(endpointID int64, kind string) (Message, error) {
+// buildEndpointAlert composes the per-endpoint alert content — hub name,
+// model ID, protocol, family (the group-alert dimension), and the latest
+// error summary for down alerts — frozen at decision time so the window
+// flush can render the endpoint inside an aggregated card even if the
+// endpoint changes before the flush. The plain text is persisted on the
+// per-endpoint event (the alert history table renders it unchanged).
+func (e *Evaluator) buildEndpointAlert(endpointID int64, kind string) (endpointAlert, error) {
 	endpoint, err := e.db.GetEndpoint(endpointID)
 	if err != nil {
-		return Message{}, fmt.Errorf("load endpoint: %w", err)
+		return endpointAlert{}, fmt.Errorf("load endpoint: %w", err)
 	}
 	model, err := e.db.GetModel(endpoint.ModelID)
 	if err != nil {
-		return Message{}, fmt.Errorf("load model: %w", err)
+		return endpointAlert{}, fmt.Errorf("load model: %w", err)
+	}
+	hub, err := e.db.GetHub(model.HubID)
+	if err != nil {
+		return endpointAlert{}, fmt.Errorf("load hub: %w", err)
 	}
 
+	alert := endpointAlert{
+		hubName:  hub.Name,
+		modelID:  model.ModelID,
+		protocol: endpoint.Protocol,
+		family:   model.Family,
+	}
 	if kind == store.AlertKindRecovered {
-		return Message{
-			Text: fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",
-				model.ModelID, endpoint.Protocol),
-			Title:    "端点恢复",
-			Template: templateGreen,
-			Fields: []Field{
-				{Label: "模型", Value: model.ModelID},
-				{Label: "协议", Value: endpoint.Protocol},
-			},
-		}, nil
+		alert.text = fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",
+			model.ModelID, endpoint.Protocol)
+		return alert, nil
 	}
 
-	lastError := "未知错误"
+	alert.lastError = "未知错误"
 	if latest, err := e.db.LatestProbe(endpointID); err == nil &&
 		latest != nil && !latest.OK && latest.ErrorSummary != nil {
-		lastError = *latest.ErrorSummary
+		alert.lastError = *latest.ErrorSummary
 	}
-	return Message{
-		Text: fmt.Sprintf("【HubScope】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
-			model.ModelID, endpoint.Protocol, status.DownThreshold, lastError),
-		Title:    "端点告警",
-		Template: templateRed,
-		Fields: []Field{
-			{Label: "模型", Value: model.ModelID},
-			{Label: "协议", Value: endpoint.Protocol},
-			{Label: "连续失败", Value: fmt.Sprintf("%d 次", status.DownThreshold)},
-			{Label: "最近错误", Value: lastError},
-		},
-	}, nil
+	alert.text = fmt.Sprintf("【HubScope】端点告警:模型 %s(%s)已连续 %d 次探测失败,最近错误:%s",
+		model.ModelID, endpoint.Protocol, status.DownThreshold, alert.lastError)
+	return alert, nil
 }

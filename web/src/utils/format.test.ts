@@ -7,7 +7,7 @@
 //   batch meta line.
 // - formatClockMinute (polish 2026-07-29): bare HH:mm for freshness labels.
 import { describe, it, expect } from 'vitest'
-import { formatDuration, formatTokens, formatTimeMinute, formatClockMinute } from '@/utils/format'
+import { formatDuration, formatTokens, formatTimeMinute, formatClockMinute, formatHour } from '@/utils/format'
 
 describe('formatDuration', () => {
   it('renders sub-minute durations as one-decimal seconds', () => {
@@ -92,5 +92,13 @@ describe('formatClockMinute', () => {
 
   it('falls back to the raw value on an unparseable input', () => {
     expect(formatClockMinute('not-a-time')).toBe('not-a-time')
+  })
+})
+
+describe('formatHour', () => {
+  it('renders integer hours as zero-padded HH:00 (spec 0017 quiet-hours bounds)', () => {
+    expect(formatHour(0)).toBe('00:00')
+    expect(formatHour(7)).toBe('07:00')
+    expect(formatHour(23)).toBe('23:00')
   })
 })

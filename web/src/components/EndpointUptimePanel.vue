@@ -25,24 +25,22 @@
 <script setup lang="ts">
 import type { OverviewDot } from '@/api/types'
 import LatencySparkline from './LatencySparkline.vue'
-import { formatBucketTime } from '@/utils/format'
+import { dotTier, dotTooltipText } from '@/utils/overviewDots'
 
-// Geometry, tooltip wording and dot tiering moved here verbatim from
-// EndpointCard with the extraction (2026-07-29) — one copy only.
+// Geometry moved here verbatim from EndpointCard with the extraction
+// (2026-07-29). Dot tiering and tooltip wording consume utils/overviewDots
+// (spec 0017, GH #64 — the single source shared with the group-level
+// UptimeStrip, so the two strips are consistent by construction).
 defineProps<{ dots: OverviewDot[]; baselineMs: number | null }>()
 
 // 24h stability dot coloring: gray = no probes, green = success rate ≥95%,
 // red = all failed, yellow = below 95%.
 function dotClass(dot: OverviewDot): string {
-  if (dot.total === 0) return 'dot-none'
-  if (dot.failures === dot.total) return 'dot-fail'
-  return (dot.total - dot.failures) / dot.total >= 0.95 ? 'dot-ok' : 'dot-partial'
+  return `dot-${dotTier(dot.total, dot.failures)}`
 }
 
 function dotTooltip(dot: OverviewDot): string {
-  const label = `${formatBucketTime(dot.bucket_start)} 时段`
-  if (dot.total === 0) return `${label} · 无数据`
-  return `${label} · 成功 ${dot.total - dot.failures}/${dot.total}`
+  return dotTooltipText(dot)
 }
 </script>
 

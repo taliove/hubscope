@@ -14,6 +14,7 @@ import (
 	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/hubclient"
 	"github.com/taliove/hubscope/internal/prober"
+	"github.com/taliove/hubscope/internal/scheduler"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -84,6 +85,16 @@ type Option func(*Server)
 func WithNow(now func() time.Time) Option {
 	return func(s *Server) {
 		s.now = now
+	}
+}
+
+// WithAlertClock overrides the clock driving the alert aggregation window
+// (spec 0017, ADR 0014; W4 sibling of the scheduler's injectable clock).
+// Tests inject a scheduler.FakeClock and advance the 60s window manually —
+// zero real waiting. Production keeps the RealClock default.
+func WithAlertClock(clock scheduler.Clock) Option {
+	return func(s *Server) {
+		s.alerter.UseClock(clock)
 	}
 }
 

@@ -34,6 +34,8 @@ export const SETTINGS_ITEMS = [
   'lark_webhook_url',
   'alert_enabled',
   'score_drop_alert_enabled',
+  'quiet_hours_enabled',
+  'quiet_hours_start',
   'judge_model',
   'default_sample_count',
   'eval_concurrency',

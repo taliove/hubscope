@@ -328,24 +328,20 @@ func TestImageProbeSuccessDetermination(t *testing.T) {
 }
 
 // TestImageAlertingLifecycle reuses the alerts_test pattern for an image
-// endpoint: three consecutive failed rounds (one probe each) fire exactly one
-// down alert naming the images_generation protocol, the status machine shows
-// failing then down, and a recovery fires one recovered notice.
+// endpoint under the aggregation window (spec 0017): three consecutive
+// failed rounds (one probe each) record the down event at decision time, the
+// fake-clock flush sends one aggregated down card naming the
+// images_generation protocol, the status machine shows failing then down,
+// and a recovery rides the next window flush.
 func TestImageAlertingLifecycle(t *testing.T) {
 	db := openTempDB(t)
-	ts := newTestAPIServer(t, db)
+	clock := scheduler.NewFakeClock(time.Now())
+	ts := newAlertClockServer(t, db, clock)
 	lark := newStubLarkServer(t)
 	stub := newDiscoveryStubHub(t, nil)
 	stub.setImageMode("gpt-image-2", "success")
 
-	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"lark_webhook_url": lark.URL,
-		"alert_enabled":    true,
-	})
-	putResp.Body.Close()
-	if putResp.StatusCode != http.StatusOK {
-		t.Fatalf("put settings: expected 200, got %d", putResp.StatusCode)
-	}
+	configureWebhook(t, ts, lark, true)
 
 	img := createImageEndpointViaDiscovery(t, ts.URL, stub, "gpt-image-2")
 	imageID := int64(endpointByProtocol(t, img, "images_generation")["id"].(float64))
@@ -368,12 +364,14 @@ func TestImageAlertingLifecycle(t *testing.T) {
 		t.Fatalf("after 2 failures: expected no messages, got %d", got)
 	}
 
-	// Round 3: the third consecutive failure fires exactly one down alert.
+	// Round 3: the third consecutive failure records the down event at
+	// decision time; nothing is sent before the window flushes.
 	runProbeRound(t, ts, imageID)
-	msgs := lark.messages()
-	if len(msgs) != 1 {
-		t.Fatalf("after crossing threshold: expected 1 message, got %d", len(msgs))
+	if got := len(lark.messages()); got != 0 {
+		t.Fatalf("before window flush: expected no messages, got %d", got)
 	}
+	clock.Advance(alertWindowForTest)
+	msgs := waitForLarkMessages(t, lark, 1)
 	for _, want := range []string{"gpt-image-2", "images_generation", "HTTP 503"} {
 		if !strings.Contains(msgs[0], want) {
 			t.Errorf("down alert should contain %q, got: %s", want, msgs[0])
@@ -386,28 +384,30 @@ func TestImageAlertingLifecycle(t *testing.T) {
 
 	// Round 4: the outage continues, no repeat alert.
 	runProbeRound(t, ts, imageID)
+	clock.Advance(alertWindowForTest)
 	if got := len(lark.messages()); got != 1 {
 		t.Fatalf("ongoing outage: expected still 1 message, got %d", got)
 	}
 
-	events := listAlerts(t, ts, "")
-	if len(events) != 1 || events[0]["kind"].(string) != "down" {
-		t.Fatalf("expected exactly 1 down alert event, got %v", events)
+	waitForAlertEvents(t, ts, 2) // down + batch
+	if got := alertEventsOfKind(t, ts, "down"); len(got) != 1 {
+		t.Fatalf("expected exactly 1 down alert event, got %v", got)
 	}
 
-	// Recovery: the image path heals — one recovered notice.
+	// Recovery: the image path heals — one recovered notice via the window.
 	stub.setImageMode("gpt-image-2", "success")
 	runProbeRound(t, ts, imageID)
-	msgs = lark.messages()
-	if len(msgs) != 2 {
-		t.Fatalf("after recovery: expected 2 messages, got %d", len(msgs))
+	if got := len(lark.messages()); got != 1 {
+		t.Fatalf("before recovery flush: expected still 1 message, got %d", got)
 	}
+	clock.Advance(alertWindowForTest)
+	msgs = waitForLarkMessages(t, lark, 2)
 	if !strings.Contains(msgs[1], "gpt-image-2") {
 		t.Errorf("recovered alert should name the model, got: %s", msgs[1])
 	}
-	events = listAlerts(t, ts, "")
-	if len(events) != 2 || events[0]["kind"].(string) != "recovered" {
-		t.Fatalf("expected newest event kind recovered, got %v", events)
+	waitForAlertEvents(t, ts, 4)
+	if got := alertEventsOfKind(t, ts, "recovered"); len(got) != 1 {
+		t.Fatalf("expected exactly 1 recovered alert event, got %v", got)
 	}
 }
 
@@ -779,25 +779,20 @@ func TestImageEditProbeSuccessDetermination(t *testing.T) {
 }
 
 // TestImageEditAlertingLifecycle proves the edit path rides the same alert
-// chain (W5) as every other protocol: three consecutive failed rounds fire
-// exactly one down alert naming the images_edit protocol, and a recovery
-// fires one recovered notice.
+// chain (W5) as every other protocol, aggregation window included (spec
+// 0017): three consecutive failed rounds record the down event, the flush
+// sends one down card naming the images_edit protocol, and a recovery rides
+// the next flush.
 func TestImageEditAlertingLifecycle(t *testing.T) {
 	db := openTempDB(t)
-	ts := newTestAPIServer(t, db)
+	clock := scheduler.NewFakeClock(time.Now())
+	ts := newAlertClockServer(t, db, clock)
 	lark := newStubLarkServer(t)
 	stub := newDiscoveryStubHub(t, nil)
 	stub.setImageMode("gpt-image-2", "success")
 	stub.setEditMode("gpt-image-2", "success")
 
-	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
-		"lark_webhook_url": lark.URL,
-		"alert_enabled":    true,
-	})
-	putResp.Body.Close()
-	if putResp.StatusCode != http.StatusOK {
-		t.Fatalf("put settings: expected 200, got %d", putResp.StatusCode)
-	}
+	configureWebhook(t, ts, lark, true)
 
 	img := createImageEndpointViaDiscovery(t, ts.URL, stub, "gpt-image-2")
 	editID := int64(endpointByProtocol(t, img, "images_edit")["id"].(float64))
@@ -820,12 +815,14 @@ func TestImageEditAlertingLifecycle(t *testing.T) {
 		t.Fatalf("after 2 failures: expected no messages, got %d", got)
 	}
 
-	// Round 3: the third consecutive failure fires exactly one down alert.
+	// Round 3: the third consecutive failure records the down event;
+	// nothing is sent before the window flushes.
 	runProbeRound(t, ts, editID)
-	msgs := lark.messages()
-	if len(msgs) != 1 {
-		t.Fatalf("after crossing threshold: expected 1 message, got %d", len(msgs))
+	if got := len(lark.messages()); got != 0 {
+		t.Fatalf("before window flush: expected no messages, got %d", got)
 	}
+	clock.Advance(alertWindowForTest)
+	msgs := waitForLarkMessages(t, lark, 1)
 	for _, want := range []string{"gpt-image-2", "images_edit", "HTTP 503"} {
 		if !strings.Contains(msgs[0], want) {
 			t.Errorf("down alert should contain %q, got: %s", want, msgs[0])
@@ -838,28 +835,30 @@ func TestImageEditAlertingLifecycle(t *testing.T) {
 
 	// Round 4: the outage continues, no repeat alert.
 	runProbeRound(t, ts, editID)
+	clock.Advance(alertWindowForTest)
 	if got := len(lark.messages()); got != 1 {
 		t.Fatalf("ongoing outage: expected still 1 message, got %d", got)
 	}
 
-	events := listAlerts(t, ts, "")
-	if len(events) != 1 || events[0]["kind"].(string) != "down" {
-		t.Fatalf("expected exactly 1 down alert event, got %v", events)
+	waitForAlertEvents(t, ts, 2) // down + batch
+	if got := alertEventsOfKind(t, ts, "down"); len(got) != 1 {
+		t.Fatalf("expected exactly 1 down alert event, got %v", got)
 	}
 
-	// Recovery: the edit path heals — one recovered notice.
+	// Recovery: the edit path heals — one recovered notice via the window.
 	stub.setEditMode("gpt-image-2", "success")
 	runProbeRound(t, ts, editID)
-	msgs = lark.messages()
-	if len(msgs) != 2 {
-		t.Fatalf("after recovery: expected 2 messages, got %d", len(msgs))
+	if got := len(lark.messages()); got != 1 {
+		t.Fatalf("before recovery flush: expected still 1 message, got %d", got)
 	}
+	clock.Advance(alertWindowForTest)
+	msgs = waitForLarkMessages(t, lark, 2)
 	if !strings.Contains(msgs[1], "gpt-image-2") {
 		t.Errorf("recovered alert should name the model, got: %s", msgs[1])
 	}
-	events = listAlerts(t, ts, "")
-	if len(events) != 2 || events[0]["kind"].(string) != "recovered" {
-		t.Fatalf("expected newest event kind recovered, got %v", events)
+	waitForAlertEvents(t, ts, 4)
+	if got := alertEventsOfKind(t, ts, "recovered"); len(got) != 1 {
+		t.Fatalf("expected exactly 1 recovered alert event, got %v", got)
 	}
 }
 
