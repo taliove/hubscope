@@ -25,6 +25,24 @@
             触发,告警附各评估集跌幅与变动题目明细;题目版本变更的对比自动跳过,并标注「题目已变更,分数不可比」
           </div>
         </el-form-item>
+        <el-form-item label="静默时段" data-item="quiet_hours_enabled">
+          <el-switch v-model="form.quiet_hours_enabled" active-text="开" inactive-text="关" />
+          <div class="field-hint block-hint">
+            启用后,静默时段内告警只记录不发送,时段结束时发送一条摘要(仅列仍故障端点/厂商组与期内分数大跌);登录爆破告警不受静默约束,保持即时
+          </div>
+        </el-form-item>
+        <el-form-item label="静默起止" data-item="quiet_hours_start">
+          <el-select v-model="form.quiet_hours_start" :disabled="!form.quiet_hours_enabled">
+            <el-option v-for="h in hourOptions" :key="h" :label="hourLabel(h)" :value="h" />
+          </el-select>
+          <span class="field-hint">至</span>
+          <el-select v-model="form.quiet_hours_end" :disabled="!form.quiet_hours_enabled">
+            <el-option v-for="h in hourOptions" :key="h" :label="hourLabel(h)" :value="h" />
+          </el-select>
+          <div class="field-hint block-hint">
+            按服务器本地时区的整点小时,支持跨日(如 23 时至次日 7 时);开始与结束相同视为未启用
+          </div>
+        </el-form-item>
       </el-form>
 
       <el-divider content-position="left">近期告警事件</el-divider>
@@ -160,7 +178,18 @@ const form = reactive<AppSettings>({
   default_sample_count: 1,
   eval_concurrency: 4,
   suite_weights: {},
+  quiet_hours_enabled: false,
+  quiet_hours_start: 23,
+  quiet_hours_end: 7,
 })
+
+// Quiet-hours bounds: integer hours 0–23 rendered as HH:00 (spec 0017
+// ticket 4). el-select keeps its component default width (§4 admin form
+// tiers: el-switch / el-select are not width-capped).
+const hourOptions = Array.from({ length: 24 }, (_, h) => h)
+function hourLabel(h: number): string {
+  return `${String(h).padStart(2, '0')}:00`
+}
 const suites = ref<Suite[]>([])
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
