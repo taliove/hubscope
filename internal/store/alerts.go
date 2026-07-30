@@ -14,6 +14,10 @@ import (
 // rebuild (LatestDownRecoveryEvent filters by that whitelist). "batch"
 // (spec 0017, ADR 0014) records one aggregated window flush: the actual
 // text sent and the real delivery result; it carries a NULL endpoint_id.
+// "group_down" / "group_recovered" (spec 0017 ticket 3, GH #66) record a
+// vendor (family) group alert opening/closing: endpoint_id is NULL and the
+// family name rides group_key; they join only the group state rebuild
+// (LatestGroupEvent), never the per-endpoint one.
 const (
 	AlertKindDown             = "down"
 	AlertKindRecovered        = "recovered"
@@ -21,6 +25,8 @@ const (
 	AlertKindScoreDropSkipped = "score_drop_skipped"
 	AlertKindTest             = "test"
 	AlertKindBatch            = "batch"
+	AlertKindGroupDown        = "group_down"
+	AlertKindGroupRecovered   = "group_recovered"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.
@@ -30,7 +36,9 @@ const maxAlertLimit = 200
 const defaultAlertLimit = 50
 
 // AlertEvent is one recorded alert: an attempted (or completed) notification.
-// EndpointID is nil for events not tied to a single endpoint.
+// EndpointID is nil for events not tied to a single endpoint; GroupKey is
+// non-nil only on vendor group alerts (group_down / group_recovered), where
+// it carries the family name.
 type AlertEvent struct {
 	ID         int64
 	EndpointID *int64
@@ -38,20 +46,27 @@ type AlertEvent struct {
 	Message    string
 	SentOK     bool
 	CreatedAt  time.Time
+	GroupKey   *string
 }
 
-// scanAlertEvent scans one alert_events row. EndpointID may be NULL.
+// scanAlertEvent scans one alert_events row. EndpointID and GroupKey may be
+// NULL.
 func scanAlertEvent(s rowScanner) (AlertEvent, error) {
 	var e AlertEvent
 	var endpointID sql.NullInt64
+	var groupKey sql.NullString
 	var sentOK int
 	var createdAt string
-	if err := s.Scan(&e.ID, &endpointID, &e.Kind, &e.Message, &sentOK, &createdAt); err != nil {
+	if err := s.Scan(&e.ID, &endpointID, &e.Kind, &e.Message, &sentOK, &createdAt, &groupKey); err != nil {
 		return AlertEvent{}, err
 	}
 	if endpointID.Valid {
 		id := endpointID.Int64
 		e.EndpointID = &id
+	}
+	if groupKey.Valid {
+		key := groupKey.String
+		e.GroupKey = &key
 	}
 	e.SentOK = sentOK == 1
 	e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -72,9 +87,9 @@ func (db *DB) CreateAlertEvent(e AlertEvent) (AlertEvent, error) {
 	}
 
 	result, err := db.conn.Exec(`
-		INSERT INTO alert_events (endpoint_id, kind, message, sent_ok, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, e.EndpointID, e.Kind, e.Message, sentOK, createdAt.Format(time.RFC3339))
+		INSERT INTO alert_events (endpoint_id, kind, message, sent_ok, created_at, group_key)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, e.EndpointID, e.Kind, e.Message, sentOK, createdAt.Format(time.RFC3339), e.GroupKey)
 	if err != nil {
 		return AlertEvent{}, err
 	}
@@ -133,7 +148,7 @@ func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 	args = append(args, limit)
 
 	rows, err := db.conn.Query(`
-		SELECT id, endpoint_id, kind, message, sent_ok, created_at
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
 		FROM alert_events
 		`+hubFilter+`
 		ORDER BY created_at DESC, id DESC
@@ -176,10 +191,11 @@ func (db *DB) UpdateAlertEventsSentOK(ids []int64, sentOK bool) error {
 // LatestDownRecoveryEvent returns the newest down/recovered event recorded
 // for an endpoint, or nil when none exists. The alert evaluator uses it to
 // rebuild its in-memory "alerted" state after a restart: a trailing "down"
-// event means the outage was already reported.
+// event means the outage was already reported. Group events never match:
+// their endpoint_id is NULL and their kinds sit outside the whitelist.
 func (db *DB) LatestDownRecoveryEvent(endpointID int64) (*AlertEvent, error) {
 	e, err := scanAlertEvent(db.conn.QueryRow(`
-		SELECT id, endpoint_id, kind, message, sent_ok, created_at
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
 		FROM alert_events
 		WHERE endpoint_id = ? AND kind IN (?, ?)
 		ORDER BY created_at DESC, id DESC
@@ -192,4 +208,70 @@ func (db *DB) LatestDownRecoveryEvent(endpointID int64) (*AlertEvent, error) {
 		return nil, err
 	}
 	return &e, nil
+}
+
+// LatestGroupEvent returns the newest group_down/group_recovered event
+// recorded for a vendor group (family), or nil when none exists. The alert
+// evaluator uses it to rebuild the in-memory group-open state after a
+// restart — the group counterpart of LatestDownRecoveryEvent, deliberately
+// separate so the two state machines never pollute each other.
+func (db *DB) LatestGroupEvent(groupKey string) (*AlertEvent, error) {
+	e, err := scanAlertEvent(db.conn.QueryRow(`
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
+		FROM alert_events
+		WHERE group_key = ? AND kind IN (?, ?)
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1
+	`, groupKey, AlertKindGroupDown, AlertKindGroupRecovered))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
+// OpenGroupAlert is one vendor group whose alert is currently open: the
+// latest group event for the family is a group_down.
+type OpenGroupAlert struct {
+	GroupKey string
+	Since    time.Time // created_at of the opening group_down event
+}
+
+// ListOpenGroupAlerts returns every vendor group with an open group alert.
+// It is the store seam for the quiet-hours summary (spec 0017 ticket 4):
+// the summary lists still-open groups without re-deriving state in memory.
+func (db *DB) ListOpenGroupAlerts() ([]OpenGroupAlert, error) {
+	rows, err := db.conn.Query(`
+		SELECT group_key, kind, created_at
+		FROM alert_events
+		WHERE kind IN (?, ?)
+		ORDER BY created_at DESC, id DESC
+	`, AlertKindGroupDown, AlertKindGroupRecovered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Newest-first: the first row seen per group_key is that group's latest
+	// event; an open group is one whose latest event is a group_down.
+	seen := map[string]bool{}
+	open := []OpenGroupAlert{}
+	for rows.Next() {
+		var key, kind, createdAt string
+		if err := rows.Scan(&key, &kind, &createdAt); err != nil {
+			return nil, err
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if kind != AlertKindGroupDown {
+			continue
+		}
+		since, _ := time.Parse(time.RFC3339, createdAt)
+		open = append(open, OpenGroupAlert{GroupKey: key, Since: since})
+	}
+	return open, rows.Err()
 }

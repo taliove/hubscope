@@ -7,14 +7,17 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// alertEventDTO is the API representation of an AlertEvent.
+// alertEventDTO is the API representation of an AlertEvent. GroupKey is
+// non-null only on vendor group alerts (group_down / group_recovered,
+// spec 0017 ticket 3), where it carries the family name.
 type alertEventDTO struct {
-	ID         int64  `json:"id"`
-	EndpointID *int64 `json:"endpoint_id"`
-	Kind       string `json:"kind"`
-	Message    string `json:"message"`
-	SentOK     bool   `json:"sent_ok"`
-	CreatedAt  string `json:"created_at"`
+	ID         int64   `json:"id"`
+	EndpointID *int64  `json:"endpoint_id"`
+	Kind       string  `json:"kind"`
+	Message    string  `json:"message"`
+	SentOK     bool    `json:"sent_ok"`
+	CreatedAt  string  `json:"created_at"`
+	GroupKey   *string `json:"group_key"`
 }
 
 // toAlertEventDTO maps a store.AlertEvent to its API representation.
@@ -26,6 +29,7 @@ func toAlertEventDTO(e store.AlertEvent) alertEventDTO {
 		Message:    e.Message,
 		SentOK:     e.SentOK,
 		CreatedAt:  e.CreatedAt.UTC().Format(time.RFC3339),
+		GroupKey:   e.GroupKey,
 	}
 }
 

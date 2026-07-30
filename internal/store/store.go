@@ -238,6 +238,7 @@ func (db *DB) migrate() error {
 			message TEXT NOT NULL,
 			sent_ok INTEGER NOT NULL,
 			created_at TEXT NOT NULL,
+			group_key TEXT NULL,
 			FOREIGN KEY (endpoint_id) REFERENCES endpoints(id)
 		);
 
@@ -387,6 +388,13 @@ func (db *DB) migrate() error {
 	if _, err := db.conn.Exec(
 		"CREATE INDEX IF NOT EXISTS idx_eval_runs_campaign ON eval_runs(campaign_id)",
 	); err != nil {
+		return err
+	}
+
+	// GH #66 (spec 0017 ticket 3): vendor group alerts carry the family name
+	// in group_key (endpoint_id NULL on group_down/group_recovered events).
+	// NULL on every pre-existing row, so the upgrade is lossless.
+	if err := db.ensureColumn("alert_events", "group_key", "TEXT NULL"); err != nil {
 		return err
 	}
 

@@ -313,6 +313,45 @@ func (db *DB) ListEnabledEndpoints() ([]Endpoint, error) {
 	return endpoints, rows.Err()
 }
 
+// FamilyEndpoint is one enabled endpoint's alert-relevant identity, used by
+// the vendor group alert evaluation (spec 0017 ticket 3, GH #66).
+type FamilyEndpoint struct {
+	EndpointID int64
+	HubName    string
+	ModelID    string
+	Protocol   string
+}
+
+// ListEnabledEndpointsByFamily returns the enabled endpoints (of active
+// models) belonging to one vendor family, joined with their hub and model
+// names for card rendering. The group-alert denominator is this set at
+// evaluation time: endpoints added or disabled later shift the share on the
+// next transition, matching ListEnabledEndpoints semantics.
+func (db *DB) ListEnabledEndpointsByFamily(family string) ([]FamilyEndpoint, error) {
+	rows, err := db.conn.Query(`
+		SELECT e.id, h.name, m.model_id, e.protocol
+		FROM endpoints e
+		JOIN models m ON m.id = e.model_id
+		JOIN hubs h ON h.id = m.hub_id
+		WHERE e.enabled = 1 AND m.status = 'active' AND m.family = ?
+		ORDER BY e.id
+	`, family)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	endpoints := []FamilyEndpoint{}
+	for rows.Next() {
+		var fe FamilyEndpoint
+		if err := rows.Scan(&fe.EndpointID, &fe.HubName, &fe.ModelID, &fe.Protocol); err != nil {
+			return nil, err
+		}
+		endpoints = append(endpoints, fe)
+	}
+	return endpoints, rows.Err()
+}
+
 // GetEndpoint retrieves an endpoint by ID
 func (db *DB) GetEndpoint(id int64) (*Endpoint, error) {
 	e, err := scanEndpoint(db.conn.QueryRow(

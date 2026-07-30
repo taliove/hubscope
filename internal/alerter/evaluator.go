@@ -47,12 +47,20 @@ type Evaluator struct {
 	mu      sync.Mutex
 	alerted map[int64]bool
 
+	// Vendor group alerts (spec 0017 ticket 3, GH #66): the group-open flag
+	// per family, lazily rebuilt from persisted group events after a restart
+	// (the group counterpart of alerted). Evaluated at every endpoint
+	// transition's decision point in group.go.
+	groupAlerted map[string]bool
+
 	// Alert aggregation window (spec 0017): transitions buffer here at
 	// decision time and flush as one aggregated card per kind when the
 	// timer fires. A process restart drops the buffer but never the events,
-	// so nothing is re-reported.
-	pending     []bufferedTransition
-	windowTimer scheduler.Timer
+	// so nothing is re-reported. groupPending holds the buffered group
+	// transitions (group_down / group_recovered) sharing the same window.
+	pending      []bufferedTransition
+	groupPending []bufferedGroupTransition
+	windowTimer  scheduler.Timer
 }
 
 // NewEvaluator creates an Evaluator persisting events through db and sending
@@ -60,10 +68,11 @@ type Evaluator struct {
 // fake one via UseClock.
 func NewEvaluator(db *store.DB, sender *LarkSender) *Evaluator {
 	return &Evaluator{
-		db:      db,
-		sender:  sender,
-		clock:   scheduler.RealClock{},
-		alerted: make(map[int64]bool),
+		db:           db,
+		sender:       sender,
+		clock:        scheduler.RealClock{},
+		alerted:      make(map[int64]bool),
+		groupAlerted: make(map[string]bool),
 	}
 }
 
@@ -120,14 +129,26 @@ func (e *Evaluator) isAlerted(endpointID int64) (bool, error) {
 }
 
 // transition records the alert event at decision time, flips the alerted
-// flag, and buffers the transition into the aggregation window (ADR 0014).
-// The event lands with sent_ok=false — "delivery unconfirmed" — and the
-// window flush later sends one aggregated card per kind, writes the real
-// results back, and records a batch event with the actual text sent.
+// flag, evaluates the endpoint's vendor group at the same decision point
+// (spec 0017 ticket 3: the group share is computed from the just-flipped
+// flags and the just-recorded event, so endpoint and group transitions
+// share one consistent snapshot), and buffers the transition into the
+// aggregation window (ADR 0014). The event lands with sent_ok=false —
+// "delivery unconfirmed" — and the window flush later sends one aggregated
+// card per kind, writes the real results back, and records a batch event
+// with the actual text sent.
+//
+// The endpoint transition is marked absorbed when its group is open before
+// or opens/closes with this very transition: absorbed transitions never
+// render into endpoint cards — their story is told by the group cards —
+// and their events honestly stay sent_ok=false (never individually
+// delivered).
 //
 // The flag flips even when the webhook is unconfigured or alerts are
 // disabled: the outage counts as reported and is not retried (W5); an
-// unconfigured webhook still records no event at all.
+// unconfigured webhook still records no event at all. Group evaluation runs
+// either way — the group flag makes the same trade inside
+// groupTransitionLocked.
 func (e *Evaluator) transition(endpointID int64, kind string, alerted bool) {
 	alert, err := e.buildEndpointAlert(endpointID, kind)
 	if err != nil {
@@ -146,31 +167,55 @@ func (e *Evaluator) transition(endpointID int64, kind string, alerted bool) {
 		slog.Error("alerter: read alert_enabled setting", "error", err)
 		return
 	}
-	if webhook == "" || !enabled {
+	configured := webhook != "" && enabled
+
+	var eventID int64
+	if configured {
+		event, err := e.db.CreateAlertEvent(store.AlertEvent{
+			EndpointID: &endpointID,
+			Kind:       kind,
+			Message:    alert.text,
+			SentOK:     false, // delivery unconfirmed until the window flush
+		})
+		if err != nil {
+			slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
+			return
+		}
+		eventID = event.ID
+	} else {
 		// Not configured: the transition happened but no event is recorded.
 		slog.Debug("alerter: alert skipped (webhook not configured or alerts disabled)", "kind", kind, "endpoint_id", endpointID)
-		return
 	}
 
-	event, err := e.db.CreateAlertEvent(store.AlertEvent{
-		EndpointID: &endpointID,
-		Kind:       kind,
-		Message:    alert.text,
-		SentOK:     false, // delivery unconfirmed until the window flush
-	})
+	groupWasOpen, err := e.isGroupAlerted(alert.family)
 	if err != nil {
-		slog.Error("alerter: record alert event", "kind", kind, "endpoint_id", endpointID, "error", err)
+		slog.Error("alerter: rebuild group alert state", "family", alert.family, "error", err)
 		return
 	}
-	e.bufferLocked(bufferedTransition{eventID: event.ID, kind: kind, alert: alert})
+	e.evaluateGroupLocked(alert.family)
+
+	if !configured {
+		return
+	}
+	groupOpenNow, err := e.isGroupAlerted(alert.family)
+	if err != nil {
+		slog.Error("alerter: rebuild group alert state", "family", alert.family, "error", err)
+		return
+	}
+	e.bufferLocked(bufferedTransition{
+		eventID:  eventID,
+		kind:     kind,
+		alert:    alert,
+		absorbed: groupWasOpen || groupOpenNow,
+	})
 }
 
 // buildEndpointAlert composes the per-endpoint alert content — hub name,
-// model ID, protocol, and the latest error summary for down alerts — frozen
-// at decision time so the window flush can render the endpoint inside an
-// aggregated card even if the endpoint changes before the flush. The plain
-// text is persisted on the per-endpoint event (the alert history table
-// renders it unchanged).
+// model ID, protocol, family (the group-alert dimension), and the latest
+// error summary for down alerts — frozen at decision time so the window
+// flush can render the endpoint inside an aggregated card even if the
+// endpoint changes before the flush. The plain text is persisted on the
+// per-endpoint event (the alert history table renders it unchanged).
 func (e *Evaluator) buildEndpointAlert(endpointID int64, kind string) (endpointAlert, error) {
 	endpoint, err := e.db.GetEndpoint(endpointID)
 	if err != nil {
@@ -189,6 +234,7 @@ func (e *Evaluator) buildEndpointAlert(endpointID int64, kind string) (endpointA
 		hubName:  hub.Name,
 		modelID:  model.ModelID,
 		protocol: endpoint.Protocol,
+		family:   model.Family,
 	}
 	if kind == store.AlertKindRecovered {
 		alert.text = fmt.Sprintf("【HubScope】端点恢复:模型 %s(%s)已恢复正常。",

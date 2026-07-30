@@ -26,3 +26,9 @@ W5(状态机与告警防抖)扩展:endpoint up/down 告警从「状态迁移判�
 ## 为后续 ticket 预留的扩展点
 
 flush 管线形状 = `transition 落库 → bufferLocked(append + 首个 pending 开窗口)→ flushLocked(取缓冲 → 按 kind 分组 → buildBatchMessage → 发送 → 回写 → 落 batch)`。ticket 3(分组告警)在 transition 后加组评估、向窗口投递 group 语义条目(flush 分组渲染时组卡为主、未入组端点按 Hub 分节为次,`group_key` 列随票迁移);ticket 4(静默时段)在 flushLocked 发送处与 score_drop 发送处加静默门,静默边界检查复用同一注入时钟。本票不实现两者的任何功能。
+
+## ticket 3 落地补记(GH #66,2026-07-30)
+
+**other 排除裁决(main 裁决):** family 为 `other`(未分类兜底桶)或空串的模型不参与组评估——「other」不是厂商责任边界,其桶内多数故障是 Hub 侧故事,已由窗口聚合的「疑似 Hub 侧故障」标注覆盖;spec 0017「仅厂商维度」的意图是上游责任边界,兜底桶不满足。
+
+**吸收兜底语义的收敛链(两轮对抗审查,HIGH-1 → MEDIUM-1 → 定稿):** 「判定时刻标记 + flush 兜底」双层机制中,判定时刻的 `absorbed = groupWasOpen || groupOpenNow` 本身完备,漏洞全在兜底层。兜底语义经三步收敛:① family 全窗口过滤(HIGH-1:吞掉组 open 区间之外的迁移,「该发的没发」)→ ② 位置/区间语义(反证:触发前已自愈端点的迁移在区间内但组卡没讲它的故事)→ ③ **故事覆盖集**:只吸收「其故事已被本窗口组卡冻结快照讲述」的迁移(键 = {hubName, modelID, protocol},hubName 消歧同 model_id 跨 Hub),recovered 永不走兜底。③ 仍有残余(MEDIUM-1):裸并集不消耗——绿卡讲过「已恢复」的成员同窗再 down 被误吞。定稿 = **覆盖集按 groupPending 顺序重放**(group_down 并入 faulty,group_recovered 减除其「已恢复」名单)——**重放才是完整语义**;已知代价:被绿卡闭环成员的触发前 down 会渲染端点卡与红卡重复(**过度报告是安全方向**:宁可重复,不可吞没)。此结论是后续任何 flush 兜底机制(ticket 4 静默判定同处)的开工前必读。

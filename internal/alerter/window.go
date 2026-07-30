@@ -25,11 +25,13 @@ const hubFaultAnnotation = "(疑似 Hub 侧故障)"
 
 // endpointAlert captures everything the window flush needs to render one
 // endpoint inside an aggregated card, frozen at decision time (the endpoint
-// may be edited or deleted before the flush runs).
+// may be edited or deleted before the flush runs). family is the vendor
+// group dimension (spec 0017 ticket 3).
 type endpointAlert struct {
 	hubName   string
 	modelID   string
 	protocol  string
+	family    string
 	lastError string // down transitions only
 	text      string // per-endpoint plain text persisted on the endpoint event
 }
@@ -37,19 +39,36 @@ type endpointAlert struct {
 // bufferedTransition is one endpoint up/down transition waiting for the
 // window flush. Its event is already persisted (sent_ok=false, "delivery
 // unconfirmed") at decision time — the W5 lazy-rebuild semantics never
-// depend on the flush happening.
+// depend on the flush happening. absorbed marks transitions whose vendor
+// group was open at decision time (or opened/closed with this very
+// transition): they never render into endpoint cards — their story is told
+// by the group cards — and their events honestly stay sent_ok=false.
 type bufferedTransition struct {
-	eventID int64
-	kind    string // store.AlertKindDown or store.AlertKindRecovered
-	alert   endpointAlert
+	eventID  int64
+	kind     string // store.AlertKindDown or store.AlertKindRecovered
+	alert    endpointAlert
+	absorbed bool
 }
 
 // bufferLocked adds one transition to the window, arming the flush timer on
-// the first pending item. The window starts at the first buffered
-// transition (fixed, not sliding): anything arriving while the timer is
-// armed joins the same flush. Called with e.mu held.
+// the first pending item. Called with e.mu held.
 func (e *Evaluator) bufferLocked(t bufferedTransition) {
 	e.pending = append(e.pending, t)
+	e.armWindowLocked()
+}
+
+// bufferGroupLocked adds one group transition to the same window. Called
+// with e.mu held.
+func (e *Evaluator) bufferGroupLocked(g bufferedGroupTransition) {
+	e.groupPending = append(e.groupPending, g)
+	e.armWindowLocked()
+}
+
+// armWindowLocked arms the flush timer on the first pending item. The
+// window starts at the first buffered transition (fixed, not sliding):
+// anything arriving while the timer is armed joins the same flush. Called
+// with e.mu held.
+func (e *Evaluator) armWindowLocked() {
 	if e.windowTimer != nil {
 		return
 	}
@@ -63,17 +82,21 @@ func (e *Evaluator) bufferLocked(t bufferedTransition) {
 	}()
 }
 
-// flushLocked sends every buffered transition as one aggregated card per
-// kind (down red, recovered green — bad news and good news never share a
-// card), writes each event's sent_ok back, and records one hub-less batch
-// event per card carrying the actual text sent and the real delivery
+// flushLocked sends every buffered transition: group cards first (the
+// vendor-level fault is the headline; spec 0017 ticket 3), then one
+// aggregated endpoint card per kind (down red, recovered green — bad news
+// and good news never share a card) for the transitions not absorbed into a
+// group. Every sent card writes its events' sent_ok back and records one
+// hub-less batch event carrying the actual text sent and the real delivery
 // result. Sends happen under e.mu like every alerter send (W5); failures
 // are not retried. Called with e.mu held.
 func (e *Evaluator) flushLocked(ctx context.Context) {
 	pending := e.pending
+	groupPending := e.groupPending
 	e.pending = nil
+	e.groupPending = nil
 	e.windowTimer = nil
-	if len(pending) == 0 {
+	if len(pending) == 0 && len(groupPending) == 0 {
 		return
 	}
 
@@ -85,13 +108,72 @@ func (e *Evaluator) flushLocked(ctx context.Context) {
 	if webhook == "" {
 		// Unconfigured between transition and flush: nothing is sent and
 		// the events honestly stay sent_ok=false — "delivery unconfirmed".
-		slog.Debug("alerter: window flush skipped (webhook not configured)", "transitions", len(pending))
+		slog.Debug("alerter: window flush skipped (webhook not configured)",
+			"transitions", len(pending), "group_transitions", len(groupPending))
 		return
+	}
+
+	// Endpoint down transitions buffered before their group opened inside
+	// this same window carry no story beyond what the frozen group card
+	// already lists (its faulty snapshot names every member alerted at the
+	// trigger), so they are absorbed — by member identity, not by family.
+	// Anything the group cards do not mention still renders as an endpoint
+	// card: recoveries (a group card never tells an endpoint recovery that
+	// happened after its snapshot froze), and endpoints that healed before
+	// the trigger (absent from the faulty snapshot). Family-wide absorption
+	// would swallow both (check GH #66 HIGH-1).
+	//
+	// The two-layer mechanism (decision-time absorbed flag + this flush
+	// fallback) thus settles on: fallback = story coverage set + ordered
+	// consumption (check GH #66 MEDIUM-1). The set is REPLAYED over
+	// groupPending in decision order — a group_down adds its frozen faulty
+	// members, a group_recovered removes its frozen 已恢复 members — never
+	// plainly unioned: a union misses that a later card revoked coverage
+	// (the green card told the member's recovery, closing its fault story),
+	// and would swallow that member's re-down inside the same window. The
+	// replay's known over-report: an early down of a member whose story the
+	// green card closed renders as an endpoint card duplicating the red
+	// card's snapshot — the safe direction.
+	covered := map[string]map[groupMemberRef]bool{}
+	for _, g := range groupPending {
+		set, ok := covered[g.family]
+		if !ok {
+			set = map[groupMemberRef]bool{}
+			covered[g.family] = set
+		}
+		switch g.kind {
+		case store.AlertKindGroupDown:
+			for _, m := range g.faulty {
+				set[m] = true
+			}
+		case store.AlertKindGroupRecovered:
+			for _, m := range g.recovered {
+				delete(set, m)
+			}
+		}
+	}
+
+	for _, g := range groupPending {
+		e.sendCardLocked(ctx, webhook, buildGroupMessage(g), []int64{g.eventID})
+	}
+
+	var renderable []bufferedTransition
+	for _, t := range pending {
+		if t.absorbed {
+			continue
+		}
+		if t.kind == store.AlertKindDown {
+			member := groupMemberRef{hubName: t.alert.hubName, modelID: t.alert.modelID, protocol: t.alert.protocol}
+			if set, ok := covered[t.alert.family]; ok && set[member] {
+				continue
+			}
+		}
+		renderable = append(renderable, t)
 	}
 
 	for _, kind := range []string{store.AlertKindDown, store.AlertKindRecovered} {
 		var group []bufferedTransition
-		for _, t := range pending {
+		for _, t := range renderable {
 			if t.kind == kind {
 				group = append(group, t)
 			}
@@ -99,30 +181,37 @@ func (e *Evaluator) flushLocked(ctx context.Context) {
 		if len(group) == 0 {
 			continue
 		}
-
-		message := buildBatchMessage(kind, group)
-		sentOK := true
-		if err := e.sender.Send(ctx, webhook, message); err != nil {
-			slog.Error("alerter: send aggregated alert", "kind", kind, "transitions", len(group), "error", err)
-			sentOK = false
-		} else {
-			slog.Info("alerter: aggregated alert sent", "kind", kind, "transitions", len(group))
-		}
-
 		ids := make([]int64, 0, len(group))
 		for _, t := range group {
 			ids = append(ids, t.eventID)
 		}
-		if err := e.db.UpdateAlertEventsSentOK(ids, sentOK); err != nil {
-			slog.Error("alerter: write back alert delivery results", "kind", kind, "error", err)
-		}
-		if _, err := e.db.CreateAlertEvent(store.AlertEvent{
-			Kind:    store.AlertKindBatch,
-			Message: message.Text,
-			SentOK:  sentOK,
-		}); err != nil {
-			slog.Error("alerter: record batch alert event", "kind", kind, "error", err)
-		}
+		e.sendCardLocked(ctx, webhook, buildBatchMessage(kind, group), ids)
+	}
+}
+
+// sendCardLocked delivers one card to the webhook, writes the delivery
+// result back to the given events, and records one hub-less batch event
+// carrying the actual text sent and the real delivery result (spec 0017
+// story 31: the history shows what readers saw). A failed send is not
+// retried and the events stay sent_ok=false — honest, and auditable.
+// Called with e.mu held.
+func (e *Evaluator) sendCardLocked(ctx context.Context, webhook string, message Message, eventIDs []int64) {
+	sentOK := true
+	if err := e.sender.Send(ctx, webhook, message); err != nil {
+		slog.Error("alerter: send aggregated alert", "events", len(eventIDs), "error", err)
+		sentOK = false
+	} else {
+		slog.Info("alerter: aggregated alert sent", "events", len(eventIDs))
+	}
+	if err := e.db.UpdateAlertEventsSentOK(eventIDs, sentOK); err != nil {
+		slog.Error("alerter: write back alert delivery results", "error", err)
+	}
+	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
+		Kind:    store.AlertKindBatch,
+		Message: message.Text,
+		SentOK:  sentOK,
+	}); err != nil {
+		slog.Error("alerter: record batch alert event", "error", err)
 	}
 }
 
