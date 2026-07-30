@@ -40,11 +40,27 @@ const causeSuffix = computed(() =>
   align-items: center;
   gap: 6px;
   font-size: var(--hs-text-sm);
-  color: var(--hs-text-regular);
+}
+/* Word follows the light (GH #71): the status word carries the same semantic
+   color as the dot, so color alone is never the only channel (dot + word is
+   the double encoding). healthy uses the deepened text grade --hs-success-text
+   (the --hs-success body fails AA on white in text scenarios; dots keep the
+   body — graphic/text division, ui-guidelines §3). */
+.status-healthy {
+  color: var(--hs-success-text);
+}
+.status-degraded {
+  color: var(--hs-warning);
+}
+.status-down {
+  color: var(--hs-danger);
+}
+.status-failing {
+  color: var(--hs-status-failing);
 }
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex: none;
 }
@@ -70,9 +86,13 @@ const causeSuffix = computed(() =>
   font-weight: 600;
 }
 .badge-md .dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
 }
+/* The cause sub-label explicitly stays secondary text (GH #71): the status
+   word above is now state-colored, and without this explicit color the
+   sub-label would inherit it — it is auxiliary text in every size, never
+   part of the state signal. */
 .causes {
   /* Plain secondary text: no dot, no background, no animation. */
   font-size: var(--hs-text-sm);

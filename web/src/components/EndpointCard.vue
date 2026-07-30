@@ -190,7 +190,9 @@ const scoreTooltip = computed(() => {
   white-space: nowrap;
 }
 .score-good {
-  color: var(--hs-success);
+  /* Text scenario: consumes the deepened text grade (GH #71, ui-guidelines
+     §3 graphic/text division) — the --hs-success body fails AA on white. */
+  color: var(--hs-success-text);
   background: var(--hs-success-soft);
 }
 .score-warn {
