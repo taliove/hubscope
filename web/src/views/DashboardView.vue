@@ -3,46 +3,23 @@
     <!-- Semantic page heading (a11y harden 2026-07-29): screen readers get a
          real h1; visually hidden — zero visual change. -->
     <h1 class="visually-hidden">HubScope 服务状态总览</h1>
-    <!-- First screen: one-sentence global health conclusion. The banner
-         always reflects the unfiltered global picture. -->
+    <!-- First screen: the hero command band (GH #73) — global conclusion,
+         abnormal chips, status-counts row and 24h availability merged into
+         one flat surface (replaces the GH #53 banner card + stats strip).
+         The band always reflects the unfiltered global picture; the counts
+         row and the filter-row status select dual-control the same
+         statusFilter ref (GH #55). -->
     <HealthBanner
       :entries="entries"
       :generated-at="generatedAt"
       :loading="loading"
       :stale="error !== null"
+      :status-counts="statusCounts"
+      :disabled-count="disabledCount"
+      :status-filter="statusFilter"
       @inspect="onBannerInspect"
+      @toggle-status="toggleStatusFilter"
     />
-
-    <!-- Stats strip (replaces the old summary cards): one slim row of counts.
-         Status items keep the click-to-filter / click-again-to-clear toggle;
-         the active item gets a 1px brand inset ring on a transparent ground
-         (user feedback 2026-07-29 — no fill block fighting the status dots).
-         Items are real <button>s (a11y harden 2026-07-29): keyboard-focusable
-         and activatable with Enter/Space, behavior unchanged. -->
-    <div class="stats-strip">
-      <button
-        type="button"
-        class="stat-item stat-clickable"
-        :class="{ 'stat-active': statusFilter === '' }"
-        @click="statusFilter = ''"
-      >
-        总数 <span class="stat-num">{{ entries.length }}</span>
-      </button>
-      <button
-        v-for="status in SEVERITY_ORDER"
-        :key="status"
-        type="button"
-        class="stat-item stat-clickable"
-        :class="{ 'stat-active': statusFilter === status }"
-        @click="toggleStatusFilter(status)"
-      >
-        <StatusBadge :status="status" />
-        <span class="stat-num">{{ statusCounts[status] }}</span>
-      </button>
-      <span v-if="disabledCount > 0" class="stat-item stat-disabled">
-        已停用 <span class="stat-num">{{ disabledCount }}</span>
-      </span>
-    </div>
 
     <!-- Filters: model keyword, protocol, status. -->
     <div class="filter-row">
@@ -143,7 +120,6 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview } from '@/composables/useOverview'
 import HealthBanner from '@/components/HealthBanner.vue'
-import StatusBadge from '@/components/StatusBadge.vue'
 import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
@@ -151,15 +127,11 @@ import EndpointQuickViewDialog from '@/components/EndpointQuickViewDialog.vue'
 import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
-import { sortEntriesBySeverity, sortGroupSections, SEVERITY_ORDER, type GroupSection } from '@/utils/severitySort'
+import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
 import { freezeEntrySnapshot } from '@/utils/quickViewSnapshot'
 import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
-
-// The stats strip renders SEVERITY_ORDER directly (GH #55): the board's
-// single severity caliber, heavy → light, shared with the group header —
-// the old local mild→severe STRIP_ORDER is deleted.
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
@@ -233,13 +205,16 @@ function onQuickViewClosed() {
   }
 }
 
-// Disabled endpoints show up in the strip as a non-clickable count.
+// Disabled endpoints show up in the band's counts row as a non-clickable
+// count.
 const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
 
-// Clicking a stats item filters the matrix to that status; clicking the
-// active one clears the filter.
-function toggleStatusFilter(status: EndpointStatus) {
-  statusFilter.value = statusFilter.value === status ? '' : status
+// Counts-row click (GH #73, migrated from the stats strip): '' (the 总数
+// item) clears the filter; a status filters the matrix to that status,
+// clicking the active one clears it. The hero band counts row and the
+// filter-row status select dual-control this single ref (GH #55).
+function toggleStatusFilter(status: EndpointStatus | '') {
+  statusFilter.value = status === '' ? '' : statusFilter.value === status ? '' : status
 }
 
 // Abnormal-banner click: apply the status filter and scroll to the matrix.
@@ -311,57 +286,6 @@ onMounted(start)
   max-width: 1200px;
   margin: 0 auto;
   padding: var(--hs-space-5) var(--hs-space-4) var(--hs-space-7);
-}
-.stats-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--hs-space-4);
-  flex-wrap: wrap;
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-regular);
-  margin-bottom: var(--hs-space-4);
-}
-.stat-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.stat-clickable {
-  /* Button reset (a11y harden 2026-07-29): the clickable items are real
-     buttons now — strip the UA button chrome, inherit strip typography. */
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--hs-space-1) var(--hs-space-2);
-  border-radius: var(--hs-radius-sm);
-  transition: color var(--hs-transition), background-color var(--hs-transition), box-shadow var(--hs-transition);
-}
-.stat-clickable:hover {
-  color: var(--hs-brand-hover);
-}
-/* Selected filter = brand outline + transparent ground + brand text
-   (user feedback 2026-07-29): brand keeps the "active selection" language,
-   an inset ring avoids layout shift, and no fill block fights the status
-   dots' semantic colors. */
-.stat-active {
-  color: var(--hs-brand);
-  background-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--hs-brand);
-}
-/* Keyboard focus mirrors the selected ring (a11y harden 2026-07-29) — the
-   single focus language of the board: 1px brand inset ring. */
-.stat-clickable:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--hs-brand);
-}
-.stat-num {
-  font-weight: 600;
-  color: var(--hs-text-primary);
-}
-.stat-disabled {
-  color: var(--hs-text-secondary);
 }
 .filter-row {
   display: flex;
