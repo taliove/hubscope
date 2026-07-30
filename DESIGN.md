@@ -3,24 +3,25 @@
 name: HubScope
 description: 对内 LLM 端点监控与质量评估——状态板答「健不健康」,评估榜单答「哪个模型好」
 colors:
-  primary: "#0c8078"
+  primary: "#0b7a72"
   primary-hover: "#0faea2"
-  primary-active: "#0a6963"
+  primary-active: "#095f59"
   primary-soft: "#effcfa"
   success: "#059669"
+  success-text: "#047857"
   warning: "#a16207"
   danger: "#dc2626"
-  info: "#45565c"
+  info: "#40525a"
   failing: "#c2410c"
-  page-bg: "#f7fafb"
+  page-bg: "#f3f6f7"
   surface: "#ffffff"
-  surface-hover: "#eff4f5"
-  text-primary: "#0f1b20"
-  text-regular: "#324249"
-  text-secondary: "#617379"
-  text-placeholder: "#91a3a8"
-  border: "#e0e8ea"
-  border-light: "#eff4f5"
+  surface-hover: "#e9eef0"
+  text-primary: "#0b151a"
+  text-regular: "#2c3b42"
+  text-secondary: "#5a6a71"
+  text-placeholder: "#8a99a0"
+  border: "#dde4e7"
+  border-light: "#edf2f4"
 typography:
   display:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif"
@@ -117,24 +118,47 @@ HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动
 调色板是「一族青 + 一组功能色 + 一个具名例外」:电波青承担品牌与交互,青灰承担全部中性表达,功能四色承担状态语义,告警橙是唯一的调色板外例外。
 
 ### Primary
-- **电波青 Teal-600**(#0c8078):亮主题主色,白底对比度 4.8:1 过 WCAG AA。主按钮、链接、当前导航、聚焦态、「运行中」状态。暗主题主色提亮为 teal-500(#0faea2)——电波带(teal-400/500)在白底对比度不足,只作暗色主色与图形点缀,永不作白底文字。
-- **电波青浅底 Teal-50**(#effcfa):品牌浅底,选中行/高亮块/品牌区衬底;暗主题为 teal-900(#063f3d)。
+- **电波青 Teal-600**(#0b7a72):亮主题主色,白底对比度 5.2:1 过 WCAG AA(2026-07-30 同族精修从 #0c8078 4.8:1 加深微调,余量加大,GH #69)。主按钮、链接、当前导航、聚焦态、「运行中」状态。按下态 active 同步加深为 teal-700(#095f59),brand/hover/active 三阶阶差保持(brand↔active 对比 1.45,优于旧 1.36)。暗主题主色提亮为 teal-500(#0faea2)不变——电波带(teal-400/500)在白底对比度不足,只作暗色主色与图形点缀,永不作白底文字。
+- **电波青浅底 Teal-50**(#effcfa):品牌浅底,选中行/高亮块/品牌区衬底;暗主题为 teal-900(精修后 #053836)。
 
-### Neutral
-- **青灰 Gray-900**(#0f1b20):主文字,低彩度同族青灰,非纯黑。暗主题 #e2e8f0。
-- **青灰 Gray-700**(#324249):常规正文。暗主题 #c3c7cd。
-- **青灰 Gray-500**(#617379):次要说明、标签、辅助;暗主题 #8a8f98,并兼任暗色 info。
-- **青灰 Gray-400**(#91a3a8):占位/禁用/等待中。暗主题 #5c616a。
-- **青灰 Gray-50/100/200**(#f7fafb / #eff4f5 / #e0e8ea):页面底、悬浮/轨道、描边。暗主题表面三层为 #0f1115 / #17191d / #1f2227,描边 #2a2d33 / #23262b。
+### Neutral(2026-07-30 同族精修:加深提纯——中性更「墨」,降彩度微加深,保持青灰家族感,GH #69)
+- **青灰 Gray-900**(#0b151a):主文字,低彩度同族青灰,非纯黑。暗主题 #e2e8f0(不变)。
+- **青灰 Gray-700**(#2c3b42):常规正文。暗主题 #c9ced4。
+- **青灰 Gray-500**(#5a6a71):次要说明、标签、辅助;暗主题 #9298a2。暗色 info 与灰阶解耦为 #6b7d84(gray-500 加深后暗底可读性下降,暗 info 单独提亮,暗卡上 4.1:1)。
+- **青灰 Gray-400**(#8a99a0):占位/禁用/等待中。暗主题 #5c616a(不变)。
+- **青灰 Gray-50/100/200**(#f3f6f7 / #e9eef0 / #dde4e7):页面底、悬浮/轨道、描边——表面三层拉开(page↔card↔hover 两两可分辨)。**hairline(border-light)= #edf2f4**:介于 page 与 hover 之间的发丝线,与 hover 解耦(精修前与 gray-100 同值),白卡上 1.13:1 可辨不抢;暗主题 #1e2227(暗卡上 1.10:1)。暗主题表面三层为 #0c0e11 / #17191d / #22262b,描边 #2a2d33(不变)。
 
 ### Functional(亮暗基本同值,warning 例外分档,承担状态语义)
-- **Success**(#059669):正常 / 已完成 / 分数升。
+- **Success**(#059669):正常 / 已完成 / 分数升——**图形填充专用**(状态圆点、榜单条形、24h 分段格、soft 浅底、徽章),本体白底 3.77:1 过图形 3:1 门槛,不动。
+- **Success-Text**(`--hs-success-text`,亮 #047857 / 暗 #10b981):**一切文字场景的 success**——正常状态词、绿档分数、升箭头。亮值 emerald-700 白底 5.48:1 过 AA(与 EP dark-2 派生 #047854 天然同值);暗值 emerald-500 暗卡 6.94:1。2026-07-30 登记(GH #69 T2;GH #62 落点,裁决见 ui-guidelines 附录 B #15)。
 - **Warning**(#a16207，亮主题;暗主题保留 #d97706):降级 / 可逆警示。亮值 2026-07-29 修订(appendix B #14):旧值 #d97706 白底实测仅 3.19:1 不过 AA,改 yellow-700(4.92:1)且色相比旧值更远离 failing 橙。
 - **Danger**(#dc2626):宕机 / 失败 / 分数降 / 不可逆操作。
-- **Info**(亮 #45565c / 暗 #617379):中性提示,与青灰同族。
+- **Info**(亮 #40525a / 暗 #6b7d84):中性提示,与青灰同族(2026-07-30 精修:亮值随 gray-600 加深,暗值与 gray-500 解耦提亮)。
 
 ### The Failing Exception
 - **告警橙 Orange-700**(#c2410c,亮主题;暗主题 orange-400 #fb923c):failing 告警专属,「调色板外不引入新色相」纪律的唯一具名例外——告警辨识度 = 告警可信度。白底 5.1:1 过 AA;与 warning 差一个色相族、与 danger 明度接近而色相向橙偏移,在黄红之间建立第三紧急档。永不泛化为装饰色,永不用于批次/运行状态。
+
+### 同族精修登记(2026-07-30,GH #69 批,/impeccable shape 定稿)
+
+编辑感精密工具路线下的调色板精修:不引入任何新色相,功能四色与 failing 橙不动,全部变化在电波青与青灰两族之内。旧值 → 新值(亮/暗双份):
+
+| 令牌 | 旧值(亮/暗) | 新值(亮/暗) | 实测 |
+|---|---|---|---|
+| brand(teal-600) | #0c8078 / #0faea2 | **#0b7a72** / 不变 | 白底 4.80 → 5.20:1 |
+| brand-active(teal-700) | #0a6963 / teal-600 | **#095f59** / 随档 | brand↔active 1.36 → 1.45 |
+| teal-800 / teal-900 | #085350 / #063f3d | **#074842 / #053836** | 刻度尾段同步加深 |
+| bg-page(gray-50) | #f7fafb / #0f1115 | **#f3f6f7 / #0c0e11** | 与白卡 1.049 → 1.086 |
+| bg-hover(gray-100) | #eff4f5 / #1f2227 | **#e9eef0 / #22262b** | 与白卡 1.109 → 1.170 |
+| border(gray-200) | #e0e8ea / #2a2d33 | **#dde4e7 / 不变** | 与白卡 1.243 → 1.286 |
+| border-light(hairline) | =gray-100 / #23262b | **#edf2f4 / #1e2227** | 与 hover 解耦;白卡 1.13 / 暗卡 1.10 |
+| text-primary(gray-900) | #0f1b20 / #e2e8f0 | **#0b151a / 不变** | 17.5 → 18.5:1 |
+| text-regular(gray-700) | #324249 / #c3c7cd | **#2c3b42 / #c9ced4** | 10.4 → 11.6 / 10.4 → 11.1 |
+| text-secondary(gray-500) | #617379 / #8a8f98 | **#5a6a71 / #9298a2** | 4.96 → 5.62 / 5.42 → 6.06 |
+| text-placeholder(gray-400) | #91a3a8 / #5c616a | **#8a99a0 / 不变** | 2.62 → 2.94(占位档刻意 muted) |
+| info(gray-600) | #45565c / =gray-500 | **#40525a / #6b7d84** | 7.67 → 8.16 / 3.55 → 4.10(解耦提亮) |
+| success-text(新增) | — | **#047857 / #10b981** | 白底 5.48 / 暗卡 6.94 |
+
+精修纪律:① brand 只许加深不许提亮(AA 红线 4.5:1,精修后 5.20 有余量);② hairline 必须保持在白卡与暗卡上可辨(投屏/远距红线,亮 ≥1.10 / 暗 ≥1.08);③ 暗色表面三层两两可分辨(page .0043 / card .0097 / hover .0190 亮度阶);④ 暗色 soft 浅底 color-mix 基底随 bg-page 同步(#0f1115 → #0c0e11);⑤ BrandMark/favicon 渐变 stop 表现属性随 teal-700 同步(#0a6963 → #095f59,令牌链兜底纪律不变);⑥ **chartColors 镜像同步清单**(utils/chartColors.ts,check 按本清单逐字段验收):LIGHT 六字段——brand `#0c8078`→`#0b7a72`、textRegular `#324249`→`#2c3b42`、textSecondary `#617379`→`#5a6a71`、placeholder `#91a3a8`→`#8a99a0`、border `#e0e8ea`→`#dde4e7`、bgHover `#eff4f5`→`#e9eef0`;DARK 三字段——textRegular `#c3c7cd`→`#c9ced4`、textSecondary `#8a8f98`→`#9298a2`、bgHover `#1f2227`→`#22262b`。不动项:success / warning / danger / failing 亮暗双份、dark 侧 brand / placeholder / border;不增设 successText 镜像字段(图表内无 success 文字场景)。
 
 ### Named Rules
 
@@ -154,8 +178,8 @@ HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动
 ### Hierarchy
 - **Display**(600, 28px, 1.2):消费页主视觉大数字专用——健康横幅大字结论、可用率大数字。禁用于管理台标题与正文。
 - **Headline**(600, 24px, 1.2):品牌区标题(「HubScope 服务状态」)。
-- **Title**(600, 20px, 1.2):页面标题、关键数字(平均延迟)。
-- **Subtitle**(600, 16px, 1.5):卡片/分组标题。
+- **Title**(600, 20px, 1.2):页面标题、关键数字(平均延迟)、分组标题(2026-07-30 组头升档,GH #74——分组标题是状态板次层级锚点)。
+- **Subtitle**(600, 16px, 1.5):卡片标题。
 - **Body**(400, 14px, 1.5):正文基准、表单、表格主列。
 - **Body-Small**(400, 13px, 1.5):次要正文、状态词。
 - **Label**(400, 12px, 1.5):辅助/标签/时间戳。
@@ -255,6 +279,13 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 
 ### Signature: StatusBadge(唯一状态灯)
 - 全站唯一的 endpoint 状态展示组件:语义色圆点 + 状态词,四态(正常/降级/宕机/告警),告警态橙 + hs-blink 闪烁;degraded 可挂成因副标签(「· 可用性」「· 延迟」),副标签无独立圆点/底色。需要展示状态处一律复用,禁止第二个状态灯实现。
+- **词随灯着色(2026-07-30,GH #71,shape 定稿):** 状态词颜色 = 状态语义色(degraded=warning / down=danger / failing=failing 本体,白底均过 AA;healthy=`--hs-success-text` 深阶)——色+词双编码从「点色词墨」升级为「点词同色」。圆点尺寸 sm 9px / md 11px(自 10/12 微调)。
+
+### Signature: 信号墙灯(2026-07-30,GH #72,shape 定稿)
+- EndpointCard 头行右端的内联状态圆点:9px,状态色,**仅 status ≠ healthy 渲染**——健康通道灭灯,异常才亮灯;failing 灯走 `--hs-blink` 闪烁(闪烁=failing 独占语义在信号墙上的正主)。灯是卡片级状态标记:无词、不可点、`aria-hidden`(状态词由 StatusBadge 承担,a11y 树不重复报状态),**不是第二个 StatusBadge**;聚合层(计数行/组头)永不使用。
+
+### Signature: Hero 指挥台带(2026-07-30,GH #73,shape 定稿)
+- 状态板首屏的单表面指挥带:大字结论 + 异常端点 chips + 计数行 + 24h 可用率大数字合一,取代「banner 卡 + stats strip」两段。带底沿用 tone-soft 四态浅底(空态/首载中性 bg-page),**无圆角无描边盒,底部 1px border-light hairline 收边**。**Display 锚点纪律重申:** 带内 display 档仅两处——大字结论与可用率大数字,本页不再新增任何 display 消费。页面级构成细则见 dashboard surface brief。
 
 ### Signature: 24h 分段条
 - 24 格填满式时间条(格高 16px/8px,xs 圆角,2px 间距),格 = 一小时,三档着色(≥95% 绿 / <95% 黄 / 0% 红 / 无数据灰);聚合口径 = 按小时求和,禁止按端点简单平均。交互面(EndpointCard、速览弹窗)一律消费共享组件 EndpointUptimePanel;StatusCard 静态物料保持独立实现(快照渲染契约,ticket 76 先例)。
