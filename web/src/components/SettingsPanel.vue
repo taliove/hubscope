@@ -49,7 +49,14 @@
       <el-table :data="alerts" size="small" empty-text="暂无告警事件">
         <el-table-column prop="kind" label="类型" width="110">
           <template #default="{ row }">
-            <el-tag :type="kindTagType(row.kind)" size="small">{{ kindLabel(row.kind) }}</el-tag>
+            <el-tag :type="alertKindTagType(row.kind)" size="small">{{ alertKindLabel(row.kind) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="厂商" width="120">
+          <template #default="{ row }">
+            <!-- Vendor family name rides group_key (spec 0017 group alerts);
+                 blank on every endpoint- or hub-scoped event. -->
+            <span v-if="row.group_key" class="vendor-cell" :title="row.group_key">{{ row.group_key }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="message" label="内容" min-width="240" show-overflow-tooltip />
@@ -121,6 +128,7 @@ import {
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
 import { formatTime } from '@/utils/format'
+import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
 
@@ -195,26 +203,8 @@ const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
 const testing = ref(false)
 
-const KIND_LABELS: Record<AlertEvent['kind'], string> = {
-  down: '故障',
-  recovered: '恢复',
-  score_drop: '分数大跌',
-  score_drop_skipped: '对比跳过',
-  test: '测试',
-}
-
-function kindLabel(kind: AlertEvent['kind']): string {
-  return KIND_LABELS[kind] ?? kind
-}
-
-// The manual channel check is not a health signal: it takes the neutral
-// info tone rather than a status color.
-function kindTagType(kind: AlertEvent['kind']): 'danger' | 'success' | 'warning' | 'info' {
-  if (kind === 'down') return 'danger'
-  if (kind === 'recovered') return 'success'
-  if (kind === 'test') return 'info'
-  return 'warning'
-}
+// Kind word/tag mapping lives in utils/alertKind.ts (GH #68): the alert
+// event vocabulary is a single source of truth, never component literals.
 
 // Only suites in the evaluation rotation take a weight input: retired
 // suites no longer join campaigns, so weighting them would be misleading.
@@ -372,5 +362,13 @@ onMounted(async () => {
 /* A recorded-but-unsent event (skipped comparison) reads neutral. */
 .sent-skip {
   color: var(--hs-text-secondary);
+}
+/* Vendor family name (spec 0017 group alerts): long names truncate with
+   title hover carrying the full string (§6). */
+.vendor-cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
