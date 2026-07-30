@@ -3,7 +3,7 @@
     <!-- Header row (a11y harden 2026-07-29): the collapse hot zone is a real
          full-width <button> with aria-expanded; the share button moves OUT
          to a sibling — a <button> must never nest another <button>. -->
-    <div class="group-header-row">
+    <div class="group-header-row" :class="{ 'is-collapsed': collapsed }">
       <button
         type="button"
         class="group-header"
@@ -164,14 +164,26 @@ const collapseCardProtocolTag = computed(
   display: flex;
   align-items: center;
   gap: 4px;
-  /* GH #74: 1px hairline under the header row, on the ROW container (not
-     inside the collapse button, not inside collapse-inner) so it stays
-     visible in the collapsed state; decorative separator uses border-light,
-     never border (surface brief). 8px padding above the line, 12px gap to
-     the card matrix below it. */
+  /* GH #74 + GH #83 collapsed-header revision: 1px hairline on the ROW
+     container (not inside the collapse button, not inside collapse-inner).
+     Hairline is colored only in the expanded state — collapsed state keeps
+     the border as a 1px transparent placeholder so the header row height is
+     pixel-identical across both states (brief "折叠组头修订" section: no
+     height jump, same discipline as the §6 disclosure container). Vertical
+     centering: padding is symmetric top/bottom (the old bottom-only padding
+     pushed content up). 12px gap to the card matrix below is unchanged.
+     Decorative separator uses border-light, never border. */
+  padding-top: var(--hs-space-2);
   padding-bottom: var(--hs-space-2);
   border-bottom: 1px solid var(--hs-border-light);
   margin-bottom: var(--hs-space-3);
+}
+/* Show/hide has NO transition (the disclosure trio only governs the card
+   matrix container, not this row) — the color flips instantly with the
+   class, on both the click path and the data-driven no-motion
+   auto-collapse path. */
+.group-header-row.is-collapsed {
+  border-bottom-color: transparent;
 }
 .group-header {
   /* Full-width button reset (a11y harden 2026-07-29): the collapse hot zone
