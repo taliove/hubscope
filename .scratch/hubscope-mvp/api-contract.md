@@ -85,10 +85,10 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Settings & Alerts(ticket 06,本波不实现,先占位契约)
 
-- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string, "default_sample_count": number, "suite_weights": object, "eval_concurrency": number}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏)
-- `PUT /api/settings` → `{"data": ...同上}`(字段均可选;`default_sample_count` ∈ [1,10]、`eval_concurrency` ∈ [1,16],越界 400)
+- `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string, "default_sample_count": number, "suite_weights": object, "eval_concurrency": number, "quiet_hours_enabled": boolean, "quiet_hours_start": number, "quiet_hours_end": number}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏。quiet_hours_* 为 spec 0017 每日静默时段:enabled 默认 false;start/end 为服务器本地时区整点小时 0–23,默认 23/7,支持跨日;start == end 视为未启用)
+- `PUT /api/settings` → `{"data": ...同上}`(字段均可选;`default_sample_count` ∈ [1,10]、`eval_concurrency` ∈ [1,16]、`quiet_hours_start`/`quiet_hours_end` ∈ [0,23],越界 400)
 - `POST /api/settings/test-lark`(super_admin,ticket 100)→ body `{"webhook_url": string}`(必填,绝对 http/https URL,否则 400)→ `{"data": {"sent_ok": boolean, "error": string|null}}`。测试目标是 body 里的地址(非已保存设置),不受 alert_enabled 开关影响;每次尝试(成功/失败)落 alert_events(kind="test", endpoint_id=null);error 不含 webhook URL(W6)。
-- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test", "message": string, "sent_ok": boolean, "created_at": string}`
+- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test"|"batch"|"group_down"|"group_recovered"|"quiet_summary", "message": string, "sent_ok": boolean, "created_at": string, "group_key": string|null}`(kind 九值全集以 internal/store/alerts.go 常量为准:batch = spec 0017 聚合窗口冲刷批次事件、group_down/group_recovered = 厂商组告警开/闭、quiet_summary = 静默时段结束摘要,三者 endpoint_id 均为 null;group_key 仅组告警事件 group_down/group_recovered 非空,携带 family 名)
 - 飞书告警消息以消息卡片形态发送(ticket 101,`msg_type: "interactive"`,legacy card JSON):颜色标题栏(down/登录爆破 = red、score_drop = orange、recovered = green、test = turquoise)+ 双列字段(模型/协议/错误等)+ 时间备注行;`alert_events.message` 仍落纯文本,告警历史表渲染不变。
 
 ## Endpoint Detail & Series(ticket 04)

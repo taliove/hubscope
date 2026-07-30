@@ -33,11 +33,11 @@
         </el-form-item>
         <el-form-item label="静默起止" data-item="quiet_hours_start">
           <el-select v-model="form.quiet_hours_start" :disabled="!form.quiet_hours_enabled">
-            <el-option v-for="h in hourOptions" :key="h" :label="hourLabel(h)" :value="h" />
+            <el-option v-for="h in hourOptions" :key="h" :label="formatHour(h)" :value="h" />
           </el-select>
           <span class="field-hint">至</span>
           <el-select v-model="form.quiet_hours_end" :disabled="!form.quiet_hours_enabled">
-            <el-option v-for="h in hourOptions" :key="h" :label="hourLabel(h)" :value="h" />
+            <el-option v-for="h in hourOptions" :key="h" :label="formatHour(h)" :value="h" />
           </el-select>
           <div class="field-hint block-hint">
             按服务器本地时区的整点小时,支持跨日(如 23 时至次日 7 时);开始与结束相同视为未启用
@@ -127,7 +127,7 @@ import {
   type AppSettings,
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
-import { formatTime } from '@/utils/format'
+import { formatTime, formatHour } from '@/utils/format'
 import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
@@ -191,13 +191,11 @@ const form = reactive<AppSettings>({
   quiet_hours_end: 7,
 })
 
-// Quiet-hours bounds: integer hours 0–23 rendered as HH:00 (spec 0017
-// ticket 4). el-select keeps its component default width (§4 admin form
-// tiers: el-switch / el-select are not width-capped).
+// Quiet-hours bounds: integer hours 0–23 rendered as HH:00 via formatHour
+// (utils/format.ts, §7 集中纪律; spec 0017 ticket 4). el-select keeps its
+// component default width (§4 admin form tiers: el-switch / el-select are
+// not width-capped).
 const hourOptions = Array.from({ length: 24 }, (_, h) => h)
-function hourLabel(h: number): string {
-  return `${String(h).padStart(2, '0')}:00`
-}
 const suites = ref<Suite[]>([])
 const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
