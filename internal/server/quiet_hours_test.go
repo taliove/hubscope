@@ -371,6 +371,21 @@ func TestQuietHoursDefersScoreDrop(t *testing.T) {
 			t.Errorf("quiet summary should contain %q, got: %s", want, msgs[0])
 		}
 	}
+	// The summary carries the deferred score_drop's FULL frozen text (spec
+	// axis (a)2: the delayed delivery must carry the substance, not a
+	// first-line teaser) — pinned against the message persisted on the
+	// deferred event, which is multi-line (per-suite and per-case lines).
+	dropText := scoreDropEvents(t, ts)[0]["message"].(string)
+	if !strings.Contains(dropText, "\n") {
+		t.Fatalf("test premise: the frozen score_drop text should be multi-line, got: %s", dropText)
+	}
+	cards := lark.cards()
+	if len(cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(cards))
+	}
+	if !strings.Contains(cards[0].Detail, dropText) {
+		t.Errorf("quiet summary detail should carry the full frozen score_drop text\ndetail: %s\nwant text: %s", cards[0].Detail, dropText)
+	}
 	waitFor(t, "score_drop event confirmed by the summary", func() bool {
 		events := scoreDropEvents(t, ts)
 		return len(events) == 1 && events[0]["sent_ok"].(bool) == true

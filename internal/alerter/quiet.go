@@ -106,11 +106,7 @@ func (e *Evaluator) syncQuietTimerLocked() {
 		return
 	}
 	if !q.active() {
-		if e.quietTimer != nil {
-			e.quietTimer.Stop()
-			e.quietTimer = nil
-			e.quietBoundaryAt = time.Time{}
-		}
+		e.disarmQuietTimerLocked()
 		return
 	}
 	now := e.clock.Now()
@@ -122,28 +118,66 @@ func (e *Evaluator) syncQuietTimerLocked() {
 			// boundary handler (which re-arms after handling): superseding
 			// it here would swap e.quietTimer out from under the in-flight
 			// fire and swallow the crossing (race surfaced under -race: a
-			// late window flush re-arming past the due boundary).
+			// late window flush re-arming past the due boundary). The
+			// in-flight goroutine is deliberately NOT released via
+			// quietDone: its fire must be consumed, not cancelled.
 			return
 		}
 		if next.Equal(e.quietBoundaryAt) {
 			return
 		}
-		e.quietTimer.Stop()
+		// Supersede: the armed boundary has not been reached, so its timer
+		// cannot have fired — stopping it and closing quietDone releases
+		// the waiter goroutine deterministically (its channel stays empty).
+		//
+		// Registered race (check LOW-1, pre-existing exposure, behavior
+		// deliberately unchanged): under the REAL clock the boundary can
+		// fall due in the microseconds between this guard's now-check and
+		// the Stop() below — the fire then races the quietDone close and a
+		// due crossing can be cancelled. Worst case the summary is delayed
+		// to the next boundary; the deferred events honestly stay
+		// sent_ok=false ("delivery unconfirmed") — the safe direction.
+		e.disarmQuietTimerLocked()
 	}
 	e.quietBoundaryAt = next
 	timer := e.clock.NewTimer(next.Sub(now))
+	done := make(chan struct{})
 	e.quietTimer = timer
+	e.quietDone = done
 	go func() {
-		<-timer.C()
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if e.quietTimer != timer {
-			// Superseded by a re-arm before the fire was consumed.
-			return
+		select {
+		case <-timer.C():
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.quietTimer != timer {
+				// Superseded by a re-arm before the fire was consumed.
+				return
+			}
+			e.quietTimer = nil
+			e.quietDone = nil
+			e.onQuietBoundaryLocked(context.Background())
+		case <-done:
+			// Superseded or disarmed before firing: exit instead of
+			// parking forever on the stopped timer's channel.
 		}
-		e.quietTimer = nil
-		e.onQuietBoundaryLocked(context.Background())
 	}()
+}
+
+// disarmQuietTimerLocked stops the armed quiet-boundary timer (if any) and
+// releases its waiter goroutine by closing quietDone. Callers must not use
+// it when a fire is already buffered for consumption (the in-flight guard
+// in syncQuietTimerLocked returns before reaching here): there the fire
+// branch and the done branch would race, and cancelling a due crossing
+// would swallow it. Called with e.mu held.
+func (e *Evaluator) disarmQuietTimerLocked() {
+	if e.quietTimer == nil {
+		return
+	}
+	e.quietTimer.Stop()
+	e.quietTimer = nil
+	e.quietBoundaryAt = time.Time{}
+	close(e.quietDone)
+	e.quietDone = nil
 }
 
 // onQuietBoundaryLocked handles one boundary crossing: if the window just
@@ -282,9 +316,11 @@ func (e *Evaluator) deliverQuietSummaryLocked(ctx context.Context, q quietHours)
 // buildQuietSummaryMessage composes the summary card: a red header (still
 // faulty is bad news, spec 0017 Lark card decision), the counts as fields,
 // and one section per content class — endpoints grouped by hub, groups by
-// family, deferred score_drops by their first line. Empty sections render
-// an explicit 无 so a missing class never reads as a rendering accident.
-// Endpoints and groups are sorted for deterministic rendering.
+// family, deferred score_drops by their full frozen text (score_drops
+// inside one window are rare; the deferred delivery must carry the
+// substance, not a teaser first line — spec axis (a)2). Empty sections
+// render an explicit 无 so a missing class never reads as a rendering
+// accident. Endpoints and groups are sorted for deterministic rendering.
 func buildQuietSummaryMessage(q quietHours, endpoints []store.OpenEndpointAlert, groups []string, drops []quietScoreDrop) Message {
 	window := fmt.Sprintf("%02d:00–%02d:00", q.start, q.end)
 
@@ -324,11 +360,7 @@ func buildQuietSummaryMessage(q quietHours, endpoints []store.OpenEndpointAlert,
 
 	dropLines := make([]string, 0, len(drops))
 	for _, d := range drops {
-		firstLine := d.text
-		if i := strings.Index(firstLine, "\n"); i >= 0 {
-			firstLine = firstLine[:i]
-		}
-		dropLines = append(dropLines, "· "+firstLine)
+		dropLines = append(dropLines, "· "+d.text)
 	}
 	if len(dropLines) == 0 {
 		dropLines = []string{"· 无"}

@@ -150,8 +150,12 @@ func (e *Evaluator) flushLocked(ctx context.Context) {
 		return
 	}
 	if len(confirmed) > 0 {
-		pending = dropConfirmedTransitions(pending, confirmed)
-		groupPending = dropConfirmedGroupTransitions(groupPending, confirmed)
+		pending = dropConfirmed(pending, confirmed,
+			func(t bufferedTransition) int64 { return t.eventID },
+			func(t bufferedTransition) (string, string) { return t.kind, t.alert.modelID })
+		groupPending = dropConfirmed(groupPending, confirmed,
+			func(g bufferedGroupTransition) int64 { return g.eventID },
+			func(g bufferedGroupTransition) (string, string) { return g.kind, g.family })
 		if len(pending) == 0 && len(groupPending) == 0 {
 			slog.Debug("alerter: window flush skipped, all transitions already confirmed by a quiet summary")
 			return
@@ -262,32 +266,21 @@ func (e *Evaluator) confirmedTransitionsLocked(pending []bufferedTransition, gro
 	return e.db.ConfirmedAlertEvents(ids)
 }
 
-// dropConfirmedTransitions removes transitions whose event a quiet summary
-// already confirmed.
-func dropConfirmedTransitions(pending []bufferedTransition, confirmed map[int64]bool) []bufferedTransition {
+// dropConfirmed removes buffered transitions whose event a quiet summary
+// already confirmed between decision and flush (endpoint and group
+// transitions share the one implementation). The in-place filter
+// (pending[:0]) preserves the callers' backing-array reuse. describe
+// returns the transition kind and its log subject (model ID / family name).
+func dropConfirmed[T any](pending []T, confirmed map[int64]bool, eventIDOf func(T) int64, describe func(T) (kind, subject string)) []T {
 	out := pending[:0]
 	for _, t := range pending {
-		if confirmed[t.eventID] {
+		if confirmed[eventIDOf(t)] {
+			kind, subject := describe(t)
 			slog.Debug("alerter: transition dropped from flush, already confirmed by a quiet summary",
-				"kind", t.kind, "model", t.alert.modelID)
+				"kind", kind, "subject", subject)
 			continue
 		}
 		out = append(out, t)
-	}
-	return out
-}
-
-// dropConfirmedGroupTransitions is dropConfirmedTransitions for group
-// transitions.
-func dropConfirmedGroupTransitions(groupPending []bufferedGroupTransition, confirmed map[int64]bool) []bufferedGroupTransition {
-	out := groupPending[:0]
-	for _, g := range groupPending {
-		if confirmed[g.eventID] {
-			slog.Debug("alerter: group transition dropped from flush, already confirmed by a quiet summary",
-				"kind", g.kind, "family", g.family)
-			continue
-		}
-		out = append(out, g)
 	}
 	return out
 }
@@ -318,28 +311,32 @@ func (e *Evaluator) sendCardLocked(ctx context.Context, webhook string, message 
 	}
 }
 
-// hubSection is one hub's share of an aggregated card, preserving
-// first-seen endpoint order.
-type hubSection struct {
-	name   string
-	alerts []endpointAlert
+// hubBucket is one hub's share of an aggregated card, preserving first-seen
+// item order within the bucket.
+type hubBucket[T any] struct {
+	name  string
+	items []T
 }
 
-// groupByHub buckets transitions by hub name, preserving first-seen hub and
-// endpoint order (deterministic rendering for readers and tests).
-func groupByHub(group []bufferedTransition) []hubSection {
-	var sections []hubSection
+// bucketByHub groups items by hub name, preserving first-seen hub and item
+// order (deterministic rendering for readers and tests) — the one
+// implementation behind the endpoint card's per-hub sections and the group
+// card's per-hub member sections. hubOf extracts the hub name; valueOf
+// projects the item into what the card renders.
+func bucketByHub[In, Out any](items []In, hubOf func(In) string, valueOf func(In) Out) []hubBucket[Out] {
+	var buckets []hubBucket[Out]
 	index := map[string]int{}
-	for _, t := range group {
-		i, ok := index[t.alert.hubName]
+	for _, item := range items {
+		hub := hubOf(item)
+		i, ok := index[hub]
 		if !ok {
-			i = len(sections)
-			index[t.alert.hubName] = i
-			sections = append(sections, hubSection{name: t.alert.hubName})
+			i = len(buckets)
+			index[hub] = i
+			buckets = append(buckets, hubBucket[Out]{name: hub})
 		}
-		sections[i].alerts = append(sections[i].alerts, t.alert)
+		buckets[i].items = append(buckets[i].items, valueOf(item))
 	}
-	return sections
+	return buckets
 }
 
 // buildBatchMessage composes the aggregated card for one kind: per-hub
@@ -347,17 +344,19 @@ func groupByHub(group []bufferedTransition) []hubSection {
 // batch event. One shape serves any group size — the single-endpoint alert
 // is the N=1 case of the same aggregation.
 func buildBatchMessage(kind string, group []bufferedTransition) Message {
-	sections := groupByHub(group)
+	sections := bucketByHub(group,
+		func(t bufferedTransition) string { return t.alert.hubName },
+		func(t bufferedTransition) endpointAlert { return t.alert })
 
 	hubWord := fmt.Sprintf("%d 个", len(sections))
 	var detailSections, textSections []string
 	for _, sec := range sections {
 		header := sec.name
-		if kind == store.AlertKindDown && len(sec.alerts) >= 2 {
+		if kind == store.AlertKindDown && len(sec.items) >= 2 {
 			header += hubFaultAnnotation
 		}
 		var lines, names []string
-		for _, a := range sec.alerts {
+		for _, a := range sec.items {
 			names = append(names, fmt.Sprintf("%s(%s)", a.modelID, a.protocol))
 			if kind == store.AlertKindRecovered {
 				lines = append(lines, fmt.Sprintf("· %s(%s):已恢复正常", a.modelID, a.protocol))

@@ -235,11 +235,13 @@ func buildGroupMessage(g bufferedGroupTransition) Message {
 		}
 	}
 
-	sections := groupMembersByHub(g.faulty)
+	sections := bucketByHub(g.faulty,
+		func(m groupMemberRef) string { return m.hubName },
+		func(m groupMemberRef) groupMemberRef { return m })
 	var detailSections, textSections []string
 	for _, sec := range sections {
 		var lines, names []string
-		for _, m := range sec.members {
+		for _, m := range sec.items {
 			names = append(names, fmt.Sprintf("%s(%s)", m.modelID, m.protocol))
 			lines = append(lines, fmt.Sprintf("· %s(%s)", m.modelID, m.protocol))
 		}
@@ -257,31 +259,6 @@ func buildGroupMessage(g bufferedGroupTransition) Message {
 		},
 		Detail: strings.Join(detailSections, "\n\n"),
 	}
-}
-
-// memberHubSection is one hub's share of a group card detail, preserving
-// first-seen member order.
-type memberHubSection struct {
-	name    string
-	members []groupMemberRef
-}
-
-// groupMembersByHub buckets group members by hub name, preserving first-seen
-// hub and member order (deterministic rendering, same discipline as
-// groupByHub).
-func groupMembersByHub(members []groupMemberRef) []memberHubSection {
-	var sections []memberHubSection
-	index := map[string]int{}
-	for _, m := range members {
-		i, ok := index[m.hubName]
-		if !ok {
-			i = len(sections)
-			index[m.hubName] = i
-			sections = append(sections, memberHubSection{name: m.hubName})
-		}
-		sections[i].members = append(sections[i].members, m)
-	}
-	return sections
 }
 
 // recoverySectionLines renders one 已恢复/仍故障 section: one line per member

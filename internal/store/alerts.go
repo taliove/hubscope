@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -173,22 +174,34 @@ func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 	return events, rows.Err()
 }
 
+// inPlaceholders renders n "?" placeholders for an IN clause. Callers pass
+// the aggregation window's pending set — tens of IDs at most, far below
+// SQLite's 999 bound-variable ceiling — so no chunking is needed.
+func inPlaceholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
 // UpdateAlertEventsSentOK writes the delivery result back to events that
 // were recorded at transition time with sent_ok=false ("delivery
 // unconfirmed", spec 0017 / ADR 0014): the window flush confirms them after
 // the aggregated send. A failed send leaves them false — no retry, and the
 // false stays honest (the outage may never have reached Lark).
 func (db *DB) UpdateAlertEventsSentOK(ids []int64, sentOK bool) error {
+	if len(ids) == 0 {
+		return nil
+	}
 	v := 0
 	if sentOK {
 		v = 1
 	}
+	args := make([]interface{}, 0, len(ids)+1)
+	args = append(args, v)
 	for _, id := range ids {
-		if _, err := db.conn.Exec(`UPDATE alert_events SET sent_ok = ? WHERE id = ?`, v, id); err != nil {
-			return err
-		}
+		args = append(args, id)
 	}
-	return nil
+	_, err := db.conn.Exec(
+		`UPDATE alert_events SET sent_ok = ? WHERE id IN (`+inPlaceholders(len(ids))+`)`, args...)
+	return err
 }
 
 // ConfirmedAlertEvents returns the subset of the given event IDs whose
@@ -197,16 +210,27 @@ func (db *DB) UpdateAlertEventsSentOK(ids []int64, sentOK bool) error {
 // flush, so the same story is never sent twice (spec 0017 ticket 4, GH #67).
 func (db *DB) ConfirmedAlertEvents(ids []int64) (map[int64]bool, error) {
 	confirmed := map[int64]bool{}
+	if len(ids) == 0 {
+		return confirmed, nil
+	}
+	args := make([]interface{}, 0, len(ids))
 	for _, id := range ids {
-		var sentOK int
-		if err := db.conn.QueryRow(`SELECT sent_ok FROM alert_events WHERE id = ?`, id).Scan(&sentOK); err != nil {
+		args = append(args, id)
+	}
+	rows, err := db.conn.Query(
+		`SELECT id FROM alert_events WHERE sent_ok = 1 AND id IN (`+inPlaceholders(len(ids))+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		if sentOK == 1 {
-			confirmed[id] = true
-		}
+		confirmed[id] = true
 	}
-	return confirmed, nil
+	return confirmed, rows.Err()
 }
 
 // LatestDownRecoveryEvent returns the newest down/recovered event recorded

@@ -70,10 +70,14 @@ type Evaluator struct {
 
 	// Quiet hours (spec 0017 ticket 4, GH #67): the single boundary timer
 	// fires at the next window edge (start or end); quietBoundaryAt is what
-	// it is armed for. quietScoreDrops holds the score_drop events deferred
-	// inside the window, riding the end-of-window summary.
+	// it is armed for. quietDone is closed when the armed timer is
+	// superseded or disarmed, releasing its waiter goroutine — invariant:
+	// quietTimer != nil ⟺ quietDone != nil. quietScoreDrops holds the
+	// score_drop events deferred inside the window, riding the
+	// end-of-window summary.
 	quietTimer      scheduler.Timer
 	quietBoundaryAt time.Time
+	quietDone       chan struct{}
 	quietScoreDrops []quietScoreDrop
 }
 
