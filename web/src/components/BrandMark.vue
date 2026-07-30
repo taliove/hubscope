@@ -19,9 +19,11 @@
              inner elements, so class-based var() colors are lost in PNG
              export and the gradient falls back to black. In the live app the
              scoped CSS var() rules below stay authoritative (CSS beats the
-             presentation attribute). -->
+             presentation attribute). Synced with teal-700 refinement
+             2026-07-30 (#095f59, GH #69 纪律⑤); favicon.svg carries the
+             same stop. -->
         <stop offset="0" class="hs-brand-mark__stop-start" stop-color="#30c4b8" />
-        <stop offset="1" class="hs-brand-mark__stop-end" stop-color="#0a6963" />
+        <stop offset="1" class="hs-brand-mark__stop-end" stop-color="#095f59" />
       </linearGradient>
     </defs>
     <rect x="2" y="2" width="60" height="60" rx="14" :fill="`url(#${gradientId})`" />

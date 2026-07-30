@@ -5,7 +5,8 @@
    Sole source of truth: DESIGN.md (frontmatter, GH #49).
    ========================================================================== */
 :root {
-  /* Brand: light primary is teal-600 (4.8:1 on white, WCAG AA). */
+  /* Brand: light primary is teal-600 (5.2:1 on white, WCAG AA — deepened
+     in the 2026-07-30 same-family refinement, GH #69). */
   --hs-brand: var(--hs-teal-600);
   --hs-brand-hover: var(--hs-teal-500);
   --hs-brand-active: var(--hs-teal-700);
@@ -15,6 +16,9 @@
   --hs-warning: var(--hs-warning-base);
   --hs-danger: var(--hs-danger-base);
   --hs-info: var(--hs-info-base);
+  /* Text-scenario success (2026-07-30, GH #69 T2): status words, green
+     score-band numbers, rising arrows. Graphic fills keep --hs-success. */
+  --hs-success-text: var(--hs-success-text-base);
 
   /* failing: more urgent than down; the ONLY animated status (W5).
      Orange family is the registered single exception to "no new hues"
@@ -43,7 +47,10 @@
 
   /* Borders. */
   --hs-border: var(--hs-gray-200);
-  --hs-border-light: var(--hs-gray-100);
+  /* Hairline: a scale-gap value between page and hover (2026-07-30
+     refinement, GH #69) — deliberately NOT gray-100; it must read on a
+     white card without competing with hover fills (1.13:1 on white). */
+  --hs-border-light: #edf2f4;
 
   /* Overlay scrim (DESIGN.md Overlay Scrim, 2026-07-29): the single scrim
      ground for every EP overlay, mapped in ep-theme.css (--el-mask-color +
@@ -66,37 +73,41 @@
   --hs-brand-active: var(--hs-teal-600);
 
   /* Functional colors keep the same values (status dot + label double
-     encoding stays legible); info steps up one gray level for readability.
+     encoding stays legible); info is decoupled from the gray scale and
+     brightened — the refined gray-500 dropped in dark-ground readability
+     (2026-07-30, GH #69; 4.1:1 on the dark card).
      Warning splits (appendix B #14): light takes yellow-700 for AA on white,
      dark keeps amber-600 (5.5+ on dark grounds, no benefit in changing). */
-  --hs-info: var(--hs-gray-500);
+  --hs-info: #6b7d84;
   --hs-warning: var(--hs-warning-dark);
+  --hs-success-text: var(--hs-success-text-dark);
 
   /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
   --hs-status-failing: var(--hs-orange-400);
 
   /* Soft tints on dark: mix toward white just enough to lift from the
-     surface (≈12%), the dark-theme reading of a light-9 tint. */
+     surface (≈12%), the dark-theme reading of a light-9 tint. The mix
+     base follows the refined dark page surface (#0c0e11, GH #69 纪律④). */
   --hs-brand-soft: var(--hs-teal-900);
-  --hs-success-soft: color-mix(in srgb, var(--hs-success), #0f1115 82%);
-  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #0f1115 82%);
-  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #0f1115 82%);
-  --hs-info-soft: color-mix(in srgb, var(--hs-info), #0f1115 82%);
+  --hs-success-soft: color-mix(in srgb, var(--hs-success), #0c0e11 82%);
+  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #0c0e11 82%);
+  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #0c0e11 82%);
+  --hs-info-soft: color-mix(in srgb, var(--hs-info), #0c0e11 82%);
 
   /* Surfaces. */
-  --hs-bg-page: #0f1115;
+  --hs-bg-page: #0c0e11;
   --hs-bg-card: #17191d;
-  --hs-bg-hover: #1f2227;
+  --hs-bg-hover: #22262b;
 
   /* Text. */
   --hs-text-primary: #e2e8f0;
-  --hs-text-regular: #c3c7cd;
-  --hs-text-secondary: #8a8f98;
+  --hs-text-regular: #c9ced4;
+  --hs-text-secondary: #9298a2;
   --hs-text-placeholder: #5c616a;
 
   /* Borders. */
   --hs-border: #2a2d33;
-  --hs-border-light: #23262b;
+  --hs-border-light: #1e2227;
 
   /* Shadows: black base, wider spread (same token names as tokens.css). */
   --hs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);

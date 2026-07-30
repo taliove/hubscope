@@ -11,29 +11,32 @@
      The "electric" band (#0ABAB5~#06B6D4, steps 400-500) has only ~2.4:1
      contrast on white — reserved for the dark-theme primary and graphic
      accents, never white-background text. Light-theme primary is step 600
-     (#0c8078, 4.8:1 on white, passes WCAG AA). */
+     (#0b7a72, 5.2:1 on white, passes WCAG AA — deepened from #0c8078 4.8:1
+     in the 2026-07-30 same-family refinement, GH #69). */
   --hs-teal-50: #effcfa;
   --hs-teal-100: #d1f6f0;
   --hs-teal-200: #a3ece1;
   --hs-teal-300: #68dccf;
   --hs-teal-400: #30c4b8;
   --hs-teal-500: #0faea2;
-  --hs-teal-600: #0c8078;
-  --hs-teal-700: #0a6963;
-  --hs-teal-800: #085350;
-  --hs-teal-900: #063f3d;
+  --hs-teal-600: #0b7a72;
+  --hs-teal-700: #095f59;
+  --hs-teal-800: #074842;
+  --hs-teal-900: #053836;
 
-  /* Neutral grays: low-chroma teal-gray 10 steps (same hue family). */
-  --hs-gray-50: #f7fafb;
-  --hs-gray-100: #eff4f5;
-  --hs-gray-200: #e0e8ea;
-  --hs-gray-300: #c7d3d6;
-  --hs-gray-400: #91a3a8;
-  --hs-gray-500: #617379;
-  --hs-gray-600: #45565c;
-  --hs-gray-700: #324249;
-  --hs-gray-800: #1e2b31;
-  --hs-gray-900: #0f1b20;
+  /* Neutral grays: low-chroma teal-gray 10 steps (same hue family).
+     2026-07-30 same-family refinement (GH #69): deepened + desaturated
+     ("inkier" neutrals), family character preserved. */
+  --hs-gray-50: #f3f6f7;
+  --hs-gray-100: #e9eef0;
+  --hs-gray-200: #dde4e7;
+  --hs-gray-300: #c3ced2;
+  --hs-gray-400: #8a99a0;
+  --hs-gray-500: #5a6a71;
+  --hs-gray-600: #40525a;
+  --hs-gray-700: #2c3b42;
+  --hs-gray-800: #1a262c;
+  --hs-gray-900: #0b151a;
 
   /* Functional base colors (mid-tone, same lightness system as primary). */
   --hs-success-base: #059669;
@@ -45,7 +48,15 @@
   --hs-warning-base: #a16207;
   --hs-warning-dark: #d97706;
   --hs-danger-base: #dc2626;
-  --hs-info-base: #45565c; /* gray-600 */
+  --hs-info-base: #40525a; /* gray-600 */
+
+  /* Success text (2026-07-30, GH #69 T2; landing GH #62): text-scenario
+     success — status word "正常", green score band, rising arrows. The
+     graphic-fill success #059669 (3.77:1 on white) stays put; text needs
+     AA 4.5:1. Light = emerald-700 (5.48:1), dark = emerald-500 (6.94:1
+     on the dark card). Consumed via --hs-success-text in semantics.css. */
+  --hs-success-text-base: #047857;
+  --hs-success-text-dark: #10b981;
 
   /* Failing orange scale — the single registered exception to the "no new
      hues" discipline (ui-guidelines §3: alert legibility = alert trust, W5).
