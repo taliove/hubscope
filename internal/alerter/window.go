@@ -51,10 +51,13 @@ type bufferedTransition struct {
 }
 
 // bufferLocked adds one transition to the window, arming the flush timer on
-// the first pending item. Called with e.mu held.
+// the first pending item. Also keeps the quiet-boundary timer in sync — a
+// decision point is where a settings change gets picked up. Called with
+// e.mu held.
 func (e *Evaluator) bufferLocked(t bufferedTransition) {
 	e.pending = append(e.pending, t)
 	e.armWindowLocked()
+	e.syncQuietTimerLocked()
 }
 
 // bufferGroupLocked adds one group transition to the same window. Called
@@ -62,6 +65,7 @@ func (e *Evaluator) bufferLocked(t bufferedTransition) {
 func (e *Evaluator) bufferGroupLocked(g bufferedGroupTransition) {
 	e.groupPending = append(e.groupPending, g)
 	e.armWindowLocked()
+	e.syncQuietTimerLocked()
 }
 
 // armWindowLocked arms the flush timer on the first pending item. The
@@ -72,6 +76,7 @@ func (e *Evaluator) armWindowLocked() {
 	if e.windowTimer != nil {
 		return
 	}
+	e.windowFiresAt = e.clock.Now().Add(alertWindow)
 	timer := e.clock.NewTimer(alertWindow)
 	e.windowTimer = timer
 	go func() {
@@ -90,14 +95,67 @@ func (e *Evaluator) armWindowLocked() {
 // hub-less batch event carrying the actual text sent and the real delivery
 // result. Sends happen under e.mu like every alerter send (W5); failures
 // are not retried. Called with e.mu held.
+//
+// Quiet gate (spec 0017 ticket 4, GH #67): the flush holds when the
+// window's scheduled fire time OR its start falls inside quiet hours — a
+// window born inside quiet yields entirely to the end-of-window summary
+// (GH #67 MEDIUM-1), so a transition at 06:59:30 never produces both a
+// 07:00 summary entry and a 07:00:30 card. Both checks stay instant
+// judgments on the window's own two endpoints, not an interval filter over
+// "what happened inside the period" (the GH #66 HIGH-1 discipline). The
+// buffered transitions' events stay sent_ok=false ("delivery unconfirmed")
+// until the summary confirms the ones still open; no batch event is
+// recorded for a held flush. The state machine and the event log are
+// unaffected (transitions keep landing at decision time). The scheduled
+// fire time — not the handler's run time — is evaluated, so a flush
+// executed late (fake-clock jumps in tests) still honors the quiet state
+// of the moment the window was due; under the real clock the two are
+// milliseconds apart.
 func (e *Evaluator) flushLocked(ctx context.Context) {
 	pending := e.pending
 	groupPending := e.groupPending
 	e.pending = nil
 	e.groupPending = nil
 	e.windowTimer = nil
+	firesAt := e.windowFiresAt
+	e.windowFiresAt = time.Time{}
+	e.syncQuietTimerLocked()
 	if len(pending) == 0 && len(groupPending) == 0 {
 		return
+	}
+	if firesAt.IsZero() {
+		firesAt = e.clock.Now()
+	}
+
+	q, err := e.quietHoursLocked()
+	if err != nil {
+		slog.Error("alerter: read quiet-hours settings for window flush", "error", err)
+		return
+	}
+	if q.active() && (q.contains(firesAt) || q.contains(firesAt.Add(-alertWindow))) {
+		slog.Debug("alerter: window flush held by quiet hours",
+			"transitions", len(pending), "group_transitions", len(groupPending))
+		return
+	}
+
+	// A quiet summary that ran between decision and flush confirmed the
+	// anchors it reported (sent_ok=true): drop transitions confirmed since,
+	// so the flush never re-tells a story the summary already told. This
+	// closes the decision-exactly-at-07:00:00 race the start-side gate
+	// cannot see (window start on the loud side, yet the summary already
+	// covered the endpoint).
+	confirmed, err := e.confirmedTransitionsLocked(pending, groupPending)
+	if err != nil {
+		slog.Error("alerter: check confirmed events for window flush", "error", err)
+		return
+	}
+	if len(confirmed) > 0 {
+		pending = dropConfirmedTransitions(pending, confirmed)
+		groupPending = dropConfirmedGroupTransitions(groupPending, confirmed)
+		if len(pending) == 0 && len(groupPending) == 0 {
+			slog.Debug("alerter: window flush skipped, all transitions already confirmed by a quiet summary")
+			return
+		}
 	}
 
 	webhook, err := e.db.GetSetting(store.SettingLarkWebhookURL, "")
@@ -187,6 +245,51 @@ func (e *Evaluator) flushLocked(ctx context.Context) {
 		}
 		e.sendCardLocked(ctx, webhook, buildBatchMessage(kind, group), ids)
 	}
+}
+
+// confirmedTransitionsLocked returns which of the buffered transitions'
+// events have been confirmed (sent_ok=true) since decision time — today the
+// only writer of a confirmation outside a flush is the quiet-hours summary.
+// Called with e.mu held.
+func (e *Evaluator) confirmedTransitionsLocked(pending []bufferedTransition, groupPending []bufferedGroupTransition) (map[int64]bool, error) {
+	ids := make([]int64, 0, len(pending)+len(groupPending))
+	for _, t := range pending {
+		ids = append(ids, t.eventID)
+	}
+	for _, g := range groupPending {
+		ids = append(ids, g.eventID)
+	}
+	return e.db.ConfirmedAlertEvents(ids)
+}
+
+// dropConfirmedTransitions removes transitions whose event a quiet summary
+// already confirmed.
+func dropConfirmedTransitions(pending []bufferedTransition, confirmed map[int64]bool) []bufferedTransition {
+	out := pending[:0]
+	for _, t := range pending {
+		if confirmed[t.eventID] {
+			slog.Debug("alerter: transition dropped from flush, already confirmed by a quiet summary",
+				"kind", t.kind, "model", t.alert.modelID)
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// dropConfirmedGroupTransitions is dropConfirmedTransitions for group
+// transitions.
+func dropConfirmedGroupTransitions(groupPending []bufferedGroupTransition, confirmed map[int64]bool) []bufferedGroupTransition {
+	out := groupPending[:0]
+	for _, g := range groupPending {
+		if confirmed[g.eventID] {
+			slog.Debug("alerter: group transition dropped from flush, already confirmed by a quiet summary",
+				"kind", g.kind, "family", g.family)
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 // sendCardLocked delivers one card to the webhook, writes the delivery

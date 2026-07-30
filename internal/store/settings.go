@@ -32,6 +32,16 @@ const (
 	// the SESSION_SECRET env var is unset, the server generates a random
 	// 32-byte hex value here on first start and reuses it on restart.
 	SettingSessionSecret = "session_secret"
+	// SettingQuietHoursEnabled gates the daily quiet-hours window (spec 0017
+	// ticket 4): inside the window alert sends are held and a summary is
+	// delivered when the window ends.
+	SettingQuietHoursEnabled = "quiet_hours_enabled"
+	// SettingQuietHoursStart / SettingQuietHoursEnd are the window bounds:
+	// integer hours 0–23 in the server's local timezone; cross-midnight
+	// windows (e.g. 23→7) are supported, and start == end means "not
+	// enabled" even when the switch is on.
+	SettingQuietHoursStart = "quiet_hours_start"
+	SettingQuietHoursEnd   = "quiet_hours_end"
 )
 
 // Default setting values applied when a key has never been written.
@@ -54,6 +64,14 @@ const (
 	// MaxEvalConcurrency caps the eval worker pool; beyond this hub load and
 	// latency distortion grow without meaningful speedup.
 	MaxEvalConcurrency = 16
+	// DefaultQuietHoursEnabled keeps alerting loud out of the box: quiet
+	// hours are opt-in (spec 0017 story 26).
+	DefaultQuietHoursEnabled = false
+	// DefaultQuietHoursStart / DefaultQuietHoursEnd are the placeholder
+	// window shown in the settings form (23:00–07:00); they only take effect
+	// once the switch is turned on.
+	DefaultQuietHoursStart = 23
+	DefaultQuietHoursEnd   = 7
 )
 
 // GetSetting returns the stored value for key, or def when the key has never

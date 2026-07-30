@@ -17,7 +17,9 @@ import (
 // "group_down" / "group_recovered" (spec 0017 ticket 3, GH #66) record a
 // vendor (family) group alert opening/closing: endpoint_id is NULL and the
 // family name rides group_key; they join only the group state rebuild
-// (LatestGroupEvent), never the per-endpoint one.
+// (LatestGroupEvent), never the per-endpoint one. "quiet_summary" (spec 0017
+// ticket 4, GH #67) records one quiet-hours end summary: the actual text
+// sent and the real delivery result; it carries a NULL endpoint_id.
 const (
 	AlertKindDown             = "down"
 	AlertKindRecovered        = "recovered"
@@ -27,6 +29,7 @@ const (
 	AlertKindBatch            = "batch"
 	AlertKindGroupDown        = "group_down"
 	AlertKindGroupRecovered   = "group_recovered"
+	AlertKindQuietSummary     = "quiet_summary"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.
@@ -188,6 +191,24 @@ func (db *DB) UpdateAlertEventsSentOK(ids []int64, sentOK bool) error {
 	return nil
 }
 
+// ConfirmedAlertEvents returns the subset of the given event IDs whose
+// delivery was confirmed (sent_ok=true). The window flush uses it to drop
+// transitions a quiet-hours summary already reported between decision and
+// flush, so the same story is never sent twice (spec 0017 ticket 4, GH #67).
+func (db *DB) ConfirmedAlertEvents(ids []int64) (map[int64]bool, error) {
+	confirmed := map[int64]bool{}
+	for _, id := range ids {
+		var sentOK int
+		if err := db.conn.QueryRow(`SELECT sent_ok FROM alert_events WHERE id = ?`, id).Scan(&sentOK); err != nil {
+			return nil, err
+		}
+		if sentOK == 1 {
+			confirmed[id] = true
+		}
+	}
+	return confirmed, nil
+}
+
 // LatestDownRecoveryEvent returns the newest down/recovered event recorded
 // for an endpoint, or nil when none exists. The alert evaluator uses it to
 // rebuild its in-memory "alerted" state after a restart: a trailing "down"
@@ -233,9 +254,13 @@ func (db *DB) LatestGroupEvent(groupKey string) (*AlertEvent, error) {
 }
 
 // OpenGroupAlert is one vendor group whose alert is currently open: the
-// latest group event for the family is a group_down.
+// latest group event for the family is a group_down (the anchor). EventID
+// and SentOK describe that anchor event — the quiet-hours summary confirms
+// anchors whose delivery was never confirmed.
 type OpenGroupAlert struct {
 	GroupKey string
+	EventID  int64     // id of the anchor group_down event
+	SentOK   bool      // delivery state of the anchor event
 	Since    time.Time // created_at of the opening group_down event
 }
 
@@ -244,7 +269,7 @@ type OpenGroupAlert struct {
 // the summary lists still-open groups without re-deriving state in memory.
 func (db *DB) ListOpenGroupAlerts() ([]OpenGroupAlert, error) {
 	rows, err := db.conn.Query(`
-		SELECT group_key, kind, created_at
+		SELECT id, group_key, kind, sent_ok, created_at
 		FROM alert_events
 		WHERE kind IN (?, ?)
 		ORDER BY created_at DESC, id DESC
@@ -259,8 +284,10 @@ func (db *DB) ListOpenGroupAlerts() ([]OpenGroupAlert, error) {
 	seen := map[string]bool{}
 	open := []OpenGroupAlert{}
 	for rows.Next() {
+		var id int64
 		var key, kind, createdAt string
-		if err := rows.Scan(&key, &kind, &createdAt); err != nil {
+		var sentOK int
+		if err := rows.Scan(&id, &key, &kind, &sentOK, &createdAt); err != nil {
 			return nil, err
 		}
 		if seen[key] {
@@ -271,7 +298,74 @@ func (db *DB) ListOpenGroupAlerts() ([]OpenGroupAlert, error) {
 			continue
 		}
 		since, _ := time.Parse(time.RFC3339, createdAt)
-		open = append(open, OpenGroupAlert{GroupKey: key, Since: since})
+		open = append(open, OpenGroupAlert{GroupKey: key, EventID: id, SentOK: sentOK == 1, Since: since})
+	}
+	return open, rows.Err()
+}
+
+// OpenEndpointAlert is one endpoint whose down alert is currently open: the
+// latest down/recovered event for the endpoint is a down (the anchor).
+// EventID and SentOK describe that anchor — the quiet-hours summary reports
+// still-open endpoints whose anchor delivery was never confirmed (sent_ok
+// false), which keeps the derivation purely event-based: a restart loses no
+// state, and an alert already delivered before the quiet window is not
+// repeated by the summary.
+type OpenEndpointAlert struct {
+	EndpointID int64
+	EventID    int64 // id of the anchor down event
+	SentOK     bool  // delivery state of the anchor event
+	HubName    string
+	ModelID    string
+	Protocol   string
+	Family     string
+	Since      time.Time // created_at of the anchor down event
+}
+
+// ListOpenEndpointAlerts returns every endpoint with an open down alert,
+// joined with its hub/model identity for summary rendering. It is the
+// endpoint counterpart of ListOpenGroupAlerts (spec 0017 ticket 4): the
+// still-open judgment is derived from events, never from in-memory alert
+// state, so a restart cannot corrupt the quiet-hours summary. Endpoints
+// whose join no longer resolves (deleted endpoint/model/hub) drop out —
+// there is nothing left to act on.
+func (db *DB) ListOpenEndpointAlerts() ([]OpenEndpointAlert, error) {
+	rows, err := db.conn.Query(`
+		SELECT a.id, a.endpoint_id, a.kind, a.sent_ok, a.created_at,
+		       h.name, m.model_id, e.protocol, m.family
+		FROM alert_events a
+		JOIN endpoints e ON e.id = a.endpoint_id
+		JOIN models m ON m.id = e.model_id
+		JOIN hubs h ON h.id = m.hub_id
+		WHERE a.kind IN (?, ?)
+		ORDER BY a.created_at DESC, a.id DESC
+	`, AlertKindDown, AlertKindRecovered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Newest-first: the first row seen per endpoint is its latest event; an
+	// open endpoint is one whose latest event is a down.
+	seen := map[int64]bool{}
+	open := []OpenEndpointAlert{}
+	for rows.Next() {
+		var a OpenEndpointAlert
+		var kind, createdAt string
+		var sentOK int
+		if err := rows.Scan(&a.EventID, &a.EndpointID, &kind, &sentOK, &createdAt,
+			&a.HubName, &a.ModelID, &a.Protocol, &a.Family); err != nil {
+			return nil, err
+		}
+		if seen[a.EndpointID] {
+			continue
+		}
+		seen[a.EndpointID] = true
+		if kind != AlertKindDown {
+			continue
+		}
+		a.SentOK = sentOK == 1
+		a.Since, _ = time.Parse(time.RFC3339, createdAt)
+		open = append(open, a)
 	}
 	return open, rows.Err()
 }

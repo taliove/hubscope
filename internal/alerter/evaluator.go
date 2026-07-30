@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/taliove/hubscope/internal/scheduler"
 	"github.com/taliove/hubscope/internal/status"
@@ -58,9 +59,22 @@ type Evaluator struct {
 	// timer fires. A process restart drops the buffer but never the events,
 	// so nothing is re-reported. groupPending holds the buffered group
 	// transitions (group_down / group_recovered) sharing the same window.
-	pending      []bufferedTransition
-	groupPending []bufferedGroupTransition
-	windowTimer  scheduler.Timer
+	// windowFiresAt is the scheduled fire time of the armed window — the
+	// quiet gate evaluates it rather than the handler's run time, so a
+	// flush executed late (fake-clock jumps in tests) still honors the
+	// quiet state of the moment the window was due.
+	pending       []bufferedTransition
+	groupPending  []bufferedGroupTransition
+	windowTimer   scheduler.Timer
+	windowFiresAt time.Time
+
+	// Quiet hours (spec 0017 ticket 4, GH #67): the single boundary timer
+	// fires at the next window edge (start or end); quietBoundaryAt is what
+	// it is armed for. quietScoreDrops holds the score_drop events deferred
+	// inside the window, riding the end-of-window summary.
+	quietTimer      scheduler.Timer
+	quietBoundaryAt time.Time
+	quietScoreDrops []quietScoreDrop
 }
 
 // NewEvaluator creates an Evaluator persisting events through db and sending

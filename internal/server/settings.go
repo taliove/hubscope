@@ -21,6 +21,11 @@ type settingsDTO struct {
 	DefaultSampleCount    int                `json:"default_sample_count"`
 	EvalConcurrency       int                `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
+	// Quiet hours (spec 0017 ticket 4): integer hours 0–23, server-local
+	// timezone; start == end means "not enabled" even when the switch is on.
+	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
+	QuietHoursStart   int  `json:"quiet_hours_start"`
+	QuietHoursEnd     int  `json:"quiet_hours_end"`
 }
 
 // settingsPatch is the PUT body: every field is optional; a nil field leaves
@@ -34,6 +39,9 @@ type settingsPatch struct {
 	DefaultSampleCount    *int               `json:"default_sample_count"`
 	EvalConcurrency       *int               `json:"eval_concurrency"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
+	QuietHoursEnabled     *bool              `json:"quiet_hours_enabled"`
+	QuietHoursStart       *int               `json:"quiet_hours_start"`
+	QuietHoursEnd         *int               `json:"quiet_hours_end"`
 }
 
 // readSettings loads all settings, applying defaults for keys never written.
@@ -59,6 +67,15 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.SuiteWeights, err = s.db.GetSuiteWeights(); err != nil {
+		return dto, err
+	}
+	if dto.QuietHoursEnabled, err = s.db.GetSettingBool(store.SettingQuietHoursEnabled, store.DefaultQuietHoursEnabled); err != nil {
+		return dto, err
+	}
+	if dto.QuietHoursStart, err = s.db.GetSettingInt(store.SettingQuietHoursStart, store.DefaultQuietHoursStart); err != nil {
+		return dto, err
+	}
+	if dto.QuietHoursEnd, err = s.db.GetSettingInt(store.SettingQuietHoursEnd, store.DefaultQuietHoursEnd); err != nil {
 		return dto, err
 	}
 	return dto, nil
@@ -105,6 +122,19 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	for _, hour := range []struct {
+		name  string
+		value *int
+	}{
+		{"quiet_hours_start", patch.QuietHoursStart},
+		{"quiet_hours_end", patch.QuietHoursEnd},
+	} {
+		if hour.value != nil && (*hour.value < 0 || *hour.value > 23) {
+			writeError(w, http.StatusBadRequest, hour.name+" must be between 0 and 23")
+			return
+		}
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -130,6 +160,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingSuiteWeights, func() error {
 			return s.db.SetSuiteWeights(patch.SuiteWeights)
 		}},
+		{store.SettingQuietHoursEnabled, func() error {
+			return s.db.SetSettingBool(store.SettingQuietHoursEnabled, *patch.QuietHoursEnabled)
+		}},
+		{store.SettingQuietHoursStart, func() error {
+			return s.db.SetSettingInt(store.SettingQuietHoursStart, *patch.QuietHoursStart)
+		}},
+		{store.SettingQuietHoursEnd, func() error {
+			return s.db.SetSettingInt(store.SettingQuietHoursEnd, *patch.QuietHoursEnd)
+		}},
 	}
 	present := []bool{
 		patch.LarkWebhookURL != nil,
@@ -139,6 +178,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.DefaultSampleCount != nil,
 		patch.EvalConcurrency != nil,
 		patch.SuiteWeights != nil,
+		patch.QuietHoursEnabled != nil,
+		patch.QuietHoursStart != nil,
+		patch.QuietHoursEnd != nil,
 	}
 	for i, u := range updates {
 		if !present[i] {
