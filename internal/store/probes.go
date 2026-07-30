@@ -5,6 +5,11 @@ import "time"
 // maxProbeLimit caps how many probe records a single query may return.
 const maxProbeLimit = 200
 
+// maxProbeWindowLimit caps the hours-windowed query (ListProbesSince). At the
+// default 300s probe period 24h ≈ 288 rounds ×2 records (chat non-streaming +
+// streaming) ≈ 576 rows; the cap is headroom for high-frequency endpoints.
+const maxProbeWindowLimit = 2000
+
 // defaultProbeLimit applies when the caller passes a non-positive limit.
 const defaultProbeLimit = 50
 
@@ -101,6 +106,37 @@ func (db *DB) ListProbes(endpointID int64, limit int, okFilter *bool) ([]Probe, 
 	query += " ORDER BY created_at DESC LIMIT ?"
 	args = append(args, limit)
 
+	return db.queryProbes(query, args)
+}
+
+// ListProbesSince returns probe records for an endpoint created at or after
+// `since`, newest first, capped at maxProbeWindowLimit rows (over-cap windows
+// keep the NEWEST rows). okFilter restricts the result the same way as
+// ListProbes. No schema or write-path change (W2) — read-only window query.
+func (db *DB) ListProbesSince(endpointID int64, since time.Time, okFilter *bool) ([]Probe, error) {
+	query := `
+		SELECT id, endpoint_id, streaming, ok, http_status, error_summary, latency_ms, ttft_ms, input_tokens, output_tokens, created_at
+		FROM probes
+		WHERE endpoint_id = ? AND created_at >= ?
+	`
+	args := []interface{}{endpointID, since.UTC().Format(time.RFC3339)}
+	if okFilter != nil {
+		ok := 0
+		if *okFilter {
+			ok = 1
+		}
+		query += " AND ok = ?"
+		args = append(args, ok)
+	}
+	query += " ORDER BY created_at DESC LIMIT ?"
+	args = append(args, maxProbeWindowLimit)
+
+	return db.queryProbes(query, args)
+}
+
+// queryProbes runs a probes SELECT and scans the rows; shared by ListProbes
+// and ListProbesSince so the row mapping cannot drift between the two paths.
+func (db *DB) queryProbes(query string, args []interface{}) ([]Probe, error) {
 	rows, err := db.conn.Query(query, args...)
 	if err != nil {
 		return nil, err

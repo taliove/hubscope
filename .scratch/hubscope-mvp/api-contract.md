@@ -35,7 +35,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 ## Probes
 
 - `POST /api/endpoints/{id}/probe` → `{"data": {"endpoint_id": number, "results": [ProbeRecord, ...]}}`。同步执行一轮 Probe:chat 协议先非流式、后流式,两条记录都返回;图像协议(images_generation / images_edit)单条记录(无流式/TTFT 概念,spec 0014)。
-- `GET /api/endpoints/{id}/probes?limit=50` → `{"data": [ProbeRecord]}`(按时间倒序,limit 默认 50、最大 200)
+- `GET /api/endpoints/{id}/probes?limit=50` → `{"data": [ProbeRecord]}`(按时间倒序,limit 默认 50、最大 200)。可选 `hours` 开窗参数(2026-07-30,速览弹窗 24h 延迟明细):正整数小时窗,返回 `created_at >= now-hours` 的记录,行帽 2000(默认 300s 周期下 24h ≈576 条,帽为高频端点兜底),超帽取最新 2000、倒序不变;`hours` 与 `limit` 同给时 hours 优先;`hours` 非正整数 → 400;`hours` 与 `ok` 可组合。
 
 `ProbeRecord = {"id": number, "endpoint_id": number, "streaming": boolean, "ok": boolean, "http_status": number, "error_summary": string|null, "latency_ms": number, "ttft_ms": number|null, "input_tokens": number|null, "output_tokens": number|null, "created_at": string(RFC3339)}`
 非流式的 `ttft_ms` 恒为 null。

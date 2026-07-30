@@ -369,3 +369,126 @@ func TestProbesOkFilter(t *testing.T) {
 		t.Fatalf("ok=maybe: expected 400, got %d", resp.StatusCode)
 	}
 }
+
+// TestListProbesHoursWindow covers the optional `hours` window parameter of
+// GET /api/endpoints/{id}/probes (2026-07-30, quick-view latency-detail
+// curve): window boundaries, the 2000-row cap, composition with ok, priority
+// over limit, and rejection of invalid values. The server's clock is fake so
+// the window is deterministic (W4).
+func TestListProbesHoursWindow(t *testing.T) {
+	db := openTempDB(t)
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-hours-window")
+	ep := ids[0]
+
+	// Three probes straddling a 24h window: 1h ago, 23h ago (inside),
+	// 25h ago (outside).
+	seedProbeFull(t, db, int64(ep), false, true, 101, nil, nil, fakeNow.Add(-1*time.Hour))
+	seedProbeFull(t, db, int64(ep), false, true, 102, nil, nil, fakeNow.Add(-23*time.Hour))
+	seedProbeFull(t, db, int64(ep), false, true, 103, nil, nil, fakeNow.Add(-25*time.Hour))
+
+	fetchProbes := func(query string) []map[string]interface{} {
+		t.Helper()
+		resp := doGet(t, fmt.Sprintf("%s/api/endpoints/%d/probes?%s", ts.URL, ep, query))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("probes?%s: expected 200, got %d", query, resp.StatusCode)
+		}
+		var env envelope
+		if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+			t.Fatalf("decode probes: %v", err)
+		}
+		var probes []map[string]interface{}
+		if err := json.Unmarshal(env.Data, &probes); err != nil {
+			t.Fatalf("unmarshal probes: %v", err)
+		}
+		return probes
+	}
+
+	windowed := fetchProbes("hours=24")
+	if len(windowed) != 2 {
+		t.Fatalf("hours=24: expected 2 records inside the window, got %d", len(windowed))
+	}
+	// Newest-first order is unchanged: the 1h-old record leads.
+	if got := int(windowed[0]["latency_ms"].(float64)); got != 101 {
+		t.Fatalf("hours=24: expected newest record (latency 101) first, got %d", got)
+	}
+
+	// hours takes priority over limit when both are given (contract ruling).
+	priority := fetchProbes("hours=24&limit=1")
+	if len(priority) != 2 {
+		t.Fatalf("hours=24&limit=1: hours must win over limit, expected 2 records, got %d", len(priority))
+	}
+
+	// hours composes with the ok filter.
+	failErr := "HTTP 500: boom"
+	seedProbeFull(t, db, int64(ep), false, false, 104, nil, &failErr, fakeNow.Add(-2*time.Hour))
+	failures := fetchProbes("hours=24&ok=false")
+	if len(failures) != 1 || failures[0]["ok"].(bool) {
+		t.Fatalf("hours=24&ok=false: expected exactly 1 failed record, got %d", len(failures))
+	}
+
+	// Invalid hours values are rejected (same caliber as ok=maybe -> 400).
+	for _, bad := range []string{"hours=0", "hours=-3", "hours=abc", "hours=1.5"} {
+		resp := doGet(t, fmt.Sprintf("%s/api/endpoints/%d/probes?%s", ts.URL, ep, bad))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d", bad, resp.StatusCode)
+		}
+	}
+
+	// The legacy limit path still works when hours is absent.
+	legacy := fetchProbes("limit=2")
+	if len(legacy) != 2 {
+		t.Fatalf("limit=2 without hours: expected 2 records, got %d", len(legacy))
+	}
+}
+
+// TestListProbesHoursRowCap pins the 2000-row cap of the hours window: a
+// high-frequency endpoint over the cap is truncated to the NEWEST 2000 rows,
+// order stays newest-first.
+func TestListProbesHoursRowCap(t *testing.T) {
+	db := openTempDB(t)
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-hours-cap")
+	ep := ids[0]
+
+	// 2005 probes one second apart, all inside the last hour; latency_ms = i+1
+	// so the newest record carries 1.
+	for i := 0; i < 2005; i++ {
+		seedProbeFull(t, db, int64(ep), false, true, i+1, nil, nil, fakeNow.Add(-time.Duration(i)*time.Second))
+	}
+
+	resp := doGet(t, fmt.Sprintf("%s/api/endpoints/%d/probes?hours=1", ts.URL, ep))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("hours=1: expected 200, got %d", resp.StatusCode)
+	}
+	var env envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode probes: %v", err)
+	}
+	var probes []map[string]interface{}
+	if err := json.Unmarshal(env.Data, &probes); err != nil {
+		t.Fatalf("unmarshal probes: %v", err)
+	}
+	if len(probes) != 2000 {
+		t.Fatalf("hours=1: expected the 2000-row cap, got %d", len(probes))
+	}
+	if got := int(probes[0]["latency_ms"].(float64)); got != 1 {
+		t.Fatalf("hours=1: truncation must keep the NEWEST rows, first latency = %d, want 1", got)
+	}
+	if got := int(probes[len(probes)-1]["latency_ms"].(float64)); got != 2000 {
+		t.Fatalf("hours=1: last row latency = %d, want 2000 (rows 2001-2005 dropped)", got)
+	}
+}
