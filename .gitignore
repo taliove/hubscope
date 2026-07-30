@@ -52,4 +52,4 @@ opencode.jsonc
 .vscode/
 .github/code-review-graph.instruction.md
 web/.impeccable/hook.cache.json
-.claude/skills/impeccable/
+.claude/skills/impeccable

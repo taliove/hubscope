@@ -1,4 +1,5 @@
 ---
+# 摘要索引面(非穷举)——normative 唯一来源是正文,见正文首段声明(2026-07-30 裁决,check LOW-4)。
 name: HubScope
 description: 对内 LLM 端点监控与质量评估——状态板答「健不健康」,评估榜单答「哪个模型好」
 colors:
@@ -94,6 +95,8 @@ components:
 
 # Design System: HubScope
 
+> **本文件的 normative 结构(2026-07-30 裁决,check LOW-4):** frontmatter 是 impeccable 工具链消费的**摘要索引面,非穷举**——`*-soft` 功能浅底、`--hs-overlay-bg` 浮层衬底、`--hs-blink` 闪烁令牌等只在正文登记,不在 frontmatter。**normative 唯一来源是正文**:正文登记的令牌与规则即生效,不以是否入 frontmatter 为条件。新令牌先入正文;是否回登 frontmatter 按「工具链是否需要索引」判断,不作强制,也不以 frontmatter 缺席推断令牌不存在。
+
 ## Overview
 
 **Creative North Star: "值班室信号墙 (The On-Call Signal Wall)"**
@@ -188,7 +191,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 
 ### Overlay Scrim(2026-07-29 登记)
 - **`--hs-overlay-bg`**(亮 `rgba(15,27,32,.40)` / 暗 `rgba(0,0,0,.55)`):全站唯一浮层衬底色,EP overlay 经 ep-theme.css 统一映射,不存第二套衬底语言。
-- **雾化(backdrop-filter blur 8px)是速览弹窗专属例外**:blur 承载「卡片墙还在后面」的连续性隐喻,与翻转编舞同源;管理台弹窗是作业工具,不雾化。blur 值为实现常量,不进令牌刻度。
+- **雾化(backdrop-filter blur 8px)是速览弹窗专属例外**:blur 承载「卡片墙还在后面」的连续性隐喻;管理台弹窗是作业工具,不雾化。blur 值为实现常量,不进令牌刻度。(原登记「与翻转编舞同源」的表述随翻转编舞 2026-07-30 退役删除——雾化本身保留,用户从未否定。)
 
 ## Shapes
 
@@ -207,21 +210,18 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 
 ## Motion
 
-动效是克制的:全站持续动画只有一例(failing 闪烁,Blink-Is-Failing Rule),其余动效全部是用户触发的单次过渡,且只有两档速度。
+动效是克制的:全站持续动画只有一例(failing 闪烁,Blink-Is-Failing Rule),其余动效全部是用户触发的单次过渡,且只有一档速度。
 
 ### Transition Scale(tokens.css)
-- **default**(`--hs-transition`,0.2s cubic-bezier(0.4, 0, 0.2, 1)):一切默认过渡——hover/focus 反馈、披露容器、状态切换。
-- **focal**(`--hs-transition-focal`,0.32s cubic-bezier(0.16, 1, 0.3, 1)):焦点入场专用——用户触发的「主体进入视野中心」单次过渡(首例:速览弹窗翻入)。不用于 hover、披露、装饰。
+- **default**(`--hs-transition`,0.2s cubic-bezier(0.4, 0, 0.2, 1)):全站唯一过渡档——hover/focus 反馈、披露容器、状态切换,以及弹窗入场(安静入场:opacity + scale(0.96→1) 中心淡入,无位移无翻转)。
 
-编舞延迟(stagger/delay/搭接)不进刻度:是单次编舞的常量,集中在编舞实现处定义并注释互指(首例:速览弹窗 140ms stagger、perspective 1600px)。
-
-focal 档第二形态登记(2026-07-30,速览弹窗 morph 批):**共享元素 morph**——用户点名的主体从原位连续变形进入视野中心(位移 + 缩放 + 翻转同拍,首例:速览弹窗从被点卡片矩形 morph 进场)。morph 是 focal 档的合法负载,不新增速度档;几何(dx/dy/scale)走纯函数,锚点连续性(起点 = 触发元素矩形、终点 = 恒等终态)优先于路径直线性;动态变换经 CSS 变量注入,fallback 恒为原地入场(reduced-motion 由全局归零 + JS 门控覆盖,不新增分支)。
+**focal 档已退役(历史登记,防复活):** `--hs-transition-focal`(0.32s cubic-bezier(0.16, 1, 0.3, 1),焦点入场档)随速览弹窗 morph 编舞于 2026-07-30 被用户实机裁决整体退役——「不做翻转放大吧」「动画也很丑」;令牌已随零消费方从 tokens.css 移除,编舞延迟常量(80/70ms 搭接、perspective 1600px)同批清理。方向定稿:工具风「反馈在,表演不在」——入场只给存在感,不给表演。任何「主体变形进入视野中心」的编舞提案须先过设计评审并正面回应本次否决理由。
 
 ### Named Rules
 
-**The Two-Speed Rule.** 全站只有两档过渡速度:0.2s 给反馈,0.32s 给焦点入场。不引入第三档;拿不准就用 default——focal 只颁给「用户点名要看的东西正在登场」。
+**The Single-Speed Rule.** 全站只有一档过渡速度:0.2s 给一切反馈与入场(含弹窗安静入场)。不引入第二档;拿不准就用 default。(2026-07-30 前为 Two-Speed Rule,0.32s focal 焦点入场档随速览弹窗 morph 编舞同日退役——历史登记见上。)
 
-**The Gate-The-Phases Rule.** reduced-motion 下 CSS 过渡由全局归零兜底,但 JS 阶段时序(setTimeout/rAF 编舞延迟)必须单独门控:reduced-motion 时全部延迟归零、终态直呈——延迟不是装饰,是等待。
+**The Gate-The-Phases Rule.** reduced-motion 下 CSS 过渡由全局归零兜底,但 JS 阶段时序(setTimeout/rAF 编舞延迟)必须单独门控:reduced-motion 时全部延迟归零、终态直呈——延迟不是装饰,是等待。(首例速览弹窗编舞已随 2026-07-30 退役,现无在编多阶段动效;本条作为未来编舞的纪律保留。)
 
 ## Components
 

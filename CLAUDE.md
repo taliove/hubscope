@@ -19,7 +19,7 @@ clone 后跑一次 `make hooks` 启用 `.githooks/`:pre-commit(凭证扫描 + `m
 
 ## 设计规范
 
-前端 UI/UX 设计规范为三层 artifact(GH #47 起,impeccable 体系):[DESIGN.md](./DESIGN.md)(视觉权威:令牌/字阶/布局/暗色/品牌,frontmatter 为 normative)、surface briefs(`web/.impeccable/surfaces/`,页面与组件构成规格)、[.claude/rules/ui-guidelines.md](./.claude/rules/ui-guidelines.md)(业务语义手册:词表/语义色映射/防作假约定/信息边界);产品真相在 [PRODUCT.md](./PRODUCT.md)。三处规范均由 `plan` agent 维护,`check` agent 按多源验收;新视图/新交互/新复用组件开工前必过设计评审(经 frontend skill 调 `plan` 的 UI 评审子能力);机械执行层见「硬门禁」节的 detector hook 与 check-tokens。
+前端 UI/UX 设计规范为三层 artifact(GH #47 起,impeccable 体系):[DESIGN.md](./DESIGN.md)(视觉权威:令牌/字阶/布局/暗色/品牌,**正文为 normative,frontmatter 为工具链摘要索引**——2026-07-30 裁决,check LOW-4)、surface briefs(`web/.impeccable/surfaces/`,页面与组件构成规格)、[.claude/rules/ui-guidelines.md](./.claude/rules/ui-guidelines.md)(业务语义手册:词表/语义色映射/防作假约定/信息边界);产品真相在 [PRODUCT.md](./PRODUCT.md)。三处规范均由 `plan` agent 维护,`check` agent 按多源验收;新视图/新交互/新复用组件开工前必过设计评审(经 frontend skill 调 `plan` 的 UI 评审子能力);机械执行层见「硬门禁」节的 detector hook 与 check-tokens。
 
 ## Agent skills
 

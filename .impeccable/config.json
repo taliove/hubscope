@@ -19,6 +19,24 @@
         ],
         "createdAt": "2026-07-29T09:59:36.550Z",
         "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines s2b 既定机制(导出物料不受令牌字阶约束)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#2a2d33",
+        "files": [
+          "web/src/utils/chartColors.ts"
+        ],
+        "createdAt": "2026-07-30T13:47:00.000Z",
+        "reason": "chartColors.ts 是 ui-guidelines s3 登记的 ECharts 暗色镜像单一来源(check-tokens 同例豁免),detector 对镜像文件的既定盲区"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#1f2227",
+        "files": [
+          "web/src/utils/chartColors.ts"
+        ],
+        "createdAt": "2026-07-30T13:47:00.000Z",
+        "reason": "同机制:bgHover 暗值镜像(与 semantics.css --hs-bg-hover html.dark 一致),防 Stop 深扫重报"
       }
     ]
   }
