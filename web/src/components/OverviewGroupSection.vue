@@ -153,13 +153,22 @@ const collapseCardProtocolTag = computed(
 
 <style scoped>
 .group-section {
-  margin-bottom: var(--hs-space-3);
+  /* GH #74 breathing rhythm: section gap 12px → 32px (surface brief
+     OverviewGroupSection 组头节奏节). */
+  margin-bottom: var(--hs-space-6);
 }
 .group-header-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 10px;
+  /* GH #74: 1px hairline under the header row, on the ROW container (not
+     inside the collapse button, not inside collapse-inner) so it stays
+     visible in the collapsed state; decorative separator uses border-light,
+     never border (surface brief). 8px padding above the line, 12px gap to
+     the card matrix below it. */
+  padding-bottom: var(--hs-space-2);
+  border-bottom: 1px solid var(--hs-border-light);
+  margin-bottom: var(--hs-space-3);
 }
 .group-header {
   /* Full-width button reset (a11y harden 2026-07-29): the collapse hot zone
@@ -223,7 +232,9 @@ const collapseCardProtocolTag = computed(
   overflow: hidden;
 }
 .group-key {
-  font-size: var(--hs-text-lg);
+  /* GH #74: group name bumps lg → xl (Title tier — group headers are the
+     board's second-level anchor); weight stays 600. */
+  font-size: var(--hs-text-xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
