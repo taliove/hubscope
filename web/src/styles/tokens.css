@@ -99,8 +99,4 @@
 
   /* Transition (theme-independent; exposed via the semantic layer). */
   --hs-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  /* focal (DESIGN.md Motion, Two-Speed Rule): user-triggered "subject enters
-     focus" entrances only — first instance: the quick-view dialog flip-in.
-     Never for hover, disclosure, or decoration. */
-  --hs-transition-focal: 0.32s cubic-bezier(0.16, 1, 0.3, 1);
 }

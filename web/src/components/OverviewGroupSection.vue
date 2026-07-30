@@ -68,7 +68,6 @@
             :key="entry.endpoint_id"
             :entry="entry"
             :show-protocol-tag="!collapseCardProtocolTag"
-            :flipped="flippedId === entry.endpoint_id"
             @open="emit('open', $event)"
           />
           <el-empty v-if="entries.length === 0" description="该组无匹配的 Endpoint" :image-size="60" />
@@ -92,9 +91,6 @@ const props = defineProps<{
   group: OverviewGroup
   entries: OverviewEntry[]
   grouping?: 'family' | 'capability' | 'protocol'
-  // Flip choreography (2026-07-29): the dashboard drills its flip state down
-  // so the opened card rotates edge-on while the quick-view dialog is up.
-  flippedId?: number | null
 }>()
 
 const emit = defineEmits<{ (e: 'share'): void; (e: 'open', entry: OverviewEntry): void }>()
@@ -259,9 +255,5 @@ const collapseCardProtocolTag = computed(
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
-  /* Flip choreography: the 3D stage for the card rotateY. The 1600px twin is
-     QUICKVIEW_FLIP_PERSPECTIVE_PX in utils/quickViewChoreo.ts (same value on
-     DashboardView's flat grid) — keep all three in sync. */
-  perspective: 1600px;
 }
 </style>

@@ -9,7 +9,7 @@
   <el-card
     shadow="never"
     class="endpoint-card"
-    :class="[`card-${entry.status}`, { 'is-flipped': flipped }]"
+    :class="`card-${entry.status}`"
     role="button"
     tabindex="0"
     aria-haspopup="dialog"
@@ -74,14 +74,17 @@ import { protocolTagType } from '@/utils/protocol'
 import { splitMiddle } from '@/utils/truncate'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
-// Clicking opens the quick-view dialog (the parent owns the flip state and
-// the dialog; `flipped` only drives the rotateY choreography face).
-// showProtocolTag defaults to true; a uniform-protocol group section
-// collapses the per-card tag and shows one tag in the group header instead
-// (GH #54) — flat mode and mixed-protocol groups keep the card tag.
+// Clicking opens the quick-view dialog (the parent owns the dialog; 2026-07-30
+// the card-flight morph is retired — the dialog enters quietly, the card
+// never moves). showProtocolTag defaults to true; a uniform-protocol group
+// section collapses the per-card tag and shows one tag in the group header
+// instead (GH #54) — flat mode and mixed-protocol groups keep the card tag.
 const props = withDefaults(
-  defineProps<{ entry: OverviewEntry; showProtocolTag?: boolean; flipped?: boolean }>(),
-  { showProtocolTag: true, flipped: false },
+  defineProps<{
+    entry: OverviewEntry
+    showProtocolTag?: boolean
+  }>(),
+  { showProtocolTag: true },
 )
 const emit = defineEmits<{ (e: 'open', entry: OverviewEntry): void }>()
 
@@ -114,16 +117,7 @@ const scoreTooltip = computed(() => {
      left to right, status comes first). Color mapping unchanged (§3). */
   border-left: 3px solid transparent;
   cursor: pointer;
-  transition: box-shadow var(--hs-transition), transform var(--hs-transition);
-  /* Flip choreography (2026-07-29 /impeccable animate): the card rotates
-     edge-on while the quick-view dialog takes focus. The parent .card-grid
-     carries the perspective (1600px twin = QUICKVIEW_FLIP_PERSPECTIVE_PX in
-     utils/quickViewChoreo.ts — keep in sync). */
-  backface-visibility: hidden;
-}
-.endpoint-card.is-flipped {
-  transform: rotateY(-90deg);
-  pointer-events: none;
+  transition: box-shadow var(--hs-transition);
 }
 .endpoint-card:hover {
   box-shadow: var(--hs-shadow-md);

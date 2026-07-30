@@ -112,19 +112,25 @@
 }
 
 /* ==========================================================================
-   Endpoint quick-view dialog (2026-07-29 /impeccable animate, dashboard
-   surface brief): the custom `hs-flip` transition replaces dialog-fade
+   Endpoint quick-view dialog (2026-07-29 /impeccable animate; 2026-07-30
+   quiet entrance — the card-flight morph is retired, user verdict 「反馈在,
+   表演不在」): the custom `hs-quickview` transition replaces dialog-fade
    wholesale via the el-dialog `transition` prop — the classes land on the
-   .el-overlay root, the dialog is styled through descendant selectors. The
-   hs-quickview-overlay scrim adds the frosted blur (quick-view exclusive,
-   DESIGN.md Overlay Scrim: admin dialogs are never frosted; blur survives
-   reduced-motion because it is not motion).
-   Choreography constants (140ms open stagger / 70ms close overlap / 1600px
-   perspective / 8px blur) are single-sourced in utils/quickViewChoreo.ts —
-   the literals here are their CSS twins and must change together.
+   .el-overlay root, the dialog is styled through descendant selectors. Enter
+   is a plain 0.2s fade + 0.96 scale-up on the default stop; leave mirrors
+   it. The hs-quickview-overlay scrim adds the frosted blur (quick-view
+   exclusive, DESIGN.md Overlay Scrim: admin dialogs are never frosted; blur
+   survives reduced-motion because it is not motion). The reduced-motion
+   global zero (semantics.css, !important) flattens all of this to instant.
    ========================================================================== */
 .hs-quickview-dialog {
   max-width: 92vw;
+  /* The dialog's transitions are STATICALLY hung here, not on
+     .hs-quickview-enter-active .el-dialog — Vue judges enter-end by the
+     overlay root's opacity transition and removes the enter classes as soon
+     as it ends, which would truncate a dialog-level transition declared only
+     on the enter classes. */
+  transition: transform var(--hs-transition), opacity var(--hs-transition);
 }
 
 .hs-quickview-overlay {
@@ -134,30 +140,38 @@
   backdrop-filter: blur(8px);
 }
 
-.hs-flip-enter-active {
+.hs-quickview-enter-active {
   transition: opacity var(--hs-transition);
 }
-.hs-flip-leave-active {
-  /* Overlay fade delayed so its TOTAL (0.2s + 0.12s = 0.32s, the focal stop)
-     matches the dialog flip-out: Vue's Transition end-detection keys off the
-     overlay root (transitionend bubbling up from the dialog child is ignored
-     — e.target check), so a shorter overlay transition would fire afterLeave
-     early and cut the dialog rotation. */
-  transition: opacity var(--hs-transition) 0.12s;
+.hs-quickview-leave-active {
+  transition: opacity var(--hs-transition);
 }
-.hs-flip-enter-from,
-.hs-flip-leave-to {
+.hs-quickview-enter-from,
+.hs-quickview-leave-to {
   opacity: 0;
 }
-.hs-flip-enter-active .el-dialog,
-.hs-flip-leave-active .el-dialog {
-  transition: transform var(--hs-transition-focal);
+.hs-quickview-enter-from .el-dialog,
+.hs-quickview-leave-to .el-dialog {
+  opacity: 0;
+  transform: scale(0.96);
 }
-.hs-flip-enter-from .el-dialog,
-.hs-flip-leave-to .el-dialog {
-  /* Inline perspective() keeps the flip 3D without depending on a stacking
-     ancestor; the 1600px twin is QUICKVIEW_FLIP_PERSPECTIVE_PX. */
-  transform: perspective(1600px) rotateY(90deg);
+
+/* Scrollbar-shift fix (2026-07-30): opening a dialog on a classic-
+   scrollbar desktop used to move the page/dialog left — the page
+   scrollbar vanished on EP's lock (reflow) and .el-overlay-dialog grew
+   its own 15px bar when the dialog overflows the viewport. Reserve the
+   gutter permanently so scrollbar presence stops being a layout
+   variable; EP's inline width compensation (calc(100% - 15px)) then
+   double-reserves and must be neutralized. Zero visual change on
+   overlay-scrollbar platforms (macOS/headless). */
+html {
+  scrollbar-gutter: stable;
+}
+body.el-popup-parent--hidden {
+  width: auto !important;
+}
+.el-overlay-dialog {
+  scrollbar-gutter: stable both-edges;
 }
 
 /* Dark theme: repeat the full mapping so the semantic overrides win over

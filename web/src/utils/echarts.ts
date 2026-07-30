@@ -8,6 +8,8 @@
 //   TooltipComponent -> tooltip (its install also brings axisPointer)
 //   LegendComponent  -> legend
 //   MarkLineComponent-> series[].markLine (suite-version break markers)
+//   MarkAreaComponent-> series[].markArea (probe failure windows,
+//                       ProbeLatencyChart)
 //   CanvasRenderer   -> default renderer for echarts.init
 // Full `import 'echarts'` would pull ~1MB into the bundle; keep this list in
 // sync with the components' setOption configs when adding chart features.
@@ -18,6 +20,7 @@ import {
   TooltipComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkAreaComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
@@ -27,6 +30,7 @@ echarts.use([
   TooltipComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkAreaComponent,
   CanvasRenderer,
 ])
 
