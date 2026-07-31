@@ -171,6 +171,17 @@ export interface Overview {
   // null when no enabled endpoint has probes in the window.
   enabled_endpoints: number
   availability_24h: number | null
+  // Health index (spec 0018 decision 7, GH #111): health_score_24h is the
+  // availability_24h aggregate itself (backend single source of truth —
+  // the frontend displays, never derives); health_score_prev_24h is the
+  // same probe weighting over the previous 24h window; health_score_delta
+  // is their difference. Either side without data is null (delta null when
+  // either is) — never a fabricated 100%. probes_24h is the current
+  // window's total probe count across enabled endpoints.
+  health_score_24h: number | null
+  health_score_prev_24h: number | null
+  health_score_delta: number | null
+  probes_24h: number
 }
 
 // Endpoint detail page types (ticket 04).

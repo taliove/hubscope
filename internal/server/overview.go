@@ -29,6 +29,19 @@ type overviewDTO struct {
 	// no enabled endpoint has probes in the window.
 	EnabledEndpoints int      `json:"enabled_endpoints"`
 	Availability24h  *float64 `json:"availability_24h"`
+	// Health index (spec 0018 decision 7, GH #111): HealthScore24h IS the
+	// Availability24h aggregate — one definition, one computation, the
+	// backend as single source of truth. HealthScorePrev24h applies the
+	// same probe weighting to the previous 24h window [now-48h, now-24h);
+	// HealthScoreDelta is their difference. Either side without data is
+	// null, and the delta is null when either side is — the API never
+	// fabricates a 100% or a baseline. Probes24h is the current window's
+	// total probe count across enabled endpoints (the "request volume"
+	// metric, from the same aggregation).
+	HealthScore24h     *float64 `json:"health_score_24h"`
+	HealthScorePrev24h *float64 `json:"health_score_prev_24h"`
+	HealthScoreDelta   *float64 `json:"health_score_delta"`
+	Probes24h          int      `json:"probes_24h"`
 }
 
 // overviewEntryDTO is the per-endpoint status summary. Field names follow
@@ -208,6 +221,9 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 	// endpoints excluded from the probe metrics) with a single key.
 	global := newGroupAccumulator()
 	enabledEndpoints := 0
+	// Previous-window aggregates for the health index delta: the same probe
+	// weighting over [now-48h, now-24h), same enabled-set exclusion.
+	prevProbes, prevOK := 0, 0
 	for _, model := range models {
 		endpoints, err := s.db.ListEndpointsByModelID(model.ID)
 		if err != nil {
@@ -244,6 +260,15 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 			global.add("all", entry, stats.samples24h)
 			if ep.Enabled && !isPing {
 				enabledEndpoints++
+				// Ping endpoints never produce probe records (spec 0018
+				// T1), so only evidence-bearing endpoints are queried for
+				// the previous window.
+				total, ok, err := s.db.CountProbeSamplesBetween(ep.ID, now.Add(-2*overviewWindow24h), now.Add(-overviewWindow24h))
+				if err != nil {
+					return overviewDTO{}, err
+				}
+				prevProbes += total
+				prevOK += ok
 			}
 		}
 	}
@@ -258,6 +283,20 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 	}
 	if groups := global.groups(); len(groups) > 0 {
 		dto.Availability24h = groups[0].Availability24h
+	}
+	// The health score is the availability aggregate itself (spec 0018
+	// decision 7) — reuse the value, never recompute it.
+	dto.HealthScore24h = dto.Availability24h
+	if b, ok := global.byKey["all"]; ok {
+		dto.Probes24h = b.probes
+	}
+	if prevProbes > 0 {
+		prev := float64(prevOK) / float64(prevProbes)
+		dto.HealthScorePrev24h = &prev
+	}
+	if dto.HealthScore24h != nil && dto.HealthScorePrev24h != nil {
+		delta := *dto.HealthScore24h - *dto.HealthScorePrev24h
+		dto.HealthScoreDelta = &delta
 	}
 	return dto, nil
 }

@@ -70,6 +70,20 @@ func (db *DB) CountProbes(endpointID int64) (int, error) {
 	return count, nil
 }
 
+// CountProbeSamplesBetween returns how many probes were created at or after
+// from and before to, and how many of them succeeded. The upper bound is
+// exclusive so adjacent windows never double-count a boundary sample.
+func (db *DB) CountProbeSamplesBetween(endpointID int64, from, to time.Time) (total int, ok int, err error) {
+	err = db.conn.QueryRow(`
+		SELECT COUNT(*), COALESCE(SUM(ok), 0) FROM probes
+		WHERE endpoint_id = ? AND created_at >= ? AND created_at < ?
+	`, endpointID, from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339)).Scan(&total, &ok)
+	if err != nil {
+		return 0, 0, err
+	}
+	return total, ok, nil
+}
+
 // ListProbeSamplesSince returns ok/latency/timestamp triples for all probes
 // created at or after the given time, oldest first.
 func (db *DB) ListProbeSamplesSince(endpointID int64, since time.Time) ([]ProbeSample, error) {

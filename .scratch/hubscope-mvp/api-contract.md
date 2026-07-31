@@ -65,6 +65,13 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `healthy`(绿):其余
 `status_reason` 为人类可读判定依据(如 "连续 3 次失败,最近错误: HTTP 503: No available providers");degraded 双命中时为两个原因片段,按「可用性片段；延迟片段」以中文全角分号「；」连接。`degrade_causes` 为结构化成因(可用性="availability",延迟="latency"),非降级状态恒为 `[]`(空数组,不为 null),前端展示副标签一律消费此字段,不解析 status_reason。
 
+健康指数（spec 0018 决策 7，GH #111，响应级四个字段，与 `enabled_endpoints`/`availability_24h` 同级）：
+- `health_score_24h`：number|null（0~1）——当前 24h 窗口探测加权可用率，与 `availability_24h` 同一定义同一计算（按小时对齐求和 total/failures、启用端点集合、禁用端点不计），无数据为 null，永不返回 100% 冒充。
+- `health_score_prev_24h`：number|null（0~1）——前一 24h 窗口（即 24–48h 前）同口径值，无数据为 null。
+- `health_score_delta`：number|null——`health_score_24h − health_score_prev_24h`，任一侧为 null 则为 null。
+- `probes_24h`：number——当前 24h 窗口启用端点的探测总次数（「请求量」指标，同源聚合）。
+前端只展示不推导；无数据（null）渲染中性「暂无数据」。
+
 ## Discovery(ticket 05)
 
 - `POST /api/discovery/run` → `{"data": {"added": number, "retired": number, "endpoints_created": number}}`。立即对所有 Hub 执行一次同步(定时任务每小时也会自动跑)。
