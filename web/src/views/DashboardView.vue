@@ -73,6 +73,13 @@
 
     <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
 
+    <!-- Side detail panel (GH #116, spec 0018 §10): the row click opens the
+         frozen-snapshot sheet instead of deep-linking. No share entry
+         inside the panel — the share dialog only ever opens from this
+         page's filter row or the full detail page, so a dialog never
+         stacks on the sheet. -->
+    <ModelDetailPanel :entry="panelEntry" @close="closePanel" />
+
     <el-alert
       v-if="error"
       :title="`刷新失败：${error}`"
@@ -103,13 +110,13 @@
 // metric widgets + model status list. The old world — HealthBanner,
 // EndpointCard matrix, OverviewGroupSection, UptimeStrip, quick-view dialog
 // — is retired wholesale with this ticket.
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview } from '@/composables/useOverview'
 import StatusHero from '@/components/StatusHero.vue'
 import MetricWidgets from '@/components/MetricWidgets.vue'
 import ModelStatusList, { type ListSection } from '@/components/ModelStatusList.vue'
+import ModelDetailPanel from '@/components/ModelDetailPanel.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
@@ -128,7 +135,6 @@ import {
 import { meanP50Ms } from '@/utils/statusCardSummary'
 import type { Protocol, OverviewEntry } from '@/api/types'
 
-const router = useRouter()
 const {
   entries,
   byFamily,
@@ -263,10 +269,31 @@ const listSections = computed<ListSection[]>(() => {
   })
 })
 
-// Row click deep-links to the endpoint detail page; the side detail panel
-// replaces this in T6 (GH #116).
+// --- Detail panel (GH #116) -------------------------------------------------
+
+// The panel's frozen snapshot: a spread copy taken at click time. The
+// overview poll replaces the entries array wholesale, so the clicked
+// object is naturally frozen — the copy documents the freeze intent and
+// guards against any future in-place mutation of entries.
+const panelEntry = ref<OverviewEntry | null>(null)
+
+// Row click opens the side detail panel (T6 replaces the T5 interim
+// deep-link). The full detail page stays one click away inside the panel.
 function openDetail(entry: OverviewEntry) {
-  router.push(`/endpoints/${entry.endpoint_id}`)
+  panelEntry.value = { ...entry }
+}
+
+// Unified close path (ESC / scrim / close button all emit the same close).
+// Focus returns to the trigger row; after the panel's own deep-link the
+// row is already unmounted and the querySelector no-ops by construction.
+function closePanel() {
+  const id = panelEntry.value?.endpoint_id
+  panelEntry.value = null
+  if (id !== undefined) {
+    nextTick(() => {
+      document.querySelector<HTMLElement>(`[data-endpoint-id="${id}"]`)?.focus()
+    })
+  }
 }
 
 onMounted(start)
