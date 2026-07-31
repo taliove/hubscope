@@ -1,10 +1,10 @@
 <template>
-  <!-- 模型管理 (GH #112, spec 0018 IA mapping): AdminView's 资源 / 分类规则
-       tabs move out to a first-class sidebar entry. Transitional shell: the
-       existing panels unchanged inside the new shell; the v2 rebuild lands
-       in T8. AdminView stays alive at /admin until T11 (eval-ops and the
-       case library still live there), so this page and AdminView share the
-       same panels during the mixed period. -->
+  <!-- 模型管理 (GH #112 shell, GH #119 migration, spec 0018 IA mapping):
+       AdminView's 资源 / 分类规则 panes are this first-class sidebar entry.
+       The panels are unchanged (EP complex widgets + admin 12px density +
+       560/320 form-width tiers carry over); the page adds the same ?tab=
+       deep-link discipline AdminView had so legacy /admin?tab=resources|rules
+       redirects land on the pane they name. -->
   <div class="models-page">
     <h1 class="page-title">模型管理</h1>
     <el-tabs v-model="activeTab" class="models-tabs">
@@ -26,9 +26,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { useAdminData } from '@/composables/useAdminData'
+import { MODELS_TABS, parseTabQuery, type ModelsTab } from '@/utils/adminNav'
 import HubManager from '@/components/HubManager.vue'
 import ModelAdder from '@/components/ModelAdder.vue'
 import EndpointTable from '@/components/EndpointTable.vue'
@@ -37,10 +39,32 @@ import ImageParamRules from '@/components/ImageParamRules.vue'
 
 const { hubs, endpointRows, endpointlessRows, loading, reloadModels, reloadAll, reloadHubs } = useAdminData()
 
-// el-tabs keeps every pane mounted (no lazy rendering), so HubManager's
-// internal sync polling keeps running on the inactive tab (AdminView
-// precedent).
-const activeTab = ref('resources')
+const router = useRouter()
+const route = useRoute()
+
+// A valid ?tab= query overrides the default landing tab (AdminView GH #29
+// precedent); an invalid value falls back silently. el-tabs keeps every pane
+// mounted (no lazy rendering), so HubManager's internal sync polling keeps
+// running on the inactive tab (AdminView precedent).
+const activeTab = ref<ModelsTab>(parseTabQuery(route.query.tab, MODELS_TABS) ?? 'resources')
+
+// A manual tab switch syncs the URL so a stale deep-link query cannot drag
+// the user back (AdminView precedent).
+watch(activeTab, (tab) => {
+  if (route.query.tab === tab) return
+  void router.replace({ query: { tab } })
+})
+
+// Late navigation to /models?tab=... while already mounted (e.g. a legacy
+// /admin redirect followed from an open session) re-targets the tab;
+// invalid values are ignored silently.
+watch(
+  () => route.query.tab,
+  (raw) => {
+    const tab = parseTabQuery(raw, MODELS_TABS)
+    if (tab !== null && tab !== activeTab.value) activeTab.value = tab
+  },
+)
 
 // Deleting a hub can cascade nothing but changing hubs may affect model hub names.
 async function onHubsChanged() {

@@ -1,9 +1,10 @@
 <template>
-  <!-- 系统设置 (GH #112, spec 0018 IA mapping): AdminView's 设置 / 操作日志 /
-       用户管理 tabs plus the folded-in task center (decision 63) move to a
-       first-class sidebar entry. Transitional shell: existing panels
-       unchanged; the v2 rebuild lands in T11. AdminView stays alive at
-       /admin until then. -->
+  <!-- 系统设置 (GH #112 shell, GH #119 migration, spec 0018 IA mapping):
+       AdminView's 设置 / 操作日志 / 用户管理 panes plus the folded-in task
+       center (decision 63). The panels are unchanged (EP complex widgets +
+       admin 12px density + 560/320 form-width tiers carry over); the task
+       center renders embedded-only now, so its page chrome is gone and the
+       T2 double-padding is resolved by construction. -->
   <div class="settings-page">
     <h1 class="page-title">系统设置</h1>
     <el-tabs v-model="activeTab" class="settings-tabs">
@@ -34,7 +35,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchAuthStatus } from '@/api/auth'
-import { parseSettingsItemQuery } from '@/utils/adminNav'
+import { SETTINGS_TABS, parseSettingsItemQuery, parseTabQuery, type SettingsTab } from '@/utils/adminNav'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 import ShareLinksPanel from '@/components/ShareLinksPanel.vue'
 import TaskCenterView from '@/views/TaskCenterView.vue'
@@ -44,22 +45,10 @@ import UserManager from '@/components/UserManager.vue'
 const router = useRouter()
 const route = useRoute()
 
-// This page's own pane names — a subset of AdminView's ADMIN_TABS, so
-// adminNav.parseAdminTabQuery (which validates against the full admin set)
-// cannot be reused here.
-const SETTINGS_TABS = ['settings', 'tasks', 'logs', 'users'] as const
-type SettingsTab = (typeof SETTINGS_TABS)[number]
-
-function parseTabQuery(raw: string | (string | null)[] | null | undefined): SettingsTab | null {
-  const first = Array.isArray(raw) ? raw[0] : raw
-  if (!first) return null
-  return (SETTINGS_TABS as readonly string[]).includes(first) ? (first as SettingsTab) : null
-}
-
 // A valid ?tab= query overrides the default landing tab (AdminView GH #29
 // precedent); an invalid value falls back silently. Panes stay mounted (no
 // lazy) like AdminView.
-const activeTab = ref<SettingsTab>(parseTabQuery(route.query.tab) ?? 'settings')
+const activeTab = ref<SettingsTab>(parseTabQuery(route.query.tab, SETTINGS_TABS) ?? 'settings')
 
 // Settings item anchor (?item=, GH #29): only meaningful on the settings tab.
 const settingsItem = computed(() =>
@@ -78,7 +67,7 @@ watch(activeTab, (tab) => {
 watch(
   () => route.query.tab,
   (raw) => {
-    const tab = parseTabQuery(raw)
+    const tab = parseTabQuery(raw, SETTINGS_TABS)
     if (tab !== null && tab !== activeTab.value) activeTab.value = tab
   },
 )

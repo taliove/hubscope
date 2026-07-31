@@ -191,7 +191,9 @@ async function onSubmit() {
         : {}),
     })
     resetCaptcha()
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
+    // Default landing after a direct login (no redirect query): the system
+    // settings console (GH #119 — was /admin before AdminView retired).
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/settings'
     router.replace(redirect)
   } catch (err) {
     const apiErr = err instanceof ApiError ? err : null
