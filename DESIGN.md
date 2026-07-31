@@ -48,6 +48,10 @@ typography:
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
+  mono:
+    fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace"
+    fontWeight: 400
+    lineHeight: 1.5
 rounded:
   xs: "2px"
   sm: "4px"
@@ -173,7 +177,7 @@ HubScope 的界面是一堵值班室的信号墙:状态即证据,严重度自动
 ## Typography
 
 **Body Font:** 系统字栈(system-ui / PingFang SC / Microsoft YaHei 回退),零外部字体文件——与单二进制交付一致。
-**Mono Font:** 系统等宽字栈(ui-monospace / SF Mono / Consolas),仅用于 Wordmark 字标(字重 700)。
+**Mono Font:** 系统等宽字栈(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`)——**品牌字族之一(2026-07-31 补登,用户批准)**:用于 Wordmark 字标(字重 700,ui-guidelines §2b 互指)、版本号(AppHeader `.version`)与数据等宽语境;与 Body Font 同属「零外部字体文件、离线可用」纪律(单二进制交付一致)。本登记即该字栈的设计系统出处——impeccable detector 的 design-system-font 检查以本条为准,此字栈不再视为偏离。
 
 **Character:** 无字体个性的刻意选择——工具产品的字形权威来自层级与字重,不来自字体。字重只用 400/600/700(700 仅限 Wordmark);行高默认 1.5,数字类 1.2。
 
