@@ -40,6 +40,10 @@
            relocated from PublicFooter): no public page renders a prominent
            login button. -->
       <router-link v-else to="/login" class="login-link">管理登录</router-link>
+      <!-- Copyright line (GH #122, conservative restore): PublicFooter's
+           retirement dropped the © line with it and spec 0018 does not
+           record an intentional removal — the sidebar footer inherits it. -->
+      <span class="copyright">© 2026 HubScope</span>
       <span v-if="shortVersion" class="version" :title="`HubScope ${version}`">{{ shortVersion }}</span>
     </div>
   </aside>
@@ -336,6 +340,10 @@ onBeforeUnmount(stopBatchPolling)
 }
 .login-link:hover {
   color: var(--hs-brand-hover);
+}
+.copyright {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
 }
 .version {
   font-size: var(--hs-text-xs);

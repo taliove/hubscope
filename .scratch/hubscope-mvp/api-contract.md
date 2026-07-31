@@ -52,7 +52,12 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 
 ## Overview(ticket 03)
 
-- `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry]}}`(公开)
+- `GET /api/overview` → `{"data": {"generated_at": string, "endpoints": [OverviewEntry], "by_family": [OverviewGroup], "by_capability": [OverviewGroup], "by_protocol": [OverviewGroup], "enabled_endpoints": number, "availability_24h": number|null, "health_score_24h": number|null, "health_score_prev_24h": number|null, "health_score_delta": number|null, "probes_24h": number}}`(公开)
+
+响应级聚合字段(ticket 36 起既有,GH #122 补登——核销旧附录 B #10「仍另议」欠账):
+- `by_family` / `by_capability` / `by_protocol`:三维度分组聚合数组,`OverviewGroup = {"key": string, "endpoint_count": number, "status_counts": {"healthy": N, "degraded": N, "down": N, "failing": N, ...}(域模型四态键), "availability_24h": number|null(组内探测加权 24h 可用率,按小时对齐求和 total/failures,无数据为 null), "avg_latency_ms": number|null(组内探测加权平均延迟,无数据为 null)}`;`endpoint_count` 含已停用端点(停用计入 status_counts 的停用计数而非四态)。
+- `enabled_endpoints`:启用端点数(停用不计)。
+- `availability_24h`:全局 24h 窗口探测加权可用率(全部启用端点,按小时对齐求和 total/failures,与组级同口径),无数据为 null,永不返回 100% 冒充。
 
 `OverviewEntry = {"endpoint_id": number, "model_id": string, "protocol": "anthropic"|"openai"|"images_generation"|"images_edit", "enabled": boolean, "status": "healthy"|"degraded"|"down"|"failing", "status_reason": string, "degrade_causes": ["availability"|"latency", ...], "success_rate_24h": number|null(0~1,无数据为 null), "p50_ms": number|null, "p95_ms": number|null, "last_probe_at": string|null, "family": string, "capability": string, "score": number|null(0~100 稳定性评分,无探测数据为 null), "score_reasons": [string, ...](扣分说明,无扣分项为 []), "dots_24h": [OverviewDot](恒 24 桶,最旧小时在前,空桶保留), "eval_score": number|null(0~100 最近一次评估总分,无评估数据为 null), "baseline_p50_ms": number|null(7 天 P50 延迟基线,与状态机降级判定同一份值,基线样本 <5 为 null)}`
 
@@ -95,7 +100,7 @@ Base path: `/api`。所有响应 JSON。成功:`{"data": ...}`;失败:非 2xx �
 - `GET /api/settings` → `{"data": {"lark_webhook_url": string, "alert_enabled": boolean, "score_drop_alert_enabled": boolean, "judge_model": string, "default_sample_count": number, "suite_weights": object, "eval_concurrency": number, "quiet_hours_enabled": boolean, "quiet_hours_start": number, "quiet_hours_end": number}}`(写操作;GET 公开但 lark_webhook_url 原样返回,内部工具不脱敏。quiet_hours_* 为 spec 0017 每日静默时段:enabled 默认 false;start/end 为服务器本地时区整点小时 0–23,默认 23/7,支持跨日;start == end 视为未启用)
 - `PUT /api/settings` → `{"data": ...同上}`(字段均可选;`default_sample_count` ∈ [1,10]、`eval_concurrency` ∈ [1,16]、`quiet_hours_start`/`quiet_hours_end` ∈ [0,23],越界 400)
 - `POST /api/settings/test-lark`(super_admin,ticket 100)→ body `{"webhook_url": string}`(必填,绝对 http/https URL,否则 400)→ `{"data": {"sent_ok": boolean, "error": string|null}}`。测试目标是 body 里的地址(非已保存设置),不受 alert_enabled 开关影响;每次尝试(成功/失败)落 alert_events(kind="test", endpoint_id=null);error 不含 webhook URL(W6)。
-- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test"|"batch"|"group_down"|"group_recovered"|"quiet_summary", "message": string, "sent_ok": boolean, "created_at": string, "group_key": string|null}`(kind 九值全集以 internal/store/alerts.go 常量为准:batch = spec 0017 聚合窗口冲刷批次事件、group_down/group_recovered = 厂商组告警开/闭、quiet_summary = 静默时段结束摘要,三者 endpoint_id 均为 null;group_key 仅组告警事件 group_down/group_recovered 非空,携带 family 名)
+- `GET /api/alerts?limit=50` → `{"data": [AlertEvent]}`,`AlertEvent = {"id": number, "endpoint_id": number|null, "kind": "down"|"recovered"|"score_drop"|"score_drop_skipped"|"test"|"batch"|"group_down"|"group_recovered"|"quiet_summary"|"retire_pending"|"retired", "message": string, "sent_ok": boolean, "created_at": string, "group_key": string|null}`(kind 十一值全集以 internal/store/alerts.go 常量为准:batch = spec 0017 聚合窗口冲刷批次事件、group_down/group_recovered = 厂商组告警开/闭、quiet_summary = 静默时段结束摘要,三者 endpoint_id 均为 null;retire_pending/retired = spec 0018·端点退役(GH #98)退役预告/已退役事件;group_key 仅组告警事件 group_down/group_recovered 非空,携带 family 名)
 - 飞书告警消息以消息卡片形态发送(ticket 101,`msg_type: "interactive"`,legacy card JSON):颜色标题栏(down/登录爆破 = red、score_drop = orange、recovered = green、test = turquoise)+ 双列字段(模型/协议/错误等)+ 时间备注行;`alert_events.message` 仍落纯文本,告警历史表渲染不变。
 
 ## Endpoint Detail & Series(ticket 04)

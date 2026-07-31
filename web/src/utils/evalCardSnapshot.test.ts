@@ -67,9 +67,9 @@ describe('buildEvalCardSnapshot scope chips', () => {
 
   it('adds a family chip only when the family filter is active', () => {
     const withFilter = buildEvalCardSnapshot(makeReport(), { family: 'fam-a', sort: 'total' })
-    expect(chipValues(withFilter)['系列']).toBe('fam-a')
+    expect(chipValues(withFilter)['厂商']).toBe('fam-a')
     const without = buildEvalCardSnapshot(makeReport(), defaultQuery)
-    expect(chipValues(without)['系列']).toBeUndefined()
+    expect(chipValues(without)['厂商']).toBeUndefined()
   })
 
   it('adds a sort chip for any non-default sort (no dimension dedup remains)', () => {
@@ -83,10 +83,10 @@ describe('buildEvalCardSnapshot scope chips', () => {
     expect(chipValues(snapshot)['维度']).toBeUndefined()
   })
 
-  it('keeps the chip order fixed: 批次 → 系列 → 排序 → 涨跌基准', () => {
+  it('keeps the chip order fixed: 批次 → 厂商 → 排序 → 涨跌基准', () => {
     const report = makeReport({ baseline: { campaign_id: 41, comparable: true } })
     const snapshot = buildEvalCardSnapshot(report, { family: 'fam-a', sort: 'coding' })
-    expect(snapshot.chips.map((c) => c.label)).toEqual(['批次', '系列', '排序', '涨跌基准'])
+    expect(snapshot.chips.map((c) => c.label)).toEqual(['批次', '厂商', '排序', '涨跌基准'])
     const plain = buildEvalCardSnapshot(report, defaultQuery)
     expect(plain.chips.map((c) => c.label)).toEqual(['批次', '涨跌基准'])
   })
@@ -162,7 +162,7 @@ describe('buildEvalCardSnapshot rows', () => {
     const snapshot = buildEvalCardSnapshot(report, { family: 'fam-zzz', sort: 'total' })
     expect(snapshot.rows).toHaveLength(0)
     expect(snapshot.overflowCount).toBe(0)
-    expect(chipValues(snapshot)['系列']).toBe('fam-zzz')
+    expect(chipValues(snapshot)['厂商']).toBe('fam-zzz')
     expect(snapshot.failedWarning).toBeNull()
   })
 

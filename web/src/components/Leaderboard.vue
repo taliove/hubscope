@@ -38,7 +38,7 @@
         v-model="family"
         size="small"
         clearable
-        placeholder="全部系列"
+        placeholder="全部厂商"
         class="family-select"
         @change="emitQuery"
       >
@@ -416,7 +416,7 @@ function totalWidth(score: number): string {
 // fully-failed batch never reads as "deleted models don't rank". Live mode
 // points back to the progress grid (ui-guidelines §5).
 const emptyDescription = computed(() => {
-  if (family.value) return `系列 ${family.value} 下暂无上榜模型`
+  if (family.value) return `厂商 ${family.value} 下暂无上榜模型`
   if (props.live) return '暂无已判分模型,可在进度网格查看运行状态'
   if (props.report.status === 'failed') return '暂无上榜模型:评估运行全部失败'
   return '暂无上榜模型:已删除模型不上榜'

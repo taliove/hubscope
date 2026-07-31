@@ -94,7 +94,7 @@ onMounted(async () => {
 }
 .page-title {
   margin: 0 0 var(--hs-space-4);
-  font-size: var(--hs-text-xl);
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
