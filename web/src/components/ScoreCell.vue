@@ -10,8 +10,11 @@
        79) drops the tooltip and measures the width once without observing
        (the material never resizes) — the watermark follows the same width
        rule as the page, and the tooltip's confidence info stays out of the
-       material (registered information gap, ui-guidelines §5). -->
-  <div ref="rootRef" class="score-cell" :title="tooltip">
+       material (registered information gap, ui-guidelines §5). GH #94:
+       show-name prop renders the dimension name above the score for the
+       narrow-viewport card-style list (the唯一组件纪律 stays intact). -->
+  <div ref="rootRef" class="score-cell" :class="{ 'show-name': showName }" :title="tooltip">
+    <span v-if="showName" class="cell-name">{{ name }}</span>
     <!-- Live-mode unscored cell (GH #40, ui-guidelines §5 运行中半成品模式
          ④): the batch status word inline instead of a bare dash — plain text
          at xs, colored by the batch/run status mapping, never a dot (dots +
@@ -50,7 +53,9 @@ const WATERMARK_MIN_PX = 80
 // dash over an empty track in every mode; the unscored tooltip wording
 // comes from the cell's own status. `live` (GH #40, unfinished-batch board
 // only) swaps the null-score dash for the inline batch status word — the
-// settled board and the static material never pass it.
+// settled board and the static material never pass it. `showName` (GH #94,
+// narrow-viewport card-style list) renders the dimension name above the score
+// for the 2-column dimension grid; the matrix mode never passes it.
 const props = withDefaults(
   defineProps<{
     name: string
@@ -58,8 +63,9 @@ const props = withDefaults(
     cell: ReportCell | undefined
     staticMode?: boolean
     live?: boolean
+    showName?: boolean
   }>(),
-  { staticMode: false, live: false },
+  { staticMode: false, live: false, showName: false },
 )
 
 const isLiveUnscored = computed(() => props.live && props.score === null && props.cell !== undefined)
@@ -112,6 +118,18 @@ const tooltip = computed(() => {
 <style scoped>
 .score-cell {
   min-width: 0;
+}
+/* GH #94: show-name mode (narrow-viewport card-style list) stacks the
+   dimension name above the score + bar. */
+.score-cell.show-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-1);
+}
+.cell-name {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+  line-height: 1.2;
 }
 .cell-value {
   font-size: var(--hs-text-md);

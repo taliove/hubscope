@@ -58,7 +58,7 @@
         <span class="grid-model" :title="row.model_id">{{ row.model_id }}</span>
         <span v-for="cell in row.cells" :key="cell.suite_key" class="grid-cell" :title="cellTitle(cell)">
           <span class="cell-status" :class="`cell-${cell.status}`">
-            <span class="cell-dot" />{{ cellStatusWord(cell.status) }}
+            <span class="cell-dot" /><span v-if="!isNarrow" class="cell-word">{{ cellStatusWord(cell.status) }}</span>
           </span>
           <span v-if="showCoverage(cell)" class="cell-coverage">
             {{ cell.judged_cases }}/{{ cell.expected_cases }} 题
@@ -74,6 +74,7 @@ import { computed } from 'vue'
 import type { CampaignReport, EvalBoardView, ReportCell, ReportCellStatus } from '@/api/types'
 import { batchCostSummary } from '@/utils/evalCost'
 import { cellCostText } from '@/utils/scoreTier'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 
 // EvalProgressGrid is the single batch-progress matrix component
 // (ui-guidelines §5): one row per model, one column per suite, four-state
@@ -83,7 +84,9 @@ import { cellCostText } from '@/utils/scoreTier'
 // unfinished batch; the parent feeds the report and owns polling. Read-only
 // mode (ticket 54, shared report page) hides the grid/scores view switch:
 // the shared boundary publishes progress metadata only, so there is no live
-// board to switch to.
+// board to switch to. GH #94: narrow viewport (<= 767px) shrinks the model
+// column to 96px and omits the cell status word (the 8px dot stays, and the
+// tooltip carries the full info).
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -97,6 +100,8 @@ const emit = defineEmits<{
   (e: 'update:view', view: EvalBoardView): void
 }>()
 
+// GH #94: Responsive breakpoint for narrow-viewport adaptations.
+const { isNarrow } = useBreakpoint()
 const progressPercent = computed(() => {
   const p = props.report.progress
   if (!p || p.total === 0) return 0
@@ -187,6 +192,13 @@ const costSummary = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* GH #94: Narrow viewport shrinks the model column to 96px (the truncation +
+   title hover already existed). */
+@media (max-width: 767px) {
+  .grid-model {
+    width: 96px;
+  }
 }
 .grid-cell {
   flex: 1;

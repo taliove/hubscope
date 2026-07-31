@@ -2,14 +2,16 @@
   <el-dialog
     :model-value="visible"
     :title="shared ? '保存图片' : '分享图片'"
-    width="752px"
+    :width="dialogWidth"
     class="eval-share-dialog"
     destroy-on-close
     @update:model-value="emit('update:visible', $event)"
     @closed="onClosed"
   >
-    <div class="preview">
-      <EvalCard v-if="snapshot" :snapshot="snapshot" :origin="origin" />
+    <div ref="previewContainerRef" class="preview">
+      <div ref="previewCardRef" class="preview-card" :style="previewStyle">
+        <EvalCard v-if="snapshot" :snapshot="snapshot" :origin="origin" />
+      </div>
     </div>
 
     <!-- Offscreen twin used as the capture source. The preview caps its
@@ -41,8 +43,10 @@
 // usable — the buttons themselves are the retry path (ui-guidelines §6).
 // Purely client-side (props snapshot + snapdom + local download/clipboard):
 // the shared report page mounts this without any session API, keeping the
-// ADR 0006 share-surface invariant.
-import { ref, computed } from 'vue'
+// ADR 0006 share-surface invariant. GH #94: responsive dialog width
+// (min(752px, 94vw)) + preview scales the card via transform when the
+// available space is narrower than the card's outer box (722).
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import EvalCard from '@/components/EvalCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
@@ -72,6 +76,73 @@ const copySupported = canCopyImage()
 const origin = window.location.origin
 
 const busy = computed(() => copying.value || downloading.value)
+
+// GH #94: Responsive dialog width (min(752px, 94vw)) and preview scaling.
+// EvalCard has no variant toggle (always 720px full width), so the outer box
+// is always 722. The dialog width adapts to narrow viewports; when the
+// available preview space is smaller than 722px, the preview scales the card
+// via transform to fit without clipping.
+const dialogWidth = 'min(752px, 94vw)'
+
+// Refs for measuring the preview container and computing the scale.
+const previewContainerRef = ref<HTMLElement | null>(null)
+const previewCardRef = ref<HTMLElement | null>(null)
+
+// EvalCard outer-box width (content-box 720px + 1px border × 2 = 722).
+const CARD_OUTER_WIDTH = 722
+
+// Reactive scale and compensated height for the preview transform.
+const previewScale = ref(1)
+const previewHeight = ref<number | null>(null)
+
+// Compute the scale: min(1, availableWidth / 722). When the scale is less
+// than 1, transform: scale() shrinks the card to fit, and the container's
+// explicit height compensates (transform does not affect layout).
+function updatePreviewScale() {
+  if (!previewContainerRef.value || !previewCardRef.value) return
+
+  // EP dialog content padding (--el-dialog-padding-primary) is 16px × 2 = 32px.
+  // Available width = dialog content width = (dialog width - 32).
+  const containerWidth = previewContainerRef.value.clientWidth
+  const scale = Math.min(1, containerWidth / CARD_OUTER_WIDTH)
+  previewScale.value = scale
+
+  // The card's natural height (before scaling); the container's explicit height
+  // must be naturalHeight × scale so the layout box matches the visual box.
+  const naturalHeight = previewCardRef.value.offsetHeight
+  previewHeight.value = naturalHeight * scale
+}
+
+// The preview card's transform style: scale from top center, and the container
+// gets an explicit height to compensate for the layout-box mismatch.
+const previewStyle = computed(() => ({
+  transform: `scale(${previewScale.value})`,
+  transformOrigin: 'top center',
+}))
+
+// ResizeObserver watches the preview container for width changes (dialog resize
+// on narrow viewports, or the user manually resizing the browser). The card
+// itself can change height when rows overflow, so we observe both.
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => {
+    updatePreviewScale()
+  })
+  if (previewContainerRef.value) {
+    resizeObserver.observe(previewContainerRef.value)
+  }
+  if (previewCardRef.value) {
+    resizeObserver.observe(previewCardRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+})
 
 function cardElement(): HTMLElement | null {
   return (cardRef.value?.$el as HTMLElement | undefined) ?? null
@@ -164,12 +235,26 @@ function onClosed() {
   /* Tall cards (up to 20 stacked-bar rows) scroll inside the dialog body so
      the footer actions stay on screen. */
   max-height: 62vh;
+  /* GH #94: The preview background and padding frame the scaled card as a
+     "card on a desk" (ui-guidelines §5 弹窗预览). */
+  background: var(--hs-bg-page);
+  padding: var(--hs-space-4);
+  border-radius: var(--hs-radius-lg);
+}
+/* GH #94: The preview-card wrapper holds the transformed card; its explicit
+   height (set in JS) compensates for the transform so the layout box matches
+   the visual box (transform does not affect layout). */
+.preview-card {
+  /* Explicit height is set via inline style based on the scale. */
+  min-height: 0;
 }
 /* Offscreen capture twin: in-document (styles/variables resolve) but
    outside every overflow constraint and out of view. Absolutely positioned,
    never `fixed`: snapdom re-stages fixed elements against the viewport, which
    stretches the card beyond its 720px design width (flex tracks re-expand
-   while px-frozen children stay) and breaks bar/score alignment. */
+   while px-frozen children stay) and breaks bar/score alignment. GH #94: the
+   capture twin is never inside the preview container, so it does not receive
+   the transform scale — exports always render at the design width. */
 .capture-source {
   position: absolute;
   left: -10000px;

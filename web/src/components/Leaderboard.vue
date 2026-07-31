@@ -6,7 +6,9 @@
          In live mode (unfinished batch, ticket 52) the grid/scores view
          switch takes the lead slot and the headers are not clickable — the
          half-scored board never re-ranks; family filtering stays
-         available. -->
+         available. GH #94: narrow viewport adds a sort select (descending-
+         only, no second caliber) because the card-style list has no column
+         headers to click. -->
     <div class="toolbar">
       <el-radio-group
         v-if="live"
@@ -17,6 +19,16 @@
         <el-radio-button value="grid">进度网格</el-radio-button>
         <el-radio-button value="scores">实时分数</el-radio-button>
       </el-radio-group>
+      <el-select
+        v-if="isNarrow"
+        v-model="sortKey"
+        size="small"
+        class="sort-select"
+        @change="emitQuery"
+      >
+        <el-option label="总分" value="total" />
+        <el-option v-for="s in report.suites" :key="s.key" :label="s.name" :value="s.key" />
+      </el-select>
       <el-select
         v-model="family"
         size="small"
@@ -53,8 +65,10 @@
          select for the trend drill-down dialog (ticket 32, no inline row
          expansion per §4). Live mode ranks by the half-scored total
          descending (GH #40) and shows the position in a de-emphasized
-         style; null-total rows keep the placeholder dash. -->
-    <div v-else>
+         style; null-total rows keep the placeholder dash. GH #94: narrow
+         viewport (<= 767px) switches to a card-style list (column headers
+         never render; sorting goes through the toolbar select). -->
+    <div v-if="!isNarrow" class="matrix-board">
       <div class="lb-grid lb-header" :style="gridStyle">
         <span class="h-rank">名次</span>
         <span class="h-model">模型</span>
@@ -170,6 +184,84 @@
       </div>
     </div>
 
+    <!-- GH #94: Card-style list for narrow viewports (<= 767px). Each row
+         becomes a vertical card block: row 1 = rank (with top-3 rail ceremony)
+         + model name + total (xl ink + 6px band bar); row 2 = delta (when
+         baseline is comparable); dimension grid = 2 columns, each cell renders
+         the dimension name above the score via ScoreCell show-name. Live mode
+         and judged-incomplete mode carry the same caliber as the matrix (live
+         rank ordinal, incomplete dash/watermark/empty track, row-end note). -->
+    <div v-else class="card-list">
+      <div
+        v-for="(row, index) in report.rows"
+        :key="row.model_db_id"
+        class="card-item"
+        :class="{ clickable: selectable, 'rank-top-rail': isTopRank(row, index) }"
+        :role="selectable ? 'button' : undefined"
+        :tabindex="selectable ? 0 : undefined"
+        @click="selectable && emit('select', row)"
+        @keydown.enter="selectable && emit('select', row)"
+        @keydown.space.prevent="selectable && emit('select', row)"
+      >
+        <!-- Row 1: rank + model name + total score + bar -->
+        <div class="card-row-1">
+          <span
+            class="rank"
+            :class="{
+              'rank-dash': live ? row.total_score === null : row.complete === false,
+              'rank-top': isTopRank(row, index),
+            }"
+            >{{ live ? liveRankText(row.total_score, index) : row.complete === false ? '–' : index + 1 }}</span
+          >
+          <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
+          <span class="total">
+            <span class="total-value">{{ formatScore(row.total_score) }}</span>
+            <span class="total-track">
+              <span
+                v-if="!live && row.total_score !== null"
+                class="total-fill"
+                :class="`band-${scoreBand(row.total_score)}`"
+                :style="{ width: totalWidth(row.total_score) }"
+              />
+            </span>
+          </span>
+        </div>
+
+        <!-- Judged-incomplete watermark (same position as matrix mode) -->
+        <div v-if="row.complete === false" class="card-watermark">{{ incompleteWatermark(row) }}</div>
+
+        <!-- Row 2: delta (only when baseline is comparable) -->
+        <div v-if="!live && report.baseline?.comparable" class="card-row-2">
+          <span class="delta-label">涨跌</span>
+          <span class="delta" :class="deltaTone(row)" :title="deltaTitle(row)">
+            <template v-if="hasArrow(row)">{{ arrowOf(row) }} {{ formatScoreDelta(row.total_delta) }}</template>
+            <template v-else>–</template>
+          </span>
+        </div>
+
+        <!-- Dimension grid: 2 columns, ScoreCell with show-name -->
+        <div class="card-dimensions">
+          <ScoreCell
+            v-for="s in report.suites"
+            :key="s.key"
+            :name="s.name"
+            :score="row.suite_scores[s.key] ?? null"
+            :cell="cellOf(row, s.key)"
+            :live="live"
+            :show-name="true"
+          />
+        </div>
+
+        <!-- Live mode row-end note (same as matrix) -->
+        <div v-if="live" class="live-note">
+          <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
+          <span v-if="countsOf(row).failed > 0" class="live-failed"
+            >{{ countsOf(row).inFlight > 0 ? '· ' : '' }}{{ countsOf(row).failed }} 个失败</span
+          >
+        </div>
+      </div>
+    </div>
+
     <!-- Share-image dialog; the snapshot freezes at open time so a report
          refresh cannot swap the data between preview and export. -->
     <EvalShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" :shared="shared" />
@@ -187,6 +279,7 @@ import { scoreBand, liveCounts, liveRankText } from '@/utils/scoreTier'
 import { nextSortKey } from '@/utils/sortHeader'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText, incompleteWatermark } from '@/utils/evalWording'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 
 // Leaderboard is the single ranking display of the eval board (registered in
 // ui-guidelines §5): one row per model — rank, truncated name, family tag,
@@ -238,6 +331,9 @@ const emit = defineEmits<{
 
 const family = ref('')
 const sortKey = ref('total')
+
+// GH #94: Responsive breakpoint for narrow-viewport card-style list.
+const { isNarrow } = useBreakpoint()
 
 // Share-image state (ticket 76): the snapshot freezes the currently
 // displayed batch + filters at open time; a report prop refresh never
@@ -361,6 +457,9 @@ function deltaTitle(row: ReportRow): string {
   margin-bottom: 16px;
 }
 .family-select {
+  width: 140px;
+}
+.sort-select {
   width: 140px;
 }
 .toolbar-end {
@@ -563,6 +662,160 @@ function deltaTitle(row: ReportRow): string {
   white-space: nowrap;
 }
 .live-failed {
+  color: var(--hs-danger);
+}
+
+/* GH #94: Card-style list for narrow viewports (<= 767px). Each row becomes
+   a vertical card block with 1px hairlines between blocks (matching the
+   matrix row rhythm). The top-3 rail ceremony stays on (3px brand left
+   border), and the rank/total/delta caliber is identical to the matrix. */
+.card-list {
+  display: flex;
+  flex-direction: column;
+}
+.card-item {
+  padding: var(--hs-space-3) 0;
+  /* The 3px left border is the top-3 ceremony rail (transparent for every
+     other rank so the layout never shifts). */
+  border-left: 3px solid transparent;
+}
+.card-item + .card-item {
+  border-top: 1px solid var(--hs-border-light);
+}
+.card-item.clickable {
+  cursor: pointer;
+}
+.card-item.clickable:hover {
+  background: var(--hs-brand-soft);
+}
+.card-item.clickable:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: -2px;
+}
+.card-item.rank-top-rail {
+  border-left-color: var(--hs-brand);
+}
+/* Card row 1: rank + model name + total score + bar. The rank and total-value
+   are inline-flex siblings; the total-track sits below the total-value and
+   spans its width. */
+.card-row-1 {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-2);
+}
+.card-row-1 .rank {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  width: 24px;
+}
+.card-row-1 .rank.rank-top {
+  color: var(--hs-brand);
+  font-size: var(--hs-text-lg);
+  font-weight: 600;
+}
+.card-row-1 .rank.rank-dash {
+  color: var(--hs-text-placeholder);
+}
+.card-row-1 .model-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-row-1 .total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.card-row-1 .total-value {
+  font-size: var(--hs-text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--hs-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.card-row-1 .total-track {
+  display: block;
+  width: 64px;
+  height: 6px;
+  margin-top: 2px;
+  background: var(--hs-bg-hover);
+  border-radius: var(--hs-radius-xs);
+  overflow: hidden;
+}
+.card-row-1 .total-fill {
+  display: block;
+  height: 100%;
+}
+.card-row-1 .total-fill.band-success {
+  background: var(--hs-success);
+}
+.card-row-1 .total-fill.band-warning {
+  background: var(--hs-warning);
+}
+.card-row-1 .total-fill.band-danger {
+  background: var(--hs-danger);
+}
+/* Judged-incomplete watermark (same styling as matrix mode). */
+.card-watermark {
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--hs-text-secondary);
+  opacity: 0.85;
+  white-space: normal;
+  margin-bottom: var(--hs-space-2);
+  margin-left: 32px;
+}
+/* Card row 2: delta (only when baseline is comparable). */
+.card-row-2 {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-2);
+  margin-left: 32px;
+}
+.card-row-2 .delta-label {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.card-row-2 .delta {
+  font-size: var(--hs-text-sm);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.card-row-2 .delta.delta-up {
+  color: var(--hs-success);
+}
+.card-row-2 .delta.delta-down {
+  color: var(--hs-danger);
+}
+.card-row-2 .delta.delta-flat {
+  color: var(--hs-text-placeholder);
+}
+/* Dimension grid: 2 columns, gap 8px (375px viewport → ~166px per cell). */
+.card-dimensions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--hs-space-2);
+  margin-left: 32px;
+}
+/* Live mode row-end note (same as matrix). */
+.card-item .live-note {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+  white-space: nowrap;
+  margin-top: var(--hs-space-2);
+  margin-left: 32px;
+}
+.card-item .live-note .live-failed {
   color: var(--hs-danger);
 }
 </style>
