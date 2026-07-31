@@ -64,7 +64,13 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 - **hairline 仅展开态显示:** 折叠态为干净单行,hairline 隐藏;**几何稳定硬要求**——折叠态以 1px 透明边占位(border-bottom 保留、颜色 transparent 或等价机制),折叠/展开两态组头行高度逐像素一致,禁高度跳变(与 ui-guidelines §6 披露容器「禁布局跳动」同纪律)。
 - **组头行垂直居中修正:** padding 上下对称(重心回中;原仅 padding-bottom 8px 的不对称内边距使行内容偏上)。
 - **状态计数 chips dotless(封闭清单场景③):** 去点,状态词语义色着色词 + 数字不变,着色词自身承担双编码(语义见 StatusBadge 节 dotless 变体)。
-标题行:折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 组聚合指标(24h 可用率/均延)+ 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组头「均延」探测加权值可能略异,卡片内部自洽优先)。
+**细带化 + 指标下移同行(2026-07-31 /impeccable 实机迭代,用户裁决;GH #85):**
+- **构成变更:** 组头行不再含「本组:」聚合指标(组头行 = 折叠箭头 + 组名 + 端点计数 + 状态计数 chips(+ 协议收敛 tag)+ 分享按钮);**第二行 = UptimeStrip 细带(flex-1)+「本组:24h 可用率 X · 均延 Y」指标右对齐同行**——形态 → 读数一次扫完。
+- **细带化:** 条格高 10px → 6px(用户实机反馈「格子太大」;组级条是全组扫读带,EndpointCard 卡内条 10px 端点粒度证据不动,两处格高自此分档);24 格 flex 槽、2px 间距、`--hs-radius-xs`、§3 批 59 三档着色 + 无数据灰、逐格 tooltip 口径全部不动。
+- **否决登记:** 「条收进组头行」方案用户否决——组头左侧内容(组名长度、chips 个数、计数数字)逐组不同且随轮询变化,条内联后跨组位置参差、左侧长内容有折行风险;跨组对齐是时间轴语言的核心价值,不能牺牲。
+- **对齐约束:** 条左缘全组严格对齐;右缘随指标文字长度几 px 参差(格宽差异 <2%,不可察),登记为已知并接受,禁为右缘对齐把指标文字定宽。
+- **折叠恒显不破(GH #64/spec 0017):** 折叠态组条行照常渲染;折叠披露三件套与 no-motion 双轨不受影响。
+标题行(2026-07-31 GH #85 修订,组聚合指标移出):折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组头「均延」探测加权值可能略异,卡片内部自洽优先)。
 
 ### EndpointQuickViewDialog(端点速览弹窗,2026-07-29 设计评审;2026-07-30 安静入场 + 明细曲线视觉修订,morph 编舞同日退役)
 Dashboard 卡片点击开启的轻量速览(el-dialog,640px + max-width 92vw,**align-center 垂直居中**(2026-07-30 修订,取代 EP 默认 15vh 顶距——终态在屏幕正中,与安静入场「中心淡入」语义一致;EP 2.14 per-instance prop,仅本弹窗,其他弹窗定位语义不变),radius-lg,shadow-lg 浮层语义,消费页密度)。

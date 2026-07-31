@@ -39,7 +39,10 @@ defineProps<{ dots: OverviewDot[] }>()
 }
 .uptime-seg {
   width: 100%;
-  height: 10px;
+  /* GH #85 slim band: group-level strips are a whole-group scan band at
+     6px; the EndpointCard in-card strip stays 10px (endpoint-granularity
+     evidence) — the two dot heights are deliberately tiered. */
+  height: 6px;
   border-radius: var(--hs-radius-xs);
   display: inline-block;
 }

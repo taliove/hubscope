@@ -39,13 +39,6 @@
             禁用 {{ group.status_counts['disabled'] }}
           </el-tag>
         </span>
-
-        <!-- "本组:" prefix (GH #55): one container-level scope marker for both
-             metrics, so the group's availability/latency can never be read as
-             the global figures the banner carries. -->
-        <span class="group-metrics">
-          本组:24h 可用率 {{ formatPercent(group.availability_24h) }} · 均延 {{ formatMs(group.avg_latency_ms) }}
-        </span>
       </button>
 
       <!-- Per-group share (ticket 59): text button so it never competes with
@@ -57,13 +50,23 @@
       </el-button>
     </div>
 
-    <!-- Group-level 24h segmented availability bar (spec 0017, GH #64):
-         always visible, collapsed or not, so group health stays scannable
-         without expanding the card matrix. Aggregated from the same
-         page-filtered scope, enabled endpoints only (the matrix below also
-         renders disabled cards, explicitly tagged), so the strip can never
-         contradict the matrix. -->
-    <UptimeStrip :dots="groupDots" />
+    <!-- Group strip row (2026-07-31, GH #85): the slim band (flex-1) and the
+         "本组:" metrics share one row, metrics right-aligned — shape → reading
+         in a single scan. The "本组:" prefix (GH #55) remains one
+         container-level scope marker so the group's availability/latency can
+         never be read as the global figures the banner carries. Metrics moved
+         OUT of the header row; folding the strip into the header was rejected
+         (per-group left content varies, cross-group alignment is the timeline
+         language's core value). Always visible, collapsed or not (GH #64).
+         Strip left edge aligns strictly across groups; the right edge varies
+         a few px with the metrics text — registered as known and accepted
+         (never fix the metrics width to force alignment). -->
+    <div class="strip-row">
+      <UptimeStrip :dots="groupDots" />
+      <span class="group-metrics">
+        本组:24h 可用率 {{ formatPercent(group.availability_24h) }} · 均延 {{ formatMs(group.avg_latency_ms) }}
+      </span>
+    </div>
 
     <!-- Disclosure container (2026-07-29 /impeccable animate, ui-guidelines
          §6 扩展条): grid 0fr↔1fr height transition + inner min-height:0 /
@@ -282,19 +285,31 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
   margin-right: 4px;
 }
 .group-metrics {
-  margin-left: auto;
+  /* GH #85: moved out of the header row into the strip row; right alignment
+     comes from the strip's flex:1, not margin-left:auto. nowrap keeps the
+     metric pair on one line; the strip's flex slots absorb the remaining
+     width (right-edge variance of a few px registered as accepted). */
+  flex: none;
+  white-space: nowrap;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+}
+.strip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-3);
+  /* Breathing room between the strip row and the card matrix (the header's
+     own margin-bottom handles the gap above the row). */
+  margin-bottom: 10px;
+}
+.strip-row .uptime-strip {
+  flex: 1;
+  min-width: 0;
 }
 .group-share {
   /* Sibling of the collapse button; the header row's 4px gap carries the
      spacing (was margin-left: 4px while nested in the old header div). */
   flex: none;
-}
-/* Breathing room between the group strip and the card matrix (the header's
-   own margin-bottom handles the gap above the strip). */
-.group-section .uptime-strip {
-  margin-bottom: 10px;
 }
 .card-grid {
   display: grid;
