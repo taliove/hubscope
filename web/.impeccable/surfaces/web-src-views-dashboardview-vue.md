@@ -70,7 +70,7 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 - **否决登记:** 「条收进组头行」方案用户否决——组头左侧内容(组名长度、chips 个数、计数数字)逐组不同且随轮询变化,条内联后跨组位置参差、左侧长内容有折行风险;跨组对齐是时间轴语言的核心价值,不能牺牲。
 - **对齐约束:** 条左缘全组严格对齐;右缘随指标文字长度几 px 参差(格宽差异 <2%,不可察),登记为已知并接受,禁为右缘对齐把指标文字定宽。
 - **折叠恒显不破(GH #64/spec 0017):** 折叠态组条行照常渲染;折叠披露三件套与 no-motion 双轨不受影响。
-标题行(2026-07-31 GH #85 修订,组聚合指标移出):折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组头「均延」探测加权值可能略异,卡片内部自洽优先)。
+标题行(2026-07-31 GH #85 修订,组聚合指标移出):折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组条行右侧「本组:均延」探测加权值可能略异,卡片内部自洽优先)。
 
 ### EndpointQuickViewDialog(端点速览弹窗,2026-07-29 设计评审;2026-07-30 安静入场 + 明细曲线视觉修订,morph 编舞同日退役)
 Dashboard 卡片点击开启的轻量速览(el-dialog,640px + max-width 92vw,**align-center 垂直居中**(2026-07-30 修订,取代 EP 默认 15vh 顶距——终态在屏幕正中,与安静入场「中心淡入」语义一致;EP 2.14 per-instance prop,仅本弹窗,其他弹窗定位语义不变),radius-lg,shadow-lg 浮层语义,消费页密度)。
@@ -95,7 +95,7 @@ hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs p
 - **首屏严重度组织(GH #52 登记):** 状态板组间/组内/flat 三处统一走 `utils/severitySort.ts` 的严重度秩(`SEVERITY_RANK`:failing>down>degraded>healthy,全站唯一来源,StatusCard 异常明细同引);**口径一律按筛选后 entries 计算**。组间秩 = 组内 enabled entries 的最小秩,tie 按组键字典序(`<`,不用 localeCompare);组内秩升序,tie 按 model_id → protocol → endpoint_id;flat 模式同经 `sortEntriesBySeverity`。**已停用端点(`DISABLED_RANK`)恒沉底**——disabled 的 down/failing 不抬组秩、不参与首屏竞争;**筛选后空组沉底**(组键字典序,空 hint 现行为保留)。轮询/筛选引起的数据驱动重排不做动画(与榜单行重排同纪律)。同纪律延伸至披露动作:数据/筛选驱动的分组折叠与恢复不做动画(no-motion 双轨,机制见「组件规格」OverviewGroupSection 节)。
 - **速览弹窗快照冻结(2026-07-29):** 打开即冻结 entry 快照,轮询不更新弹窗内容;入场为 0.2s 安静入场(用户触发单次过渡),与 GH #52 数据驱动不动画纪律兼容(同折叠披露条款口径)。(原「翻转是用户触发单次过渡」表述随 morph 编舞 2026-07-30 退役改写。)
 - **statusFilter 双控(GH #55 登记,有意为之;2026-07-30 随 GH #73 迁入 hero 带):** hero 带计数行状态项点击(再点取消)与筛选行状态下拉绑定同一 `statusFilter` ref,双向同步构造性成立;计数行是快捷路径,hero 带 inspect 写同一 ref;三者共享单一过滤源。选中态 = 1px brand 内嵌描边(box-shadow inset,零布局位移)+ 透明底 + brand 文字(2026-07-29 用户实机反馈定稿,取代 GH #55 的 brand-soft 浅底——浅底色块与状态点语义色打架;brand 描边保留「激活选择」语言且零色块;原 2px 下划线读作导航 tab 的撞车问题保持已解)。
-- **「本组」前缀(GH #55):** 组头 group-metrics 以「本组:」容器级前缀一次统领 24h 可用率与均延两项,与 HealthBanner 的全局口径区分归属,两个可用率不再裸名并列。
+- **「本组」前缀(GH #55;2026-07-31 GH #85 起指标自组头移至组条行):** 组条行右侧本组指标以「本组:」容器级前缀一次统领 24h 可用率与均延两项,与 HealthBanner 的全局口径区分归属,两个可用率不再裸名并列。
 - **筛选行下拉内联 label(GH #55,Dashboard 局部约定,不推广):** 协议/状态两个 select 前置内联 label(sm/secondary「协议:」「状态:」,与 select 同行),不再以 placeholder 兼任 label;关键词输入框与分组 select 不动。
 - **滚动条抖动修复(2026-07-30,用户实机反馈):** 弹窗锁屏引发的页面/弹窗左移走 scrollbar-gutter 三件套(ep-theme.css:html stable + 中和 EP body 宽度补偿 + .el-overlay-dialog stable both-edges),滚动条存在性不再是布局变量;overlay 滚动条平台零视觉变化;代价 = 经典滚动条平台短页面常驻右侧 gutter 条(工具产品可接受,登记为已知取舍)。
 

@@ -2,6 +2,7 @@
 
 > 经 /grill-with-docs 逐决策确认(2026-07-30),术语已登记 CONTEXT.md「Language — 告警」。
 > 本 spec 扩展 W5(状态机与告警防抖),实施阶段须附 ADR 0014(承重墙四问见文末)。
+> **后续修订(2026-07-31,GH #85):** 组级分段条细带化(格高 10→6px),「本组:」指标自组标头移至组条行右侧与条同行——本文「组标头只有…标量」「标头下方分段条」等位置表述描述的是变更前状态,现行规格以 ui-guidelines §5 UptimeStrip 条目与 dashboard surface brief 为准。
 
 ## Problem Statement
 
