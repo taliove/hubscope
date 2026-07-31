@@ -263,15 +263,20 @@ const emptyDetailText = computed(() => {
   height: 4px;
   background: var(--hs-brand);
 }
+/* Canvas horizontal margins (40px on the 720 card, 20px on the 480 compact
+   and the small card) are material design constants, not grid spacing — they
+   intentionally stay px literals and cross-reference the share-materials
+   brief cascade table (GH #95 spacing tokenization: everything else that
+   lands on the 4px grid consumes --hs-space-*). */
 .brand-section {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 40px;
+  gap: var(--hs-space-3);
+  padding: var(--hs-space-4) 40px;
   background: var(--hs-brand-soft);
 }
 .compact .brand-section {
-  padding: 12px 20px;
+  padding: var(--hs-space-3) 20px;
 }
 .brand-mark {
   font-size: 32px;
@@ -284,8 +289,8 @@ const emptyDetailText = computed(() => {
 .brand-slim {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 20px;
+  gap: var(--hs-space-2);
+  padding: var(--hs-space-2) 20px;
 }
 .brand-slim .brand-mark {
   font-size: 16px;
@@ -309,23 +314,23 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-xl);
 }
 .card-body {
-  padding: 24px 40px 0;
+  padding: var(--hs-space-5) 40px 0;
 }
 .compact .card-body {
-  padding: 16px 20px 0;
+  padding: var(--hs-space-4) 20px 0;
 }
 .scope-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-4);
 }
 .scope-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--hs-space-1);
   max-width: 100%;
-  padding: 2px 8px;
+  padding: var(--hs-space-1) var(--hs-space-2);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
@@ -344,8 +349,10 @@ const emptyDetailText = computed(() => {
 .compact .chip-value {
   max-width: 160px;
 }
+/* GH #69 text/graphics split: chip state values are text — success as text
+   consumes the deepened text grade, never the base green. */
 .value-healthy {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .value-degraded {
   color: var(--hs-warning);
@@ -359,7 +366,7 @@ const emptyDetailText = computed(() => {
 .scope-plain {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-4);
 }
 .divider {
   border-top: 1px solid var(--hs-border);
@@ -368,22 +375,22 @@ const emptyDetailText = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 16px;
-  margin: 24px 40px 0;
-  padding: 16px 0 24px;
+  gap: var(--hs-space-4);
+  margin: var(--hs-space-5) 40px 0;
+  padding: var(--hs-space-4) 0 var(--hs-space-5);
   border-top: 1px solid var(--hs-border);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
 .compact .card-footer {
-  margin: 16px 20px 0;
-  padding: 12px 0 16px;
+  margin: var(--hs-space-4) 20px 0;
+  padding: var(--hs-space-3) 0 var(--hs-space-4);
 }
 .footer-origin {
   flex: none;
 }
 .disabled-note {
-  margin-left: 8px;
+  margin-left: var(--hs-space-2);
 }
 
 /* Endpoint small card sections (GH #93): six-section compact structure for
@@ -391,8 +398,8 @@ const emptyDetailText = computed(() => {
 .model-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-3);
 }
 .model-name {
   flex: 1;
@@ -407,8 +414,8 @@ const emptyDetailText = computed(() => {
 .statement-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-3);
 }
 .statement-text-small {
   font-size: var(--hs-text-sm);
@@ -427,12 +434,12 @@ const emptyDetailText = computed(() => {
   border: 1px solid var(--hs-status-failing);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
-  padding: 0 6px;
+  padding: 0 var(--hs-space-2);
 }
 .indicators-row {
   display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--hs-space-4);
+  margin-bottom: var(--hs-space-4);
 }
 .indicator-col {
   flex: 1;
@@ -443,7 +450,7 @@ const emptyDetailText = computed(() => {
 .indicator-label {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: var(--hs-space-1);
 }
 .indicator-big {
   font-size: var(--hs-text-display);
@@ -454,7 +461,7 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-md);
   font-weight: 400;
   color: var(--hs-text-secondary);
-  margin-left: 2px;
+  margin-left: var(--hs-space-1);
 }
 .indicator-latency {
   font-size: var(--hs-text-xl);
@@ -463,7 +470,7 @@ const emptyDetailText = computed(() => {
   color: var(--hs-text-primary);
 }
 .mini-uptime-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-4);
 }
 .mini-uptime-strip {
   display: flex;
@@ -494,7 +501,7 @@ const emptyDetailText = computed(() => {
 .mini-uptime-axis {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: var(--hs-space-1);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }

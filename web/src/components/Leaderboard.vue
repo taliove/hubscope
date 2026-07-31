@@ -647,8 +647,9 @@ function deltaTitle(row: ReportRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
 .delta-up {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .delta-down {
   color: var(--hs-danger);
@@ -791,8 +792,9 @@ function deltaTitle(row: ReportRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
 .card-row-2 .delta.delta-up {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .card-row-2 .delta.delta-down {
   color: var(--hs-danger);

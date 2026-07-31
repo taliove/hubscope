@@ -113,7 +113,8 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 3. **chips 行:** gap 8px(space-2)、chip padding 2px 8px 不动;chip-value max-width 分档核对(720→220 / 480→160)。
 4. **纵向节奏核对:** 名单区(区头 24/8、行距 4、overflow 8)与小卡(品牌行 8、区块 12/16)并入 4px 网格核对表。
 5. **页脚:** hairline + 左右分置 + baseline 对齐不动;小卡/窄版页脚节奏按本 brief 规格核对。
-6. **弹窗预览:** 预览区加 `--hs-bg-page` 衬底 + `--hs-space-4` 内边距 + `--hs-radius-lg`——物料在预览中读作「桌面上的卡」,衬底 = 页面级中性底语义(hero panel 同令牌先例);居中保持;480/720 双版式 × 亮暗 × 缩放三态视觉核对。
+6. **弹窗预览:** 预览区加 `--hs-bg-page` 衬底 + `--hs-space-4` 内边距 + `--hs-radius-lg`——物料在预览中读作「桌面上的卡」,衬底 = 页面级中性底语义(hero panel 同令牌先例);居中保持;480/720 双版式 × 亮暗 × 缩放三态视觉核对。**(2026-07-31 GH #95 执行注记)** 衬底内边距计入缩放级联:`clientWidth` 含预览自身 padding,可用宽必须再减 space-4×2,否则缩放后的卡溢出出横向滚动条(§4)——两弹窗 `updatePreviewScale` 已改经 `getComputedStyle` 减 padding,级联表「弹窗缩放」行同步修订。
+7. **刻度外值退役(GH #95 执行增补):** hero-verdict gap/margin 6px → `--hs-space-2`、failing-chip padding 0 6px → `0 --hs-space-2`、statement gap 6px → `--hs-space-2`、metric-unit margin-left 2px → `--hs-space-1`——与第 2 项同方向(刻度外值就近入网格),双宽度同改;chip padding 2px 8px 的纵向 2px 保留(chips 行既定规格,第 3 项)。
 
 ## 级联算术表(GH #88 纪律:完整级联逐项取值,check 逐项复算)
 
@@ -132,7 +133,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 
 **端点小卡(480):** 内容 440;品牌行 padding 8 20;迷你点条格宽 = (440 − 46) / 24 ≈ **16.4px**,格高 8;指标行左右两列 flex。
 
-**弹窗缩放:** dialog = min(752, 94vw);预览可用宽 = dialog − 32(EP padding-primary 16×2);s = min(1, 可用宽 / 外盒)(720→722,480→482);容器高 = 自然高 × s。
+**弹窗缩放:** dialog = min(752, 94vw);预览可用宽 = (dialog − 32 EP padding-primary) − 32(预览衬底 space-4×2)(2026-07-31 GH #95 修订:衬底 padding 原漏算,`updatePreviewScale` 经 `getComputedStyle` 实测扣除,防缩放卡溢出横向滚动);s = min(1, 可用宽 / 外盒)(720→722,480→482);容器高 = 自然高 × s。
 
 **/report 窄屏(375 基准):** 内容宽 = 375 − 16×2(`.report-page` padding)= **343**;矩阵收敛假说 = 24 + 100 + 64 + 5×44 + 8×8 = **472 > 343(证伪)**;卡片式维度格 = (343 − 3(rail)− 8(gap)) / 2 ≈ **166px**;进度网格 = 模型列 96 + N × flex 1,cell dot 8px。
 

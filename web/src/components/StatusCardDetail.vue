@@ -135,10 +135,10 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   font-size: var(--hs-text-sm);
   font-weight: 600;
   color: var(--hs-text-secondary);
-  margin: 24px 0 8px;
+  margin: var(--hs-space-5) 0 var(--hs-space-2);
 }
 .detail-item {
-  padding: 8px 0;
+  padding: var(--hs-space-2) 0;
 }
 .detail-item + .detail-item {
   border-top: 1px solid var(--hs-border);
@@ -146,7 +146,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 .detail-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--hs-space-3);
   min-height: 24px;
 }
 .row-status {
@@ -155,8 +155,10 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
+/* GH #69 text/graphics split: the status word is text — deepened grade
+   (the dot strip below keeps the base green as a graphic fill). */
 .st-healthy {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .st-degraded {
   color: var(--hs-warning);
@@ -200,7 +202,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 .row-reason {
   /* Aligns with the name column (28px status + 12px gap); clamped to two
      lines — a static export has no hover to reveal the rest. */
-  margin: 2px 0 0 40px;
+  margin: var(--hs-space-1) 0 0 40px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
   display: -webkit-box;
@@ -212,7 +214,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   /* Same left indent as the reason so the timeline aligns under the name. */
   display: flex;
   gap: 2px;
-  margin: 4px 0 0 40px;
+  margin: var(--hs-space-1) 0 0 40px;
 }
 .dot-slot {
   flex: 1 1 0;
@@ -239,7 +241,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 .detail-more {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-  margin-top: 8px;
+  margin-top: var(--hs-space-2);
 }
 /* Healthy roster (GH #92): two equal columns — repeat(2, 1fr) resolves to
    (640 − 16) / 2 = 312px on the 720 card and (440 − 16) / 2 = 212px on the
@@ -250,13 +252,13 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 .roster-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  column-gap: 16px;
-  row-gap: 4px;
+  column-gap: var(--hs-space-4);
+  row-gap: var(--hs-space-1);
 }
 .roster-item {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--hs-space-2);
   min-width: 0;
 }
 .roster-name {
@@ -277,30 +279,31 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 .healthy-line {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-  margin-top: 12px;
+  margin-top: var(--hs-space-3);
 }
 .detail-healthy {
   font-size: var(--hs-text-md);
-  margin-top: 24px;
+  margin-top: var(--hs-space-5);
 }
 .healthy-num {
   color: var(--hs-text-primary);
   font-weight: 600;
 }
+/* GH #69 text/graphics split: the healthy word is text — deepened grade. */
 .healthy-word {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
   font-weight: 600;
 }
 .detail-empty {
   font-size: var(--hs-text-md);
   color: var(--hs-text-secondary);
-  margin-top: 24px;
+  margin-top: var(--hs-space-5);
 }
 .summary-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--hs-space-2);
+  margin-top: var(--hs-space-3);
 }
 .summary-label {
   flex: none;

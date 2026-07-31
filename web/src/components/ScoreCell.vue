@@ -138,8 +138,10 @@ const tooltip = computed(() => {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* GH #69 text/graphics split: the band-colored score number is text —
+   deepened grade (the .cell-fill bar below keeps the base as a graphic). */
 .cell-value.band-success {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .cell-value.band-warning {
   color: var(--hs-warning);

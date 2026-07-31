@@ -179,8 +179,10 @@ function deltaTone(row: EvalCardRow): string {
 .brand-section {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 40px;
+  gap: var(--hs-space-3);
+  /* Horizontal 40px is the material canvas constant (share-materials brief),
+     not grid spacing (GH #95). */
+  padding: var(--hs-space-4) 40px;
   background: var(--hs-brand-soft);
 }
 .brand-mark {
@@ -197,20 +199,20 @@ function deltaTone(row: EvalCardRow): string {
   color: var(--hs-text-primary);
 }
 .card-body {
-  padding: 24px 40px 0;
+  padding: var(--hs-space-5) 40px 0;
 }
 .scope-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-4);
 }
 .scope-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--hs-space-1);
   max-width: 100%;
-  padding: 2px 8px;
+  padding: 2px var(--hs-space-2);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
@@ -227,12 +229,12 @@ function deltaTone(row: EvalCardRow): string {
   white-space: nowrap;
 }
 .failed-warning {
-  margin: -8px 0 16px;
+  margin: calc(-1 * var(--hs-space-2)) 0 var(--hs-space-4);
   font-size: var(--hs-text-sm);
   color: var(--hs-warning);
 }
 .empty-note {
-  margin: 0 0 24px;
+  margin: 0 0 var(--hs-space-5);
   font-size: var(--hs-text-sm);
   color: var(--hs-text-placeholder);
 }
@@ -261,7 +263,7 @@ function deltaTone(row: EvalCardRow): string {
 }
 .ec-grid {
   display: grid;
-  column-gap: 8px;
+  column-gap: var(--hs-space-2);
   align-items: center;
 }
 .h-rank {
@@ -355,8 +357,9 @@ function deltaTone(row: EvalCardRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
 .delta-up {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .delta-down {
   color: var(--hs-danger);
@@ -365,7 +368,7 @@ function deltaTone(row: EvalCardRow): string {
   color: var(--hs-text-placeholder);
 }
 .overflow-note {
-  margin: 4px 0 0;
+  margin: var(--hs-space-1) 0 0;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
@@ -373,9 +376,9 @@ function deltaTone(row: EvalCardRow): string {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 16px;
+  gap: var(--hs-space-4);
   margin: 0 40px;
-  padding: 16px 0 24px;
+  padding: var(--hs-space-4) 0 var(--hs-space-5);
   border-top: 1px solid var(--hs-border);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);

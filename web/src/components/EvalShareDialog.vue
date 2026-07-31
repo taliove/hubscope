@@ -102,8 +102,14 @@ function updatePreviewScale() {
   if (!previewContainerRef.value || !previewCardRef.value) return
 
   // EP dialog content padding (--el-dialog-padding-primary) is 16px × 2 = 32px.
-  // Available width = dialog content width = (dialog width - 32).
-  const containerWidth = previewContainerRef.value.clientWidth
+  // Available width = dialog content width = (dialog width - 32). The preview
+  // backdrop's own padding (GH #95: space-4 × 2) is inside clientWidth, and
+  // the card lives in the content box — subtract it too, or the scaled card
+  // overflows into a horizontal scrollbar (§4).
+  const el = previewContainerRef.value
+  const style = getComputedStyle(el)
+  const containerWidth =
+    el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
   const scale = Math.min(1, containerWidth / CARD_OUTER_WIDTH)
   previewScale.value = scale
 
@@ -262,11 +268,11 @@ function onClosed() {
   pointer-events: none;
 }
 .error-alert {
-  margin-top: 12px;
+  margin-top: var(--hs-space-3);
 }
 .copy-hint {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
-  margin-right: 12px;
+  margin-right: var(--hs-space-3);
 }
 </style>

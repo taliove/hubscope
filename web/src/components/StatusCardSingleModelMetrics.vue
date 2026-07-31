@@ -108,12 +108,14 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   align-items: stretch;
   background: var(--hs-bg-page);
   border-radius: var(--hs-radius-lg);
-  padding: 16px 20px;
-  margin-bottom: 16px;
+  /* Horizontal 20px is the material canvas constant (share-materials brief),
+     not grid spacing; vertical values consume --hs-space-* (GH #95). */
+  padding: var(--hs-space-4) 20px;
+  margin-bottom: var(--hs-space-4);
 }
 /* Compact variant (GH #93): tighter padding. */
 :deep(.compact) .hero-panel {
-  padding: 12px 16px;
+  padding: var(--hs-space-3) var(--hs-space-4);
 }
 .hero-left {
   flex: 1;
@@ -126,7 +128,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--hs-space-2);
 }
 .metric-divider {
   width: 1px;
@@ -135,7 +137,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 /* Compact variant: narrower divider margin. */
 :deep(.compact) .metric-divider {
-  margin: 0 12px;
+  margin: 0 var(--hs-space-3);
 }
 .metric-block {
   display: flex;
@@ -146,11 +148,11 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   color: var(--hs-text-secondary);
 }
 .metric-note {
-  margin-left: 8px;
+  margin-left: var(--hs-space-2);
   color: var(--hs-text-placeholder);
 }
 .hero-big {
-  margin-top: 4px;
+  margin-top: var(--hs-space-1);
   font-size: var(--hs-text-display);
   font-weight: 600;
   line-height: 1.2;
@@ -159,22 +161,24 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   font-size: var(--hs-text-md);
   font-weight: 400;
   color: var(--hs-text-secondary);
-  margin-left: 2px;
+  margin-left: var(--hs-space-1);
 }
 /* Single-status statement: same visual weight as the aggregate verdict
    line, tone-colored so severity stays legible at a glance. */
 .statement {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--hs-space-2);
+  margin-top: var(--hs-space-2);
   font-size: var(--hs-text-sm);
 }
 .statement-text {
   font-weight: 600;
 }
+/* GH #69 text/graphics split: statement/availability words are text —
+   success as text consumes the deepened text grade. */
 .vc-healthy {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .vc-degraded {
   color: var(--hs-warning);
@@ -195,13 +199,13 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   border: 1px solid var(--hs-status-failing);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
-  padding: 0 6px;
+  padding: 0 var(--hs-space-2);
 }
 .latency-block {
-  margin-top: 12px;
+  margin-top: var(--hs-space-3);
 }
 .latency-block .metric-label {
-  margin-bottom: 4px;
+  margin-bottom: var(--hs-space-1);
 }
 .metric-latency {
   font-size: var(--hs-text-xl);
@@ -210,7 +214,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   color: var(--hs-text-primary);
 }
 .metric-score {
-  margin-top: 4px;
+  margin-top: var(--hs-space-1);
   font-size: var(--hs-text-xl);
   font-weight: 600;
   line-height: 1.2;
@@ -219,7 +223,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .capability-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--hs-space-2);
 }
 .eval-empty {
   font-size: var(--hs-text-xs);
@@ -227,7 +231,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 /* Availability tier colors (ui-guidelines §3) */
 .av-ok {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .av-partial {
   color: var(--hs-warning);
@@ -240,7 +244,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 /* 24h segmented bar */
 .uptime-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--hs-space-5);
 }
 .uptime-strip {
   display: flex;
@@ -271,7 +275,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .uptime-axis {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: var(--hs-space-1);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
