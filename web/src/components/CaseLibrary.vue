@@ -1,5 +1,7 @@
 <template>
-  <el-card shadow="never" class="library-card">
+  <!-- Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+       radius-lg, no shadow; the EP complex parts inside stay token-driven. -->
+  <div class="library-panel">
     <div class="card-header">
       <div class="card-title">题库</div>
       <el-select v-model="capabilityFilter" class="capability-filter" size="small" placeholder="按能力点筛选">
@@ -149,7 +151,7 @@
         <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -369,10 +371,14 @@ async function onSave() {
 </script>
 
 <style scoped>
-/* Admin console compact density: 12px card padding (ui-guidelines §2). */
-.library-card {
-  margin-bottom: 16px;
-  --el-card-padding: 12px;
+/* Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+   radius-lg, no shadow. No bottom margin — the eval tab-stack gap owns the
+   vertical rhythm. */
+.library-panel {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
 }
 .card-header {
   display: flex;

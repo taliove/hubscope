@@ -1,13 +1,13 @@
 <template>
   <div class="eval-leaderboard">
-    <div class="page-header">
-      <h1 class="page-title">评估中心</h1>
-    </div>
+    <!-- Page title at the v2 page-title tier (32px, v2.0 §14; AlertsView
+         precedent) — no header wrapper. -->
+    <h1 class="page-title">评估中心</h1>
 
-    <!-- Eval-center secondary tabs (GH #119, spec 0018 IA): the leaderboard
-         stays the default pane; AdminView's 评估运营 and 题库 panes move here
-         as secondary entries until the T10 eval-center rebuild gives them
-         their final home. Panes stay mounted (no lazy, AdminView precedent)
+    <!-- Eval-center secondary tabs (finalized GH #120, spec 0018 IA): 榜单 /
+         评估运营 / 题库 — the leaderboard stays the default pane, and
+         AdminView's eval-ops and case-library panes live here as the two
+         console tabs. Panes stay mounted (no lazy, AdminView precedent)
          so an unfinished batch keeps polling while the ops pane is open. -->
     <el-tabs v-model="activeTab" class="eval-tabs">
       <el-tab-pane label="榜单" name="board">
@@ -15,27 +15,28 @@
              tab-stack gap — the state blocks below already carry their own
              margin-bottom. -->
         <div>
-          <!-- Error state: reason plus a retry entry (ui-guidelines §6). -->
-          <el-alert v-if="error" type="error" :closable="false" class="state-block">
+          <!-- Error state: reason plus a retry entry (three-state rule). -->
+          <el-alert v-if="error" type="error" :closable="false" class="state-alert">
             <template #title>加载失败:{{ error }}</template>
             <el-button size="small" @click="reload">重试</el-button>
           </el-alert>
 
-          <!-- Loading state. -->
-          <el-card v-else-if="loadingCampaigns && campaigns.length === 0" shadow="never" class="state-block">
+          <!-- Loading state (light container, v2 Apple syntax — white
+               surface, 1px border, radius-lg, no shadow). -->
+          <div v-else-if="loadingCampaigns && campaigns.length === 0" class="state-block">
             <el-skeleton :rows="6" animated />
-          </el-card>
+          </div>
 
           <!-- Batch switcher empty state: no campaign has ever run. -->
-          <el-card v-else-if="campaigns.length === 0" shadow="never" class="state-block">
+          <div v-else-if="campaigns.length === 0" class="state-block">
             <el-empty description="暂无评估批次">
               <el-button type="primary" @click="activeTab = 'ops'">去触发评估</el-button>
             </el-empty>
-          </el-card>
+          </div>
 
           <template v-else>
-            <!-- Batch switcher + batch meta. -->
-            <el-card shadow="never" class="switcher-card">
+            <!-- Batch switcher + batch meta (same light container). -->
+            <div class="switcher-block">
               <div class="switcher-row">
                 <el-select
                   v-model="selectedId"
@@ -74,17 +75,17 @@
                   </el-button>
                 </template>
               </div>
-            </el-card>
+            </div>
 
             <!-- Report-level error (kept separate so the switcher stays usable). -->
-            <el-alert v-if="reportError" type="error" :closable="false" class="state-block">
+            <el-alert v-if="reportError" type="error" :closable="false" class="state-alert">
               <template #title>榜单加载失败:{{ reportError }}</template>
               <el-button size="small" @click="loadReport">重试</el-button>
             </el-alert>
 
-            <el-card v-else-if="loadingReport && !report" shadow="never" class="state-block">
+            <div v-else-if="loadingReport && !report" class="state-block">
               <el-skeleton :rows="8" animated />
-            </el-card>
+            </div>
 
             <template v-else-if="report">
               <!-- Unfinished batches (ticket 52, spec 0004): the progress grid is
@@ -122,7 +123,7 @@
                   v-if="report.status === 'failed'"
                   type="warning"
                   :closable="false"
-                  class="state-block"
+                  class="state-alert"
                   :title="failedBatchWarning(report.progress.failed)"
                 >
                   <template #default>
@@ -182,16 +183,16 @@ import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
 import { EVAL_TABS, parseTabQuery, type EvalTab } from '@/utils/adminNav'
 import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedEntry, ReportRow } from '@/api/types'
 
-// Eval center page (ticket 45; secondary tabs GH #119): the leaderboard is
-// the default pane — a pure consumption surface. The batch switcher defaults
-// to the newest done campaign; unfinished batches render the progress grid
-// by default with a live half-scored board behind the view switch (ticket
-// 52), and only they are polled (ui-guidelines §6). AdminView's eval-ops and
-// case-library panes live here as secondary tabs (spec 0018 IA) until the
-// T10 eval-center rebuild; row drill-down opens the shared ModelTrendDialog
-// (ticket 32 pattern). A ?batch=<id> query (issue #16, from the sidebar
-// batch progress entry) overrides the default batch so the entry lands on
-// the batch it was showing; a ?tab= query overrides the default pane
+// Eval center page (ticket 45; secondary tabs finalized GH #120): the
+// leaderboard is the default pane — a pure consumption surface. The batch
+// switcher defaults to the newest done campaign; unfinished batches render
+// the progress grid by default with a live half-scored board behind the view
+// switch (ticket 52), and only they are polled (visibility-poll discipline).
+// AdminView's eval-ops and case-library panes live here as the 评估运营 /
+// 题库 secondary tabs (spec 0018 IA); row drill-down opens the shared
+// ModelTrendDialog (ticket 32 pattern). A ?batch=<id> query (issue #16, from
+// the sidebar batch progress entry) overrides the default batch so the entry
+// lands on the batch it was showing; a ?tab= query overrides the default pane
 // (legacy /admin?tab=eval-ops|case-library redirects land here).
 const router = useRouter()
 const route = useRoute()
@@ -478,14 +479,11 @@ onMounted(reload)
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
-.page-header {
-  margin-bottom: 16px;
-}
 .page-title {
-  font-size: var(--hs-text-xl);
+  margin: 0 0 var(--hs-space-5);
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   color: var(--hs-text-primary);
-  margin: 0;
 }
 .eval-tabs {
   width: 100%;
@@ -495,13 +493,30 @@ onMounted(reload)
   flex-direction: column;
   gap: 16px;
 }
-.state-block {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+/* Light container (v2 Apple syntax, Leaderboard/AlertsView precedent):
+   white surface, 1px border, radius-lg, no shadow — static containers never
+   take a shadow. */
+.state-alert {
+  margin-bottom: var(--hs-space-4);
 }
-.switcher-card {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+.state-block,
+.switcher-block {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  margin-bottom: var(--hs-space-4);
+}
+.state-block {
+  padding: var(--hs-space-5) var(--hs-space-6);
+}
+@media (max-width: 767px) {
+  .state-block,
+  .switcher-block {
+    padding: var(--hs-space-4);
+  }
+}
+.switcher-block {
+  padding: var(--hs-space-4) var(--hs-space-6);
 }
 .switcher-row {
   display: flex;

@@ -1,5 +1,8 @@
 <template>
-  <el-card shadow="never" class="progress-card">
+  <!-- Light container (GH #120, spec 0018 §13): the v2 Apple syntax — white
+       surface, 1px border, radius-lg, no shadow (the el-card wrapper is
+       retired, the same translation as the Leaderboard's container). -->
+  <div class="progress-panel">
     <!-- Card top: the grid/scores view switch plus the batch-level summary
          (progress bar + done count) above the grid, same card (ui-guidelines
          §5 EvalProgressGrid registration). Read-only mode (shared report
@@ -66,7 +69,7 @@
         </span>
       </div>
     </div>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -86,7 +89,10 @@ import { useBreakpoint } from '@/composables/useBreakpoint'
 // the shared boundary publishes progress metadata only, so there is no live
 // board to switch to. GH #94: narrow viewport (<= 767px) shrinks the model
 // column to 96px and omits the cell status word (the 8px dot stays, and the
-// tooltip carries the full info).
+// tooltip carries the full info). GH #120 (v2 rebuild): the wrapper is the
+// light container and the status words consume the *-text steps while the
+// dots stay on the graphic bases — the four-state mapping itself is
+// untouched.
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -154,11 +160,19 @@ const costSummary = computed(() => {
 </script>
 
 <style scoped>
-/* Consumption-page density: 16px card padding via the variable
-   (ui-guidelines §2). */
-.progress-card {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+/* Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+   radius-lg, no shadow; the inner padding matches the Leaderboard's. */
+.progress-panel {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
+  margin-bottom: var(--hs-space-4);
+}
+@media (max-width: 767px) {
+  .progress-panel {
+    padding: var(--hs-space-4);
+  }
 }
 .card-top {
   display: flex;
@@ -230,12 +244,22 @@ const costSummary = computed(() => {
   background: currentColor;
   flex-shrink: 0;
 }
-/* Four-state batch/run status color mapping (ui-guidelines §3). */
+/* Four-state batch/run status color mapping on the v2 palette (GH #120):
+   the status WORD is text and consumes the deepened *-text steps (the v2
+   success/danger bases are graphic-tier); the DOT stays on the graphic base
+   via an explicit background override. Running takes brand blue (the
+   registered brief value), pending the neutral placeholder. */
 .cell-done {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
+}
+.cell-done .cell-dot {
+  background: var(--hs-success);
 }
 .cell-failed {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
+}
+.cell-failed .cell-dot {
+  background: var(--hs-danger);
 }
 .cell-running {
   color: var(--hs-brand);

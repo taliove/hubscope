@@ -9,8 +9,8 @@
 //
 // GH #119 (spec 0018 IA): AdminView retired. Its seven panes landed on three
 // consoles — /models (resources/rules), /settings (settings/tasks/logs/users)
-// and /eval (eval-ops/case-library as secondary tabs until the eval-center
-// rebuild) — and /admin redirects through legacyAdminTarget below.
+// and /eval (eval-ops/case-library as secondary tabs, finalized GH #120) —
+// and /admin redirects through legacyAdminTarget below.
 
 // Every el-tab-pane name of ModelsView. Kept in one place so the query
 // parser and the view cannot drift apart.
@@ -22,9 +22,11 @@ export type ModelsTab = (typeof MODELS_TABS)[number]
 export const SETTINGS_TABS = ['settings', 'tasks', 'logs', 'users'] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
-// Eval-center secondary tabs (GH #119, transitional until the T10 eval-center
-// rebuild gives eval-ops and the case library their final home): the
-// leaderboard is the default pane.
+// Eval-center secondary tabs (finalized GH #120, spec 0018 IA): the
+// leaderboard is the default pane; AdminView's eval-ops and case-library
+// panes live here as the 评估运营 / 题库 tabs. The query values are stable
+// deep-link anchors (legacy /admin?tab=eval-ops|case-library redirects land
+// on them via legacyAdminTarget below).
 export const EVAL_TABS = ['board', 'ops', 'cases'] as const
 export type EvalTab = (typeof EVAL_TABS)[number]
 
