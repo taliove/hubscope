@@ -160,8 +160,9 @@ import { createCase, listSuites, patchCase } from '@/api/evals'
 import type { Capability, Difficulty, EvalCase, Suite, VerdictType } from '@/api/types'
 
 // Case library (admin console): browses suites by capability (question-bank
-// v3, ADR 0010) and creates/edits cases. The /admin route already gates the
-// session, so write forms are always shown; the server still re-validates.
+// v3, ADR 0010) and creates/edits cases. The /eval route already gates the
+// session (GH #119: the panel moved from AdminView to the eval center's 题库
+// tab), so write forms are always shown; the server still re-validates.
 // Cases are immutable server-side: a content edit returns a new case id and
 // retires the old row, which stays visible as disabled after the refresh.
 // Retired suites never reach this panel: disabled suites are hard-deleted

@@ -50,7 +50,7 @@
             <router-link
               v-if="isJudgeFailure(e)"
               class="feed-fix-link"
-              :to="{ path: '/admin', query: { tab: 'settings', item: 'judge_model' } }"
+              :to="{ path: '/settings', query: { tab: 'settings', item: 'judge_model' } }"
               @click.stop
             >检查裁判模型设置</router-link>
             <span class="feed-expand">{{ expanded.has(e.id) ? '▾' : '▸' }}</span>

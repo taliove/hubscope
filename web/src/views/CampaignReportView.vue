@@ -1,7 +1,7 @@
 <template>
   <div class="report-page">
     <div class="page-header">
-      <router-link v-if="!shared" to="/eval" class="back-link no-print">← 返回评估榜单</router-link>
+      <router-link v-if="!shared" to="/eval" class="back-link no-print">← 返回评估中心</router-link>
       <div class="title-row">
         <h1 class="page-title">考核批次 #{{ displayCampaignId }} 报告</h1>
         <template v-if="report">
@@ -74,7 +74,7 @@
           :title="failedBatchWarning(report.progress.failed)"
         >
           <template v-if="!shared" #default>
-            <router-link to="/admin" class="failed-link no-print">到管理台评估运营查看失败运行详情</router-link>
+            <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link no-print">到评估运营查看失败运行详情</router-link>
           </template>
         </el-alert>
 

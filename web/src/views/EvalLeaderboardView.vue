@@ -1,140 +1,164 @@
 <template>
   <div class="eval-leaderboard">
     <div class="page-header">
-      <h1 class="page-title">评估榜单</h1>
+      <h1 class="page-title">评估中心</h1>
     </div>
 
-    <!-- Error state: reason plus a retry entry (ui-guidelines §6). -->
-    <el-alert v-if="error" type="error" :closable="false" class="state-block">
-      <template #title>加载失败:{{ error }}</template>
-      <el-button size="small" @click="reload">重试</el-button>
-    </el-alert>
-
-    <!-- Loading state. -->
-    <el-card v-else-if="loadingCampaigns && campaigns.length === 0" shadow="never" class="state-block">
-      <el-skeleton :rows="6" animated />
-    </el-card>
-
-    <!-- Batch switcher empty state: no campaign has ever run. -->
-    <el-card v-else-if="campaigns.length === 0" shadow="never" class="state-block">
-      <el-empty description="暂无评估批次">
-        <el-button type="primary" @click="router.push('/admin')">去管理台触发评估</el-button>
-      </el-empty>
-    </el-card>
-
-    <template v-else>
-      <!-- Batch switcher + batch meta. -->
-      <el-card shadow="never" class="switcher-card">
-        <div class="switcher-row">
-          <el-select
-            v-model="selectedId"
-            class="batch-select"
-            :loading="loadingCampaigns"
-            @change="onBatchChange"
-          >
-            <el-option
-              v-for="c in campaigns"
-              :key="c.id"
-              :value="c.id"
-              :label="batchLabel(c)"
-            />
-          </el-select>
-          <template v-if="selected">
-            <el-tag size="small" :type="selected.trigger === 'scheduled' ? 'info' : 'primary'">
-              {{ selected.trigger === 'scheduled' ? '定时' : '手动' }}
-            </el-tag>
-            <el-tag size="small" :type="statusTagType(selected.status)">
-              {{ campaignStatusLabel(selected.status) }}
-            </el-tag>
-            <span class="meta-time">开始于 {{ formatTime(selected.started_at) }}</span>
-            <span v-if="selected.finished_at" class="meta-time">
-              结束于 {{ formatTime(selected.finished_at) }}
-            </span>
-            <!-- Retry-failed (GH #28): settled batches with failed
-                 (null-score) results; the batch returns to the running view
-                 with its usual polling after the confirm. -->
-            <el-button
-              v-if="retryFailedVisible"
-              size="small"
-              :loading="retrying"
-              @click="onRetryFailed"
-            >
-              重跑失败项
-            </el-button>
-          </template>
-        </div>
-      </el-card>
-
-      <!-- Report-level error (kept separate so the switcher stays usable). -->
-      <el-alert v-if="reportError" type="error" :closable="false" class="state-block">
-        <template #title>榜单加载失败:{{ reportError }}</template>
-        <el-button size="small" @click="loadReport">重试</el-button>
-      </el-alert>
-
-      <el-card v-else-if="loadingReport && !report" shadow="never" class="state-block">
-        <el-skeleton :rows="8" animated />
-      </el-card>
-
-      <template v-else-if="report">
-        <!-- Unfinished batches (ticket 52, spec 0004): the progress grid is
-             the default view; the live half-scored leaderboard sits behind
-             the "实时分数" switch. Both stay mounted (v-show) so the view
-             switch never interrupts polling or resets the family filter. -->
-        <template v-if="isUnfinished(report.status)">
-          <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
-          <Leaderboard
-            v-show="viewMode === 'scores'"
-            :key="report.id"
-            :report="report"
-            :family-options="familyOptions"
-            live
-            :view="viewMode"
-            @update:view="viewMode = $event"
-            @query="onQuery"
-            @select="openTrend"
-          />
-          <!-- Case-level live feed (issue #17): console-only, refreshed by
-               the page's own poll timer; unmounts at settle (historical
-               batches never show it — the simple form of the brief's
-               "settle 后停止增长" choice). -->
-          <EvalLiveFeed
-            :campaign-id="report.id"
-            :entries="liveFeed"
-            :loading="liveFeedLoading"
-            :error="liveFeedError"
-            @retry="loadLiveFeed"
-          />
-        </template>
-
-        <template v-else>
-          <el-alert
-            v-if="report.status === 'failed'"
-            type="warning"
-            :closable="false"
-            class="state-block"
-            :title="failedBatchWarning(report.progress.failed)"
-          >
-            <template #default>
-              <router-link to="/admin" class="failed-link">到管理台评估运营查看失败运行详情</router-link>
-            </template>
+    <!-- Eval-center secondary tabs (GH #119, spec 0018 IA): the leaderboard
+         stays the default pane; AdminView's 评估运营 and 题库 panes move here
+         as secondary entries until the T10 eval-center rebuild gives them
+         their final home. Panes stay mounted (no lazy, AdminView precedent)
+         so an unfinished batch keeps polling while the ops pane is open. -->
+    <el-tabs v-model="activeTab" class="eval-tabs">
+      <el-tab-pane label="榜单" name="board">
+        <!-- Vertical rhythm via child margins (pre-tabs layout), not the
+             tab-stack gap — the state blocks below already carry their own
+             margin-bottom. -->
+        <div>
+          <!-- Error state: reason plus a retry entry (ui-guidelines §6). -->
+          <el-alert v-if="error" type="error" :closable="false" class="state-block">
+            <template #title>加载失败:{{ error }}</template>
+            <el-button size="small" @click="reload">重试</el-button>
           </el-alert>
 
-          <!-- Hero: the leaderboard. Keyed by campaign so toolbar state
-               (suite view, family, sort) resets per batch. -->
-          <Leaderboard
-            :key="report.id"
-            :report="report"
-            :family-options="familyOptions"
-            @query="onQuery"
-            @select="openTrend"
-          />
-        </template>
+          <!-- Loading state. -->
+          <el-card v-else-if="loadingCampaigns && campaigns.length === 0" shadow="never" class="state-block">
+            <el-skeleton :rows="6" animated />
+          </el-card>
 
-        <!-- Row drill-down (ticket 32 pattern, same as the report page): the
-             trend dialog fetches per model on demand. -->
-        <ModelTrendDialog :campaign-id="selectedId ?? 0" :model="trendModel" @close="trendModel = null" />
-      </template>
-    </template>
+          <!-- Batch switcher empty state: no campaign has ever run. -->
+          <el-card v-else-if="campaigns.length === 0" shadow="never" class="state-block">
+            <el-empty description="暂无评估批次">
+              <el-button type="primary" @click="activeTab = 'ops'">去触发评估</el-button>
+            </el-empty>
+          </el-card>
+
+          <template v-else>
+            <!-- Batch switcher + batch meta. -->
+            <el-card shadow="never" class="switcher-card">
+              <div class="switcher-row">
+                <el-select
+                  v-model="selectedId"
+                  class="batch-select"
+                  :loading="loadingCampaigns"
+                  @change="onBatchChange"
+                >
+                  <el-option
+                    v-for="c in campaigns"
+                    :key="c.id"
+                    :value="c.id"
+                    :label="batchLabel(c)"
+                  />
+                </el-select>
+                <template v-if="selected">
+                  <el-tag size="small" :type="selected.trigger === 'scheduled' ? 'info' : 'primary'">
+                    {{ selected.trigger === 'scheduled' ? '定时' : '手动' }}
+                  </el-tag>
+                  <el-tag size="small" :type="statusTagType(selected.status)">
+                    {{ campaignStatusLabel(selected.status) }}
+                  </el-tag>
+                  <span class="meta-time">开始于 {{ formatTime(selected.started_at) }}</span>
+                  <span v-if="selected.finished_at" class="meta-time">
+                    结束于 {{ formatTime(selected.finished_at) }}
+                  </span>
+                  <!-- Retry-failed (GH #28): settled batches with failed
+                       (null-score) results; the batch returns to the running view
+                       with its usual polling after the confirm. -->
+                  <el-button
+                    v-if="retryFailedVisible"
+                    size="small"
+                    :loading="retrying"
+                    @click="onRetryFailed"
+                  >
+                    重跑失败项
+                  </el-button>
+                </template>
+              </div>
+            </el-card>
+
+            <!-- Report-level error (kept separate so the switcher stays usable). -->
+            <el-alert v-if="reportError" type="error" :closable="false" class="state-block">
+              <template #title>榜单加载失败:{{ reportError }}</template>
+              <el-button size="small" @click="loadReport">重试</el-button>
+            </el-alert>
+
+            <el-card v-else-if="loadingReport && !report" shadow="never" class="state-block">
+              <el-skeleton :rows="8" animated />
+            </el-card>
+
+            <template v-else-if="report">
+              <!-- Unfinished batches (ticket 52, spec 0004): the progress grid is
+                   the default view; the live half-scored leaderboard sits behind
+                   the "实时分数" switch. Both stay mounted (v-show) so the view
+                   switch never interrupts polling or resets the family filter. -->
+              <template v-if="isUnfinished(report.status)">
+                <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
+                <Leaderboard
+                  v-show="viewMode === 'scores'"
+                  :key="report.id"
+                  :report="report"
+                  :family-options="familyOptions"
+                  live
+                  :view="viewMode"
+                  @update:view="viewMode = $event"
+                  @query="onQuery"
+                  @select="openTrend"
+                />
+                <!-- Case-level live feed (issue #17): console-only, refreshed by
+                     the page's own poll timer; unmounts at settle (historical
+                     batches never show it — the simple form of the brief's
+                     "settle 后停止增长" choice). -->
+                <EvalLiveFeed
+                  :campaign-id="report.id"
+                  :entries="liveFeed"
+                  :loading="liveFeedLoading"
+                  :error="liveFeedError"
+                  @retry="loadLiveFeed"
+                />
+              </template>
+
+              <template v-else>
+                <el-alert
+                  v-if="report.status === 'failed'"
+                  type="warning"
+                  :closable="false"
+                  class="state-block"
+                  :title="failedBatchWarning(report.progress.failed)"
+                >
+                  <template #default>
+                    <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link">到评估运营查看失败运行详情</router-link>
+                  </template>
+                </el-alert>
+
+                <!-- Hero: the leaderboard. Keyed by campaign so toolbar state
+                     (suite view, family, sort) resets per batch. -->
+                <Leaderboard
+                  :key="report.id"
+                  :report="report"
+                  :family-options="familyOptions"
+                  @query="onQuery"
+                  @select="openTrend"
+                />
+              </template>
+
+              <!-- Row drill-down (ticket 32 pattern, same as the report page): the
+                   trend dialog fetches per model on demand. -->
+              <ModelTrendDialog :campaign-id="selectedId ?? 0" :model="trendModel" @close="trendModel = null" />
+            </template>
+          </template>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="评估运营" name="ops">
+        <div class="tab-stack">
+          <EvalOpsPanel />
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="题库" name="cases">
+        <div class="tab-stack">
+          <CaseLibrary />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -145,7 +169,9 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
+import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
+import CaseLibrary from '@/components/CaseLibrary.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
@@ -153,18 +179,45 @@ import { failedBatchWarning } from '@/utils/evalWording'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import { liveFeedCursor, mergeLiveFeed } from '@/utils/liveFeed'
 import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
+import { EVAL_TABS, parseTabQuery, type EvalTab } from '@/utils/adminNav'
 import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedEntry, ReportRow } from '@/api/types'
 
-// Eval leaderboard page (ticket 45): a pure consumption page. The batch
-// switcher defaults to the newest done campaign; unfinished batches render
-// the progress grid by default with a live half-scored board behind the
-// view switch (ticket 52), and only they are polled (ui-guidelines §6). Ops
-// and the case library live in /admin since ticket 44; row drill-down opens
-// the shared ModelTrendDialog (ticket 32 pattern). A ?batch=<id> query
-// (issue #16, from the sidebar batch progress entry) overrides the default
-// so the entry lands on the batch it was showing.
+// Eval center page (ticket 45; secondary tabs GH #119): the leaderboard is
+// the default pane — a pure consumption surface. The batch switcher defaults
+// to the newest done campaign; unfinished batches render the progress grid
+// by default with a live half-scored board behind the view switch (ticket
+// 52), and only they are polled (ui-guidelines §6). AdminView's eval-ops and
+// case-library panes live here as secondary tabs (spec 0018 IA) until the
+// T10 eval-center rebuild; row drill-down opens the shared ModelTrendDialog
+// (ticket 32 pattern). A ?batch=<id> query (issue #16, from the sidebar
+// batch progress entry) overrides the default batch so the entry lands on
+// the batch it was showing; a ?tab= query overrides the default pane
+// (legacy /admin?tab=eval-ops|case-library redirects land here).
 const router = useRouter()
 const route = useRoute()
+
+// A valid ?tab= query overrides the default landing pane (AdminView GH #29
+// precedent); an invalid value falls back silently. Panes stay mounted (no
+// lazy) so board polling and ops tracking never reset on a pane switch.
+const activeTab = ref<EvalTab>(parseTabQuery(route.query.tab, EVAL_TABS) ?? 'board')
+
+// A manual tab switch syncs the URL so a stale deep-link query cannot drag
+// the user back; the batch query (and any other params) is preserved.
+watch(activeTab, (tab) => {
+  if (route.query.tab === tab) return
+  void router.replace({ query: { ...route.query, tab } })
+})
+
+// Late navigation to /eval?tab=... while already mounted (e.g. the failed-run
+// link from the board pane itself) re-targets the pane; invalid values are
+// ignored silently.
+watch(
+  () => route.query.tab,
+  (raw) => {
+    const tab = parseTabQuery(raw, EVAL_TABS)
+    if (tab !== null && tab !== activeTab.value) activeTab.value = tab
+  },
+)
 
 // Batch requested via ?batch=<id>; null when absent or unparseable. Kept
 // reactive so a late navigation (clicking the header entry while already
@@ -433,6 +486,14 @@ onMounted(reload)
   font-weight: 600;
   color: var(--hs-text-primary);
   margin: 0;
+}
+.eval-tabs {
+  width: 100%;
+}
+.tab-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .state-block {
   --el-card-padding: 16px;
