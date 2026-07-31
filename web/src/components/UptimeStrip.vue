@@ -6,8 +6,9 @@
        from utils/overviewDots (probe-weighted, never a per-endpoint average).
        Width is governed by the parent: the group strip row fixes it at 220px
        left-aligned (GH #88, corrected 246 → 220 same day — check MEDIUM-1:
-       hugging the typical-viewport in-card strip slot, not a pixel-exact
-       match; card width is elastic), shrinkable on narrow viewports. -->
+       between the flat-mode (217px) and group-mode (≈207px) in-card strip
+       slots, not a pixel-exact match; card width is elastic), shrinkable on
+       narrow viewports. -->
   <div class="uptime-strip">
     <el-tooltip
       v-for="(dot, i) in dots"
@@ -47,9 +48,10 @@ defineProps<{ dots: OverviewDot[] }>()
      GH #85's 6px/10px tiering is revoked; the "lamp" reading came from the
      segment aspect ratio, not the height. With the parent's 220px strip
      width each slot is ≈ (220 − 23×2) / 24 ≈ 7.2px — near-square dots,
-     hugging the typical-viewport in-card slots (≈7.2px at 1200px; ≈6.4px
-     at the 272px card floor — segment width is approximate, only height /
-     color / gap / radius are strictly identical), so a group's strip reads
+     hugging the in-card slots (≈7.1px at a 1200px flat-mode viewport,
+     ≈6.7px in group mode, ≈6.3px at the 272px card floor — segment width
+     is approximate, only height / color / gap / radius are strictly
+     identical), so a group's strip reads
      as the aggregation of its cards' strips (cross-level consistency). */
   height: 10px;
   border-radius: var(--hs-radius-xs);

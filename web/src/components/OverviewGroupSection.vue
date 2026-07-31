@@ -315,17 +315,26 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
      "246 = 272px card − 26px label" arithmetic missed the el-card body
      padding (EP default --el-card-padding 20px×2 — DashboardView,
      OverviewGroupSection and EndpointCard set no density override) and the
-     6px label↔strip gap (EndpointUptimePanel .card-dots). Real cascade of
-     the in-card strip slot: card width − 40 − 26 − 6 → 200px at the 272px
-     card floor (segment ≈6.4px), 219px at a typical 1200px viewport with a
-     291px flat-grid card (segment ≈7.2px). Card width is elastic, so no
+     6px label↔strip gap (EndpointUptimePanel .card-dots). Follow-up fixes
+     (same-day check LOW-1 / MEDIUM-1): LOW-1 — the cascade also missed the
+     el-card 1px×2 border (EP dist el-card.css: `border:1px solid`), so the
+     real cascade of the in-card strip slot is card width − 40 − 26 − 6 − 2
+     = card width − 74 → 198px at the 272px card floor (segment
+     (198−46)/24 ≈ 6.3px), 217px at a typical 1200px viewport with a 291px
+     flat-grid card (segment (217−46)/24 ≈ 7.1px). MEDIUM-1 — the 291px
+     card is the flat-mode frame, but this strip renders only in group
+     mode: flat cards and group strips never share the screen. The
+     group-mode frame is group-card content 1200 − 40 − 2 = 1158 →
+     4-column cards (1158 − 3×12)/4 = 280.5 ≈ 281 → in-card slot
+     280.5 − 74 ≈ 207 (segment ≈ 6.7px). Card width is elastic, so no
      fixed width can match the in-card slot pixel-for-pixel across
      viewports — user ruling: 220px, segment ≈ (220 − 23×2) / 24 ≈ 7.2px,
-     hugging the typical viewport. What stays strictly identical to the
-     in-card strip is segment height / color / gap / radius; segment width
-     is approximate. flex 0 1 + min-width 0 lets the strip shrink on narrow
-     viewports (the 24 inner slots are flex 1 1 0 and shrink with it) — §4
-     no horizontal scroll. */
+     between the two frames (≈0.5px wider than group-mode in-card
+     segments — visually negligible, registered as known-and-accepted).
+     What stays strictly identical to the in-card strip is segment height /
+     color / gap / radius; segment width is approximate. flex 0 1 +
+     min-width 0 lets the strip shrink on narrow viewports (the 24 inner
+     slots are flex 1 1 0 and shrink with it) — §4 no horizontal scroll. */
   flex: 0 1 220px;
   min-width: 0;
 }
