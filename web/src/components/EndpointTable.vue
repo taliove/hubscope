@@ -219,11 +219,11 @@ async function onToggleEnabled(row: EndpointRow) {
   togglingId.value = row.endpoint.id
   try {
     await updateEndpoint(row.endpoint.id, { enabled: targetEnabled })
-    // Optimistic update: flip the local state immediately for instant feedback.
+    // Optimistic update: flip the local state immediately for instant feedback
+    // (spec 0018 T9: "不依赖整页刷新"). The update call already invalidates
+    // the overview cache, so the next polling interval will sync naturally.
     row.endpoint.enabled = targetEnabled
     ElMessage.success(targetEnabled ? '端点已启用' : '端点已停用')
-    // Trigger parent reload to sync with backend (consistency guarantee).
-    emit('changed')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {

@@ -214,6 +214,10 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 			return overviewDTO{}, err
 		}
 		for _, ep := range endpoints {
+			// Ping-monitored endpoints (spec 0018 T1): produce no probe records,
+			// excluded from all aggregates and enabled count, status = "unverified".
+			isPing := store.IsPingProtocol(ep.Protocol)
+
 			stats, err := s.gatherWindowStats(ep.ID, now)
 			if err != nil {
 				return overviewDTO{}, err
@@ -223,13 +227,23 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 			if score, ok := evalScores[model.ID]; ok {
 				entry.EvalScore = score
 			}
+
+			// Override status for Ping endpoints: always "unverified" (no probe evidence)
+			if isPing {
+				entry.Status = "unverified"
+			}
+
 			entries = append(entries, entry)
-			families.add(model.Family, entry, stats.samples24h)
-			capabilities.add(model.Capability, entry, stats.samples24h)
-			protocols.add(ep.Protocol, entry, stats.samples24h)
-			global.add("all", entry, stats.samples24h)
-			if ep.Enabled {
-				enabledEndpoints++
+
+			// Exclude Ping endpoints from aggregates (spec 0018 T1 AC)
+			if !isPing {
+				families.add(model.Family, entry, stats.samples24h)
+				capabilities.add(model.Capability, entry, stats.samples24h)
+				protocols.add(ep.Protocol, entry, stats.samples24h)
+				global.add("all", entry, stats.samples24h)
+				if ep.Enabled {
+					enabledEndpoints++
+				}
 			}
 		}
 	}

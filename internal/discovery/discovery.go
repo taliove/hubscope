@@ -139,7 +139,9 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 				Message: msg,
 				SentOK:  true, // info-level retirement alerts are recorded, not sent
 			}); err != nil {
-				slog.Error("discovery: create retirement alert", "hub_id", hub.ID, "error", err)
+				// Fail the sync: retirement alerts must be recorded (spec 0018 T4).
+				// Swallowing the error would silently lose the retirement event.
+				return stats, fmt.Errorf("create retirement alert: %w", err)
 			}
 		}
 	}
