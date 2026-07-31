@@ -25,6 +25,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { echarts } from '@/utils/echarts'
 import { useChartColors } from '@/utils/chartColors'
 import { buildProbeLatencySeries } from '@/utils/probeLatencyChart'
+import { CHART_ANIMATION_DURATION_MS, chartAnimationEnabled } from '@/utils/chartMotion'
 import { formatClockTime, formatMs } from '@/utils/format'
 import type { ProbeRecord } from '@/api/types'
 
@@ -56,6 +57,11 @@ function render() {
   const s = seriesData.value
   chart.setOption({
     grid: { left: 56, right: 16, top: 28, bottom: 24 },
+    // Entry animation: one left-to-right draw (spec 0018, 800–1200ms band),
+    // zeroed under reduced-motion via the JS-side gate (chartMotion).
+    animation: chartAnimationEnabled(),
+    animationDuration: CHART_ANIMATION_DURATION_MS,
+    animationEasing: 'cubicOut',
     legend: {
       // 2026-07-30 视觉三修裁决登记: the legend lists only the latency line.
       // The failure band is a markArea (not a series) and cannot carry a
@@ -79,15 +85,21 @@ function render() {
       type: 'time',
       axisLabel: { color: c.textSecondary },
       axisLine: { lineStyle: { color: c.border } },
+      axisTick: { show: false },
     },
     yAxis: {
       type: 'value',
       min: 0,
       max: Math.ceil(s.yMaxMs),
       name: 'ms',
+      // 少坐标少网格 (spec 0018 图表纪律): no axis line, no ticks, sparse
+      // dashed horizontal guides only.
+      splitNumber: 4,
       nameTextStyle: { color: c.textSecondary },
       axisLabel: { color: c.textSecondary },
-      splitLine: { lineStyle: { color: c.border } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: c.border, type: 'dashed' } },
     },
     series: [
       {
@@ -99,6 +111,13 @@ function render() {
         data: s.points.map(p => [p.time, p.latencyMs]),
         showSymbol: false,
         connectNulls: false,
+        // Deliberately UNSMOOTHED (GH #114 deviation, recorded): the
+        // TimeSeriesChart/TrendChart monotone smoothing is not applied here —
+        // ① this chart's tooltip is item-triggered per probe, so interpolated
+        //    mid-probe samples would hover as invented readings (fidelity
+        //    discipline violation that the category charts avoid by snapping
+        //    to real slots); ② per-probe spikes are incident evidence, the
+        //    curve is evidence not decoration. Styling-only migration.
         smooth: false,
         lineStyle: { color: c.textSecondary, width: 1.5 },
         itemStyle: { color: c.textSecondary },
