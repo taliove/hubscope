@@ -240,10 +240,8 @@ function onEditCapability(row: EndpointRow) {
 async function onSaveCapability() {
   const row = capabilityRow.value
   if (!row) return
-  if (capabilityDraft.value === row.modelCapability) {
-    capabilityVisible.value = false
-    return
-  }
+  // No same-value early return: a same-capability save is the repair path
+  // for legacy endpoint drift (backend reconciles idempotently, GH #105).
   capabilitySaving.value = true
   try {
     await updateModelCapability(row.modelDbId, capabilityDraft.value)

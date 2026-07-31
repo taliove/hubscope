@@ -139,6 +139,53 @@ func TestModelCapabilityPatch(t *testing.T) {
 		}
 	})
 
+	t.Run("same-capability patch repairs legacy drift", func(t *testing.T) {
+		// The gpt-image-2 scenario from production: the model's capability is
+		// already "image", but a pre-GH #100 surplus anthropic endpoint is
+		// still enabled and burning probe requests. A same-value PATCH must
+		// reconcile idempotently (disable the surplus), not early-return.
+		stub := newDiscoveryStubHub(t, nil)
+		defer stub.Close()
+		hubID := createHubViaAPI(t, ts.URL, stub.URL)
+		waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+		stub.setImageMode("dall-drift", "success")
+		resp := doPost(t, ts.URL+"/api/models", map[string]interface{}{
+			"hub_id":   hubID,
+			"model_id": "dall-drift",
+		})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create dall-drift: expected 201, got %d", resp.StatusCode)
+		}
+		models := listModelsViaAPI(t, ts.URL)
+		model := models["dall-drift"]
+		modelDBID := int64(model["id"].(float64))
+
+		// Simulate legacy drift: an enabled anthropic endpoint exists beside
+		// the trial-free image endpoints.
+		if _, _, err := db.CreateEndpoint(modelDBID, "anthropic", true); err != nil {
+			t.Fatal(err)
+		}
+
+		patchResp := doPatch(t, ts.URL+"/api/models/"+itoa(modelDBID), map[string]interface{}{
+			"capability": "image", // same as current — must still reconcile
+		})
+		patchResp.Body.Close()
+		if patchResp.StatusCode != http.StatusOK {
+			t.Fatalf("patch same capability: expected 200, got %d", patchResp.StatusCode)
+		}
+
+		models = listModelsViaAPI(t, ts.URL)
+		model = models["dall-drift"]
+		if endpointEnabled(t, model, "anthropic") {
+			t.Error("surplus anthropic endpoint should be disabled by same-capability repair")
+		}
+		if !endpointEnabled(t, model, "images_generation") {
+			t.Error("images_generation endpoint should stay enabled after repair")
+		}
+	})
+
 	t.Run("invalid capability rejected", func(t *testing.T) {
 		stub := newDiscoveryStubHub(t, nil)
 		defer stub.Close()

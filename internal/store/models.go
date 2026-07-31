@@ -377,6 +377,20 @@ func (db *DB) GetEndpoint(id int64) (*Endpoint, error) {
 	return &e, nil
 }
 
+// SetEndpointEnabled enables or disables an endpoint by id. Returns the
+// updated endpoint. Used by spec 0018 T7 capability reconciliation to disable
+// surplus endpoints (history preserved).
+func (db *DB) SetEndpointEnabled(id int64, enabled bool) (*Endpoint, error) {
+	enabledInt := 0
+	if enabled {
+		enabledInt = 1
+	}
+	if _, err := db.conn.Exec("UPDATE endpoints SET enabled = ? WHERE id = ?", enabledInt, id); err != nil {
+		return nil, err
+	}
+	return db.GetEndpoint(id)
+}
+
 // UpdateEndpoint applies a partial update to an endpoint and returns the
 // stored copy. enabled is unchanged when nil; interval is a tri-state
 // IntervalPatch (see its docs).

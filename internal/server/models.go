@@ -233,12 +233,10 @@ func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "capability must be one of: chat, image, video")
 		return
 	}
-	if newCap == model.Capability {
-		// No change: return current state without reconciliation.
-		endpoints, _ := s.db.ListEndpointsByModelID(model.ID)
-		writeData(w, http.StatusOK, toModelDTO(*model, endpoints))
-		return
-	}
+	// Note: no early return when newCap == model.Capability. Reconciliation is
+	// idempotent, and a same-capability PATCH is the repair path for legacy
+	// endpoint drift — e.g. pre-GH #100 image models still holding surplus
+	// chat endpoints (which keep burning probe requests). One click fixes it.
 
 	oldCap := model.Capability
 	if err := s.db.SetModelCapability(model.ID, newCap); err != nil {
