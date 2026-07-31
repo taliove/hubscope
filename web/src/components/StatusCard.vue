@@ -330,7 +330,9 @@ const emptyDetailText = computed(() => {
   align-items: center;
   gap: var(--hs-space-1);
   max-width: 100%;
-  padding: var(--hs-space-1) var(--hs-space-2);
+  /* Vertical 2px stays off-grid by design (brief item 3/7: chips-row spec,
+     kept in lockstep with EvalCard scope chips). */
+  padding: 2px var(--hs-space-2);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
