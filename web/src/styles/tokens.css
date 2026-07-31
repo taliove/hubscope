@@ -1,71 +1,70 @@
 /* ==========================================================================
    tokens.css — Layer 1: raw scales (theme-independent "ruler").
    Only scales whose values are identical across light/dark themes live here.
-   Sole source of truth: DESIGN.md (frontmatter, GH #49; ticket 73 brand
-   merge into the ProxyHub "modern minimal tool" aesthetic).
+   v2.0 full rebuild (GH #110, spec 0018: Apple aesthetic, complete rebuild
+   with no compatibility to the old world). Anchors: page ground #F5F5F7,
+   primary text #1D1D1F, secondary text #86868B, brand #007AFF,
+   green #34C759, yellow #FF9500, red #FF3B30. The old teal scale is
+   retired wholesale (ADR 0015). Normative docs are rewritten by T13 at
+   batch end (DESIGN.md still describes the old world); this layer's values
+   land first, with measured contrast ratios annotated in place.
    Components must NOT consume this layer directly — the single exception is
    BrandMark's gradient stops (a graphic mark, not semantic expression).
    ========================================================================== */
 :root {
-  /* Brand teal ("电波青") 9-step scale.
-     The "electric" band (#0ABAB5~#06B6D4, steps 400-500) has only ~2.4:1
-     contrast on white — reserved for the dark-theme primary and graphic
-     accents, never white-background text. Light-theme primary is step 600
-     (#0b7a72, 5.2:1 on white, passes WCAG AA — deepened from #0c8078 4.8:1
-     in the 2026-07-30 same-family refinement, GH #69). */
-  --hs-teal-50: #effcfa;
-  --hs-teal-100: #d1f6f0;
-  --hs-teal-200: #a3ece1;
-  --hs-teal-300: #68dccf;
-  --hs-teal-400: #30c4b8;
-  --hs-teal-500: #0faea2;
-  --hs-teal-600: #0b7a72;
-  --hs-teal-700: #095f59;
-  --hs-teal-800: #074842;
-  --hs-teal-900: #053836;
+  /* Brand blue scale (anchor = #007AFF at step 600, spec 0018 decision 2).
+     The anchor measures 4.02:1 on white — below WCAG AA 4.5; the user ruled
+     to ship the brief value as-is, with brand-color text usage kept minimal
+     and key text in ink (spec 0018 "registered costs").
+     blue-500 #0A84FF is Apple's dark-mode blue, pre-registered for the
+     future dark spec (decision 10); the light theme does not consume it. */
+  --hs-blue-50: #eaf3ff;
+  --hs-blue-100: #d5e7ff;
+  --hs-blue-200: #abd0ff;
+  --hs-blue-300: #7fb6ff;
+  --hs-blue-400: #549cff;
+  --hs-blue-500: #0a84ff; /* Apple dark-mode blue — reserved for the dark spec, unused in light */
+  --hs-blue-600: #007aff; /* brand anchor (4.02:1 on white, 3.69:1 on page ground) */
+  --hs-blue-700: #0062cc; /* 5.80:1 on white, passes AA; BrandMark gradient deep stop */
+  --hs-blue-800: #004d9e;
+  --hs-blue-900: #003a75;
 
-  /* Neutral grays: low-chroma teal-gray 10 steps (same hue family).
-     2026-07-30 same-family refinement (GH #69): deepened + desaturated
-     ("inkier" neutrals), family character preserved. */
-  --hs-gray-50: #f3f6f7;
-  --hs-gray-100: #e9eef0;
-  --hs-gray-200: #dde4e7;
-  --hs-gray-300: #c3ced2;
-  --hs-gray-400: #8a99a0;
-  --hs-gray-500: #5a6a71;
-  --hs-gray-600: #40525a;
-  --hs-gray-700: #2c3b42;
-  --hs-gray-800: #1a262c;
-  --hs-gray-900: #0b151a;
+  /* Neutral grays: Apple neutral 10 steps (zero chroma; anchors noted).
+     gray-50 = page-ground anchor #F5F5F7; gray-500 = secondary-text anchor
+     #86868B (3.62:1 on white — brief value, registered and accepted like the
+     brand color); gray-900 = primary-text anchor #1D1D1F (16.83:1). */
+  --hs-gray-50: #f5f5f7;
+  --hs-gray-100: #e8e8ed;
+  --hs-gray-200: #d2d2d7;
+  --hs-gray-300: #bcbcc2;
+  --hs-gray-400: #a1a1a6; /* placeholder/disabled (2.57:1 on white, non-body use) */
+  --hs-gray-500: #86868b; /* secondary-text anchor (3.62:1 on white) */
+  --hs-gray-600: #6e6e73; /* 5.07:1 on white, passes AA — the info neutral */
+  --hs-gray-700: #48484a; /* 9.07:1 on white */
+  --hs-gray-800: #3a3a3c; /* 11.35:1 on white — regular body text */
+  --hs-gray-900: #1d1d1f; /* primary-text anchor (16.83:1 on white) */
 
-  /* Functional base colors (mid-tone, same lightness system as primary). */
-  --hs-success-base: #059669;
-  /* Warning: yellow-700 (2026-07-29 ruling, appendix B #14) — the old amber-600
-     #d97706 measured only 3.19:1 on white (AA needs 4.5). Yellow-700 passes
-     at 4.92:1 AND shifts hue away from failing orange (bigger hue gap than
-     the old value). Dark theme keeps the old #d97706 (5.5+ on dark grounds)
-     via --hs-warning-dark; see semantics.css html.dark. */
-  --hs-warning-base: #a16207;
-  --hs-warning-dark: #d97706;
-  --hs-danger-base: #dc2626;
-  --hs-info-base: #40525a; /* gray-600 */
+  /* Functional base colors (v2.0 brief anchors, graphic-fill tier).
+     Three-state dot mapping: stable = green, degraded = yellow,
+     incident = red; no fourth color (the alert orange is retired with the
+     three-state merge, spec 0018 decision 3, display layer). */
+  --hs-success-base: #34c759; /* 2.22:1 on white — graphic tier only (below the 3:1 graphic bar, registered) */
+  --hs-warning-base: #ff9500; /* 2.20:1 on white — graphic tier only, same registration */
+  --hs-danger-base: #ff3b30; /* 3.55:1 on white — passes the 3:1 graphic bar; text uses danger-text */
+  --hs-info-base: #6e6e73; /* gray-600, 5.07:1 on white */
 
-  /* Success text (2026-07-30, GH #69 T2; landing GH #62): text-scenario
-     success — status word "正常", green score band, rising arrows. The
-     graphic-fill success #059669 (3.77:1 on white) stays put; text needs
-     AA 4.5:1. Light = emerald-700 (5.48:1), dark = emerald-500 (6.94:1
-     on the dark card). Consumed via --hs-success-text in semantics.css. */
-  --hs-success-text-base: #047857;
-  --hs-success-text-dark: #10b981;
+  /* Text-tier steps (functional colors in text scenarios; measured AA 4.5:1
+     passes; the graphic-tier bases stay put). Old pages still consuming the
+     bases as text during the mixed period are registered as known (spec 0018
+     mixed period); new-world pages always consume the *-text steps. */
+  --hs-success-text-base: #1f7a33; /* 5.40:1 on white */
+  --hs-warning-text-base: #b35c00; /* 4.72:1 on white (the passing step closest in hue to #FF9500) */
+  --hs-danger-text-base: #d70015; /* 5.38:1 on white (Apple systemRed darker step) */
 
-  /* Failing orange scale — the single registered exception to the "no new
-     hues" discipline (ui-guidelines §3: alert legibility = alert trust, W5).
-     700 = light-theme text/status, 400 = dark-theme, 500 = chart accents. */
-  --hs-orange-700: #c2410c;
-  --hs-orange-500: #f97316;
-  --hs-orange-400: #fb923c;
-
-  /* Spacing scale: 4px base grid, space-1..8. */
+  /* Spacing scale: 4px base grid. Apple-syntax generous whitespace: space-9
+     is reserved for the hero block and page-level breathing room (the v2.0
+     overview page's 32–48px margins are covered by space-6/7; space-9 serves
+     the vertical rhythm of the hero-number block). */
   --hs-space-1: 4px;
   --hs-space-2: 8px;
   --hs-space-3: 12px;
@@ -74,29 +73,39 @@
   --hs-space-6: 32px;
   --hs-space-7: 48px;
   --hs-space-8: 64px;
+  --hs-space-9: 96px;
 
-  /* Type scale (text-md is body baseline; display for hero numbers only). */
+  /* Type scale (v2.0 §14: page title 32 / module title 20 / body 14–16 /
+     hero numbers 72+). text-md is the body baseline; text-xl = module title;
+     text-3xl = page title; text-hero = the health-index hero tier (72px+,
+     new). The old display tier (28px) stays for mixed-period old pages;
+     new-world consumer-page big numbers always use the hero tier. */
   --hs-text-xs: 12px;
   --hs-text-sm: 13px;
   --hs-text-md: 14px;
   --hs-text-lg: 16px;
-  --hs-text-xl: 20px;
+  --hs-text-xl: 20px; /* module title */
   --hs-text-2xl: 24px;
-  /* display: consumer-page hero numbers (HealthBanner verdict, StatusCard
-     uptime figure). Never for admin titles or body text. */
-  --hs-text-display: 28px;
+  --hs-text-3xl: 32px; /* page title (v2.0 §14) */
+  --hs-text-display: 28px; /* legacy tier kept for the mixed period; unused by the new world */
+  --hs-text-hero: 72px; /* hero-number tier (health index, v2.0 §14) */
 
-  /* Radius scale (4 steps; the old 6px default was retired in ticket 73). */
+  /* Radius scale (Apple syntax: 6 for controls, 12 for cards — continuous
+     corners approximated by scale steps; the 2px segment strip stays the
+     time-bar exception). */
   --hs-radius-xs: 2px; /* filled segment/time-bar cells only (24h strip) */
-  --hs-radius-sm: 4px; /* controls: buttons, inputs, tags, score badges */
-  --hs-radius-lg: 8px; /* cards, panels, dialogs */
+  --hs-radius-sm: 6px; /* controls: buttons, inputs, tags, score badges */
+  --hs-radius-lg: 12px; /* cards, panels, dialogs */
   --hs-radius-full: 999px; /* pills / count chips */
 
-  /* Shadow scale (light-theme baseline, gray-900 base; dark theme overrides
-     the same token names in semantics.css). */
-  --hs-shadow-sm: 0 1px 2px rgba(15, 27, 32, 0.05);
-  --hs-shadow-md: 0 2px 8px rgba(15, 27, 32, 0.08);
-  --hs-shadow-lg: 0 8px 24px rgba(15, 27, 32, 0.12);
+  /* Shadow scale (Apple syntax: light containers, low alpha, large blur;
+     the "shadows only express clickable/overlay" semantics is unchanged —
+     static cards still layer via their 1px border).
+     Dark deferred: dark-theme overrides ship with the dark spec (spec 0018
+     decision 10). */
+  --hs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --hs-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.07);
+  --hs-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
 
   /* z-index scale: page code must not use literals outside this scale. */
   --hs-z-sticky: 100;
@@ -108,6 +117,9 @@
   --hs-z-message: 3000;
   --hs-z-tooltip: 4000;
 
-  /* Transition (theme-independent; exposed via the semantic layer). */
+  /* Transition (theme-independent; exposed via the semantic layer).
+     The default 0.2s stop is unchanged; a new slow stop (0.3s) serves the
+     v2.0 §15 page transition (Fade + slight move, 200–300ms). */
   --hs-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --hs-transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }

@@ -2,127 +2,120 @@
    semantics.css — Layer 2: semantic tokens ("what does this word mean").
    Pages and components consume ONLY this layer. The dark theme (html.dark)
    overrides just this layer — no page code changes on theme switch.
-   Sole source of truth: DESIGN.md (frontmatter, GH #49).
+   v2.0 full rebuild (GH #110, spec 0018): all light-theme semantic values
+   move to the Apple anchors; dark keys are kept with values temporarily
+   mirroring light — dark is deferred to its own spec (decision 10), no
+   rework. Normative docs are rewritten by T13 at batch end.
    ========================================================================== */
 :root {
-  /* Brand: light primary is teal-600 (5.2:1 on white, WCAG AA — deepened
-     in the 2026-07-30 same-family refinement, GH #69). */
-  --hs-brand: var(--hs-teal-600);
-  --hs-brand-hover: var(--hs-teal-500);
-  --hs-brand-active: var(--hs-teal-700);
+  /* Brand: anchor #007AFF (4.02:1 on white — below AA; the user ruled to
+     ship the brief value, spec 0018 decision 2 and "registered costs";
+     brand-color text usage stays minimal). */
+  --hs-brand: var(--hs-blue-600);
+  --hs-brand-hover: var(--hs-blue-500);
+  --hs-brand-active: var(--hs-blue-700);
 
-  /* Functional colors. */
+  /* Functional colors (graphic-tier bases; three-state dots: stable green /
+     degraded yellow / incident red). Text scenarios always consume the
+     *-text steps (measured ratios in tokens.css). */
   --hs-success: var(--hs-success-base);
   --hs-warning: var(--hs-warning-base);
   --hs-danger: var(--hs-danger-base);
   --hs-info: var(--hs-info-base);
-  /* Text-scenario success (2026-07-30, GH #69 T2): status words, green
-     score-band numbers, rising arrows. Graphic fills keep --hs-success. */
+  /* Text tier: status words, score-band numbers, delta arrows — every text
+     scenario. */
   --hs-success-text: var(--hs-success-text-base);
+  --hs-warning-text: var(--hs-warning-text-base);
+  --hs-danger-text: var(--hs-danger-text-base);
 
-  /* failing: more urgent than down; the ONLY animated status (W5).
-     Orange family is the registered single exception to "no new hues"
-     (ui-guidelines §3). 5.1:1 on white, passes AA for text. */
-  --hs-status-failing: var(--hs-orange-700);
+  /* failing: merged into incident at the display layer (spec 0018
+     decision 3) — the token stays (old pages still consume it during the
+     mixed period) with its value set to danger red; the alert orange scale
+     is retired wholesale (ADR 0015). The backend domain failing tier is
+     untouched (W5). */
+  --hs-status-failing: var(--hs-danger-base);
 
-  /* Soft tints: selected rows, banner grounds, highlight fills. Light theme
-     mixes white 90% (EP light-9 equivalent); dark theme mixes the dark
-     surface tone — enough separation to read as a tint, never a solid. */
-  --hs-brand-soft: var(--hs-teal-50);
+  /* Soft tints: selected rows, banner grounds, highlight fills. Mixed with
+     white 90% (EP light-9 equivalent). */
+  --hs-brand-soft: var(--hs-blue-50);
   --hs-success-soft: color-mix(in srgb, var(--hs-success), #ffffff 90%);
   --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #ffffff 90%);
   --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
   --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
-  /* Surfaces (three levels). */
+  /* Surfaces (three levels; page ground = the v2.0 anchor #F5F5F7). */
   --hs-bg-page: var(--hs-gray-50);
   --hs-bg-card: #ffffff;
   --hs-bg-hover: var(--hs-gray-100);
 
-  /* Text (four levels). */
+  /* Text (four levels; primary anchor #1D1D1F, secondary anchor #86868B). */
   --hs-text-primary: var(--hs-gray-900);
-  --hs-text-regular: var(--hs-gray-700);
+  --hs-text-regular: var(--hs-gray-800);
   --hs-text-secondary: var(--hs-gray-500);
   --hs-text-placeholder: var(--hs-gray-400);
 
-  /* Borders. */
+  /* Borders. The hairline takes the scale step between page ground and
+     hover (readable on a white card without competing with hover fills,
+     ≈1.28:1 on white). */
   --hs-border: var(--hs-gray-200);
-  /* Hairline: a scale-gap value between page and hover (2026-07-30
-     refinement, GH #69) — deliberately NOT gray-100; it must read on a
-     white card without competing with hover fills (1.13:1 on white). */
-  --hs-border-light: #edf2f4;
+  --hs-border-light: #e5e5ea;
 
-  /* Overlay scrim (DESIGN.md Overlay Scrim, 2026-07-29): the single scrim
-     ground for every EP overlay, mapped in ep-theme.css (--el-mask-color +
-     --el-overlay-color-lighter). Dark override below, same pattern as the
-     shadow tokens. */
-  --hs-overlay-bg: rgba(15, 27, 32, 0.4);
+  /* Overlay scrim: the single scrim ground, mapped in ep-theme.css
+     (--el-mask-color + --el-overlay-color-lighter). Apple syntax takes the
+     lighter 0.3 black (the old 0.4 teal-gray scrim is retired). */
+  --hs-overlay-bg: rgba(0, 0, 0, 0.3);
 }
 
-/* Dark theme overrides — driven by <html class="dark">.
-   Overrides ONLY this semantic layer: surfaces, text, borders, shadows,
-   primary. Set up front by the inline anti-FOUC script in index.html and
-   toggled from AppHeader (localStorage key `hs:dark`; keep names in sync).
-   Scoped to screen: exported material (print/PDF) is always light
-   (ui-guidelines §2a) — dark pixels must never bake into a document. */
+/* Dark theme overrides — dark deferred (spec 0018 decision 10): every key
+   is kept, values temporarily mirror light; the dark look is finalized by a
+   later spec and only this block changes then — zero page edits. During the
+   interim, even if a stale localStorage preference sets html.dark, the
+   visuals match the light theme.
+   Scoped to screen: exported material (print/PDF) is always light. */
 @media screen {
   html.dark {
-  /* Brand: dark primary steps up to teal-500 to keep contrast on dark. */
-  --hs-brand: var(--hs-teal-500);
-  --hs-brand-hover: var(--hs-teal-400);
-  --hs-brand-active: var(--hs-teal-600);
+  --hs-brand: var(--hs-blue-600);
+  --hs-brand-hover: var(--hs-blue-500);
+  --hs-brand-active: var(--hs-blue-700);
 
-  /* Functional colors keep the same values (status dot + label double
-     encoding stays legible); info is decoupled from the gray scale and
-     brightened — the refined gray-500 dropped in dark-ground readability
-     (2026-07-30, GH #69; 4.1:1 on the dark card).
-     Warning splits (appendix B #14): light takes yellow-700 for AA on white,
-     dark keeps amber-600 (5.5+ on dark grounds, no benefit in changing). */
-  --hs-info: #6b7d84;
-  --hs-warning: var(--hs-warning-dark);
-  --hs-success-text: var(--hs-success-text-dark);
+  --hs-success: var(--hs-success-base);
+  --hs-warning: var(--hs-warning-base);
+  --hs-danger: var(--hs-danger-base);
+  --hs-info: var(--hs-info-base);
+  --hs-success-text: var(--hs-success-text-base);
+  --hs-warning-text: var(--hs-warning-text-base);
+  --hs-danger-text: var(--hs-danger-text-base);
 
-  /* failing: dark theme brightens to orange-400 (≈7:1 on dark surface). */
-  --hs-status-failing: var(--hs-orange-400);
+  --hs-status-failing: var(--hs-danger-base);
 
-  /* Soft tints on dark: mix toward white just enough to lift from the
-     surface (≈12%), the dark-theme reading of a light-9 tint. The mix
-     base follows the refined dark page surface (#0c0e11, GH #69 纪律④). */
-  --hs-brand-soft: var(--hs-teal-900);
-  --hs-success-soft: color-mix(in srgb, var(--hs-success), #0c0e11 82%);
-  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #0c0e11 82%);
-  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #0c0e11 82%);
-  --hs-info-soft: color-mix(in srgb, var(--hs-info), #0c0e11 82%);
+  --hs-brand-soft: var(--hs-blue-50);
+  --hs-success-soft: color-mix(in srgb, var(--hs-success), #ffffff 90%);
+  --hs-warning-soft: color-mix(in srgb, var(--hs-warning), #ffffff 90%);
+  --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
+  --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
-  /* Surfaces. */
-  --hs-bg-page: #0c0e11;
-  --hs-bg-card: #17191d;
-  --hs-bg-hover: #22262b;
+  --hs-bg-page: var(--hs-gray-50);
+  --hs-bg-card: #ffffff;
+  --hs-bg-hover: var(--hs-gray-100);
 
-  /* Text. */
-  --hs-text-primary: #e2e8f0;
-  --hs-text-regular: #c9ced4;
-  --hs-text-secondary: #9298a2;
-  --hs-text-placeholder: #5c616a;
+  --hs-text-primary: var(--hs-gray-900);
+  --hs-text-regular: var(--hs-gray-800);
+  --hs-text-secondary: var(--hs-gray-500);
+  --hs-text-placeholder: var(--hs-gray-400);
 
-  /* Borders. */
-  --hs-border: #2a2d33;
-  --hs-border-light: #1e2227;
+  --hs-border: var(--hs-gray-200);
+  --hs-border-light: #e5e5ea;
 
-  /* Shadows: black base, wider spread (same token names as tokens.css). */
-  --hs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --hs-shadow-md: 0 2px 12px rgba(0, 0, 0, 0.4);
-  --hs-shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.5);
-
-  /* Overlay scrim on dark grounds. */
-  --hs-overlay-bg: rgba(0, 0, 0, 0.55);
+  --hs-overlay-bg: rgba(0, 0, 0, 0.3);
   }
 }
 
-/* Shared alert blink for the failing status (W5 semantics). Sole definition —
-   StatusBadge and HealthBanner both consume it; never copy it into a
-   component's scoped styles. Consumers animate via the --hs-blink token
-   below so the reduced-motion override lives in exactly one place. */
+/* Blink semantics retired (spec 0018 decision 4: no blinking; replaced by
+   the v2.0 §15 motion system; ADR 0015). The @keyframes definition and the
+   --hs-blink token stay with value none — old pages still reference the
+   token during the mixed period and go still; the display-layer rebuild
+   batch (status component rewrite) removes the keyframes physically.
+   Registered on the T13 rewrite checklist. */
 @keyframes hs-blink {
   0%,
   100% {
@@ -134,22 +127,15 @@
 }
 
 :root {
-  /* The single failing-blink animation token (a11y harden 2026-07-29). */
-  --hs-blink: hs-blink 0.8s ease-in-out infinite;
+  --hs-blink: none;
 }
 
-/* prefers-reduced-motion (WCAG 2.3.3, vestibular safety). This block now
-   governs two things:
-   1. Blink token: the failing blink goes still — the solid failing orange +
-      status word already double-encode the state, so animation is an
-      enhancement, never the only channel.
-   2. Global transition zero (2026-07-29 /impeccable animate 批): every
-      user-triggered transition completes instantly — disclosure containers,
-      the LoginView captcha area (the first instance, previously unhandled,
-      patched in this batch), hover/focus, and EP component transitions, all
-      covered in one place. The blink is zeroed by the token above and the
-      skeleton pulse has a component-level exemption — neither is affected
-      by this rule. */
+/* prefers-reduced-motion (WCAG 2.3.3, vestibular safety). Governs:
+   1. Blink token: stays none (blink retired wholesale, see above).
+   2. Global transition zero: every user-triggered transition completes
+      instantly — disclosure containers, hover/focus, EP component
+      transitions, all covered in one place. The skeleton pulse has a
+      component-level exemption. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --hs-blink: none;
