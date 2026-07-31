@@ -1,405 +1,174 @@
 # UI Guidelines(业务语义手册)
 
-> **本文件 = 前端业务语义手册(GH #47 四层映射定稿,2026-07-29):** 只承载业务语义——两套状态词表、降级成因副词表、语义色映射关系(引用 DESIGN.md 令牌名)、防作假约定、分享面信息边界、成本中性化。视觉与布局权威在 [DESIGN.md](../../DESIGN.md)(令牌/字阶/圆角/阴影/布局/暗色/品牌);页面与组件构成规格在 surface briefs(`web/.impeccable/surfaces/`,状态板三页已建,其余页面随批次迁入);产品形态与读者模型在 [PRODUCT.md](../../PRODUCT.md)。三处均由 `plan` agent 维护,`check` agent 按多源验收。
-> **语义映射(状态色、词表)变更仍属承重语义变更,须在设计评审中说明理由。** 标注「保留备查,不再更新」的章节(§1/§2/§2a/§2b/§4 与 §5 部分条目)是迁移档案,内容以各自落点为准。
-> 视觉基线(ticket 73)并入 ProxyHub「现代极简工具风」(电波青 teal 品牌色、三层令牌、暗色一等公民);HubScope 词表、状态语义、防作假约定全部保留,仅做色值与刻度映射。
+> **本文件 = 前端业务语义手册(v2 重写,2026-08-01,GH #122,spec 0018 / ADR 0015):** 只承载业务语义——显示层三态词表与映射接口、降级成因副词表、语义色映射关系(引用 DESIGN.md 令牌名)、防作假约定、分享面信息边界、成本中性化、告警事件词表。视觉与布局权威在 [DESIGN.md](../../DESIGN.md)(令牌/字阶/圆角/阴影/布局/动效/品牌);页面与组件构成规格在 surface briefs(`web/.impeccable/surfaces/`);产品形态与读者模型在 [PRODUCT.md](../../PRODUCT.md)。三处均由 `plan` agent 维护,`check` agent 按多源验收。
+> **旧「信号墙」体系正式作废:** 四态中文词表(正常/降级/宕机/告警)的显示层用法、teal 色板、闪烁独占语义、AppHeader/PublicFooter/HealthBanner/EndpointCard/UptimeStrip/OverviewGroupSection/EndpointQuickViewDialog/EndpointUptimePanel/LatencySparkline 全部退役,历史仅存于 git;本文件按建成世界重写(ground truth over intention——规格与代码冲突时以代码为准并注明)。
+> **不动的保留项(重写不得丢):** 后端域模型四态与告警管线(W5)、告警事件词表(含借字例外)、防作假语义全套(统计范围/null 不冒充/半成品不外流/断点不显涨跌/判分不完整水印/成本中性化)、分享面信息边界(ticket 54)。
+> **语义映射(状态色、词表)变更仍属承重语义变更,须在设计评审中说明理由。**
 
 ## 1. 产品形态与读者
 
-> **已迁 `PRODUCT.md`(GH #48)**——产品形态、读者模型(含 2026-07-29 确认的第三受众「外部接收者」)、桌面优先、工具风基调以 PRODUCT.md 为准;本节保留备查,不再更新。
-
-- **双形态:** 公开侧(状态板 Dashboard、EndpointDetail + 公开榜单页 /board,无需登录,spec 0010)+ 管理台(EvalCenter /eval、TaskCenter、Admin,需登录)。
-- **两类读者:** 状态板读者要「3 秒看懂健不健康」——状态优先,操作入口让位;管理台读者要「高效完成配置与排查」——信息密度优先,操作直达。
-- **桌面优先:** 内容区 `max-width: 1200px` 居中(Dashboard 先例),不为手机做专门适配,窄屏不阻断使用即可。
-- **全站工具风:** 并入 ProxyHub「现代极简工具风」审美——灰阶为主、用色克制、轻阴影靠描边分层、无多余装饰(无渐变装饰、无大圆角、无彩色背景块)。公开页(状态板、登录页)同为工具风基调,不做营销装饰(不引入光斑背景、插画等营销物料);BrandMark 渐变是唯一允许的渐变(图形标识,非装饰)。
+> 以 `PRODUCT.md` 为准——双形态(公开侧:状态概览 `/`、Benchmark `/benchmark`、端点详情 `/endpoints/:id`,无需登录;管理台:评估中心 `/eval`、模型管理 `/models`、故障记录 `/alerts`、系统设置 `/settings`,需登录)、三类读者、桌面优先、Apple 风极简基调。v2 IA 映射与壳外页面(/login、/report/:token 走 `meta.bare`)见 spec 0018 与 DESIGN.md Layout 节。
 
 ## 2. 视觉基线
 
-> **已迁 `DESIGN.md`(GH #49)**——令牌三层架构、字阶、圆角、阴影、间距、z-index、过渡的视觉规格以 DESIGN.md(frontmatter 为 normative)为准;本节保留备查,不再更新。
+> 视觉规格(令牌刻度/字阶/圆角/阴影/轻容器语法/动效/暗色后置)以 `DESIGN.md` 为准。本节只登记修改纪律与暗色键位事实。
 
-- **Element Plus 组件体系 + 三层令牌架构,浅色/暗色双主题一等公民。** 令牌分三层,位于 `web/src/styles/`:
-
-  ```
-  tokens.css      原始刻度(主题无关的"尺",只放两主题同值的刻度)
-  semantics.css   语义令牌(页面与组件只消费这一层;暗色 = html.dark 只覆盖本层)
-  ep-theme.css    Element Plus 映射(全仓唯一允许书写 --el-* 变量的文件,
-                  亮暗两块用 color-mix 从语义令牌生成 EP 派生阶)
-  ```
-
-  修改纪律:调具体色值改 tokens.css;调暗色观感改 semantics.css 的 `html.dark` 块;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。唯二豁免:① `--el-card-padding` 密度档设置(§2 间距条目的既定机制);② BrandMark 消费原始刻度与刻度外细节(§2b,图形标识非语义表达:渐变 stop、字形白色描线 `#fff`)。引入顺序(main.ts):`element-plus/dist/index.css` → `element-plus/theme-chalk/dark/css-vars.css` → tokens.css → semantics.css → ep-theme.css → print.css。ep-theme.css 必须含 `html.dark` 块(EP dark/css-vars.css 的 `html.dark` 选择器特异性高于 `:root`,需在其后加载并重复声明全部映射,亮主题 light-N 混白/dark-2 混黑 20%,暗主题反转)。
-
-- **命名前缀:** 沿用 `--hs-`(HubScope)前缀,**不**改 `--ph-`——降低存量 diff 与 Review 风险,避免多 Hub 产品生态混读;语义与层级完全对齐 ProxyHub 架构,仅前缀不同。
-
-- **原始刻度(tokens.css,主题无关):**
-
-| 类别 | 刻度 | 值 |
-|---|---|---|
-| 品牌电波青 9 级 | `--hs-teal-50..900` | `#effcfa` / `#d1f6f0` / `#a3ece1` / `#68dccf` / `#30c4b8` / `#0faea2` / `#0c8078` / `#0a6963` / `#085350` / `#063f3d` |
-| 中性青灰 10 级 | `--hs-gray-50..900` | `#f7fafb` / `#eff4f5` / `#e0e8ea` / `#c7d3d6` / `#91a3a8` / `#617379` / `#45565c` / `#324249` / `#1e2b31` / `#0f1b20` |
-| 功能色基色 | `--hs-success-base` / `--hs-warning-base`(亮)`--hs-warning-dark`(暗) / `--hs-danger-base` / `--hs-info-base` | `#059669` / `#a16207`(亮)`#d97706`(暗,附录 B #14) / `#dc2626` / `#45565c` |
-| failing 橙刻度(独立例外,见 §3) | `--hs-orange-500` / `--hs-orange-700` / `--hs-orange-400` | `#f97316` / `#c2410c` / `#fb923c` |
-| 间距 4px 基网 | `--hs-space-1..8` | 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 |
-| 圆角 | `--hs-radius-xs/sm/lg/full` | 2 / 4 / 8 / 999(§2 圆角节) |
-| 阴影(亮主题基准,gray-900 基底) | `--hs-shadow-sm/md/lg` | `0 1px 2px rgba(15,27,32,.05)` / `0 2px 8px rgba(15,27,32,.08)` / `0 8px 24px rgba(15,27,32,.12)` |
-| 字号 | 见 §2 字阶节 | — |
-
-- **语义令牌(semantics.css,亮/暗双值;页面唯一消费层):**
-
-| 语义令牌 | 亮主题 | 暗主题 | 用途 |
-|---|---|---|---|
-| `--hs-brand`(主色) | teal-600 `#0c8078`(白底对比度 4.8:1,过 WCAG AA) | teal-500 `#0faea2` | 主按钮、链接、当前导航、聚焦态、运行中状态 |
-| `--hs-brand-hover` | teal-500 `#0faea2` | teal-400 `#30c4b8` | hover 阶 |
-| `--hs-brand-active` | teal-700 `#0a6963` | teal-600 `#0c8078` | 按下态 |
-| `--hs-brand-soft` | teal-50 `#effcfa` | teal-900 `#063f3d` | 品牌浅底:选中行、高亮块、BrandMark 旁衬底 |
-| `--hs-success` | `#059669` | 同值(暗底 3.5:1,状态灯+词双编码可用;文字场景降级用 dark-2 阶) | 正常/已完成/升 |
-| `--hs-warning` | `#a16207`(附录 B #14) | `#d97706` | 降级/可逆警示 |
-| `--hs-danger` | `#dc2626` | 同值 | 宕机/失败/降/不可逆操作 |
-| `--hs-info` | `#45565c`(gray-600) | gray-500 `#617379`(暗底提一档保可读) | 中性提示 |
-| `--hs-status-failing` | orange-700 `#c2410c`(白底 5.1:1 过 AA;§3 裁决) | orange-400 `#fb923c`(暗底 ≈7:1) | 告警,唯一动画状态 |
-| `--hs-success-soft` / `--hs-warning-soft` / `--hs-danger-soft` / `--hs-info-soft` | 功能色混白 90%(EP light-9 等价) | 功能色混暗底 82% | 功能浅底:横幅底、选中态、高亮填充 |
-| `--hs-bg-page` | gray-50 `#f7fafb` | `#0f1115` | 页面全局背景、hero panel 中性浅底 |
-| `--hs-bg-card`(表面) | `#ffffff` | `#17191d` | 卡片/表格/弹窗表面 |
-| `--hs-bg-hover` | gray-100 `#eff4f5` | `#1f2227` | 行/菜单悬浮;榜单条形轨道 |
-| `--hs-text-primary` | gray-900 `#0f1b20` | `#e2e8f0` | 标题、正文主文字 |
-| `--hs-text-regular` | gray-700 `#324249` | `#c3c7cd` | 常规正文 |
-| `--hs-text-secondary` | gray-500 `#617379` | `#8a8f98` | 次要说明、标签、辅助 |
-| `--hs-text-placeholder` | gray-400 `#91a3a8` | `#5c616a` | 占位/禁用、等待中状态 |
-| `--hs-border` | gray-200 `#e0e8ea` | `#2a2d33` | 卡片边、输入框边 |
-| `--hs-border-light` | gray-100 `#eff4f5` | `#23262b` | 浅分割、hairline |
-| `--hs-shadow-sm/md/lg`(暗色覆盖 tokens 同名刻度) | 见 tokens | `0 1px 2px rgba(0,0,0,.3)` / `0 2px 12px rgba(0,0,0,.4)` / `0 6px 24px rgba(0,0,0,.5)` | 阴影 |
-
-- **字阶七档(display 为消费页大数字专用,非标题不用):**
-
-| 令牌 | 值 | 用途 |
-|---|---|---|
-| `--hs-text-xs` | 12px | 辅助/标签/时间戳 |
-| `--hs-text-sm` | 13px | 次要正文、StatusBadge |
-| `--hs-text-md` | 14px | 正文基准、表单、表格主列 |
-| `--hs-text-lg` | 16px | 卡片/分组标题 |
-| `--hs-text-xl` | 20px | 页面标题、关键数字(如 StatusCard 平均延迟) |
-| `--hs-text-2xl` | 24px | 品牌区标题(「HubScope 服务状态」) |
-| `--hs-text-display` | 28px | 消费页主视觉大数字:HealthBanner 大字结论、StatusCard 24h 可用率大数字 |
-
-  说明:并入前 HubScope 六档(xs..2xl)平移保留;新增 display 档对齐 ProxyHub display-sm(28px),把「健康横幅大字结论」与「StatusCard 可用率大数字」从 2xl 24px 升档——两者都是消费页读者「3 秒场景」下的第一视觉锚点,工具风层级靠字号/字重表达,大数字应承担锚点职责;display 档禁用于管理台标题与普通文本。字重只用 400/600/700(700 仅限 Wordmark 等宽字标);行高默认 1.5,数字类 1.2。
-
-- **圆角四档(撤销原 `--hs-radius` 6px 默认档):**
-
-| 令牌 | 值 | 用途 |
-|---|---|---|
-| `--hs-radius-xs` | 2px | 分段条/时间条类填充元素(24h 可用率条格),仅限此类元素,存续 |
-| `--hs-radius-sm` | 4px | 控件默认(按钮/输入框/tag/评分徽标),覆盖 `--el-border-radius-base` |
-| `--hs-radius-lg` | 8px | 卡片、面板、弹窗(el-card/el-dialog/el-message-box) |
-| `--hs-radius-full` | 999px | 胶囊形元素(计数 chip 等),按需 |
-
-  迁移映射:原卡片/弹窗 6px → 8px(面板层级);原按钮/输入框 6px → 4px(控件层级,对齐高密度工具基调);原 tag/徽标 4px 不变;分段条 2px 不变。EP 侧由 ep-theme.css 统一映射(`--el-border-radius-base: var(--hs-radius-sm)`,卡片圆角在 ep-theme.css 内以 EP 类选择器微调),页面不写圆角字面量。
-
-- **阴影语义:** 只表达「可点/浮层」,不用于装饰——静态卡片靠 1px 描边分层,用 `shadow="never"` + 边框;可点卡片 hover `--hs-shadow-md`;浮层(弹窗/抽屉/下拉)`--hs-shadow-lg`。原 `--hs-shadow-card`(静态轻阴影)撤销——工具风「轻阴影靠描边分层」,静态卡片不吃阴影。
-
-- **间距:** 4px 基准网格不变,消费 `--hs-space-1..8` 令牌(ticket 73 落地刻度,存量 px 字面量按后续批次渐进迁移,新代码一律用令牌);卡片内边距统一走 `--el-card-padding` 变量,**密度档位按读者类型划分**:消费页(状态板、评估榜单 /eval、分享报告页)16px,管理台(/admin 全部 tab,含评估运营与题库)紧凑档 12px——档位由读者决定,不由登录态决定;禁止 `:deep(.el-card__body)` 覆写;区块间距 16px,页面上下 24px;内容区 `max-width: 1200px` 居中。导出物料(StatusCard 等独立画布组件)不受 el-card 16/12px 密度档约束,内边距按物料设计定(StatusCard 为 40px 横向 / 32px 纵向),区块间距沿用 4px 基准网格。
-
-- **z-index 刻度:** 对齐 ProxyHub 八档——`--hs-z-sticky` 100 / `--hs-z-fixed` 500 / `--hs-z-dropdown` 1000 / `--hs-z-overlay` 2000 / `--hs-z-drawer` 2010 / `--hs-z-dialog` 2020 / `--hs-z-message` 3000 / `--hs-z-tooltip` 4000;页面代码不允许出现刻度外 z-index 字面量(EP 内部 z-index 由其自管理,不在此约束)。
-
-- **过渡:** 统一 `--hs-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1)`(主题无关,归语义层暴露);hs-blink 告警闪烁动画除外(见 §3)。
-
-## 2a. 暗色主题
-
-> **已迁 `DESIGN.md`(GH #49)**——暗色机制(语义层覆盖、切换入口、持久化、导出恒亮、ECharts 双镜像)以 DESIGN.md 为准;本节保留备查,不再更新。
-
-- **暗色一等公民:** 暗色不是反色滤镜,表面/文本/描边/阴影/主色均有独立暗色取值(§2 语义令牌表);暗色只覆盖 semantics.css 的 `html.dark` 块,页面代码零改动——页面只消费语义令牌是硬约束。
-- **切换入口:** AppHeader 右栏操作区(批次进度入口左侧)放亮/暗切换按钮(link 型图标按钮,Sun/Moon 图标),未登录态同样可用(状态板读者无差别)。当前主题下只显示目标态图标(亮主题显示 Moon)。
-- **持久化与防闪:** 选择存 `localStorage` 键 `hs:dark`(1/0);`index.html` 内联首屏防闪脚本在挂载前同步读该键加/去 `html.dark` class(键名两处保持一致,注释互指)。**默认亮主题、不跟随系统偏好**(v1 裁决:二态切换语义最简单,公开状态板常被投屏/截图,主题确定性优先;系统偏好跟随留作后续增强,届时改三态「跟随系统/亮/暗」需设计评审登记)。
-- **导出物料固定亮主题:** StatusCard(PNG/PDF)、分享报告页导出一律强制亮主题渲染——物料是对外传播的静态快照,亮主题保证打印/转发可读性;实现上导出画布渲染前临时去 `html.dark` class 或在离屏容器内以亮主题令牌渲染,禁止把暗色像素烤进物料。
-- **离屏捕获定位约定(snapdom 修复登记):** 导出物料的离屏捕获双份(EvalShareDialog / StatusShareDialog 的 `.capture-source` 及 `withLightCapture` 临时 wrapper)一律 `position: absolute; left: -10000px`,**禁用 `position: fixed`**——snapdom 对 fixed 元素按视口宽度重排舞台,卡片被拉宽、flex 轨道重伸展而 % 宽度已冻结 px 的子元素不动,导致条形/分数/涨跌列错位;absolute 离屏不触发该重排,舞台宽度与预览一致。
-- **ECharts 暗色:** JS 镜像色板亮暗双份(见 §3 ECharts 条目),按当前主题取份;主题切换时图表重渲染(watch 主题状态,setOption 全量替换)。
-- **暗色验收:** 暗色下功能色文字场景(表格内着色文字、明细行状态词)需抽查对比度;failing 闪烁动画暗色下不调整(闪烁是语义,非装饰)。
+- **三层令牌架构(保留):** `tokens.css`(原始刻度)→ `semantics.css`(语义令牌,页面唯一消费层)→ `ep-theme.css`(EP 映射,全仓唯一允许书写 `--el-*` 的文件)。调具体色值改 tokens.css;调 EP 组件观感改 ep-theme.css;**页面/组件只消费 semantics.css 的语义令牌,禁止直接引用原始刻度、禁止写 `--el-*`、禁止硬编码色值**。豁免:① `--el-card-padding` 管理台密度档机制;② BrandMark 渐变 stop 表现属性(图形标识非语义表达);③ `utils/chartColors.ts` ECharts 色板 JS 镜像(§3)。引入顺序(main.ts 实际,a41bc7e 起 EP 样式为 base.css + 按需组件样式,非整包 index.css):element-plus base/组件样式 → element-plus dark/css-vars.css → tokens.css → semantics.css → ep-theme.css → print.css。**dark/css-vars.css 引入保留**(ep-theme.css 的 html.dark 块以其为级联前提),暗色后置由 boot 时 scrub(html.dark class 移除 + hs:dark 删除,GH #112)承担,不是删除引入。
+- **EP 服务范围(决策 8):** Element Plus 保留管理台复杂件(表格/弹窗/表单/分页/标签页);签名面自造(AppSidebar/StatusHero/MetricWidgets/ModelStatusList/UptimeMicroStrip/ModelDetailPanel/时间线),自造面不引入 EP 布局组件。
+- **暗色后置(决策 10,登记为事实不是删除概念):** 当前恒亮主题;v1 亮/暗切换(utils/theme.ts、`hs:dark` 键、AppHeader 切换按钮、index.html 防闪脚本)已随旧外壳退役。**暗色键位预留清单**(暗色 spec 的填值起点):semantics.css `html.dark` 全键(值暂沿亮值,`@media screen` 作用域)+ chartColors.ts `CHART_COLORS_DARK` 全字段(暂镜像 LIGHT)+ tokens.css 阴影暗色覆盖键位 + index.html 防闪脚本恢复路径。暗色 spec 落地时只改语义层与镜像,页面零改动。
+- **间距与密度:** 4px 基准网格消费 `--hs-space-1..9`;公开页 32–48px 页面留白,管理台页 24/16;轻容器内边距桌面 24/32、窄屏 16;管理台 EP 卡片紧凑档 12px 走 `--el-card-padding`,禁 `:deep(.el-card__body)` 覆写。导出物料(StatusCard/EvalCard 独立画布)不受密度档约束,画布边距是物料设计常量(share-materials brief 登记)。
+- **z-index / 过渡:** z-index 八档刻度见 DESIGN.md(页面代码禁刻度外字面量);过渡两档(default 0.2s 反馈 / slow 0.3s 页面切换),动效体系见 §3 动效节与 DESIGN.md Motion 节。
 
 ## 2b. 品牌标识(BrandMark / Wordmark)
 
-> **已迁 `DESIGN.md`(GH #49)**——品牌标识视觉规格以 DESIGN.md 为准;本节保留备查,不再更新。
-
-- **BrandMark 是唯一图形标:** 共享组件 `components/BrandMark.vue`,64×64 viewBox 内联 SVG——圆角 rect(rx=14)填 teal-400→teal-700 渐变(渐变 stop 消费 `--hs-teal-*` 原始刻度,此为页面消费原始刻度的唯一豁免:图形标识非语义表达),白色**瞄准镜字形**(圆环 + 十字准星刻度 + 中心脉冲点——监控隐喻:盯住 Hub 上每个 endpoint;ticket 73 后续修订,取代初版与 ProxyHub 同构的 hub 辐条字形,因用户反馈「不合群」——与 ProxyHub 的区分由图形标承担,不再只靠字标);em 尺寸宿主可控(`width/height: 1em`)。**捕获兜底属性(snapdom 修复登记):** `<stop>` 元素同时携带 `stop-color` 表现属性(`#30c4b8` / `#0a6963`,镜像 tokens.css teal-400/teal-700)——snapdom 对 SVG 内部元素(stop/defs/linearGradient 等)从不内联计算样式,仅写在 scoped CSS 的 `var(--hs-teal-*)` 会在克隆中丢失、落回默认黑;表现属性是导出物料保真的兜底,**不是第二色值来源**——浏览器内 CSS 优先级高于表现属性,`var()` 令牌链路仍是权威;tokens.css 改色时两处必须同步(BrandMark.vue 注释与本条互指)。favicon 与 AppHeader 左侧品牌位同源;`web/public/logo.png` 已删除,AppHeader/LoginView/StatusCard 一律使用 BrandMark。
-- **Wordmark 是唯一字标:** 共享组件 `components/Wordmark.vue`——「HubScope」PascalCase 文本 + 主色**脉冲小圆点**(常亮,与 BrandMark 瞄准镜中心点同源的图形呼应),字体用**系统等宽字栈**(`ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace`),不引入任何外部字体文件(零依赖、离线可用,与单二进制交付一致),字重 700;字号以 em 为基准,宿主用 `font-size` 覆盖等比缩放。使用点:AppHeader 品牌位(BrandMark + Wordmark 横排,默认 `--hs-text-lg` 16px)、LoginView 品牌区(`--hs-text-display` 28px)、StatusCard 品牌区(随物料画布定字号,不用令牌字面量)。**字标完全静止(2026-07-24 修订,取代初版闪烁终端光标):「闪烁=failing 告警专属」是 W5 承重语义,字标作为全站唯一持续运动元素挂在每页左上角,用户对「有东西在闪」的直觉解读就是「有情况」——豁免条款救得了规则救不了直觉;脉冲点常亮后,failing 重新独占全站唯一动画,无任何豁免。**
-- **LoginView 品牌区构成:** BrandMark(40px)+ Wordmark(display 档)横排居中,替代原 logo.png 40px 图块;登录卡保持工具风,不加装饰背景。
+- **BrandMark 是唯一图形标:** 瞄准镜字形(圆环 + 十字准星刻度 + 中心脉冲点,监控隐喻),**蓝渐变 blue-400 #549CFF → blue-700 #0062CC**(v2 重建,ADR 0015;与 ProxyHub 家族同源关系解除,PRODUCT.md 品牌承诺段)。`<stop>` 双写纪律沿置:`stop-color` 表现属性(#549cff / #0062cc)是 snapdom 捕获兜底,`var()` 令牌链是浏览器内权威;tokens.css 改色两处必须同步(BrandMark.vue 注释与本条互指)。em 尺寸宿主可控(宿主 font-size 定档:AppSidebar 24 / LoginView 40 / 物料品牌区按画布规格——detector 豁免登记在 .impeccable/config.json)。
+- **Wordmark 是唯一字标:** 「HubScope」PascalCase + 品牌蓝脉冲小圆点(常亮,非动画),系统等宽字栈,字重 700,em 基准宿主缩放。
+- BrandMark 永不裸用,永远与 Wordmark 同场出现(AppSidebar 品牌块、LoginView 品牌区、物料品牌区)。
 
 ## 3. 语义色映射(核心约定)
 
-颜色承载业务语义,**映射关系只在本文件定义**,组件引用同一映射,禁止各组件自造颜色语义:
+颜色承载业务语义,**映射关系只在本文件定义**,组件引用同一映射,禁止各组件自造颜色语义。文字/图形双阶分工是 v2 的底座纪律:**文字场景一律消费 `--hs-*-text` 阶(实测过 AA),图形填充消费本体阶**(DESIGN.md Graphic-Text Division Rule)。
 
-| 业务语义 | 颜色 | 说明 |
-|---|---|---|
-| healthy 正常 | success(`--hs-success`) | endpoint 状态 |
-| degraded 降级 | warning(`--hs-warning`) | endpoint 状态 |
-| down 宕机 | danger(`--hs-danger`) | endpoint 状态 |
-| failing 告警 | failing(`--hs-status-failing`,亮 orange-700 / 暗 orange-400)+ 闪烁 | 比 down 更紧急,唯一允许动画的状态(见 StatusBadge) |
-| 评分/百分比档位 | 绿/黄/红阈值 | 阈值以后端口径为准,前端不自定分界线 |
+### 3.1 显示层三态(endpoint 状态域,核心)
 
-- **failing 色选档裁决(本版登记):** failing 语义是「比宕机更紧急、需立即处理」,旧版橙红(历史值 #FF4500)的「最刺眼」地位必须保留。ProxyHub functional 四色中 warning(amber-600 族)与 danger(red-600 族)之间没有足够的同系加深空间——amber-700(历史候选值 #b45309)与 warning 同族,并排时(HealthBanner、状态板状态列、图例)仅明度差一档,降级/告警相邻场景辨识度不足,且「更深的黄」直觉上并不比「更红的红」更紧急。故选 **orange 系**:亮主题 orange-700(`--hs-status-failing` 亮值,白底对比度 ≈5.1:1,过 WCAG AA,可承载文字;与 warning 差一个色相族、与 danger 明度饱和度接近而色相向橙偏移,在红黄之间建立「第三紧急档」),暗主题 orange-400(`--hs-status-failing` 暗值,暗底对比度 ≈7:1,暗色下功能色惯例提亮)。**这是「调色板外不引入新色相」纪律的唯一例外,在本条登记**:告警是 HubScope 监控域的最高紧急度语义,amber 加深无法满足「与 warning/danger 三档可分辨」的业务硬需求,例外收益(告警可辨识度=告警可信度,W5 语义)大于纪律成本;除本例外外禁止任何新色相。具体色值以 DESIGN.md frontmatter 为准。
-- **success 文字/图形分工(`--hs-success-text`,2026-07-30 登记,GH #69 批 T1/T2;GH #62 落点,裁决见附录 B #15):** success 本体 `#059669` 白底实测 3.77:1 不过 AA——处置是**分工**而非改本体:本体保留为**图形填充色**(状态圆点、榜单条形、24h 分段格、soft 浅底、评分徽章底色;图形 3:1 门槛 3.77 过);**一切文字场景的 success 一律消费 `--hs-success-text`**(亮 `#047857` emerald-700 白底 5.48:1 / 暗 `#10b981` emerald-500 暗卡 6.94:1)——StatusBadge 正常状态词、绿档分数文字、升箭头、静态物料绿色词。原「success 文字场景用 dark-2 阶」兜底条款由本令牌取代(EP dark-2 派生 #047854 与 #047857 天然同值,机制对齐)。ECharts 镜像的 success 字段是系列图形色,**不动**,不增设 successText 镜像字段(图表内无 success 文字场景)。
-- **StatusBadge 词随灯着色(2026-07-30,GH #71,shape 定稿):** 状态词颜色 = 状态语义色——warning/danger/failing 用令牌本体(白底 4.92/4.8/5.1 均过 AA),healthy 用 `--hs-success-text`(见上条);色+词双编码从「点色词墨」升级为「点词同色」。词本就是 Badge 的一部分,不构成第二状态灯;降级成因副标签保持 secondary 不随词着色。组件规格(点尺寸 sm 9px / md 11px)见 dashboard surface brief StatusBadge 节。**dotless 分层(2026-07-30 实机迭代批 GH #80,shape 定稿;GH #81/#82):** 着色词自身即双编码的文本形态——**灯 = 实体信号位**(卡片头灯、详情页/速览弹窗 Badge 点),**着色词 = 聚合/重复场景的文本证据**;封闭去点清单仅三处:EndpointCard 状态行 / Hero 带计数行 / 组头计数 chips,禁止向第四处扩散;管理台表格等其余消费方保持带点不动。failing dotless 词不闪烁;闪烁位置封闭清单(卡片头灯 + Hero alert-dot + 带点 Badge failing 点)与分层语义见 DESIGN.md「信号墙灯与词分层」节,组件规格见 dashboard surface brief StatusBadge 节 dotless 变体。
-- ECharts 系列色从上述调色板取,正文/轴文字用 `--hs-text-primary`/`--hs-text-secondary` 等值(图表内走 JS 镜像 const,**亮暗双份**:`CHART_COLORS_LIGHT` / `CHART_COLORS_DARK`,与 semantics.css 双值逐一同步,按当前主题取份;主题切换时图表 setOption 重渲染),不引入调色板外的新色相(failing 橙为例外登记,同入镜像)。两份镜像现状(TimeSeriesChart/TrendChart 各一份)在迁移期合并为单一来源(如 `utils/chartColors.ts`),两个图表组件复用。**硬要求(2026-07-30 check 沉淀,GH #69 批 HIGH-1):** 任何令牌值变更的登记(DESIGN.md 或本文件附录 B)必须附 chartColors 镜像受影响字段清单——plan 回写时执行,check 按清单逐字段验收。
-- 同一语义在状态板与管理台必须同色同词。
-- **分数涨跌指示:** 升=success 绿、降=danger 红,与「分数高=好」同向;持平、无上批次、**跨 Suite 版本断点(分数不可比)一律不显示涨跌箭头**,用 `--hs-text-placeholder` 占位并标注「题目已变更」(忠实 ADR 0007:禁止把题库变化呈现为模型降级,这是本产品的防作假核心语义)。
-- **榜单条形(0–100):** 按评分档位阈值着色(绿/黄/红,阈值以后端口径为准),与得分徽标同一映射,不为榜单另定分界线;涨跌箭头是独立维度,不替代条形档位色。档色同时承担维度格子与总分条的强弱表达(spec 0009)。
-- **静态导出物料(PNG/PDF)中的语义表达(批 56 约定):** 动画不可用时,failing 闪烁转译为双编码——`--hs-status-failing` 橙(亮主题固定取值,物料恒亮主题)实心圆点/文字 + 「含 N 个告警」文字标注(橙描边 chip),禁止用 danger 红替代橙,禁止静默省略 failing 维度。blink 动画在静态导出会定格在半透明帧,故静态物料明细行的状态词用**语义色文字着色**表达(告警=橙、宕机=danger、降级=warning),不使用 StatusBadge 圆点徽章——这是「禁止第二个状态灯实现」对静态物料的例外,仅限导出画布,页面内仍一律复用 StatusBadge。静态物料无 hover,长文本截断长度按完整可读性折中,不依赖 `title` 全显。
-- **批次/运行状态色映射(ticket 52 登记,与 endpoint 状态映射并列,词表与语义不混用):**
+- **域模型四态保留(W5 不动):** healthy / degraded / down / failing 仍是后端状态机、Lark 告警与告警历史的语言。
+- **显示层三态(v2 决策 3):** **稳定**(绿)/ **性能下降**(黄)/ **服务异常**(红)——failing 在显示层并入服务异常,无独立显示身份;状态呈现统一为「小圆点 + 状态词」,局部强调而非大面积色块。Stable / Degraded / Incident 为英文译名档案(spec 0018 §11),界面中文主显。
+- **唯一映射点 = `utils/statusDisplay.ts`(接口登记,GH #113 裁决):** `statusDisplay(status, causes?) → { status, label, tone, causeSuffix }`、`statusLabel`、`statusTone`、`toDisplayStatus`、`displayStatusCounts`(down+failing 合并计数)、`DISPLAY_SEVERITY_ORDER`(重→轻:incident/degraded/stable)。色槽是抽象槽(success/warning/danger),组件按通道取令牌:**词 → `*-text` 阶,点 → 本体阶**。未知输入 → 「未知」+ warning 槽(中性回落:既不读作稳定也不读作异常)。组件内禁写状态词字面量;告警历史事件词表(§7)不经过本映射。
+- **降级成因副标签保留(spec 0013):** degraded 显示态可挂「· 可用性」「· 延迟」副标签(causeSuffix;双命中「· 可用性 + 延迟」,顺序与后端 `degrade_causes` 一致);副标签是 Badge 文字的一部分,无独立圆点/底色,secondary 不随词着色;聚合场景(hero、分区头、计数)永不传 causes——成因是端点粒度信息。
+- **状态筛选跟显示词表走(GH #113 main 裁决):** 筛选器三选项(稳定/性能下降/服务异常),「服务异常」同筛 down+failing;UI 不提供 failing 单筛。
+- **物料分布串三段(GH #113 main 裁决):** 「稳定 N · 性能下降 N · 服务异常 N」恒列三段;failing 计数由「含 N 个告警」事件 chip 单独披露——异常不掩盖(防作假不回退),词表统一。
+- **同一语义在公开侧与管理台必须同色同词**——管理台表格中的状态展示与状态概览同一三态。
 
-| 业务语义 | 颜色 | 说明 |
-|---|---|---|
-| 运行中 | brand teal(亮 `--hs-brand` teal-600 / 暗 teal-500) | 进行中强调,禁闪烁;禁用 warning 黄(黄=降级专属) |
-| 等待中 | 中性灰 `--hs-text-placeholder` | 未开始 |
-| 已完成 | success 绿 | 与 endpoint 域同向(好) |
-| 失败 | danger 红 | 与 endpoint 域同向(坏) |
+### 3.2 状态色映射表
 
-  绿/红在两语义域同向复用;闪烁动画仍为 failing 告警专属,运行状态不得使用。
-- **24h 可用率三档着色(批 59 登记,状态板既定口径,源自 EndpointCard 分段条):** 单小时格与 24h 聚合可用率共用同一阈值——≥95% success 绿、<95% warning 黄、0%(有探测且全失败)danger 红、无探测数据 `--hs-border` 灰;该阈值同时适用于分段条单元格、StatusCard 可用率大数字与明细行可用率列,不为任何单一场景另定分界线。聚合口径=按小时对齐求和 total/failures(与后端探测加权一致),禁止按端点简单平均。阈值是评估业务口径,并入后不动,仅映射色值。
+| 业务语义 | 点/图形(本体阶) | 词/文字(*-text 阶) | 说明 |
+|---|---|---|---|
+| 稳定 | `--hs-success` #34C759 | `--hs-success-text` #1F7A33 | 显示态 |
+| 性能下降 | `--hs-warning` #FF9500 | `--hs-warning-text` #B35C00 | 显示态;成因副标签 secondary |
+| 服务异常 | `--hs-danger` #FF3B30 | `--hs-danger-text` #D70015 | 显示态(down+failing 合并) |
+| 评分/百分比档位 | 绿/黄/红阈值 | 同左文字阶 | 阈值以后端口径为准,前端不自定分界线 |
+
+- **failing 的显示层残留(仅两处,均为 danger 槽):** ① 物料「含 N 个告警」事件 chip(danger-text 描边 chip + danger 实心点,事件词非状态词);② 告警历史词表「厂商组告警」(§7 借字例外)。`--hs-status-failing` 令牌值为 danger 红,混合期兼容保留,新世界零消费,待物理删除。
+- **24h 可用率三档着色(保留,状态概览/物料/详情页共用):** ≥95% success 槽、<95% warning 槽、0%(有探测且全失败)danger 槽、无探测数据 `--hs-border` 灰(图形)/ `--hs-text-placeholder`(文字);集中 `utils/overviewMetrics.ts` 的 `availabilityRateTier` 与 `utils/overviewDots.ts` 的 `dotTier`,文字场景走 *-text 阶。聚合口径 = 按小时对齐求和 total/failures(探测加权),禁止按端点简单平均。
+- **分数涨跌指示(保留):** 升 = success-text、降 = danger-text;持平、无上批次、**跨 Suite 版本断点(分数不可比)一律不显示涨跌箭头**,用 `--hs-text-placeholder` 占位并标注「题目已变更」(ADR 0007 防作假核心语义:禁止把题库变化呈现为模型降级)。
+- **榜单条形(0–100,保留):** 按评分档位阈值着色(绿/黄/红,阈值以后端口径为准),条刻度恒 0–100(W7 绝对分制的视觉镜像),不做行内/列内归一化;档色同时承担维度格子与总分条的强弱表达。
+- **批次/运行状态色映射(GH #120 定稿口径:词 *-text 阶、点图形基色):**
+
+| 业务语义 | 词(*-text 阶) | 点(基色) | 说明 |
+|---|---|---|---|
+| 运行中 | `--hs-brand` | `--hs-brand` | 进行中强调;禁闪烁(闪烁语义已整体退役);禁用 warning 黄(黄 = 性能下降专属) |
+| 等待中 | `--hs-text-placeholder` | `--hs-text-placeholder` | 未开始,中性 |
+| 已完成 | `--hs-success-text` | `--hs-success` | 与 endpoint 域同向(好) |
+| 失败 | `--hs-danger-text` | `--hs-danger` | 与 endpoint 域同向(坏) |
+
+- **ECharts 色板 JS 镜像(`utils/chartColors.ts` 单一来源):** `CHART_COLORS_LIGHT` 与 semantics.css 亮值逐一同步;`CHART_COLORS_DARK` 全字段预留(暂镜像 LIGHT,暗色 spec 填值);`failing` 字段 = danger 红(显示层合并,字段保留 seriesPalette 五槽结构);`bgHover` 字段 = 面积填充镜像(功能性强调非装饰,实心禁渐变)。`useChartColors` 恒供 LIGHT,ComputedRef 签名保留(暗色 spec 一处恢复分叉)。**令牌值变更登记必须附 chartColors 镜像受影响字段清单**(check 按清单逐字段验收)。
+- **静态导出物料(PNG)中的语义表达(批 56 约定,v2 修订):** 动画不可用时,状态表达转译为着色文字——三态词按 *-text 阶着色;failing 维度由「含 N 个告警」danger 事件 chip 披露(显示层无第四色,**禁止静默省略 failing 维度**;物料分布串三段恒列,见 §3.1)。静态物料无 hover,长文本截断长度按完整可读性折中,不依赖 `title` 全显。
+- **判分不完整/半成品等评估域语义:** 见 §5 Leaderboard 条目,全部保留不变。
+
+### 3.3 图表纪律(Apple Health 化 + 防作假保留,GH #114 登记)
+
+- **平滑曲线 = Fritsch–Carlson 单调三次插值,唯一来源 `utils/monotoneSmooth.ts`**(局部极值点强制零切线 + α²+β²≤9 限量;采样点恒落本段两端点值之间,不发明极值;插值性保证逐点穿过实测点;vitest 17 用例)。否掉 ECharts 内置 smooth(cardinal 样条,尖峰邻域过冲)。
+- **ProbeLatencyChart 不平滑(偏离登记,GH #114):** 逐探测点曲线保留原始形态——① item-trigger tooltip 会把插值点呈现为探测读数(保真红线);② 逐探测尖峰是事故证据,平滑会削弱。若未来裁决逐探测曲线也要平滑,需先解决插值点禁 hover,另立小票。
+- **样式口径:** 线宽 2、无逐点圆点(TrendChart 实测点保留 5px 极简点)、y 轴无线无刻度 + 虚线水平网格 splitNumber 4、x 轴标签稀疏仅落实测点、tooltip 吸附最近实测槽报真值(保真值不随量程截断);少坐标少网格,注意力在趋势。
+- **防作假保留:** null 断线(无数据处不连线,「无证据」不被伪造);x 轴恒时间轴(category 轴会把不均匀探测间隔呈现为均匀,伪造证据形态);失败探测延迟永不进 y 量程。
+- **入场动画:** 1000ms(800–1200 档中值)经 `utils/chartMotion.ts` 门控,reduced-motion 归零;30 天桶(5761 点)超 ECharts animationThreshold 2000 自动关闭(已登记)。
+- **断线纪律(详情面板延迟趋势,GH #114 沿置):** 连续成功探测时间间隔 > 3×中位间隔处断线;失败表达 = 故障窗浅色带(markArea,相邻失败间隔 ≤ 2×中位间隔合并,danger 浅底整高;单点故障窗渲染边界向两侧各扩 0.5×中位间隔保可见,真实边界不动);面积填充 `--hs-bg-hover` 实心(chartColors `bgHover` 镜像);y 量程 = max(P99×1.25, 1000ms 下限)仅成功探测,成功样本 <20 回退峰值;超界点自然裁剪,禁视觉钳制。
+
+### 3.4 动效体系(v2.0 §15 落地版)
+
+视觉规格在 DESIGN.md Motion 节;语义层约定:
+
+- **禁闪烁(ADR 0015):** 「闪烁 = failing 告警专属、全站唯一动画」整条退役;全站无任何闪烁动画。告警紧急度显示层表达 = danger 双编码 + 物料事件 chip。
+- **动效词汇表(封闭):** 数字补间(500–800ms,仅健康指数与指标区核心数字,`utils/numberTween.ts`)/ 图表入场绘制(800–1200ms,一次性,`utils/chartMotion.ts`)/ 页面 Fade + ≤10px 位移(200–300ms,App.vue slow 档)/ hover 上浮 2–4px + shadow-md(**卡片类可点元素;表格/矩阵行豁免**,GH #118 裁决——hairline 行上浮破坏共享 grid 基线与仪式竖条几何,行可点性由 hover 填充 `--hs-brand-soft` + 指针承担)/ 局部刷新(轮询只更新变化区域)。
+- **状态点呼吸(未落地,登记为已知差距):** spec §15 的呼吸动效尚无实现(StatusBadge 注释登记为后续动效票);状态变化当前走 `--hs-transition` 颜色过渡。
+- **常驻动画唯一例:** AppSidebar 批次入口 Loading 图标 1s 线性旋转(工具性进度指示,组件级 reduced-motion 门控)。
+- **reduced-motion(WCAG 2.3.3,Gate-The-Phases 平移保留):** CSS 过渡由 semantics.css 全局 `transition: none !important` 一处归零;JS 阶段时序(补间/图表绘制/旋转)单独 matchMedia 门控,延迟归零、终态直呈。
 
 ## 4. 布局规范
 
-> **已迁 `DESIGN.md`(GH #49)**——布局与密度档(1200px、16/12px、表单限宽)以 DESIGN.md 为准;本节保留备查,不再更新。
+> 布局与密度档(1200px、轻容器、留白、768 断点)以 `DESIGN.md` 为准;本节保留工程行为约定。
 
-- 页面结构:顶部标题/操作区 → 内容区(卡片或表格)→ 必要时底部辅助区。
-- 内容容器首选 `el-card`;列表数据首选 `el-table`;管理页多功能分区用 `el-tabs`(**不加 `lazy`**,保轮询事件,ticket 19)。
-- 详情抽屉/弹窗:`el-dialog` 用于需要聚焦的详情与表单(见 EvalRunDetailDialog),不在页面内嵌套多层展开区。
-- 卡片内容**不得溢出、不得出现横向滚动条**;弹性列宽优先于固定宽度(历史 bug:24h 小点)。管理台 `el-table` 的弹性内容列(无固定 width 的列)必须显式声明 `min-width`(先例:AuditLogs 详情列 `min-width="220"`),使全表最小宽度可算术核对,杜绝「默认 min-width 兜底、溢出与否靠运气」。
-- **管理台表单控件限宽档(ticket 102 设计评审登记,2026-07-28):** 管理台(12px 密度档)表单输入控件禁止 100% 拉满整卡,按内容长度两档限宽——**长输入档 560px**(URL/webhook/token 类,如飞书 Webhook);**标准输入档 320px**(标识/短文本,如裁判模型名);`el-input-number` / `el-switch` / `el-select` 用组件默认宽度,不另限。输入框 + 行内操作按钮(如「发送测试」)必须同行:走 el-form-item content 的默认 flex,输入框 `flex: 0 1 auto` + 限宽、按钮 `flex: none`,仅容器宽度不足时才允许折行。label 宽度按本表单最长标签定档:≤4 字沿用 90px 既有惯例,≤6 字用 120px,不为单个长标签无度拉宽。多值紧凑排布(如评估集权重)走 `flex-wrap` 横排,标签 + 控件成组、间距消费 `--hs-space-*` 令牌,禁止每值独占一行竖排堆叠。公开消费页表单(登录页等)已有自布局,不受此限。
+- 内容容器首选轻容器语法(自造)或 `el-card`(管理台);列表数据首选 `el-table`(管理台);多功能分区用 `el-tabs`(**不加 `lazy`**,保轮询事件,ticket 19)。**评估中心二级 tab 定稿(GH #120):榜单 / 评估运营 / 题库,query 值 board/ops/cases 冻结为稳定深链锚点(legacy /admin 重定向落点),不改名。
+- 卡片内容**不得溢出、不得出现横向滚动条**;弹性列宽优先于固定宽度。管理台 `el-table` 的弹性内容列必须显式 `min-width`(AuditLogs 先例),使全表最小宽度可算术核对。窄屏处置 = 形态切换,不是横滚豁免(768 断点,DESIGN.md Layout)。
+- **管理台表单控件限宽档(ticket 102 登记,v2 平移):** 长输入档 560px(URL/webhook/token 类);标准输入档 320px(标识/短文本);`el-input-number`/`el-switch`/`el-select` 用组件默认宽度。输入框 + 行内操作按钮必须同行(flex,输入框 `flex: 0 1 auto` 限宽、按钮 `flex: none`);label 宽度 ≤4 字 90px、≤6 字 120px;多值紧凑排布走 `flex-wrap` 横排,禁每值独占一行竖排堆叠。公开消费页表单(登录页等)自布局,不受此限。
+- **页面标题惯例(GH #118 裁决,T13 登记):** 页面 h1 文案 = 侧边栏标签(状态概览/Benchmark/评估中心/模型管理/故障记录/系统设置);「评估榜单」等描述性短语只作 lede/副标题。深链页(批次报告、端点详情)h1 为对象名(批次号/模型名),不受此惯例管辖。字号档:一级页面 h1 一律 3xl 页面标题档(2026-08-01 main 裁决落地:模型管理/系统设置两页自 xl 升 3xl,与 spec 0018 §14 对齐)。**唯一例外:** DashboardView 的 h1 是 sr-only 的「HubScope 服务状态总览」——页面首屏锚点由 StatusHero 大数字承担,h1 只服务 a11y 树,不参与视觉层级(dashboard surface brief 登记)。
+- **跨组件样式覆盖纪律(GH #121 check HIGH-1 沉淀,T13 登记):** 子组件 scoped 样式内 `:deep(.祖先类)` 是**构造性死选择器**——scoped 作用域 ID 只从父向子附加,子组件选择器永远匹配不到祖先元素上的类。跨组件变体覆盖只允许两条路:① 子组件声明 prop(如 `compact`),把变体类绑在自身根元素;② 父组件写 `.ancestor :deep(.child)`(父的作用域 ID 在祖先元素上,选择器成立)。check 按本条拦截第三写法。
 
 ## 5. 组件使用规范
 
-- **Element Plus 组件优先**,不引入新 UI 库,不自造表单、弹窗、表格、分页。
-- **StatusBadge 是唯一的状态展示组件**【规格已迁 surface brief(GH #50),保留备查不再更新】(2026-07-30 修订指针:词随灯着色与 dotless 分层语义见 §3「success 文字/图形分工」与「StatusBadge 词随灯着色」条,组件规格含 dotless 变体见 dashboard surface brief StatusBadge 节),需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
-- **StatusBadge 降级成因副标签**【已迁 surface brief(GH #50)】(ticket #7 登记,spec 0013):degraded 状态可挂结构化成因副标签——可选 prop `causes?: DegradeCause[]`,非空且 status 为 degraded 时在状态词后行内渲染「· 可用性」「· 延迟」,双命中「· 可用性 + 延迟」(顺序固定:可用性在前,与后端 `degrade_causes` 字段顺序一致)。副标签是 Badge 文字的一部分:**无独立圆点/图标/底色/动画,不是第二个状态灯**(唯一状态灯纪律不破);字号与 Badge 同档 `--hs-text-sm`,颜色 `--hs-text-secondary`(状态词主、成因辅的层级),状态色仍由圆点承载(§3 映射不动,不引入新色相)。分隔符固定「· 」(前缀)与「 + 」(双成因连接);成因词映射集中 `utils/degradeCauses.ts` 纯函数(与 `role.ts` 集中原则同例),组件内禁止写词字面量。防御规则:causes 非空但 status ≠ degraded 时副标签不渲染;未传 causes 的消费方渲染不变;聚合场景(Dashboard 汇总条、分组头部计数 chips、HealthBanner)永不传 causes——成因是端点粒度信息,聚合层不下钻(spec 0013 范围外声明)。
-- **LatencySparkline 是 EndpointCard 延迟曲线的唯一组件**【已迁 surface brief(GH #50)】(ticket #8 登记,spec 0013):24h 分段条下方与 dots 行同构的曲线行,按小时桶 P50 绘制(桶 p50 仅统计成功探测,失败探测超时值不污染曲线;全失败桶分段条显红、曲线断线,两轴视觉自洽)。形态:**纯 SVG polyline,不引 ECharts**(卡片矩阵每卡一实例过重;纯 SVG 对未来物料导出零风险);行高 28px,**每卡恒渲染**——完全无数据时同高占位(1px `--hs-border` 灰轨道,tooltip 各区「无数据」),卡片高度全矩阵一致。**x 轴与 24h 分段条构造性对齐(硬约束):** ① 两行标签统一固定宽 26px、flex:none;② SVG 经 ResizeObserver 实测 strip 像素宽渲染,桶中心 x 由几何纯函数按 flex+gap 公式计算(slot=(W−23×GAP)/24),与 dots strip 布局公式同源——**`GAP=2px` 是 dots strip CSS 与 sparkline 几何的唯一共享常量,改动必须同步**;禁止固定比例 viewBox + preserveAspectRatio="none"(槽缝比随宽度变化,数学上不可对齐)。曲线规范:stroke `--hs-text-secondary` 1.5px round,无逐点圆点,**孤立单点段渲染 r=1.5 圆点**(单点 polyline 不可见的边界兜底);null 桶断线分段(与 TrendChart 同纪律);**曲线下方面积浅填充 `--hs-bg-hover` 实心**(2026-07-28 修订新增:功能性面积强调,非装饰;选表面令牌而非文字令牌叠透明度——令牌类别正确、亮暗双值构造性成立、零新色相;填充随段断,孤立点不填充);**曲线中性色不承载状态语义**,状态由卡片左边条与 StatusBadge 承担。**量程(2026-07-28 修订,附录 B 第 11 项):** 数据量程驱动——`yMax = max(峰值 × 1.25, MIN_Y_RANGE_MS=1000ms)`,曲线形态满幅可见;1s 下限防极端小值把亚秒抖动放大成伪形态(不夸大的诚实表达),亚秒端点曲线停于量程下带是「快」的正确读法;原「y 轴上界 max(阈值, 桶 P50 max)×1.1」条款由本修订取代——阈值恒在导致量程被阈值锚定、曲线贴底蠕动、毛刺/爬升形态不可见(用户实机反馈,截图证据:P50 2.22s vs 阈值 ~7s),1.1 余量随 0 锚定量程一并退役。降级阈值虚线 = 2× 7天 P50 基线:`--hs-warning` 1px `dasharray 4 3` 全宽水平线;**按需出现(2026-07-28 修订,取代恒在)——出现 ⟺ 阈值 ≤ yMax(构造性条件,等价峰值 ≥ 阈值×0.8,零魔幻常数;不出现时零残余指示,阈值/基线数值由 hover tooltip 恒兜底;出现/消失随数据滑窗跳动不加迟滞,与 dots 颜色跳变同属数据驱动表达)**;基线 null(样本<5)不画线,tooltip 基线段同省略。hover 走 strip 顶层 24 列透明 overlay(与 dots strip 同一 flex 构造)分列 el-tooltip:「HH:mm 时段 · P50 X · 基线 Y」;**p50 为 null 的桶按桶事实二分措辞(2026-07-28 裁决,取代 ticket #8「空桶/全失败桶同词」登记):** 桶无探测(total=0)→「HH:mm 时段 · 无数据」;桶有探测但全失败 →「HH:mm 时段 · 探测全部失败,无延迟样本」——tooltip 是精确读数层,全失败桶有探测数据,与空桶同词「无数据」会和分段条红格 tooltip「成功 0/N」互证断裂;该规则统一覆盖全失败卡片占位轨道情形与混合卡片单桶情形,**无整卡级特判**;全失败卡片的占位轨道保持灰色占位不变:不加色、不文字化——曲线行不承载状态语义,失败语义由分段条与 StatusBadge 承担。纯展示不可点,下钻走整卡点击;几何计算抽 `utils/latencySparkline.ts` 纯函数(vitest 覆盖断线分段/阈值 y/全空输入/单点段),组件只渲染。零硬编码色值、零 `--el-*`、暗色随语义令牌生效。
-- **EndpointUptimePanel 是交互面 24h 可用率条 + 延迟曲线组合的唯一共享组件**(2026-07-29 设计评审,速览弹窗批):「label + dots strip + LatencySparkline」组合单元,EndpointCard 与 EndpointQuickViewDialog 双端消费,禁止第三份内联实现;GAP=2px 共享常量纪律随实现迁入组件内、约束不破(dots CSS gap 与 utils/latencySparkline.ts `SPARKLINE_GAP_PX` 互指不变);几何纯函数与 tooltip 措辞口径原样沿用。**豁免:** StatusCard 静态物料的 24h 分段条保持独立实现、不重构——物料是快照渲染契约(格高 16/8px、无 tooltip、恒亮主题),与交互面组件职责不同,对齐 ticket 76「分享物料不抽公共子组件」先例。
-- **EndpointQuickViewDialog 是端点速览弹窗的唯一组件**(2026-07-29 设计评审,/impeccable animate 批):Dashboard 卡片点击开启的轻量速览(el-dialog,宽 640px + max-width 92vw、radius-lg、shadow-lg 浮层语义、消费页密度),取代原「整卡点击直接 router.push 下钻」——深链下钻改由弹窗内「打开完整详情」主按钮承担(/endpoints/:id 深链页不动)。**内容零等待:** 首帧全部由打开时冻结的 entry 快照渲染(StatusBadge md + causes、协议 tag、模型名、三指标、EndpointUptimePanel);「最近失败」区异步拉取(listProbeHistory top 5,ProbeRecordTable `slim` 变体——隐藏 类型/HTTP/TTFT/token 列、保留 结果/错误摘要/延迟/时间;640px 弹窗内容宽 ≈600px 与表全列 ≈1010px 冲突,§4 禁横向滚动是承重纪律,速览场景走 slim;该表固定 empty-text「暂无探测记录」同步改为 prop,速览传「暂无失败记录」——该区只查 ok=false,main 2026-07-29 裁决),skeleton/错误重试三态齐备,失败只影响该区、不污染弹窗本体。**挂点仅 DashboardView,flat 与分组两模式同语义**;与 ticket 54 分享面边界无关(数据全部为公开 overview/probes 接口既有公开面,不新增信息公开)。**打开即冻结快照:** 弹窗内容不跟随 overview 轮询更新(与 StatusCard/EvalShareDialog 快照同哲学——速览是一次性对话,不是监控面;实时数据走「打开完整详情」)。**不放分享入口**(明确排除:防弹窗叠弹窗的双 teleport 焦点圈禁冲突;分享入口保留在筛选行与组头)。关闭路径统一:ESC/浮层点击/关闭按钮/路由跳转同一条复位路径,关闭后焦点归还触发卡片(EP focus-trap + 手动 focus 兜底双保险);弹窗可访问名 = 模型名(el-dialog title)。**「24h 延迟明细」区语义(2026-07-30 设计评审修订,用户实机反馈「Modal 里也要显示更细节的曲线」;同日视觉三修——用户实机否「(明细曲线)这个太丑了」「(区域)都很丑」;构成与数据路径见 dashboard surface brief):** EndpointUptimePanel 小时级视图保留,其下新增逐探测点延迟曲线——成功探测 latency_ms 连线,**纯线无点(`showSymbol: false`,2026-07-30 修订,删逐点圆圈;1.5px 中性色,与 LatencySparkline 中性曲线同语言,不承载状态语义)**;**断线纪律:** 连续成功探测时间间隔 > 3×中位间隔处断线——禁直线横跨数据空洞(空洞 = 无证据区间,连直线即伪造形态,与「x 轴必须时间轴」防作假同源);**失败表达 = 故障窗浅色带(markArea,2026-07-30 修订,逐点 danger rug 三角散点整体退役):** 相邻失败间隔 ≤ 2×中位间隔合并为一个窗口,markArea 整高 danger 浅底(低透明度)——失败域 = danger 红,§3 同向;稀疏失败 = 细带、密集失败 = 色带,失败严重度由带宽度承担;窗口 tooltip「HH:mm–HH:mm · 失败 N 次」;**失败探测不再有任何散点**;**单点故障窗最小可见宽(2026-07-30 登记):** start===end 零宽窗口的 markArea 渲染边界(bandStart/bandEnd)向两侧各扩 0.5×中位间隔——扩宽只作用于渲染边界,真实边界 start/end 不动,窗口失败计数与 tooltip 起止时刻保真,多失败窗口不扩;**曲线面积填充(同批):** 延迟线下方 `--hs-bg-hover` 实心填充(LatencySparkline 先例:功能性强调非装饰,禁渐变;填充随断线分段,与 connectNulls:false 断线纪律同源;JS 侧走 chartColors 镜像 `bgHover` 字段,亮/暗双值与 semantics.css 逐一同步——该字段自此登记入 §3 ECharts 镜像口径);失败延迟是 time-to-failure,**永不进 y 量程**(与 LatencySparkline「失败探测不污染曲线」纪律同源);y 量程走数据驱动纪律的逐点变体(2026-07-30 二次修订,取代峰值×1.25——60s+ 超时尖峰把峰值量程顶到曲线贴底不可读):**yMax = max(P99×1.25, 1000ms 下限),仅成功探测**;P99 取最近秩,成功样本 <20 回退峰值(小样本无截尾统计基础,忠实优先);**超界点自然裁剪于轴外(ECharts clip),禁视觉钳制钉天花板**——钳制会把尖峰读作「恰好在界」,属形态作假;item trigger tooltip 数据驱动(逐探测点悬停取值)、保真值不随量程截断。截断不属掩盖异常:P50/P95 指标、故障窗、tooltip 三层兜底,量程是读图视窗,与 LatencySparkline「阈值线按需出现、不出现零残余」同哲学;**同原则不同参数不算第二口径**(sparkline 小时桶 P50 聚合天然削峰,逐点曲线无此缓冲,故用 P99 截尾)。**x 轴必须时间轴,禁 category 轴**——探测间隔不恒定(宕机/重启后有空洞),category 轴会把不均匀间隔呈现为均匀,属伪造证据形态,是防作假约束在图表层的镜像。**明细曲线与最近失败表并存不合并**:曲线给时序形态、表给记录明细,互证关系与分段条红格/tooltip 同哲学。弹窗内全部数据随打开冻结——快照纪律从 entry 快照延伸至异步区一次性拉取,打开后不轮询。**入场 = 0.2s default 档安静入场**(opacity + scale(0.96→1) 中心淡入,无位移无翻转无飞行;morph/翻转放大编舞 2026-07-30 用户实机裁决整体退役,退役清单与沿用品见 DESIGN.md Motion 节与 dashboard surface brief),雾化衬底见 DESIGN.md Overlay 节。
-- **HealthBanner 是 Dashboard 的全局健康横幅组件**【已迁 surface brief(GH #50)】(批 2 登记):四态(全部正常/N 个端点降级/N 个端点异常含告警闪烁/加载 skeleton),数据只反映全局、永不受页面过滤器影响;仅异常态可点(应用状态过滤并滚动定位)。其他页面不得复刻其结论文案模式。大字结论用 `--hs-text-display` 档(§2 字阶)。
-- **Leaderboard 是评估榜单的唯一排行展示组件**(/eval 与 /report/{token} 复用;ticket 78 矩阵化重构,spec 0009):每模型一行——`名次 │ 模型(+family tag)│ 总分 │ 涨跌 │ 各维度列`,全表 CSS grid 定宽(名次 32 / 模型 260 / 总分 96 / 涨跌 80,维度列 `minmax(0,1fr)` 等分剩余宽,**列宽与权重无关**——权重只影响总分,后端口径不动),列头与行共用同一 grid 模板,**每列 x 位置全表恒定**(对齐是矩阵的构造属性,取代 flex + 变宽 family tag 的漂移);维度格子由共享组件 ScoreCell 渲染(见下条),模型名截断 + `title` hover 全显;**排序走点列头**(总分与维度列头可点,降序,当前列带 ↓ 指示;再点当前列回总分降序——服务端仅降序语义,禁止前端 reverse 制造第二排序口径;列头 role/tabindex/Enter/Space 键盘可达,与行下钻对齐),family 过滤走榜单上方工具条,不进单元格;行下钻不内嵌行内展开,走 `el-dialog`(§4 既有约定,EvalRunDetailDialog 模式);工具条收敛为 family 筛选 + baselineNote + 分享按钮(维度切换 radio 与排序 select 已废——矩阵下所有维度分同屏常显,「聚焦 + 变灰」无意义);**涨跌列常显**(总分列常显,涨跌贴着总分永不误导;行级口径不变:▲绿 ▼红,持平/不可比/无基准 `–`);**表格化精致(ticket 82,spec 0010):** 列头下 1px `--hs-border` hairline(padding-bottom `--hs-space-2`)+ 行间 1px `--hs-border-light` hairline(行间距由 hairline 承担,不再用裸 gap)+ 行高恒 46px(落地定稿:15 行一屏的算术最优,区间 44–48 内);行 hover/focus 填满行盒(表格语义,无负 margin 溢出——hairline 与列头线严格对齐);**前 3 名仪式感:** 行左缘 3px `--hs-brand` 竖条(描边语言,**不用背景色块**;非前 3 名行保留透明竖条位,列 x 位置恒定)+ 名次数字 `--hs-text-lg`/600 brand teal,其余 secondary;live 模式(rank `–`)不渲染竖条。
-- **Leaderboard 运行中半成品模式**(ticket 52 登记,ticket 78 随矩阵化重构修订 ②④⑤,GH #40 修订 ①②④):未完成批次下榜单可查看但——① **(GH #40 修订,取代名次恒 `–` 占位)** 半成品总分非 null 的行显示**实时名次**(行序位次数字,弱化样式:`--hs-text-sm` + `--hs-text-secondary`,**禁前 3 名竖条/大字/徽章**——`isTopRank` live 恒 false 的既有构造保持);半成品总分 null(尚无任何维度判分)的行名次列仍 `–` 占位(`--hs-text-placeholder`);② **(GH #40 修订,取代固定字典序)** 行序按**半成品总分降序**(ADR-0005 既有口径:已判维度加权平均,未判维度不进分子分母——禁止改为「含 null 维度按 0 计」的第二口径),同分 model_id 字典序,null 总分沉底(组内字典序,前端不重排,后端保证);**列头仍禁点**(无指针/hover/↓ 指示,摘除 role/tabindex——实时榜只有总分降序一个排序口径,禁列头切换制造第二口径),保留 family 过滤;轮询引起的行重排不做动画(数据驱动,与条款⑥同源);③ 涨跌箭头列整列隐藏(不占位);④ 已判分维度格子照常(档色数字 + 细条 + 水印);未判分格子 **(GH #40 修订,取代裸 `–`)** value 槽显**批次状态词**「进行中/等待中/失败」(`--hs-text-xs`,按 §3 批次/运行状态色映射:进行中 brand、等待中 placeholder、失败 danger;**纯文字禁圆点禁闪烁**——圆点 + 词是进度网格的形态,分数视图用文字避免第二状态灯观感)+ 空轨道,tooltip 不变(「能力点名 · 等待中/进行中/失败」批次词表)——维度实时进度由此在分数视图内联可见;**边缘措辞(澄清登记):run 完成(done)但全部判分失败、score 仍为 null 的格子,状态词显「未判分」**——cellStatusText 中性回落(`--hs-text-placeholder`),「未判分」是中性兜底词、**非第五状态词**,不借批次词表、不挂状态色,tooltip 同口径「能力点名 · 未判分」;⑤ 总分列墨色数字 + **空轨道不染档色、不填充**——半成品总分(如只判完 2/5 维度的 40 分)构造上不可能被档色读作「差」(spec 0004 半成品边界在视觉层的镜像);行尾(末列之后)灰字注「N 个维度进行中」(`--hs-text-xs` + `--hs-text-placeholder`),有失败 run 追加「· N 个失败」(danger 色)——标注不占列宽、不进总分;⑥ settle 后名次弱化样式直接升级为正式名次样式(前 3 名竖条 + 大字生效),不做强调动画,转场提示由 ElMessage 承载。
-- **Leaderboard 判分不完整模式**(ticket 92 登记,spec 0014 决策 A;与「运行中半成品模式」并列且互斥——live 行构造性无 `complete` 键,settle 行无 live-note):settle(done/failed)批次中 `complete=false` 的行(判分不完整:批次覆盖且当前有启用 case 的 suite 中有 `missing_suites` 个未判上分;门槛只收排名资格,不收维度分,W7 口径不动)——
-  - ① **名次列 `–` 占位**(`--hs-text-placeholder`,形态复用 live 占位);rank-top 竖条与前三大字按 **`row.complete !== false && index < 3`** 判定——禁纯 index 判定(完整模型不足 3 个时 index<3 命中的是不完整行,服务端沉底只保证「完整组优先」不保证「完整组 ≥3」)。
-  - ② **总分列 `–` + 空轨道不染档色不填充**(服务端 total_score=null,`formatScore` 既有 null 口径与 `total-fill` 的 null 守卫天然覆盖;与 live 半成品总分同精神——无总分即无档色,`–` 永不被读作「差」)。
-  - ③ **涨跌列 `–` 占位**(total_delta=null 既有逻辑覆盖);tooltip 改「**判分不完整,不参与排名与涨跌**」——取代通用「批次 #N 无该模型分数」(不完整行有维度分,仅无总分,通用文案不准确)。
-  - ④ **维度格子照常渲染真实分数**(档色数字 + 细条 + 覆盖率水印不变)——不掩盖已判分事实,行内可见分数是水印 N/M 口径的对证。
-  - ⑤ **水印挂模型列、模型名之下第二行**(2026-07-28 设计评审修订,取代票面「总分列 dash 之下」;裁决见附录 B 第 12 项):文案定稿「**判分不完整,缺 N/M 维度**」——N = `missing_suites`(契约字段,未判上分的 suite 数),M = missing_suites + 该行非 null suite_scores 数(行级自洽推导:门槛分母无现成字段,该口径与行内可见分数恒一致;「判完后题库清空」边缘把已清空但有分的维度计入 M,与该维度分数在行内展示的可见事实一致,且恒有 N ≤ M);「**缺**」字必须保留——裸「N/M」与 ScoreCell 覆盖率水印「·8/10」(分子=已判数)的既有分子口径冲突,会误读为「已判 N/M」。规格 `--hs-text-xs` + `--hs-text-secondary` + font-weight 400 + opacity 0.85(对齐 ScoreCell 覆盖率水印弱化规格),单行优先、物料窄列允许自然换行(white-space: normal);**禁截断 + title 兜底**(静态物料无 hover,截断即信息丢失)。模型列 260px(页面)/150px(物料)单行可容(典型文案 ≈124px),水印行 + 模型名行 ≈39px,不破 ticket 82「行高恒 46px」不变式。
-  - ⑥ **两模式可区分性(票风险 1 裁决):** live 半成品与 settle 不完整共享名次 `–` 形态,区分由三重构造性差异承担——live 总分是半成品墨色数字 + 行尾动态注「N 个维度进行中」(批次词表),settle 不完整总分是 `–` + 静态水印判定结论(判定词表);live 涨跌列整列隐藏,settle 涨跌列常显;二者永不同时出现(live 行无 complete 键,settle 行无 live-note)。同形态不构成误读,登记为允许复用占位形态的依据。**(GH #40 后附记)** live 半成品名次升级为弱化数字后,两模式名次形态亦不再共享占位(弱化数字 vs `–`),可区分性进一步增强,原三重差异登记不撤——null 总分的 live 行仍 `–`,此时区分回落到原三重差异。
-  - ⑦ **排序:** `complete=false` 恒沉底(与排序列无关,总分或任一 suite 列同),不完整组内 model_id 字典序;/board 客户端 `sortRows` 镜像同一口径(`complete === false` 视为不完整,`undefined`(live/旧后端)视为完整——与后端 `rankable()` 同口径;不完整组内字典序显式 tiebreak,不依赖数组原序或 sort 稳定性),禁第二排序口径(vitest 覆盖:不完整沉底 × total/各 suite 排序键 × 组内字典序 × 全不完整)。
-  - ⑧ **全部模型不完整时榜单照常渲染**(行保留、全体 dash),禁空态文案冒充「暂无上榜模型」;live 模式呈现零变化(所有新分支以 `row.complete === false` 为条件,live 行构造性不触发,回归由既有测试 + vitest 镜像承担)。
-  - ⑨ **EvalCard 静态物料同步:** EvalCardRow 增 `complete`/`missingSuites`,`rank` 改 `number | null`(不完整行 null → 名次 `–`;rank-top-rail 按 `rank !== null && rank <= 3` 判定);水印同款同位置(staticMode 无 tooltip,水印必须在物料内完整可见——150px 模型列单行可容,更宽 N/M 允许自然换行);总分 `–` + 空轨道、涨跌 `–` 与页面同构。
-  - ⑩ **暗色:** 占位 dash 与水印均消费 `--hs-text-placeholder`/`--hs-text-secondary` 语义令牌,亮暗双值构造性成立;无新增色、无调色板外操作,不另登记。
-- **ScoreCell 是榜单维度格子的唯一共享组件**(ticket 78 登记,spec 0009;Leaderboard 行与 ticket 79 EvalCard 静态模式双端消费——共享接缝从「堆叠条」换成「格子」,双端一致性守住):`formatScore` 数字(`--hs-text-md`/600,**档色着色**)+ 其下 4px 档色细条(轨道 `--hs-bg-hover`,`--hs-radius-xs`)。语义:
-  - **轨道中性化(ticket 82 定稿,spec 0010):** 细条与总分条轨道一律 `--hs-bg-hover`——轨道是「卡面之上一步的中性填充」,bg-hover 正是该语义(暗色下恰为卡面最小可见阶跃);`--hs-border-light` 是 hairline 分隔语义,不作填充(不留第二处解释);档色(绿/黄/红)是全榜唯一跳色元素。
-  - **条刻度恒 0–100(W7 绝对分制的视觉镜像):** 87.5 的条永远比 100 短一截,不做行内/列内归一化,跨行跨批次可比;档色按 §3 分数档位(≥80 success / ≥50 warning / <50 danger,阈值口径不动),档色同时承担强弱表达(五色分类色已整体退役,见本条末废止登记);null(未判分)→ `–` 占位(`--hs-text-placeholder`)+ 空轨道。
-  - **覆盖率水印(防作假硬约束,ticket 75 条款语义沿用):** done 且 `judged < expected` 的格子分数后随压缩水印「·8/10」(同色弱化:font-weight 400 + opacity 0.85),**宽度自适应可见——格子宽度 ≥80px(阈值 ticket 79 定稿:md/600 数字「100.0」约 38px + 水印「·10/10」约 34px + 余量)才渲染,不够则省略,完整置信信息由 hover tooltip 恒兜底**「能力点名 · 分数 · 判分 X/Y 题 · 采样 N 次 · 耗时 X · Token Y」(ticket 51 confidence 口径 + GH #42 成本段——与进度网格 cell tooltip 同口径同源字段,成本段中性不着色,规格见「评估成本指标呈现约定」条);未判分格子 tooltip 为「能力点名 · 等待中/进行中/失败」(批次词表)。静态物料(EvalCard)无 hover:水印按页面同一宽度规则渲染(staticMode 只测一次宽度、不观察;物料维度列约 56–68px,低于阈值,水印在物料自然不渲染),tooltip 信息不进物料,视为物料读者的已知信息差。
-  - props 接缝(ticket 78 设计评审定稿):`{ name, score, cell, staticMode? }`——传拆好字段而非整 row(EvalCard 快照构造复用时不受 ReportRow 形状耦合);`name` 供 tooltip 能力点名,`staticMode` 为静态物料模式(无 tooltip、宽度测一次不观察)。
-  - 总分列是 ScoreCell 的同族变体而非复用:`--hs-text-xl`(20px)/600 **墨色不染档色** + 6px 档色条(比维度 4px 粗一档,0–100 同刻度),层级靠字号与条粗不靠颜色;live 下总分空轨道不染档色不填充(见「Leaderboard 运行中半成品模式」条)。
-  - **superseded 登记:** ticket 75 堆叠条条目(段宽归一口径「条长 ≡ 总分」、段内数值 44px 暂定阈值、维度切换 ~40% 高亮联动、原 props 接缝)由本条目取代——段宽随分数变使固定标尺对齐成为结构性不可能(SuiteRuler 只对第一行准确),段宽亦不承担强弱表达;覆盖率水印「宽度自适应 + tooltip 兜底」与基准不可比三分支、「不可比一律不显涨跌箭头」口径保留不变(§3)。ticket 77(五色分类色 `--hs-suite-1..6` + SuiteLegend/SuiteRuler)**整条废止**:① 对齐结构性不可能(family tag 变宽致 bar 左缘漂移);② 强弱不可见(分类色只表达「哪个维度」不表达「好不好」);③ 功能色撞车(suite-3=danger 红 / suite-4=warning 橙 / suite-5=success 绿,满分读作「危险/警告」)。能力点名字从三处(radio/图例/标尺)收敛为一处:**列头**。
-- **EvalProgressGrid 是批次进度矩阵的唯一组件**(ticket 52 登记):模型 × 能力点状态矩阵,运行中/等待中批次的默认视图;首列模型名截断 + `title` hover,能力点列 flex 等宽,行随模型数纵向滚动,**不开横向滚动豁免**(§4 无特例);单元格四态用 §3 批次/运行状态色映射,纯展示不可点;批次级进度汇总置于网格上方同卡片内;「进度网格 / 实时分数」视图切换走卡片顶部 el-radio-group。**分享页只读模式(ticket 54 登记):** /report/{token} 运行中批次复用本组件,但不渲染视图切换(组件须支持隐藏切换的只读用法),网格是分享面运行中的唯一视图。**批次成本汇总(GH #42 登记;汇总格式 main 裁决 2026-07-29 修订):** card-top 批次进度行追加成本汇总「判分耗时 X · 批次用时 Y · Token Z(输入 I / 输出 O)」——**判分耗时 = Σ latency_ms**(成本视角的判分累计),**批次用时 = wall-clock**(finished_at − started_at 推导,running 批次取当前时刻),两者并列各司其职(判分耗时对账成本、批次用时答「这批跑了多久」,禁互相冒充);Token 输入/输出分列(`--hs-text-sm` + `--hs-text-secondary`,与 batch-note 同档;运行中随轮询累计增长,settle 后为终值;成本指标中性色不挂档色,规格见「评估成本指标呈现约定」条);cell tooltip 扩展为「状态词 · X/Y 题 · 耗时 X · Token Y」。**只读模式(分享面)不渲染成本汇总与成本段**——成本是运营数据,超出 ticket 54「运行状态与判分覆盖」的公开范围(见「评估成本指标呈现约定」条边界款)。
-- **EvalLiveFeed 是批次判分动态流的唯一组件**(issue #17 登记,spec 0004):运行中批次的题目级判分事件流面板——一题判完一行,行内六要素:时间 / 模型 / 评估集 / 题目(`#ID + prompt`)/ 判定方式 / 得分 + 耗时;最新在前(倒序渲染,API 升序翻页服务游标)。**行内展开详情(GH #41 登记,2026-07-29 设计评审;否掉弹窗——feed 是流式监控面板,弹窗打断「盯着流」的场景):** 行可点击展开/收起(hover 反馈 + 行尾展开指示,再点收起;§6 即时反馈),展开区在行下方**内联**渲染四块,纵向堆叠「label + 内容」——① 题目全文(case prompt 完整文本,`--hs-text-sm` regular,`white-space: pre-wrap`);② 期望答案,label 随判定方式分叉:**rule 题 = 「期望答案」(rule_expected 标准答案),judge 题 = 「评分要点」(rubric)**——行内判定方式 tag 既有区分,期望块 label 与之同口径;③ 模型作答(answer_text 原文,null 显「无作答记录」placeholder);④ 裁判结果(得分 + verdict_detail 判定明细,得分着色沿用行内档色)。label 统一 `--hs-text-xs` + `--hs-text-secondary`;展开区整体 `max-height: 240px` + 纵向滚动(防单条爆长撑破 feed 布局),**无横向滚动**(§4 不破)。详情**按需拉取**(点击展开才按 result id 请求,轮询载荷不膨胀;已拉取详情按 id 缓存,重复展开/收起不重拉),展开区自带加载/错误/重试三态(§6,错误只影响该展开区,不污染流本体)。**展开态按 entry id 记录(keyed by id),轮询新条目前插不塌展开态**;行内容六要素不变,展开不额外占列。**边界(与 #17 同口径登记):控制台专属**——期望答案/rubric 是题库内容(spec 0004/W7),详情接口走会话 + Hub 隔离(与 live-feed 同口径),永不出分享面与公开页;settle 后 live feed 卸载,历史批次的判分明细走管理台 EvalRunDetailDialog,不在本组件复活。
-- **评估成本指标(耗时/Token)呈现约定(GH #42 登记,2026-07-29 设计评审):** 耗时与 Token 是**成本指标,不是质量指标**——一律中性色(`--hs-text-secondary`,表格内数字 regular),**禁止与 §3 档色/状态色挂钩、禁止闪烁、前端不自定「快/省 = 好」分界线**(§3「阈值以后端口径为准」纪律在成本域的镜像;耗时/token 无业务阈值,永不着色)。格式集中(utils/format.ts,§7 集中原则,组件内禁自写):题级/格子级耗时走既有 `formatMs`(ms/s);批次级累计耗时走 `formatDuration`(<60s「12.3s」;<60min「3 分 12 秒」;≥1h「1 小时 5 分」);Token 走 `formatTokens`(<1000 原样;≥1000 缩写「12.3k」一位小数;≥1M「1.2M」),input/output 分列时标注「输入/输出」。**位置(两层粒度):** ① 批次汇总 = EvalProgressGrid card-top(运行中累计、settle 终值,见该条目);② 模型×评估集明细 = 进度网格 cell tooltip + ScoreCell tooltip(双视图同口径同源字段)+ 报告页(CampaignReportView)榜单下方新增「运行成本明细」表(行 = 模型×评估集 run,列 = 模型/评估集/状态/耗时/输入 Token/输出 Token,el-table,§4 首选;settle 报告页的成本汇总置该表标题行右侧)。**「运行成本明细」表仅 settle 批次渲染**——运行中批次的成本信息由 card-top 汇总 + 双 tooltip 承载,不为运行中批次渲染明细表(明细是 settle 结论的一部分;运行中明细行逐条跳变,与榜单半成品边界同纪律)。**榜单矩阵本体不加成本列**——ticket 78 列 x 恒定不变式,且成本与分数同列暗示质量相关,违反本条中性化约定。**边界:控制台专属**——分享面(/report/{token} 只读网格与 settle 榜单)不渲染任何成本指标(成本是运营数据,超出 ticket 54「运行状态与判分覆盖」公开范围);静态物料(EvalCard)不进成本段(与 tooltip 置信信息同例的登记信息差);成本汇总口径(main 裁决 2026-07-29,评审后修订):**判分耗时** = Σ eval_results.latency_ms(成本视角,与 Token 求和同源);**批次用时** = wall-clock(finished_at − started_at,running 批次取当前时刻;started_at 缺失显 `-`),两者在汇总行并列、各司其职,**禁把 wall-clock 当判分耗时、禁把判分耗时当批次用时**;Token 口径不变 = Σ input_tokens / output_tokens,token null 的 run 按 0 计入求和但在明细表显 `-`。
-  - **定位与挂载:** 仅挂在控制台运行中批次视图(EvalLeaderboardView `isUnfinished` 分支,进度网格/实时分数两视图之下);批次 settle 即卸载,历史批次永不展示——「settle 后停止增长」的简单形态由挂载条件承担,组件内无状态清理逻辑。
-  - **数据与轮询:** 数据走 `GET /api/campaigns/{id}/live-feed` 游标(since_id)增量拉取;游标、增量合并与轮询 timer **全部由父级视图持有,组件自身零 setInterval**(§6 轮询纪律)——组件是纯展示单元,props 进(entries/loading/error)、`retry` 事件出;增量合并的按 id 去重与封顶(`LIVE_FEED_CAP=200`,超封顶丢弃最旧事件,事件仍可从 API 拉取)走 `utils/liveFeed.ts` 纯函数(vitest 覆盖空/追加/去重/封顶),与 format/degradeCauses 集中原则同例。
-  - **呈现:** 时间列 `--hs-text-xs` placeholder(tabular-nums);模型/评估集/题目截断 + `title` hover 全显(§6);**判定方式词表集中 `verdictTypeLabel`(utils/liveFeed.ts)**——规则/裁判/未知或已清除 `-`,tag 用 `el-tag type="info"` 中性灰:**判定方式是类别属性非健康信号**,禁用 §3 状态色;得分 `formatScore` 0–100 + `scoreBand` 档色(≥80/≥50 阈值,§3 同一映射,原始 0~1 分不出 API 层),**null 分(裁判失败)渲染 `-` placeholder(`--hs-text-placeholder`、常规字重)+ hover「裁判失败,未判分」,永不读作 0 分**(W7「裁判失败不计 0 分」的视觉镜像);耗时 `--hs-text-xs` secondary;列表 max-height 320px 纵向滚动,**不开横向滚动**(§4 无特例);行间 1px `--hs-border-light` hairline(ticket 82 表格化精致同构)。
-  - **边界:** **控制台专属**——分享页 /report/{token} 与 /board 零调用,逐题判分事件属会话内运行细节,不外流(spec 0004 半成品边界与 ticket 54 分享面信息边界同向);动态流是过程事件而非评估结论,W7 评估口径不受影响。
-  - **三态(§6):** 首载 skeleton(仅 entries 为空时,后续轮询 tick 保持已累积列表不打断阅读)、空态「暂无判分动态:等待第一题判分完成」、错误态 el-alert 带原因 + 重试按钮(已累积条目不消失);密度走消费页 16px 档(`--el-card-padding` 既定机制,§2)。
-- **分享报告页运行中信息边界(ticket 54 登记,HIGH-1 口径的细化):** 分享面(/report/{token})未完成批次只公开**运行状态与判分覆盖**(模型 × 能力点四态 + X/Y 题),不公开任何分数、名次、涨跌——「实时分数」为登录控制台专属,分享页不提供切换入口;批次 settle 后分享面照常渲染完整榜单(既有行为不变)。依据:状态/覆盖率是运行元数据而非评估结论,不构成 spec 0004 所防的「半成品分数外流」;模型名单 settle 后本就公开;token 高熵、可撤销、走审计(ADR 0006 控制面不变)。已知并接受的增量:运行中分享面可见 per-model 失败归因(settle 后分享榜单从不点名失败模型)——失败是运行事实,不掩盖;该暴露瞬时、token 可控。分享页不新增任何依赖会话接口的交互入口。
-- **TrendChart 是趋势类折线图的唯一通用组件**(批 32 登记):裸图表(不带卡片,布局由父级负责),默认在 null 点断线(未判分批次不得连成假分),支持竖向断点标注线(占位灰虚线,如「v2 起题目变更」);ECharts 色板 JS 镜像与 TimeSeriesChart 同一来源(§3 ECharts 条目,迁移期合并)。
-- **ModelTrendDialog 是报告页行下钻的唯一趋势弹窗**(批 32 登记,ticket 51 修订):按模型按需拉取 `/api/campaigns/{id}/trends`,分数线(版本断点标注「vN 起题目变更」+ 判分口径断点标注「判分口径已变更」,同一位置双断点合并为一行标注,均复用 TrendChart 灰虚线断点机制)+ 探测成功率/延迟并列;已删除模型带「已删除」tag;加载/空/错误三态齐全。
-- **AppHeader 导航按登录态过滤【已迁 surface brief(GH #50)】:** 未登录只渲染公开页导航项(状态总览 + 评估榜单→/board,spec 0010),不渲染会被路由门禁弹走的项(任务、管理入口);登录态导航 = 状态总览 + 评估榜单(→/eval)+ 任务中心(anonOnly 项登录即隐),登录态随路由切换重检(沿用 refreshAuth watch 先例),不写死 mount 时一次性判断。**未登录态 header 一律不渲染登录按钮(ticket 90,用户裁决):** 醒目登录按钮对公开读者传递「内容要账号」的错误信号;判定走 route `meta.public` 通用位,不设单页特例(匿名读者经路由门禁本就只可达公开页);登录入口统一由 PublicFooter 承担(见下条)。
-- **PublicFooter 是公开三页页脚管理入口的唯一组件**【已迁 surface brief(GH #50)】(ticket 90 登记,/board 页脚模式推广):hairline(`--hs-border-light`)+ 一行左右分置(2026-07-28 用户裁决,取代居中独行)——左 `© 2026 HubScope` 版权,右「管理登录」→ /login(均 `--hs-text-xs` placeholder,链接 hover brand;间距走 `--hs-space-*` 令牌);状态总览、EndpointDetail、/board 三页一律复用,禁止各处自造页脚登录入口;/login 页自身不渲染;登录态照常渲染(与 /board 先例一致)。**豁免:** /report/:token 分享页不挂页脚——接收者非管理读者,外部物料不出现任何登录入口。
-- **/board 公开榜单页【已迁 surface brief(GH #50)】(ticket 81 登记,spec 0010):** 榜单与状态板并列为公开侧第二页,未登录直达。页头构成:`评估榜单` 标题行(`--hs-text-xl`/600,工具风层级,非营销 hero)+ 内容区。边界:恒显**最新 settle 批次**矩阵榜单(复用 Leaderboard 组件,`shared` 口径「保存图片」),列头排序 + family 筛选 + 保存图片**全部客户端完成**(公开端点一次性返回完整 report,不接参数;`sortRows` 镜像服务端口径——null 沉底/降序/model_id 字典序 + 判分不完整恒沉底(ticket 92,口径见「Leaderboard 判分不完整模式」子条目⑦),禁第二口径);**无批次切换、无行下钻(行不可点,Leaderboard `selectable` prop)、无 live 榜单、无轮询**;运行中批次时榜单上方一行静态中性提示「新一批评估进行中,当前展示已完成批次 #N」(`--hs-text-sm` secondary,无底色无边框);无 settle 批次 → 空态「暂无已完成的评估批次」(running 时附提示行)。**登录入口(ticket 90 修订,取代 ticket 81「/board 与状态板有差异」口径):** 所有公开页 header 一律无登录按钮,登录入口统一为 PublicFooter「管理登录」页脚(见 PublicFooter 条)。未登录态网络面板零 session API 调用(auth status 除外)。
-- **StatusCard 是状态分享卡的唯一渲染模板**(批 56 登记,批 59 重设计构成;本条为 720px 完整版构成,480 紧凑版与端点小卡见下方「StatusCard 480 紧凑版与端点小卡」条):720px 逻辑宽、2x 导出的竖版品牌物料,自上而下固定构成——① 品牌区(`--hs-brand` 4px 品牌条 + `--hs-brand-soft` 浅底 + BrandMark + Wordmark + 「服务状态」`--hs-text-2xl`/600——「HubScope」字样由 Wordmark 承担,标题词不再重复品牌名);② 范围行(无筛选纯文本「全部端点」,有筛选逐项 chips:描边 + `--hs-radius-sm`,前缀灰 label + 值,状态 chip 值用语义色;分组卡首位恒为分组 chip,与筛选 chips 并存,一个不漏);③ hero panel(可用率优先,批 59 第二轮迭代,替代原「tone-tinted 结论块 + 独立指标行」两区块;用户反馈顶部太告警化、优先展示异常端点):结论与指标合并为单一 panel——`--hs-bg-page` **中性浅灰底(无 tone tint)** + `--hs-radius-lg` + padding 16px 20px,左右两列 + 1px `--hs-border` 竖分隔。左列自上而下:「24h 可用率」`--hs-text-xs` 标签 → `--hs-text-display`/600 大数字按 §3 三档着色 + 小号次级「%」(`--hs-text-md` secondary)——可用率大数字当主标题,其三档着色承担严重度信号,顶部不再用告警化色块;其下 verdict 文案(与 HealthBanner 同源结论词,如「5 个端点降级」,tone 着色但 `--hs-text-sm` 次级)+ failing 静态双编码(橙实心点 + 「含 N 个告警」橙描边 chip);再下**完整分布串**「正常 N · 降级 N · 宕机 N · 告警 N」四段恒列,`--hs-text-xs`,非零段状态词语义色/600 + 数字 `--hs-text-primary`,零计数段整段 `--hs-text-placeholder`。右列:「平均延迟」同构标签 + `--hs-text-xl`/600 数字,`--hs-text-primary` 不着色。**防作假不变:verdict 与四段恒列分布串仍在,异常不掩盖——只是不再当头条、不再有 tone tint 色块;空态(tone-empty)可用率渲染 `-` + 「24h 内无探测数据」,verdict 与分布串均不渲染,中性灰底保证「无数据」永不读作「全部正常」。** null 延迟 → `-` placeholder + 「24h 内无探测数据」`--hs-text-xs`;④ 24h 分段可用率条(组内聚合,口径见 §3 三档条目,24 格分段填满式、格高 16px、`--hs-radius-xs`、2px 间距;条下两端「24 小时前」「现在」`--hs-text-xs` placeholder;聚合函数抽 utils 纯函数,禁按端点简单平均);⑤ 异常明细(封顶 10 条,严重度排序 告警>宕机>降级,**三段式行**:行 1 = 状态词语义色 `--hs-text-sm`/600 + 「模型 · 协议」`--hs-text-md` 截断 + 右侧单端点 24h 可用率 `--hs-text-sm` 同档着色(null → `-`),行 2 = status_reason `--hs-text-xs` secondary、最多两行截断,reason 为空则不渲染行 2,**行 3 = 单端点 24h 打点条**——全宽 24 格分段填满式、格高 8px、`--hs-radius-xs`、2px 间距、**无轴标**,左缩进与 reason 对齐(margin-left 40px),复用 §3 三档着色与 dotTier;打点条让维护受众一眼看出故障时段——「最近 1 小时炸的」vs「全天半死」,单点可用率数字做不到这个;行间 hairline 分隔;overflow 收尾「另有 N 个异常端点未列出,详见状态板」);⑥ **正常端点名单区(GH #92,2026-07-31 设计评审,取代批 59「其余 N 个端点正常 · 24h 可用率区间」汇总行——逐条着色率名单是区间文本的超集;全集可见是防作假加强:不只挑异常示众,正常的是谁也列出来):** 位置 = 异常明细区(含 overflow 收尾)之下、总结行之上,异常首位度不稀释;区头「正常端点」同「异常明细」detail-title 规格;2 列网格,每条 = 模型名(sm 截断)+ 24h 可用率(sm/600,§3 三档着色,null → `-` 占位;取 `success_rate_24h` 与明细行同源字段)——**不带协议、不带点条**(名单是花名册不是第二明细区,点条会稀释异常明细首位度);排序 = 可用率升序(最脆弱在前,视觉权重 = 业务严重度)、null 沉底、同率 model_id 字典序,纯函数集中 `utils/statusCardSummary.ts`(vitest 覆盖);封顶 20 条(2 列 × 10 行),overflow 收尾「另有 N 个正常端点未列出,详见状态板」(与异常 overflow 同构);**全正常态保留「全部 N 个端点正常」陈述行**(去区间后缀——全正常时无异常明细,显式结论是防作假的正面形态),名单区接其下;无正常端点(全异常)时不渲染区与区头(空态不冒充);单模型模式不渲染(无「其余」);`healthyRangeText` 的聚合用法随汇总行退役(单模型行内单值用法保留);列宽与间距级联见 share-materials surface brief);⑦ 一句话总结(见下方独立条目);⑧ 页脚(hairline 分隔,左「生成于 YYYY-MM-DD HH:mm」+「另有 N 个已停用」`--hs-text-xs` placeholder,右 location.origin)。空态沿用批 56:零匹配/全停用时范围 chips 保留、hero panel 中性灰底 + 可用率 `-`(verdict 与分布串不渲染,永不读作「全部正常」)、分段条全占位、明细「暂无匹配的 Endpoint / N 个端点均已停用」、不渲染总结与名单区。结论判定仍与 HealthBanner 同源,统计集合=快照范围;明细状态词按 §3 静态物料约定用着色文字,不复制状态灯实现。**导出画布恒亮主题(§2a),物料内令牌引用亮主题取值。**
-- **StatusCard 单模型模式**(ticket 60.5 落地,2026-07-24 设计评审登记):单模型分享(EndpointDetailView / DashboardView 单端点入口,`createSingleModelSnapshot` 创建,`hubName` 字段为标记)走同一物料模板的第二种构成——不是新物料,不是全局版的开关切换;构成元素(品牌区/hero panel/分段条/明细/页脚)与全局版同源。
-  - **判定口径:** `entries.length === 1 && snapshot.hubName !== undefined`。筛选后只剩一个端点的全局/分组快照不算单模型卡(范围 chips 描述子集,hero panel 仍按聚合模式渲染 verdict + 分布串)。
-  - **范围区:** 不渲染「全部端点」纯文本行(单模型快照下它把单端点子集读作全集,违反批 56 防作假约定),渲染三枚 chips——`模型 · {model_id}`、`协议 · {protocol}`、`Hub · {hubName}`。状态 chip 不出现(当前状态在 hero panel 状态陈述行,不重复语义)。防作假不变式保持:chips 与卡片所有数字同源(都来自唯一 enabled entry),比「全部端点」更精确地标注了统计范围。
-  - **hero panel:** 复用 StatusCardSingleModelMetrics 组件(与全局版 StatusCardMetrics 兄弟关系,StatusCard 按判定口径二选一挂载)。构成:可用率大数字(`--hs-text-display` 档,与全局版同字阶,不降档)+ 单状态陈述行(替换全局版 verdict + 分布串,`--hs-text-sm`/600 tone 着色)+ failing 双编码(橙实心点 + 「含告警」橙描边 chip,不带数字)| 平均延迟 | 24h 分段条,全部沿用全局版样式与着色。四段分布串「正常 N · 降级 N · 宕机 N · 告警 N」在单模型模式下不渲染(0/1/0/0 全为噪音,单状态陈述已承担同样信息)。
-  - **单状态陈述行文案:** `正常 · 24h 可用率 X%` / `正常 · 24h 可用率仅 X%,低于 95%` / `降级 · 24h 可用率 X%` / `宕机 · 24h 可用率 X%` / `告警 · 24h 可用率 X%`(可用率 null 时后半段改「24h 内无探测数据」或省略后半段)。状态词严格用 §7 endpoint 词表四词(正常/降级/宕机/告警),不新增概括词;陈述行不重复 Hub 名/模型名(范围 chips 已承担)。
-  - **评估区(hero panel 右栏):** 评估总分(label「评估总分」`--hs-text-xs` + `--hs-text-xl`/600 数字,`formatScore` 0–100 整数)+ 能力 suite tags(`el-tag size="small"`,`suite_name + formatScore(score)`,封顶 6 个,超出以 `+N` 计数 chip 收尾,不撑爆卡片)。无评估数据时右栏渲染一行「暂无评估数据」`--hs-text-xs` placeholder,右栏不消失(布局稳定)。评估数据为最近一次已 settle 批次的 ModelEvalSummary,运行中批次半成品分数不进卡(与 ticket 54 分享面信息边界同向——卡片是对外物料,半成品分数不外流)。卡片不标注「评估于」时间戳(避免与页脚「生成于」语义冲突)。
-  - **明细区:** 组件复用 StatusCardDetail;单模型异常时仍渲染单条三段式明细行(含 status_reason 与打点条,异常不掩盖)。正常端点名单区(GH #92)不渲染(单模型卡没有「其余」);全正常态陈述行措辞改「当前状态正常」(避免数量词,区间单值后缀保留)。
-  - **小结措辞(单模型版,位置/样式沿用「StatusCard 一句话总结」条目):** failing →「触发告警,建议立即处理」;down →「宕机,建议优先排查」;degraded(有持续信号)→「持续降级约 N 小时,建议排查上游」(N 口径同全局版,连续证据约束不变);degraded(无持续信号)→「降级,建议关注,暂不紧急」;healthy 且可用率 <95% →「状态正常,但 24h 可用率仅 X%,建议持续观察」;healthy 且可用率 ≥95% →「近 24 小时运行平稳,无需处理」。无 24h 数据时沿用全局版后缀规则。「不掩盖异常」约束保持:单状态陈述行 tone 着色,告警双编码完整保留,禁止输出掩盖异常的措辞。
-  - **生成规则纯函数:** 单模型小结文案走 `singleModelSummaryText(entry, availability)`、单状态陈述行走 `singleModelStatement(entry, availability)` 纯函数,与全局版 `summaryText` 并列收在 `utils/statusCardSummary.ts`,组件内不写文案字面量。
-- **StatusCard 480 紧凑版与端点小卡(GH #93,2026-07-31 设计评审;构成与级联算术见 share-materials surface brief):** 状态分享物料的两档版式体系——「完整版」720px(现状不动)与「紧凑版」480px(2x 导出 960)。**紧凑版是同一份冻结快照的第二排版,数字口径零变化、快照纯函数复用,不另起口径**(防作假不变式:窄版只重排,不重新计算)。覆盖全局/分组/单模型三模式;单模型紧凑版 = **端点小卡**(独立紧凑构成:品牌细条 + 模型/协议 + 状态陈述 + 可用率大数字 + 迷你 24h 点条 + 均延 + 页脚)。**物料分工信息差(登记为已知并接受):** 小卡不渲染 Hub chip(Hub 是内部拓扑,完整范围声明在大卡)、评估区(评估信息留在完整版)、status_reason 明细(异常由状态陈述行 tone 着色 + failing 双编码承担,「不掩盖异常」约束保持)——小卡是监控域快读物料,完整信息在大卡与状态板。版式切换走 StatusShareDialog 预览上方「完整版/紧凑版」radio,单组件挂点三入口(Dashboard 全局/组、EndpointDetailView)同生效;**默认档 = 打开时视口 <768px 则紧凑版**,一次性判定、不随 resize 重判、不持久化(转发意图每次不同)。导出文件名紧凑版加 `-compact` 段,完整版存量文件名不变。EvalCard 本批无紧凑版(榜单物料手机可读性由弹窗预览缩放承担),登记为后续可选。
-- **分享弹窗响应式与 /report/:token 窄屏(GH #94,2026-07-31 设计评审;规格与算术证伪见 share-materials brief):** 全批唯一响应式断点 **768px**(`(max-width: 767px)` 生效,≥768px 桌面逐像素不变,不设中间档;「桌面优先」声明不失效——断点消费方封闭清单 = 分享弹窗、Leaderboard 组件、EvalProgressGrid 组件、/report/:token 页,状态板与管理台不做窄屏适配)。**窄屏处置原则 = 形态切换,不是横向滚动豁免:** 分享弹窗宽度改 `min(752px, 94vw)` + 预览物料 transform 等比缩放(缩放只作用于预览 DOM;导出永远走离屏双份 absolute -10000px 按设计宽渲染,捕获零影响,恒亮主题与离屏纪律不变);/report/:token 榜单矩阵断点以下降级为**卡片式列表**(列收敛方案算术证伪:最紧收敛 472px > 375 视口可用的 343px;横向滚动方案否决——§4 无横滚承重纪律无豁免),卡片式行保留前 3 名仪式感、总分档色条、涨跌、维度格(ScoreCell 增 show-name 复用,唯一组件纪律不破)、live 半成品与判分不完整两模式口径零变化;排序入口窄屏收敛为工具条 el-select(降序唯一方向,禁第二排序口径纪律不动);进度网格窄屏模型列 220→96px、cell 词省略留点(tooltip 兜底)。打印不受断点影响(layout viewport;窄屏设备打印随当前形态,登记为已知并接受)。
-- **分组独立分享入口【已迁 surface brief(GH #50)】(批 59 登记):** OverviewGroupSection 标题行右端放 text 型 `el-button`(2026-07-31 修订:「本组:」指标自组头移出至组条行,GH #85,分享按钮位置不变——原「group-metrics 之后」定位表述随之失效)(Share 图标 + 「分享」文字,不用裸图标按钮——状态板读者 3 秒场景下图标语义不够直白),`@click.stop` 拦截冒泡、不触发整行折叠,hover 走 Element Plus text 按钮品牌色反馈;点击复用 StatusShareDialog(弹窗复用不变;GH #93 起弹窗内含「完整版/紧凑版」版式切换,快照与范围口径不动),快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」,维度词表 family→厂商、capability→能力、protocol→协议),其后列全部生效筛选条件。**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致(批 59 口径修订):筛选快照不得引用 OverviewGroup/Overview 的未筛选聚合字段,否则数字描述全集、chips 声明子集,自相矛盾,违反批 56 防作假约定;且 Overview 全局无 avg_latency_ms 字段,透传路径本就不完整。** 两个标量口径:① 24h 可用率 = 快照内 enabled entries 的 dots_24h 按小时求和 ok/total(探测加权,与 `internal/server/overview.go` groupAccumulator 同定义,无筛选时与后端数字构造性相等,口径见 §3 批 59 条目);② 平均延迟 = enabled entries 的 p50_ms 均值(前端无法从 dots 复现探测加权延迟,这是唯一 scope 恒一致的口径;已知代价:与组条行右侧「本组:均延」指标的探测加权 mean latency 数值可能略有差异(2026-07-31 GH #85 起指标自组头移至组条行)——卡片内部自洽优先于与页面逐字相等);StatusCardSnapshot 只扩展 `group` 字段,不携带任何聚合标量(statusCardSnapshot.ts)。Dashboard 全局「分享状态」入口保留现状(筛选行主按钮,不动)。
-- **UptimeStrip 是组级 24h 分段可用率条的唯一组件**(GH #64 登记,spec 0017 ticket 1;2026-07-30 设计评审;2026-07-31 GH #85 细带化 + 指标下移同行修订;2026-07-31 GH #87 定宽 360px 修订;2026-07-31 GH #88 对齐卡内条规格修订;同日 check MEDIUM-1 定宽修正 246→220px):**位置与构成(2026-07-31 GH #88 修订,取代 GH #87 的 360px/6px 细带登记)**——状态板分组 section 的第二行 = **组条(左对齐定宽 220px,格约 7.2×10px,格高/间距/圆角/着色与卡内条严格同规格、格宽近似贴近典型视口)+「本组:24h 可用率 X · 均延 Y」指标右对齐同行(指标 margin-left:auto,条与指标之间自然留白)**,位于组头行下方、卡片矩阵上方;**「本组:」聚合指标自组头行移出**(组头行只剩折叠箭头/组名/端点计数/状态计数 chips(+ 协议收敛 tag)/分享按钮)——形态 → 读数一次扫完;「条收进组头行」方案经用户否决(组头左侧内容逐组变宽且随轮询变化,条内联后跨组位置参差、左侧长内容折行风险,跨组对齐是时间轴语言的核心价值,不能牺牲)。**折叠恒显**——收起卡片矩阵后组条行照常渲染,各组健康形态仍可扫读(状态板读者 3 秒场景,spec 0017 user story 3)。形态 = §2 分段填满式(24 格 flex 槽、**格高 10px 与卡内条同高**(2026-07-31 GH #88;**GH #85「组条 6px、卡内 10px 分档」登记随本票显式撤销**——分档诊断错误:实机三轮证据表明丑的根因是格比例(全宽时 ≈46px 长胶囊、360px 时 13×6px 扁丸,都读作「灯/药丸」),非格高度)、`--hs-radius-xs`、2px 间距);**组级条无 26px 行内标签、无 LatencySparkline 对齐约束**——其 2px 间距是形态沿用,不是 §5 LatencySparkline 条目的 GAP=2px 共享常量,不受「改动必须同步」纪律管辖。**对齐约束(2026-07-31 GH #88 定稿,取代 GH #87 的 360px 定宽;同日 check MEDIUM-1 修正,定宽 246→220px):条宽定值 220px——票面「246 = 272px 卡 − 26px 标签」算术失实:漏算 el-card body padding(EP 默认 `--el-card-padding` 20px×2,DashboardView/OverviewGroupSection/EndpointCard 均无密度档覆盖)与标签↔条 6px gap(EndpointUptimePanel `.card-dots`);卡内条槽真实级联 = 卡宽 − 40 − 26 − 6 − 2(2026-07-31 check LOW-1 随票补正:级联原漏 el-card 1px×2 描边,EP dist `el-card.css` `border:1px solid`),地板 272px 卡 → 条槽 198px(格 ≈6.3px),flat 模式典型 1200px 视口 291px 卡 → 条槽 217px(格 ≈7.1px);**同日 check MEDIUM-1 参照系补注:** 291px 卡是 flat 模式参照系,而组条只在 group 模式渲染、与 flat 卡永不同屏——group 模式参照系 = 组卡内容宽 1158(1200 − 40 组卡 padding − 2 描边)→ 4 列卡 ≈281 → 条槽 ≈207(格 ≈6.7px);两参照系完整级联逐项出处见 dashboard surface brief GH #88 后续注记与 OverviewGroupSection.vue `.strip-row .uptime-strip` 注释。卡宽弹性,任何定宽无法全视口逐像素一致——用户裁决取 220px:格宽算术 (220 − 23×2) / 24 ≈ 7.2px,居 flat 217 与 group 207 两参照系之间,比 group 卡内格宽约 0.5px,视觉可忽略,登记为已知并接受;**格高/着色/间距/圆角与卡内条严格同规格,格宽为近似贴近**;跨组条完全同宽、左缘严格对齐,右缘亦因定宽天然对齐。窄视口下条可收缩(flex-shrink 1 + min-width 0),与指标 nowrap 叠加不撑出横向滚动(§4)。跨层级一致性(本票核心收益,用户裁选定稿 2026-07-31):组条与卡内条同格形同色,「组的条 = 卡片的条的聚合」读感成立;GH #85/GH #87 两轮(6px 细带、360px 定宽)只压单维度,治不了格比例,定稿对齐卡内条规格。**着色 = §3 批 59 三档(≥95% success / <95% warning / 0% 有探测全失败 danger / 无探测 `--hs-border` 灰),tooltip 与 EndpointCard dots 同构「HH:mm 时段 · 成功 X/N」,无探测桶「HH:mm 时段 · 无数据」;空组/全禁用聚合无 bucket_start,tooltip 省略时间前缀裸显「无数据」,24 格全灰——**永不读作「全部正常」**(批 56 空态纪律在组级条的镜像)。
-  - **聚合口径(防作假硬约束):** 组内 **enabled** entries 的 dots_24h 按小时求和 total/failures(探测加权,与后端 `internal/server/overview.go` groupAccumulator 同定义,无筛选时与组条行「本组:」指标标量构造性相等),**禁止按端点简单平均**——低流量端点不得掩盖高流量中断;禁用端点的陈旧探测不染色组条(批 59「卡片所有数字一律从快照 enabled entries 计算」同口径)。聚合桶 p50_ms 恒 null——跨端点 P50 无法由分桶百分位推导,组条不喂 sparkline。
-  - **实现集中:** `dotTier` / `aggregateDots24h` / `dotTooltipText` 集中 `utils/overviewDots.ts` 纯函数(§7 集中原则;vitest 覆盖阈值边界/空组/全失败/小时对齐/措辞);EndpointCard 卡内条与 StatusCard(经 statusCardSummary re-export)同源消费,两处条的着色与措辞一致性由构造保证而非约定。**EndpointCard 不改造为 UptimeStrip(本条登记裁决,附录 B 第 17 项):** 卡内条与 LatencySparkline 存在 GAP=2px x 对齐不变式与 26px 标签对齐(§5 LatencySparkline 条目硬约束),把该耦合拖进共享组件的代价大于去重收益;共享接缝定为纯函数层而非 DOM 层。
-  - **筛选口径(登记为已知并接受,批 59「卡片内部自洽优先于与页面逐字相等」先例):** 组条随页面筛选与分组维度(厂商/能力/协议)重算——数据源与卡片矩阵是同一份筛选后 entries,条与矩阵构造性永不矛盾;组条行右侧「本组:24h 可用率 / 均延」指标标量仍为后端未筛选口径,有筛选时两者可能数值不一致,组条与矩阵自洽优先于与该指标逐字相等(与批 59 分组卡均延口径同例)。
-  - 纯展示不可点,下钻走整卡/端点详情;§4 无横向滚动(flex 1 1 0 + min-width 0);暗色随语义令牌双值生效(spec 0017 user story 6);零硬编码色值、零 `--el-*`。
-- **StatusCard 一句话总结(批 59 登记):** 位置=明细区与页脚之间,hairline 分隔后;形态=「小结」前缀标签(`--hs-text-xs` placeholder)+ 一句话(`--hs-text-sm` secondary、常规字重,无底色无边框无语义色)——视觉权重明确次于 hero panel 主结论区,句式以行动建议动词(建议/无需)收尾,与 verdict 的陈述句式区分。生成规则抽纯函数(utils/statusCardSummary.ts),优先级自上而下命中即止:① 有告警 →「有 N 个端点触发告警,建议立即处理」;② 有宕机 →「N 个端点宕机,建议优先排查 {首个宕机模型}」;③ 有降级且存在连续非绿时段 →「{模型} 持续降级约 N 小时,建议排查上游」(N = 该端点 dots_24h 自最新向前连续「有探测且非绿」格数——只有 fail/partial 计入,无数据灰格与绿格一样中断计时;取全组最长者。**持续时长必须有连续证据支撑**:灰格计入会让稀疏数据端点一路数到窗口起点、恒输出「约 24 小时」,属无证据的时长宣称,违反本条「不掩盖异常」的对偶约束——不夸大异常,对维护受众是狼来了);④ 有降级无持续信号 →「N 个端点降级,建议关注,暂不紧急」;⑤ 全正常但 24h 可用率 <95% →「状态全部正常,但 24h 可用率仅 X%,建议持续观察」;⑥ 全正常且有数据 →「近 24 小时运行平稳,无需处理」;⑦ 无 24h 数据 → 在命中句后追加「暂无 24 小时探测数据」。空态(零匹配/全停用)不渲染总结行。**总结不得掩盖异常:** 只要存在非正常端点,总结首句必须指向最严重的异常(告警>宕机>降级),禁止输出「运行平稳」类措辞——这是批 56 防作假约定在文案层的镜像。
-- **结论必须标注统计范围(防作假约定,批 56):** 任何呈现汇总结论的导出/分享物料,结论旁必须显式列出统计范围——无筛选标「全部端点」,有筛选逐项列出全部生效条件(一个不漏),零匹配时范围仍需保留且结论用中性「暂无数据」;禁止把局部集合呈现为全局结论,禁止零匹配显示「全部正常」(ADR 0007 防作假语义在状态板域的镜像)。批 59 补充:分组也是范围,分组卡必须带分组 chip(见上条),分组卡片不得省略分组维度词。ticket 76 补充:评估域镜像——EvalCard 范围行 chips 逐项列出批次/family 筛选/非默认排序/涨跌基准(见 EvalCard 条目),空筛选结果 chips 保留 + 中性「暂无匹配模型」,禁止读作「全部上榜」类结论。
-- **分享卡片外框约定(ticket 76 登记,StatusCard/EvalCard 两物料同构):** 导出分享物料的外框固定三段——① 品牌区(`--hs-brand` 4px 品牌条 + `--hs-brand-soft` 浅底 + BrandMark + Wordmark + 物料标题 `--hs-text-2xl`/600,标题词不重复品牌名);② 范围行 chips(描边 + `--hs-radius-sm`,前缀灰 label + 值,防作假约束见「结论必须标注统计范围」条);③ 页脚(hairline 分隔,左「生成于 YYYY-MM-DD HH:mm」,右 location.origin)。两物料各自实现外框、**不抽公共子组件**(ticket 76 设计评审裁定):StatusCard 外框与单模型/汇总双模式耦合,抽取需重构批 56/59 重规格物料,回归风险大于去重收益;共享的本质是设计约定(即本条),代码重复量小;出现第三张分享物料时再评估抽取。
-- **EvalCard 是榜单分享卡的唯一渲染模板**(ticket 76 登记,spec 0007;ticket 79 随 spec 0009 矩阵化修订):720px 逻辑宽、2x 导出、竖版品牌物料,**导出画布恒亮主题**(§2a),物料内令牌引用亮主题取值。卡片 = 当前所见:批次 + family 筛选 + 排序全部生效;chips 与卡片全部数字同源(同一份 report 响应,禁止引用页面其他聚合)。快照由纯函数 `buildEvalCardSnapshot(report, query)` 生成(utils/evalCardSnapshot.ts),打开弹窗即冻结。自上而下五区:
-  - ① **品牌区:** 外框约定同款,标题「评估榜单」。
-  - ② **范围行 chips(批 56 同构,逐项一个不漏):** `批次` chip 恒列(label「批次」,值 `#N · 定时/手动 · 已完成/失败`,词表用 §7 批次/运行状态四词,中性不着色——failed 的强调由警示行承担,done 是常态无需着色);有 family 筛选 → label「系列」值 family 名;非默认排序 → label「排序」值能力点名;基准 chip 恒列(baseline 存在时):label「涨跌基准」,值 `较批次 #M` 或不可比原因(`题目已变更,分数不可比` / `判分口径已变更,分数不可比` / `考核口径不同,分数不可比`,与 Leaderboard baselineNote 同词),baseline 缺失(首个已完成批次)不渲染基准 chip。chip 顺序固定:批次 → 系列 → 排序 → 涨跌基准(矩阵无非总分视图,「维度」chip 与排序特判已随 ticket 79 退役)。
-  - ③ **failed 警示行(仅 failed 批次):** 「批次有 N 个评估运行失败,榜单仅统计已完成的评估集」,与页面 alert 同口径同措辞,`--hs-text-sm` + `--hs-warning` 着色文字,无底色无边框。
-  - ④ **榜单行(ticket 79 矩阵构成,与页面同构;ticket 82 表格化同步):** 静态列头(名次/模型/总分/涨跌/能力点名列,不可点无排序指示,能力点名字唯一出现处,列头下 1px `--hs-border` hairline)+ 矩阵行——行间 1px `--hs-border-light` hairline + 行高 46px 同页面节奏;名次(前 3 名 3px `--hs-brand` 竖条 + `--hs-text-lg`/600 brand,余 secondary,非前 3 名透明竖条位)+ 模型名(截断;物料无 hover,不依赖 `title` 全显)+ 总分(`--hs-text-xl`/600 墨色 + 6px 档色条,0–100 同刻度,轨道 `--hs-bg-hover`)+ 涨跌箭头(列渲染条件 = **基准可比**;条件不满足整列不渲染、不占位;列内行级口径与页面一致:delta 非零显 ▲▼ + `formatScoreDelta`,null/持平显 `–` 占位)+ 维度格子(ScoreCell `staticMode`:无 tooltip,水印按页面同一宽度规则渲染——物料典型列宽低于阈值,水印自然不渲染,置信信息留在页面,已登记信息差)。列宽预算(720px 画布、内容宽 640px):名次 24 / 模型 150 / 总分 64 / 涨跌 60,维度列 `minmax(0,1fr)` 等分(5 列约 56–68px,随涨跌列渲染与否);行不渲染 family tag(family 由范围 chip 或模型名承担)、不可点、无 hover。**判分不完整行(ticket 92):** 名次 `–`(rank 字段 number|null)+ 模型名之下同款水印 + 总分 `–` 空轨道 + 涨跌 `–`,与页面同构,口径见「Leaderboard 判分不完整模式」子条目⑨。**封顶 20 行**,超出收尾一行「另有 N 个模型未列出,详见评估榜单」(`--hs-text-xs` secondary,与 StatusCard 明细 overflow 收尾同构)。
-  - ⑤ **页脚:** 外框约定同款(无附加段)。
-  空筛选结果:chips 全部保留 + 中性「暂无匹配模型」(`--hs-text-placeholder`),failed 批次空态时警示行仍渲染(原因由警示行承担)。静态物料无 hover:tooltip 置信信息不进卡片(已知信息差,ScoreCell 条目已载);无动画语义冲突。
-- **EvalShareDialog 与榜单图片分享入口(ticket 76 登记):** EvalShareDialog 结构机制对齐 StatusShareDialog——预览(限高 62vh 滚动,`align-items: flex-start` 防压扁)+ 离屏双份捕获(规避 snapdom 祖先 overflow 裁剪)+ 复制图片/下载 PNG + 复制降级(非安全上下文置灰 + 「当前环境不支持复制图片,请使用下载」,下载永可用,§6 批 56 条)+ 暗色会话捕获前脱离 `html.dark` 级联(恒亮捕获);失败不锁按钮(按钮即重试路径)。入口 = Leaderboard 工具条右端 text 型 `el-button`(Share 图标 + 文字,批 59 先例),**仅 settle(done/failed)批次渲染——实现口径 `!live`**:live 模式工具条不渲染该按钮,运行中/等待中批次三处均无入口(spec 0004 半成品分数不外流边界不变;公开分享页运行中本就只渲染进度网格,无 Leaderboard 挂载点)。三处生效:/eval、控制台报告页 `/campaigns/:id/report`、公开分享页 `/report/:token`。文案:控制台两页「分享图片」,公开分享页「保存图片」(读者是接收方;Leaderboard 以 `shared` prop 切换,弹窗标题随入口文案)。**报告页 header 既有「分享」(铸链接,ADR 0006)改名「复制链接」**——与工具条图片分享消歧,行为不变(铸 token + 复制 + 手动复制降级)。公开分享页「保存图片」是共享面第一个主动作按钮:**纯客户端生成**(props 快照 + snapdom + 本地下载/剪贴板),不引入任何会话接口依赖,ADR 0006 不变式守住。导出文件名 `hubscope-eval-批次N-YYYYMMDD-HHmm.png`(scope 恒为批次号;范围细节由图内 chips 承担,不进文件名)。
-- **AppHeader 批次进度入口**【已迁 surface brief(GH #50)】(ticket 52 登记):仅登录态渲染(与导航同一过滤时机),位于 header-right 操作按钮左侧;文案「批次运行中 X/Y」(X/Y 口径与榜单进度一致),点击跳 /eval;发现靠 mount + 路由切换重检(refreshAuth watch 先例),仅存在未完成批次时 3s 轮询,settle 即停并隐藏,卸载必清理;禁用橙(failing 专属)与闪烁(闪烁为 failing 告警专属)。
-- **角色 tag 是用户身份角色的唯一展示单元**(ticket 62 登记):AppHeader 右栏当前用户、AdminView 用户列表、UserManager 一律复用,禁止各处自造角色色。词表固定四词,不新增同义词:super_admin→「超级管理员」、admin→「管理员」、operator→「操作员」、viewer→「观察者」(与 spec 0005 角色定义一致)。**角色语义是「权限层级」非「健康度」**,禁用 §3 的 success/warning/danger 状态色——红黄绿是 endpoint 与批次健康信号,状态板读者眼里红=异常、绿=正常,把 super_admin 染红会读作「告警」、operator 染绿会读作「健康」,属语义错位(本映射经设计评审登记,与 §3 两套状态色并列、语义域不混用)。
-- **角色色映射:**
-
-| 角色 | el-tag type | 语义 |
-|---|---|---|
-| super_admin / admin | `primary`(brand teal) | 管理权(全局或 Hub 内全权) |
-| operator / viewer | `info`(中性灰) | 非管理(操作 / 只读) |
-
-  管理权=brand 与 §2「品牌主色=主按钮/链接/当前导航/聚焦态」同向(强调=可支配),非管理=info 中性灰。super_admin 与 admin 同色:区分靠词表(「超级管理员」vs「管理员」)+ 数据域(全局不绑 Hub vs Hub 内),不靠颜色加权——super_admin 稀有但染红代价(告警串扰)高于收益(视觉强调)。与 §3「等待中 中性灰」同为中性语义但词表与语义域不同(角色 vs 批次等待),靠上下文与词表消歧,禁止把等待中灰借用到角色域。并入说明:`primary` type 随主色从蓝 #3B5BFD 切换为 teal(亮 teal-600/暗 teal-500),`info` type 映射到 `--hs-info`,组件零改动,仅 ep-theme.css 映射值变化。
-- **实现集中:** `roleLabel(role)` + `roleTagType(role)` 抽 `web/src/utils/role.ts` 纯函数,供 AppHeader / AdminView / UserManager 复用(口径同 `utils/format.ts` 的集中原则);el-tag 走 `type` 属性语义色、`size="small"`、默认 `effect="light"`,不自着色、不硬编码色值、不引入调色板外色相;未知/未登录角色回落 `info` + 「未知用户」占位(三态精神)。未登录态不渲染角色 tag(与「AppHeader 导航按登录态过滤」同时机)。
-- **协议 tag 是契约家族区分的唯一展示单元**(GH #34 登记,spec 0016):EndpointCard、EndpointTable、EndpointDetailView 三处一律复用同一映射,禁止各组件自写三元表达式。**例外(GH #54 登记):** Dashboard 分组模式下,组内筛选后 entries 协议全部相同时,卡片协议 tag 收敛为组头一枚(组名即协议的 protocol 分组不渲染组头 tag 且卡片同样收敛;flat 模式与混搭组不收敛)——收敛是屏幕密度优化,映射与词表不动,规格见 dashboard surface brief。词表 = 协议原值(anthropic / openai / images_generation / images_edit),不翻译、不缩写。**映射表:**
-
-| 协议 | el-tag type | 语义 |
-|---|---|---|
-| anthropic | `success`(绿) | chat 契约家族 A(存量配色保留) |
-| openai | `warning`(黄) | chat 契约家族 B(存量配色保留) |
-| images_generation | `info`(中性灰) | 图像契约(spec 0016) |
-| images_edit | `info`(中性灰) | 图像契约(spec 0016,前瞻登记,随后端落地自动生效) |
-
-  **配色语义是「契约家族区分」非「健康度」**——与角色 tag 先例(ticket 62)同构的语义域隔离:success/warning 在协议域读作「两个 chat 家族的区分色」,上下文是协议词而非状态词,不构成 §3 状态色的借用;failing 橙与 danger 红仍专属状态域,协议 tag 永不使用。**整体迁出状态色的替代方案被否(GH #34 设计评审裁决):** 全部改 info 会让 anthropic/openai 失去颜色区分(区分度只剩文字),且推翻已批 spec 0016 与 issue AC「anthropic/openai 配色不变」、动用户已建立的视觉习惯——消除理论张力的收益小于迁移成本;存量 chat 配色与状态色的张力登记为已知并接受,出现同卡串扰实证再议。图像双协议同 info 色:区分靠词表原值(images_generation vs images_edit 词本身不同),不为协议域引入新色相;与角色 tag 的 info 灰跨页面不相遇(协议 tag 在状态板/端点详情,角色 tag 在 header/管理台用户域),靠语义域与词表消歧。暗色:info 映射 `--hs-info`(暗色提 gray-500),success/warning 暗色同值,四协议可分辨性 = 色(绿/黄/灰)+ 词,双主题构造性成立。**实现集中:** `protocolTagType(protocol)` 抽 `web/src/utils/protocol.ts` 纯函数(role.ts 先例),未知协议回落 `info`(防御 + 与未来 images_edit 自动兼容);el-tag 走 `type` 属性 + `size="small"`,不自着色。StatusCard 范围 chips(描边文本 chip,含「协议 · {protocol}」)不消费本映射、保持不变。**附记(GH #34 同票):** ModelAdder 提示文案随本映射修订为「添加时系统自动试通该模型的候选协议(chat 模型:anthropic / openai;图像模型:另加 images_generation / images_edit),试通成功的协议自动建立 Endpoint,全部不通则拒绝添加。」——前端添加时不知道 capability(分类在后端 trialProtocolsFor),动态按 capability 措辞不可行,故用中性准确措辞;原「自动建立 anthropic 与 openai 两条 Endpoint」双重失真(试通才建不一定两条;image 模型另加图像协议)。(2026-07-29 修订,GH #43:images_edit 试通随 GH #32 落地,措辞从「另加 images_generation」同步为「另加 images_generation / images_edit」。)
-- 反馈三件套:
-  - 操作结果 → `ElMessage`(成功/失败/警告,见 HubManager 用法);
-  - 破坏性操作(删除、禁用)→ `ElMessageBox.confirm` 二次确认;
-  - 表单校验失败 → 表单内联提示,不用弹窗。
+- **Element Plus 复杂件优先(管理台),签名面自造(决策 8);不引入新 UI 库,不自造表单/表格/分页。**
+- **StatusBadge 是唯一的状态展示组件(三态重建,GH #113):** 「小圆点 + 状态词」双编码——点 9px(sm)/11px(md)本体阶,词 `--hs-text-sm`(md 档 `--hs-text-md`/600)*-text 阶;词与色槽全部来自 `utils/statusDisplay.ts`,禁写状态词字面量;可选 prop `causes` 挂降级成因副标签(§3.1);可选 prop `reason` 经 `title` 提供判定依据;size 'sm'|'md'。**dotless prop 存续但当前零消费方**(v2 列表/物料场景均由「点 + 词」同场承担;旧 dotless 三处封闭清单随信号墙退役)——保留为可用变体,新增消费方须设计评审登记。零动画(闪烁退役);状态变化走 `--hs-transition` 颜色过渡。需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
+- **AppSidebar 是全站外壳唯一组件(GH #112):** 220px 自造侧边栏,构成自上而下——品牌块(BrandMark 24 + Wordmark lg,router-link 回 `/`)→ 导航项(`utils/sidebarNav.ts` 集中:六项 IA 词表、登录态过滤 `visibleSidebarItems`、激活匹配 `isSidebarItemActive`,未登录只见公开两项;线性图标 + 文字,激活 = 浅底 + 品牌蓝文字,无强背景块)→ 批次进度入口(登录态 + 存在未完成批次时渲染,文案「批次运行中 X/Y」,点击深链 `/eval?batch=N`;3s visibilityPoll,settle 即停即隐,卸载清理;ticket 52 逻辑自 AppHeader 迁入)→ 底部(hairline 之上:登录态账号行 = 用户名截断 + `roleLabel` 纯文本角色 + 「退出」按钮;未登录 = 「管理登录」链接 → /login,**ticket 90 口径承接**——公开面不出现醒目登录按钮,登录入口统一在此;版权行「© 2026 HubScope」(GH #122 恢复登记:PublicFooter 退役时 spec 0018 未载有意去除,保守恢复);版本号 mono xs,title 全版本,获取失败静默)。会话状态 mount + 路由切换重检(refreshAuth watch 先例),无状态库。
+- **StatusHero 是状态概览健康指数区的唯一组件(GH #115):** hero 72px 大数字(健康指数,后端聚合直渲,`formatPercentDigits` + tabular-nums)+ 次级「%」(2xl)+ 结论词(xl/600,tone 着色走 *-text 阶,措辞与物料同源 `utils/healthConclusion.ts`)+ 日环比行(`healthDeltaText`,null 整行不渲染——不发明「持平」)+ 统计范围注记(`heroScopeText`「统计范围:N 个启用端点」,xs/secondary)。**防作假不变式:** 健康指数 null → 中性「暂无数据」(3xl placeholder,永不显示 100%);null 折叠进 empty 分支,结论词不读作「全部稳定」。数字补间 500–800ms(`useTweenedNumber`);skeleton 与加载态同高锚定(142px 下限,算术注释在组件内)。
+- **MetricWidgets 是指标区唯一组件(GH #115):** 四格 Apple Widget 风轻容器(白面 + 1px 描边 + radius-lg;hover 上浮 2px + shadow-md——卡片类可点感,非表格行)——24h 可用率(副行 = 日环比,与健康指数同口径同源;null 显「较昨日暂无对比」)/ 24h 请求量(探测总次数,后端聚合)/ 平均延迟(副行恒注口径「启用端点 P50 均值」,批 59 scope 恒一致口径)/ 异常模型数(副行 = 「服务异常 N · 性能下降 N」或「全部稳定」,模型级去重口径见 overview brief)。核心数字 3xl/600 tabular-nums 补间;每格配 `TrendSparkline` 轻趋势线(单调插值、null 断线、无轴无网格、中性墨色,永不与核心数字争层级);标量一律后端聚合直渲或登记口径纯函数,组件不推导。
+- **ModelStatusList 是模型状态列表唯一组件(GH #115,取代 EndpointCard 卡片矩阵):** 高级列表,列 = 模型(第一层级 md/600 墨色,中间截断 tailKeep=12 + el-tooltip 快显 200ms 全显;已停用行弱化 + 「已停用」xs 注)/ 供应商(sm secondary)/ 状态(StatusBadge sm + causes)/ 24h 可用率(`availabilityRateTier` 文字阶着色)/ P95 延迟(sm regular)/ 24h 趋势(UptimeMicroStrip)/ 操作(「详情」text 按钮)。行 = 共享 grid 模板(表头与行同一模板,列 x 对齐是构造属性)+ 行间 hairline + radius-lg;**行 hover 上浮 2px + shadow-md + 卡面底**(本组件行为卡片类可点元素,非 hairline 表格行——与 Leaderboard 矩阵行的豁免相反,差异登记:本列表行自带 radius-lg 圆角盒与 12px padding,读作卡片;矩阵行共享 grid 基线,读作表格);行 role="button" + tabindex + Enter/Space + data-endpoint-id(焦点归还锚点)。分组模式渲染轻分区(section-header = 组名 lg/600 + meta 计数行,计数措辞由父级经显示层映射组句;**旧分组头折叠机械、协议收敛 tag、「本组」指标全部随 OverviewGroupSection 退役**);分区排序与行排序走 `utils/severitySort.ts` 单一秩表(异常模型领先首屏;已停用沉底)。
+- **UptimeMicroStrip 是行内 24h 微条唯一组件(GH #115):** 24 格填满式(格高 14px、flex 槽、2px 间距、radius-xs),tier 与 tooltip 措辞同源 `utils/overviewDots.ts`(与物料分段条构造性一致);纯展示不可点,下钻走整行点击。
+- **ModelDetailPanel 是模型详情面板的唯一组件(GH #116,取代 EndpointQuickViewDialog 与整行深链):** 自造右缘面板(teleport + scrim `--hs-overlay-bg` + 全高 sheet,**不用 el-dialog**——签名面自造,决策 8),五区自上而下:头部(模型名 h2 + StatusBadge md + causes + 已停用注 + status_reason)/ 三指标格(24h 可用率 tier 着色、平均延迟 P50 墨色 + P95 副注、错误率 tier 着色——全部快照推导 `utils/modelDetailPanel.ts`,null 显 `-` 不发明)/ 「24h 延迟趋势」(ProbeLatencyChart,180px)/ 「事件记录」(24h 失败事件:时间 + 流式/非流式 + 原因,空态「24h 内无失败记录」)/ 底部「打开完整详情」主按钮(→ /endpoints/:id)。**快照冻结:** entry prop 是行点击时冻结的快照,overview 10s 轮询不刷新已打开面板;异步区(延迟图 + 事件共享一次 24h 拉取)打开时一次性拉取,三态齐备,失败只污染该区。实时数据走完整详情页。**自造模态面三件套首例:** focus trap(utils/focusTrap.ts)+ ESC/scrim/按钮统一关闭 + 焦点归还触发行(父级承担)——规范条目见 DESIGN.md Signature 节。**不放分享入口**(分享弹窗只从筛选行与完整详情页开,弹窗不叠面板)。
+- **故障记录时间线(/alerts,GH #117):** AlertsView = h1「故障记录」+ 筛选条(模型/类型/时间范围:今天/24h/7d/30d,全部客户端过滤既有 limit 窗口,不发明第二服务端过滤口径)+ 时间线面板(轻容器)——按日分组(h2 日标签),事件行 = 时间 + 轨道节点(tag type 着色)+ 类别 tag + 影响对象(模型名或 group_key;已删除端点回退裸 id 标签,审计面不丢行)+ 持续时间(FIFO 配对,见下)+ 投递状态 + message。持续时间配对口径:`utils/alertTimeline.ts` 纯函数——`pairIncidentDurations` 把每条 down/group_down 与同 scope 内**其后第一条** recovered/group_recovered FIFO 配对,未配对者标「持续中」;`groupEventsByDate` 按本地日历日分组。分页走既有 `limit` 参数(50 → 100 → … → 200 服务端帽),帽到提示缩小范围。词表见 §7(十一 kind)。**AlertHistory 旧表格组件已删除**,告警历史唯一呈现 = 本页。
+- **Leaderboard 是评估榜单的唯一排行展示组件(/eval、/benchmark、/report/{token}、CampaignReportView 复用;v2 轻容器化 GH #118):** 每模型一行——`名次 │ 模型 │ 总分 │ 涨跌 │ 各维度列`,全表 CSS grid 定宽(名次 32 / 模型 260 / 总分 96 / 涨跌 80,维度列 `minmax(0,1fr)` 等分剩余宽,**列宽与权重无关**),列头与行共用同一 grid 模板,**每列 x 位置全表恒定**;模型名截断 + `title` hover 全显。**排序走点列头**(总分与维度列头可点,降序唯一方向,当前列带 ↓ 指示;再点当前列回总分降序——禁前端 reverse 制造第二排序口径;列头 role/tabindex/Enter/Space 键盘可达);family 过滤走榜单上方工具条;行下钻走 `el-dialog`(EvalRunDetailDialog 模式,公开页 `selectable=false` 行不可点);工具条收敛为 family 筛选 + baselineNote + 分享按钮;**涨跌列常显**(贴着总分;行级口径:▲success-text ▼danger-text,持平/不可比/无基准 `–` 占位)。**表格化节奏(ticket 82 沿置):** 列头下 1px `--hs-border` hairline + 行间 1px `--hs-border-light` hairline + 行高恒 46px;行 hover/focus 填满行盒。**前 3 名仪式:** 行左缘 3px `--hs-brand` 竖条(v2 蓝品牌;非前 3 名行保留透明竖条位,列 x 恒定)+ 名次数字 `--hs-text-lg`/600 brand,其余 secondary;live 模式(rank `–`)不渲染竖条。**v2 视觉变更:** 轻容器外壳(白面 + 1px 描边 + radius-lg、桌面 padding 24/32 窄屏 16)、文字场景 *-text 阶、**矩阵行 hover 上浮豁免**(GH #118 裁决:行可点性由 hover 填充 `--hs-brand-soft` + 指针承担——hairline 行上浮破坏共享 grid 基线与仪式竖条几何)。窄屏 768 断点降级卡片式列表(share-materials brief 规格,GH #94)。**/benchmark 页 h1 =「Benchmark」**(GH #118 裁决:与侧边栏 IA 词对齐;「评估榜单」保留为描述性短语/lede)。
+- **Leaderboard 运行中半成品模式(ticket 52 / GH #40 沿置):** 未完成批次下榜单可查看但——① 半成品总分非 null 的行显示**实时名次**(行序位次数字,弱化样式:sm + secondary,**禁前 3 名竖条/大字/徽章**);半成品总分 null 的行名次列 `–` 占位(placeholder);② 行序按**半成品总分降序**(ADR-0005 既有口径:已判维度加权平均,未判维度不进分子分母——禁止「含 null 维度按 0 计」的第二口径),同分 model_id 字典序,null 总分沉底;**列头仍禁点**(实时榜只有总分降序一个口径),保留 family 过滤;轮询行重排不做动画;③ 涨跌箭头列整列隐藏(不占位);④ 已判分维度格子照常;未判分格子 value 槽显**批次状态词**「进行中/等待中/失败」(xs,按 §3.2 批次/运行状态色映射 *-text 阶;**纯文字禁圆点禁闪烁**)+ 空轨道,tooltip「能力点名 · 等待中/进行中/失败」;**run 完成但全部判分失败、score 仍为 null 的格子显「未判分」**(中性 placeholder,非第五状态词);⑤ 总分列墨色数字 + **空轨道不染档色、不填充**——半成品总分构造上不可能被档色读作「差」;行尾灰字注「N 个维度进行中」,有失败 run 追加「· N 个失败」(danger-text);⑥ settle 后名次弱化样式升级为正式名次样式,不做强调动画,转场提示由 ElMessage 承载。
+- **Leaderboard 判分不完整模式(ticket 92,spec 0014 决策 A 沿置;与半成品模式互斥——live 行无 `complete` 键,settle 行无 live-note):** settle 批次 `complete=false` 的行——① 名次 `–` 占位;rank-top 竖条与前三大字按 **`row.complete !== false && index < 3`** 判定(禁纯 index);② 总分 `–` + 空轨道不染档色不填充(无总分即无档色);③ 涨跌 `–` 占位,tooltip「**判分不完整,不参与排名与涨跌**」;④ 维度格子照常渲染真实分数(不掩盖已判分事实);⑤ **水印挂模型列、模型名之下第二行:**「**判分不完整,缺 N/M 维度**」——「缺」字必须保留(裸 N/M 与 ScoreCell 覆盖率水印「·8/10」分子口径冲突);N = `missing_suites` 契约字段,M = missing_suites + 该行非 null suite_scores 数(行级自洽推导,恒 N ≤ M);规格 xs + secondary + font-weight 400 + opacity 0.85,单行优先、物料窄列允许自然换行,**禁截断 + title 兜底**(物料无 hover);⑥ 两模式区分由构造性差异承担(live = 半成品墨色数字 + 动态注,settle 不完整 = dash + 静态水印;涨跌列隐藏 vs 常显;永不同时出现);⑦ **排序:`complete=false` 恒沉底**(与排序列无关),不完整组内 model_id 字典序;/benchmark `sortRows` 镜像同一口径(`complete === false` 视为不完整,`undefined` 视为完整),禁第二排序口径;⑧ 全部模型不完整时榜单照常渲染(行保留、全体 dash),禁空态文案冒充「暂无上榜模型」;live 模式呈现零变化;⑨ **EvalCard 物料同步:** `rank: number | null`(不完整行名次 `–`;rank-top-rail 按 `rank !== null && rank <= 3`)+ 模型名下同款水印 + 总分 `–` 空轨道 + 涨跌 `–`;⑩ 暗色:占位与水印消费 placeholder/secondary 语义令牌(暗色后置期随亮值,暗色 spec 填值)。
+- **ScoreCell 是榜单维度格子的唯一共享组件(ticket 78 沿置;Leaderboard 行与 EvalCard 静态模式双端消费):** `formatScore` 数字(md/600,**档色着色 *-text 阶**)+ 其下 4px 档色细条(轨道 `--hs-bg-hover`,radius-xs)。语义:**轨道中性化**(bg-hover,不用 border-light);**条刻度恒 0–100**(W7 绝对分制的视觉镜像,87.5 的条永远比 100 短一截,跨行跨批次可比);档色按 §3 分数档位(≥80 success / ≥50 warning / <50 danger,阈值以后端口径为准);null(未判分)→ `–` 占位 + 空轨道。**覆盖率水印(防作假硬约束):** done 且 `judged < expected` 的格子分数后随压缩水印「·8/10」(同色弱化 400 + 0.85),**宽度 ≥80px 才渲染**,不够则省略,完整置信信息由 hover tooltip 恒兜底「能力点名 · 分数 · 判分 X/Y 题 · 采样 N 次 · 耗时 X · Token Y」;未判分格子 tooltip 为「能力点名 · 等待中/进行中/失败」。静态物料(EvalCard)无 hover:水印按同一宽度规则渲染(staticMode 只测一次宽度),tooltip 信息不进物料(登记信息差)。props 接缝 `{ name, score, cell, staticMode? }`。总分列是同族变体:`--hs-text-xl`/600 **墨色不染档色** + 6px 档色条(0–100 同刻度),层级靠字号与条粗。
+- **EvalProgressGrid 是批次进度矩阵的唯一组件(沿置;v2 点词分离 GH #120):** 模型 × 能力点状态矩阵,运行中/等待中批次的默认视图;首列模型名截断 + `title`,能力点列 flex 等宽,行随模型数纵向滚动,**不开横向滚动豁免**;单元格四态 = **状态圆点(基色)+ 状态词(*-text 阶)分离着色**(§3.2 批次/运行状态色映射);批次级进度汇总置于网格上方同卡片内;「进度网格 / 实时分数」视图切换走卡片顶部 el-radio-group。**分享页只读模式(ticket 54):** /report/{token} 复用本组件但不渲染视图切换。**批次成本汇总(GH #42):** card-top 批次进度行追加「判分耗时 X · 批次用时 Y · Token Z(输入 I / 输出 O)」——判分耗时 = Σ latency_ms,批次用时 = wall-clock(finished_at − started_at,running 取当前时刻;started_at 缺失显 `-`),两者并列各司其职,**禁互相冒充**;Token 输入/输出分列(sm + secondary;token null 的 run 按 0 计入求和但明细显 `-`);**只读模式(分享面)不渲染成本汇总与成本段**(成本是运营数据,超 ticket 54 公开范围)。窄屏:模型列 96px、cell 词省略留点(GH #94)。
+- **EvalLiveFeed 是批次判分动态流的唯一组件(issue #17 / GH #41 沿置):** 运行中批次题目级判分事件流,行内六要素(时间/模型/评估集/题目/判定方式/得分+耗时),最新在前;**行内展开详情**(否掉弹窗——feed 是流式监控面板):展开区四块纵排(题目全文 / 期望答案——label 随判定方式分叉:rule=「期望答案」、judge=「评分要点」/ 模型作答 / 裁判结果),按需拉取 + 按 id 缓存,展开态 keyed by id,轮询新条目前插不塌;判定方式 tag 用 `el-tag type="info"` 中性灰(**类别属性非健康信号**);得分 `formatScore` + 档色 *-text 阶,**null 分(裁判失败)渲染 `-` + hover「裁判失败,未判分」,永不读作 0 分**(W7 视觉镜像);增量合并与封顶(LIVE_FEED_CAP=200)走 `utils/liveFeed.ts` 纯函数;组件自身零 setInterval(游标与轮询由父级视图持有)。**边界:控制台专属**——期望答案/rubric 是题库内容(W7),永不出分享面与公开页;settle 后卸载,历史批次明细走 EvalRunDetailDialog。
+- **评估成本指标(耗时/Token)呈现约定(GH #42 沿置):** 耗时与 Token 是**成本指标,不是质量指标**——一律中性色(secondary),**禁止与档色/状态色挂钩、禁止闪烁、前端不自定「快/省 = 好」分界线**。格式集中(utils/format.ts):题级 `formatMs`、批次累计 `formatDuration`、Token `formatTokens`(k/M 一位小数),input/output 分列标注。位置两层:批次汇总 = EvalProgressGrid card-top;明细 = 进度网格 cell tooltip + ScoreCell tooltip + 报告页「运行成本明细」表(**仅 settle 批次渲染**——运行中由汇总 + 双 tooltip 承载)。**榜单矩阵本体不加成本列**(列 x 恒定不变式 + 防质量暗示)。**边界:控制台专属**——分享面与静态物料不渲染任何成本指标。
+- **分享报告页运行中信息边界(ticket 54 沿置,防作假核心):** 分享面(/report/{token})未完成批次只公开**运行状态与判分覆盖**(模型 × 能力点四态 + X/Y 题),**不公开任何分数、名次、涨跌**——「实时分数」为登录控制台专属,分享页不提供切换入口;批次 settle 后分享面照常渲染完整榜单。依据:状态/覆盖率是运行元数据而非评估结论;已知并接受的增量:运行中分享面可见 per-model 失败归因(失败是运行事实,不掩盖;瞬时、token 可控、走审计)。分享页不新增任何依赖会话接口的交互入口;「保存图片」纯客户端生成(props 快照 + snapdom + 本地下载/剪贴板),ADR 0006 不变式守住。
+- **TrendChart 是趋势类折线图的唯一通用组件(沿置 + GH #114 轻量化):** 裸图表(不带卡片,布局由父级负责),默认在 null 点断线(未判分批次不得连成假分),支持竖向断点标注线(占位灰虚线,如「v2 起题目变更」);色板走 `utils/chartColors.ts` 单一来源;平滑走 `utils/monotoneSmooth.ts` 单调插值(§3.3;实测点保留 5px 极简点)。
+- **ModelTrendDialog 是报告页行下钻的唯一趋势弹窗(沿置):** 按模型按需拉取 `/api/campaigns/{id}/trends`,分数线(版本断点标注「vN 起题目变更」+ 判分口径断点标注「判分口径已变更」,同一位置双断点合并为一行标注,复用 TrendChart 灰虚线断点机制)+ 探测成功率/延迟并列;已删除模型带「已删除」tag;加载/空/错误三态齐全。
+- **EvalShareDialog 与 StatusShareDialog(分享弹窗,v2 沿置 + 物料重建 GH #121):** 结构机制不变——预览(限高 62vh 滚动)+ 离屏双份捕获(`position: absolute; left: -10000px`,snapdom 祖先 overflow 裁剪规避;**禁 `position: fixed`**——snapdom 按视口宽度重排舞台)+ 复制图片/下载 PNG + 复制降级(非安全上下文置灰 + 提示,下载永可用)+ **恒亮主题捕获**(暗色后置期天然满足;暗色 spec 落地时恢复 `withLightCapture` 级联)+ 失败不锁按钮。入口:状态概览筛选行「分享状态」主按钮(全局快照 = 筛选后 entries,打开即冻结)+ EndpointDetailView 单模型分享 + Leaderboard 工具条「分享图片」(控制台)/「保存图片」(公开分享页,`shared` 口径;仅 settle 批次渲染——半成品分数不外流)。**版式切换(沿置):** StatusShareDialog 预览上方「完整版/紧凑版」radio,默认档 = 打开时视口 <768 一次性判定;文件名紧凑版加 `-compact`。报告页「复制链接」(铸 token,ADR 0006)与图片分享并存消歧。
+- **StatusCard / EvalCard 物料(v2 新视觉重建,GH #121):** 构成与五形态规格见 share-materials surface brief;语义约定全部保留——外框三段(品牌区/范围行 chips/页脚)、**结论必须标注统计范围**(批 56:无筛选「全部端点」,有筛选逐项 chips 一个不漏,零匹配中性「暂无数据」永不读作「全部正常/全部稳定」)、数字与 chips 同源同快照、防作假水印与断点口径、空态不冒充。视觉变更 = 蓝品牌区(BrandMark 蓝渐变 + 品牌条)、三态词表、hero 72 档大数字(完整版)/ 3xl 锚点(480 族)、hairline 卡内分隔、文字场景 *-text 阶、小卡 av-* 类补登(GH #93 潜伏 bug 修复)。
+- **角色 tag(v2 色板重登记,GH #119):** 词表四词不变(超级管理员/管理员/操作员/观察者);映射不变——super_admin/admin → `primary`(解析为品牌蓝 #007AFF)、operator/viewer → `info`(解析为 `--hs-info` 中性灰);语义 = 权限层级非健康度,禁借用状态色。**消费方变更:** AppHeader 已退役;AppSidebar 账号行以**纯文本 roleLabel** 呈现(未用 el-tag,secondary 中性——侧边栏底部密度下无 tag 容器,登记为新消费方口径);UserManager(系统设置页)保持 el-tag。实现集中 `utils/role.ts` 不变。
+- **协议 tag(v2 色板重登记,GH #119):** 词表 = 协议原值(anthropic/openai/images_generation/images_edit);映射不变——anthropic → `success`(解析为 #34C759)、openai → `warning`(解析为 #FF9500)、images_* → `info`;语义 = 契约家族区分非健康度(GH #34 裁决沿置:存量 chat 配色与状态色的张力登记为已知并接受)。实现集中 `utils/protocol.ts` 不变。**消费方变更:** EndpointCard 组内同值收敛例外随卡片退役;现存消费方 = EndpointDetailView 标题行、EndpointTable(模型管理)、StatusCard 范围 chips 与端点小卡模型行。ModelStatusList 行不展示协议列(按协议分组时组名即协议)。
+- **反馈三件套(不变):** 操作结果 → `ElMessage`;破坏性操作 → `ElMessageBox.confirm` 二次确认;表单校验失败 → 表单内联提示。
 - 新组件若为通用展示单元(非业务组合),放 `components/` 并在本文件登记;业务一次性组件就近放视图内。
 
 ## 6. 交互规范
 
-> **视觉交互部分已迁 `DESIGN.md`(GH #49)**;三态/轮询纪律(visibilityPoll、settle 转场口径)属工程行为约定,迁移期仍以本节为准,随语义手册定稿(GH #59)归位。
-
-- **三态必备:** 加载态(skeleton 或 loading)、空态(空数据说明 + 引导操作)、错误态(错误原因 + 重试入口),任何数据区块缺一不可。
-- **长文本:** 模型名/Hub 名/错误信息一律截断 + `title` hover 全显。**具名口径(GH #86,2026-07-31 /impeccable 实机迭代,用户裁决):** EndpointCard 头行模型名的全显从原生 `title` 换 `el-tooltip` 快显(show-after 200ms,样式与全站 tooltip 统一)——原生 title 出现慢(约 1s 系统延迟)、样式不可控;**默认常滚与 hover 跑马灯均被否决**:常滚直接撞「failing 闪烁 = 全站唯一动画,无任何豁免」承重语义(监控墙上「有东西在动」即「有情况」,字标静止裁决同理由),跑马灯读完一个长 ID 需数秒、比 tooltip 即时全显慢,且区分性尾部由中间截断 tailKeep=12 已露出。范围仅 EndpointCard 头行模型名一处,其他 `title` 消费方(组头、榜单等)不动;零动画,「failing 独占全站唯一动画」纪律不破。
-- **轮询:** `setInterval` 必配对清理(组件卸载时);可点汇总卡有反馈态且可再点取消(fix fc8bdb6)。
-- **轮询可见性感知(GH #22 登记,spec 0015 决策 5):** 所有页面轮询一律走共享封装 `utils/visibilityPoll.ts` 的 `createVisibilityPoll`,禁止各处自造 `visibilitychange` 监听、禁止第三套轮询实现。口径:标签页隐藏时——状态板 overview 轮询 10s 降频为 60s(`useOverview.HIDDEN_POLL_INTERVAL_MS`;挂大屏/后台标签页场景降频不停摆,读者切回时数据不至长时间陈旧);批次类轮询(AppHeader 批次进度 3s、/eval 3s、报告页 3s、EvalOpsPanel 批次追踪 1.5s)整段暂停;`visibilitychange` 回前台立即触发一次刷新再恢复原周期(`refreshOnVisible` 默认开)。settle 转场口径不变:批次在隐藏期间 settle 时,回前台的立即刷新即「观察到 settle 的那次响应」,照常停轮询并走 ElMessage 提示。清理纪律不变:卸载时调 `handle.clear()`(替代原 `clearInterval` 对),封装内部同时停表并移除 visibility 监听。
-- **即时反馈:** 点击类操作在请求期间给 loading 或禁用态,不静默等待。
-- **榜单/报告类消费页三态与轮询:** 批次切换器空态(无任何批次 → 空态 + 引导文案)、榜单空态、下钻趋势加载态缺一不可;选中等待中/运行中批次时榜单区呈现进度态(进度 + 批次状态词),不显示半成品名次,失败批次给错误态 + 原因;仅当选中未完成批次时才轮询进度,完成后停轮询并刷新榜单,卸载必清理。
-- **导出物料的复制降级(批 56):** 「复制图片」依赖 `navigator.clipboard.write`,非安全上下文(HTTP 裸 IP)必须置灰 + 提示降级路径(「当前环境不支持复制图片,请使用下载」);下载能力不得受安全上下文影响,永远可用。
-- **批次 settle 转场轮询口径(ticket 52):** 观察到 done/failed 的那次轮询响应即停轮询,渲染以该次数据为准,不再补拉;完成提示走 ElMessage(带批次号与原因,成功用 success、失败用 warning)。同一口径适用于所有渲染未完成批次的消费页:/eval、/campaigns/{id} 报告页与 /report/{token} 分享页(ticket 54),三处转场提示文案与轮询停止语义一致。
-- **自适应展开区约定(ticket 89 设计评审登记,登录验证码区首例;2026-07-29 扩展至披露容器,Overview 分组折叠为第二例):** 条件触发的表单展开区(默认不渲染、后端信号到达才出现)遵守三条——① **禁默认态预留空白占位**(隐藏态零占位,默认布局与无展开区时像素级一致);② **展开走平滑高度过渡**(grid `0fr→1fr` 或 max-height + opacity,时长走 `--hs-transition`,禁瞬现瞬移的布局跳动;整页 flex 居中容器因此产生的重排随过渡平滑完成,可接受);③ **展开区尽量压扁振幅**(同行复合布局优先于堆叠,减少页面重心位移量)。收起同理(登录成功即跳路由的场景可省略收起过渡)。
-  - **扩展:披露容器(disclosure)复用同一机制(2026-07-29 设计评审,OverviewGroupSection 分组折叠登记):** 用户触发的折叠/展开走标准三件套——grid `0fr→1fr` 高度过渡 + 内层 `min-height: 0; overflow: hidden` + **`visibility` 延迟切换**(折叠向 `visibility 0s 0.2s`、展开向 `0s 0s`),时长走 `--hs-transition`;visibility 方案保证折叠态内容退出 tab 序与 a11y 树,与 `v-show` 的 `display:none` 语义等价(a11y 成果不回退),且浏览器不支持 grid 轨道动画时退化为瞬切(与 v-show 现状等价,优雅降级)。披露指示器(折叠箭头)走**单图标 `transform: rotate` 过渡**,禁双图标瞬切。**双轨纪律(GH #52 数据驱动不动画的延伸):仅用户点击触发过渡;数据/筛选驱动的折叠与恢复(watch 自动折叠等)走 no-motion 瞬切**,防多组同时高度补间噪音。reduced-motion 下本类过渡全部归零。
-- **动效编舞的 JS 阶段门控(2026-07-29 速览弹窗批登记;首例 2026-07-30 随 morph 编舞退役,现无在编多阶段动效,本条作为未来编舞的纪律保留):** 多阶段动效的阶段时序(setTimeout/rAF 延迟)**不受** semantics.css 全局 `transition: none` 归零兜底,必须单独做 reduced-motion 门控——matchMedia 一次性判断(onBannerInspect 同模式),reduced-motion 下所有阶段延迟归零、终态直呈,否则延迟本身读作卡顿。阶段时长与延迟常量集中在编舞实现处定义并注释互指,禁止散落字面量;编舞逻辑抽纯函数(vitest 覆盖 reduced-motion 双分支),组件只执行。
-- **位图物料渲染纪律(ticket 89 设计评审登记,图形码首例):** 后端生成的位图(图形码 PNG 等 data URI)是物料性质的图片,**不走语义令牌、不做暗色适配、禁 CSS 滤镜**(invert/hue-rotate 等)——滤镜改动配色属调色板外操作且损害人类可读性;统一渲染规约 = 固定尺寸容器(尺寸按后端契约声明为常量并注释互指,不属 px 字面量禁令)+ `1px solid var(--hs-border)` 描边 + `--hs-radius-sm` 圆角(控件层级),容器在加载/失败态保持同尺寸防布局位移,失败态容器内给原因 + 重试入口(§6 三态)。暗色下直接渲染亮底位图可接受,描边容器使其读作有边界的图片而非残留亮块。
+- **三态必备(不变):** 加载态(skeleton 或 loading)、空态(空数据说明 + 引导操作)、错误态(错误原因 + 重试入口),任何数据区块缺一不可。**失败不冒充空态**(EndpointDetailView 评估区先例:加载失败 ≠ 暂无数据)。
+- **长文本(不变 + v2 具名):** 模型名/Hub 名/错误信息一律截断 + hover 全显;模型名走中间截断(`utils/truncate.ts` splitMiddle,tailKeep=12,尾段保区分度后缀);全显走 `el-tooltip` 快显(show-after 200ms,GH #86 裁决——原生 title 约 1s 系统延迟且样式不可控;**常滚与 hover 跑马灯均否决**——「有东西在动」读作「有情况」,且慢于即时全显)。
+- **轮询(不变):** `setInterval` 必配对清理;一切轮询走 `utils/visibilityPoll.ts` 的 `createVisibilityPoll`(状态概览 overview 10s、隐藏降频 60s、回前台立即刷新;批次类 3s/1.5s 隐藏暂停),禁第三套轮询实现;卸载调 `handle.clear()`。
+- **批次 settle 转场轮询口径(ticket 52,不变):** 观察到 done/failed 的那次轮询响应即停轮询,渲染以该次数据为准;完成提示走 ElMessage(带批次号与原因);/eval、报告页、/report/{token} 三处同口径。
+- **即时反馈(不变):** 点击类操作请求期间给 loading 或禁用态;可点汇总项有反馈态且可再点取消。
+- **榜单/报告类消费页三态与轮询(不变):** 批次切换器空态、榜单空态、下钻趋势加载态;未完成批次呈现进度态不显示半成品名次;仅选中未完成批次时轮询。
+- **导出物料的复制降级(批 56,不变):** 「复制图片」非安全上下文置灰 + 降级提示;下载永可用。
+- **自适应展开区与披露容器(ticket 89 + GH #52 双轨,不变):** 条件触发展开区禁默认态占位、平滑高度过渡(grid `0fr→1fr` + 内层 `min-height:0/overflow:hidden` + `visibility` 延迟切换)、压扁振幅;**仅用户点击触发过渡;数据/筛选驱动的折叠与恢复走 no-motion 瞬切**;reduced-motion 由全局归零覆盖。
+- **动效编舞的 JS 阶段门控(不变):** 多阶段动效延迟不受 CSS 归零兜底,必须 matchMedia 门控;常量在编舞实现处定义并注释互指;编舞逻辑抽纯函数(vitest 覆盖 reduced-motion 双分支)。当前在编:数字补间(numberTween)与图表入场(chartMotion)均按此落地。
+- **位图物料渲染纪律(ticket 89,不变):** 后端位图(图形码 PNG 等)不走语义令牌、不做暗色适配、禁 CSS 滤镜;固定尺寸容器 + 1px border 描边 + radius-sm;加载/失败态同尺寸防位移,失败给原因 + 重试。
 
 ## 7. 文案规范
 
-- 界面一律简体中文;**状态词表分三套,互不混用:** endpoint 状态=**正常 / 降级 / 宕机 / 告警**(与 StatusBadge LABELS 一致,不新增同义词);批次/运行状态=**等待中 / 运行中 / 已完成 / 失败**(沿用 campaignStatusLabel 既有口径);告警事件类别词表见下条。禁止把一套词借用到另一语义域(如批次失败不得称「宕机」;唯一具名借字例外为「厂商组告警」,见下条)。
-- **告警事件词表**(spec 0017 ticket 5 登记,GH #63–#68,2026-07-30;审计/历史域的类别词表,与两套状态词表并列、互不混用):告警历史的事件类型共九 kind,中文标签集中 `web/src/utils/alertKind.ts`(role.ts 集中原则先例,组件内禁写词字面量)——既有五词不变:down→「故障」/ recovered→「恢复」/ score_drop→「分数大跌」/ score_drop_skipped→「对比跳过」/ test→「测试」(「未发送」是 sent_ok 列的标记,非 kind 标签,不入本词表);spec 0017 新增四词:group_down→「厂商组告警」/ group_recovered→「厂商组恢复」/ batch→「聚合发送」/ quiet_summary→「静默摘要」;未知 kind 回落「未知类型」占位。**语义边界:本词表描述「这条事件是什么」,是审计/历史域的类别词,不承载 endpoint 健康状态语义,§3 语义色映射不动。** tag type 映射:既有五词维持实现现状(down→danger、recovered→success、score_drop/score_drop_skipped→warning、test→info);spec 0017 新增四词(main 裁决):group_down→danger、group_recovered→success(与 down/recovered 同向);batch/quiet_summary→info(投递形态记录,非健康信号,同 test→info 先例);未知 kind 的 tag type 回落 info(中性,不冒领状态色)。**借字例外(spec 0017 ticket 5 裁决,附录 B 第 18 项):** 「厂商组告警」的「告警」借自 endpoint 状态词表,是「互不混用」纪律下的唯一具名例外——此处「告警」是事件类别词而非状态词,语境限定告警历史表,与 endpoint 状态域不相遇;`utils/alertKind.ts` 注释与本条互指,禁「修正」为其他词。
-- **降级成因副词表**(ticket #7 登记,spec 0013;endpoint 状态域,与状态词表并列、互不混用):**可用性**(24h 成功率低于 95%:时通时不通,宕机前兆,偏紧急)/**延迟**(24h P95 超过 2× 7 天 P50 基线:次次都通但变慢,偏观察)。仅作为「降级」的成因修饰出现(用法见 §5 StatusBadge 降级成因副标签条),**不是第五状态词**;endpoint 四状态词表不变;批次/运行域不借用;评分域既有文案(如 score.go「性能降级,封顶 80 分」)不受本词表管辖、不改动。
+- 界面一律简体中文;**词表分四套,互不混用:**
+  - **域模型 endpoint 状态(后端域,界面不直接显示):** 正常 / 降级 / 宕机 / 告警(W5;出现于 API、告警管线、代码注释)。
+  - **显示层三态(界面唯一状态语言):** 稳定 / 性能下降 / 服务异常(§3.1,唯一映射 utils/statusDisplay.ts,不新增同义词)。
+  - **批次/运行状态:** 等待中 / 运行中 / 已完成 / 失败(campaignStatusLabel 既有口径)。
+  - **告警事件类别:** 见下条。
+- **告警事件词表(十一 kind,GH #98 九词扩十一词;审计/历史域的类别词表,与状态词表并列、互不混用):** 中文标签集中 `web/src/utils/alertKind.ts`(集中原则先例,组件内禁写词字面量)——down「故障」/ recovered「恢复」/ score_drop「分数大跌」/ score_drop_skipped「对比跳过」/ test「测试」/ group_down「厂商组告警」/ group_recovered「厂商组恢复」/ batch「聚合发送」/ quiet_summary「静默摘要」/ **retire_pending「待退役」/ retired「已退役」**(GH #98,spec 0018·端点退役 T4——该 spec 与 UI v2 的 spec 0018 编号撞车,见附录第 12 项);未知 kind 回落「未知类型」。**语义边界:本词表描述「这条事件是什么」,不承载健康状态语义,§3 语义色映射不动。** tag type 映射:down→danger、recovered→success、score_drop/score_drop_skipped→warning、test→info、group_down→danger、group_recovered→success、batch/quiet_summary→info(投递形态记录,非健康信号)、**retire_pending→warning(需要注意)、retired→info(投递记录,非健康信号)**;未知 kind 回落 info。**借字例外(spec 0017 裁决沿置):** 「厂商组告警」的「告警」借自域模型状态词表,是「互不混用」纪律下的唯一具名例外——此处「告警」是事件类别词,语境限定故障记录页,与显示层状态域不相遇;`utils/alertKind.ts` 注释与本条互指,禁「修正」为其他词。
+- **降级成因副词表(ticket #7,spec 0013,不变):** **可用性**(24h 成功率低于 95%)/ **延迟**(24h P95 超过 2× 7 天 P50 基线);仅作「性能下降」的成因修饰出现(§3.1 副标签),**不是第四显示状态词**;批次/运行域不借用;评分域既有文案不受管辖。
 - **分数展示统一 0–100 整数**(null → `-`),`formatScore` 集中于 `utils/format.ts`,组件内禁止自写 `toFixed` 分数格式;0~1 原始分只存在于 API 层。
-- 按钮用动词短语(「触发同步」「新建 Hub」),不用「确定/提交」以外的泛词;错误消息必须带原因,不只说「失败」。
-- 数字与时间格式统一走 `utils/format.ts`,不在组件内各写格式化;评估成本格式同此集中(GH #42 登记):题级耗时 `formatMs`(ms/s)、批次累计耗时 `formatDuration`(分/小时档)、Token `formatTokens`(k/M 缩写一位小数),规格见 §5「评估成本指标呈现约定」条。
+- 按钮用动词短语(「触发同步」「新建 Hub」);错误消息必须带原因,不只说「失败」。
+- 数字与时间格式统一走 `utils/format.ts`;评估成本格式同此集中(GH #42):题级耗时 `formatMs`、批次累计耗时 `formatDuration`、Token `formatTokens`(k/M 缩写一位小数),输入/输出分列标注;成本指标中性色不挂档色(§5 成本约定)。
+- **中文物料全角标点:** 界面与物料中文文案用全角标点(zh-punct skill 纪律:fix/check/selftest 三模式 + 线上回读复验);代码注释英文。
 
 ## 8. 规范的维护
 
 - 本文件(业务语义手册)由 `plan` agent 维护;设计评审中做出的新约定按层回写——视觉/布局 → DESIGN.md,页面/组件 → surface brief,业务语义 → 本文件(回写前置与批次节奏见 collaboration.md §3),不回写视为未约定。
-- 本文件与 [load-bearing-walls.md](./load-bearing-walls.md) 的关系:本文件管「业务语义一致性」,承重墙管「系统语义」;冲突时以承重墙为准(如状态机红黄绿语义由 W5 决定,本文件只做语义映射与词表约定)。
-- 与 ProxyHub 上游规范的关系:令牌刻度与审美纪律源自 proxyhub `docs/design-frontend.md`(视觉层已在 DESIGN.md 登记);HubScope 侧业务语义(状态词表、防作假约定、failing 例外、导出物料)以本文件为准,不回写上游;上游刻度修订时由 `plan` agent 评估同步(落 DESIGN.md)。
+- 本文件与 [load-bearing-walls.md](./load-bearing-walls.md) 的关系:本文件管「业务语义一致性」,承重墙管「系统语义」;冲突时以承重墙为准(状态机四态语义由 W5 决定,本文件只做显示层映射与词表约定)。
+- 与 ProxyHub 上游规范的关系:**已解除**(ADR 0015)——v2 起 HubScope 视觉体系独立演化,不回写上游,不再跟踪上游刻度。
 
 ---
 
-## 附录 A:旧 token → 新 token 完整映射表
+## 附录:v2 裁决登记(本批新立;旧附录 A/B 随旧世界作废,历史在 git)
 
-> **已迁 `DESIGN.md`(GH #49)**——令牌取值以 DESIGN.md frontmatter 为唯一 normative 来源;本表保留为 ticket 73 品牌并入的历史映射档案,不再更新。
-
-| 旧令牌(单层 tokens.css) | 新令牌 | 取值变化 |
-|---|---|---|
-| `--hs-brand` `#3B5BFD` | `--hs-brand`(semantics) | 亮 teal-600 `#0c8078` / 暗 teal-500 `#0faea2` |
-| `--hs-brand-hover` `#6180FF` | `--hs-brand-hover` | 亮 teal-500 `#0faea2` / 暗 teal-400 `#30c4b8` |
-| —(原无) | `--hs-brand-active`(新增) | 亮 teal-700 `#0a6963` / 暗 teal-600 `#0c8078` |
-| `--hs-brand-soft` `#EEF2FF` | `--hs-brand-soft` | 亮 teal-50 `#effcfa` / 暗 teal-900 `#063f3d` |
-| `--hs-text-primary` `#1F2329` | `--hs-text-primary` | 亮 gray-900 `#0f1b20` / 暗 `#e2e8f0` |
-| `--hs-text-regular` `#3E4450` | `--hs-text-regular` | 亮 gray-700 `#324249` / 暗 `#c3c7cd` |
-| `--hs-text-secondary` `#646A73` | `--hs-text-secondary` | 亮 gray-500 `#617379` / 暗 `#8a8f98` |
-| `--hs-text-placeholder` `#9CA3AF` | `--hs-text-placeholder` | 亮 gray-400 `#91a3a8` / 暗 `#5c616a` |
-| `--hs-border` `#E5E6EB` | `--hs-border` | 亮 gray-200 `#e0e8ea` / 暗 `#2a2d33` |
-| —(原无,原 lighter/extra-light 走 --el 派生) | `--hs-border-light`(新增) | 亮 gray-100 `#eff4f5` / 暗 `#23262b` |
-| `--hs-bg-page` `#F7F8FA` | `--hs-bg-page` | 亮 gray-50 `#f7fafb` / 暗 `#0f1115`(hero panel 中性浅底同源) |
-| `--hs-bg-card` `#FFFFFF` | `--hs-bg-card` | 亮 `#ffffff` / 暗 `#17191d` |
-| —(原无) | `--hs-bg-hover`(新增) | 亮 gray-100 `#eff4f5` / 暗 `#1f2227` |
-| `--hs-status-failing` `#FF4500` | `--hs-status-failing` | 亮 `#c2410c` / 暗 `#fb923c`(§3 裁决) |
-| `--hs-text-xs/sm/md/lg/xl/2xl` 12/13/14/16/20/24 | 同名保留 | 不变;新增 `--hs-text-display` 28px |
-| `--hs-radius` 6px | **撤销** | 卡片/弹窗 → `--hs-radius-lg` 8px;按钮/输入框 → `--hs-radius-sm` 4px |
-| `--hs-radius-sm` 4px | `--hs-radius-sm` 4px | 不变(tag/徽标,扩为控件默认) |
-| `--hs-radius-xs` 2px | `--hs-radius-xs` 2px | 不变(分段条专用) |
-| —(原无) | `--hs-radius-full` 999px(新增) | 胶囊 chip |
-| `--hs-shadow-card` 双段轻阴影 | **撤销** | 静态卡片改 `shadow="never"` + 1px `--hs-border` 描边 |
-| `--hs-shadow-hover` `0 4px 12px rgba(31,35,41,.1)` | `--hs-shadow-md` | 亮 `0 2px 8px rgba(15,27,32,.08)` / 暗 `0 2px 12px rgba(0,0,0,.4)` |
-| —(原无) | `--hs-shadow-sm` / `--hs-shadow-lg`(新增) | 刻度见 §2 |
-| EP 功能色 success `#67C23A` / warning `#E6A23C` / danger `#F56C6C` | `--hs-success` / `--hs-warning` / `--hs-danger`(ep-theme.css 映射) | `#059669` / `#d97706` / `#dc2626`(亮暗同值) |
-| 组件内 `--el-color-*`(含 light-9 浅底、dark-2 深阶)消费 | `--hs-*` / `--hs-*-soft` 语义令牌(ticket 73 收尾,~100 处) | 功能浅底亮主题 = 混白 90%、暗主题 = 混暗底 82%;dark-2 深阶直接用功能色本体(语义等价) |
-| EP `--el-color-primary` 及预生成派生阶 | ep-theme.css color-mix 映射 | 派生阶不再预生成字面量,改 color-mix(亮混白/暗混黑) |
-| `hs-blink` @keyframes | 同名保留 | 不变(全局唯一,semantics 层定义) |
-| ECharts `CHART_COLORS`(TimeSeriesChart/TrendChart 各一份) | `utils/chartColors.ts` 单一来源,`CHART_COLORS_LIGHT/DARK` 双份 | 色值按 §3 新映射;brand→teal、failing→橙、文本/描边→青灰 |
-| `web/public/logo.png` | **删除** | BrandMark.vue + Wordmark.vue 替代(AppHeader/LoginView/StatusCard/favicon) |
-
-## 附录 B:裁决记录(19 项)
-
-> **归属拆分(GH #59 定稿):** 视觉类裁决(2 字阶 / 3 圆角 / 5 BrandMark / 6 暗色 / 7 令牌架构 / 8 token 映射)规格本体已迁 DESIGN.md,此处保留裁决理由备查;11(LatencySparkline 形态)已迁 dashboard surface brief;语义与评估域裁决(1 failing 例外 / 4 批次运行色 / 9 榜单矩阵化 / 10 api-contract / 12 判分不完整 / 13 实时排名与成本)留存本文件。全部 13 项无丢失。
-> **编号合并注记(2026-07-30,main 合批):** 14–16 为 ui-ux-impeccable 支系(warning 对比度 / success 文字深阶 / Dashboard 实机迭代),17–18 为 main 支系 spec 0017(UptimeStrip 组级分段条 / 告警事件词表)——两支系并行期间各自从 13 续号,合并时本支系续号优先、main 支系顺延后移(物理顺序 1–13、17、18、14、15、16 为合并留痕,不重排);历史引用已同步:UptimeStrip §5 条「附录 B 第 14 项」→ 第 17 项、§7 借字例外条「附录 B 第 15 项」→ 第 18 项。
-
-1. **failing 色选档:** 亮 orange-700 `#c2410c` / 暗 orange-400 `#fb923c`。理由:amber 加深(#b45309)与 warning 同族仅差一档明度,降级/告警并排不可分辨,且「更深的黄」不比红更紧急;orange 在黄红之间建立色相级第三档,亮档白底 5.1:1 过 AA。登记为「不引入新色相」纪律的唯一例外(告警辨识度=W5 告警可信度,收益大于纪律成本)。
-2. **字阶:** 原六档平移 + 新增 `--hs-text-display` 28px;HealthBanner 大字结论与 StatusCard 可用率大数字升档(原 2xl 24px)。理由:消费页 3 秒场景的第一视觉锚点应由大数字承担,工具风层级靠字号表达;display 档禁用于管理台标题。
-3. **圆角:** 撤销 6px 默认档,最终四档 2(分段条,存续)/ 4(控件)/ 8(卡片面板弹窗)/ 999(胶囊)。理由:对齐 ProxyHub 刻度,6px 无归属——控件偏松、卡片偏紧;分段条 2px 语义特殊(填满式时间条)保留。
-4. **批次/运行状态色:** 运行中 = brand teal(亮 teal-600/暗 teal-500),随主色切换;角色 tag `primary` 同理零改动换 teal,`info` 映射 `--hs-info`(暗色提 gray-500)。理由:两域都引用语义令牌而非字面量,主色切换天然生效。
-5. **BrandMark 差异化(2026-07-24 修订):** 初版裁决为与 ProxyHub 完全同构(同字形同渐变),理由为用户群不重叠、消歧靠字标;**交付后用户实机反馈「不合群」,修订为差异化字形**——HubScope 用瞄准镜字形(圆环 + 十字准星刻度 + 中心脉冲点,监控隐喻),与 ProxyHub 的 hub 辐条字形在图形层即区分;渐变与圆角方块保持同源(家族感由色板与容器承担,个性由字形承担)。BrandMark 永远与 Wordmark 同场出现(AppHeader/LoginView/StatusCard)的约束不变。
-6. **暗色规范:** AppHeader 右栏图标按钮切换(未登录可用),`localStorage('hs:dark')` 持久化 + index.html 首屏防闪内联脚本;默认亮、不跟随系统(投屏/截图场景主题确定性优先);导出物料(StatusCard/分享报告导出)恒亮主题渲染;ECharts 镜像双份 + 主题切换重渲染。
-7. **令牌架构:** 迁三层(tokens/semantics/ep-theme),保留 `--hs-` 前缀。理由:降低存量 diff 与 review 风险,多 Hub 产品生态下避免 `--ph-` 混读;层级与纪律完全对齐上游,前缀差异仅为命名空间。
-8. **既有 token 映射:** 全表见附录 A;要点——hero panel 中性浅灰底 = `--hs-bg-page`(同源语义「页面级中性底」);`--hs-brand-soft` → teal-50(亮)/teal-900(暗);`--hs-shadow-card` 撤销改描边分层(工具风审美第 2 条);EP 派生阶从预生成字面量改 color-mix。
-9. **榜单矩阵化(ticket 78/79,spec 0009):** 堆叠条退役、矩阵列式上榜。理由:① 段宽随分数变使固定标尺对齐成为结构性不可能(SuiteRuler 只对第一行准确,family tag 变宽致 bar 左缘漂移);② 五色分类色只表达「哪个维度」不表达强弱,且与功能色撞车(满分读作「危险/警告」);③ 档色(≥80/≥50 阈值不动)同时承担维度格子与总分条的强弱表达,0–100 恒刻度是 W7 绝对分制的视觉镜像。排序只降序(服务端语义,禁前端 reverse 第二口径);`--hs-suite-1..6` 与 `--hs-text-on-color` 随堆叠条一并退役。
-10. **api-contract OverviewEntry 段顺手补齐(ticket #8,main 裁决):** 契约 OverviewEntry 段既存漂移(缺 `dots_24h`/`family`/`capability`/`score`/`score_reasons`/`eval_score` 等字段),本票在新增 `baseline_p50_ms` 与桶 `p50_ms` 文档时顺手把 OverviewEntry 段补齐到实现现状;响应级聚合字段(`by_*`/`enabled_endpoints`/`availability_24h`)仍另议,不在本票范围。
-11. **LatencySparkline 形态迭代(ticket #8 后续,用户 2026-07-28 裁决):** 实机反馈「有点丑」(截图证据:P50 2.22s vs 阈值 ~7s,曲线贴底蠕动、阈值虚线喧宾夺主读作边框)。三改:① 量程从「0 锚定 + 阈值恒在」(max(阈值, 峰值)×1.1)改**数据量程驱动** max(峰值×1.25, 1000ms 下限)——曲线形态满幅可见,下限防亚秒抖动放大成伪形态;② 阈值虚线改**按需出现**:出现 ⟺ 阈值 ≤ yMax(构造性条件,等价峰值≥阈值×0.8,零魔幻常数;否掉 60% 触发常数——触发时阈值在 canvas 外,要么扩量程重新压扁曲线、要么画屏外线,均不成立),不出现零残余指示、tooltip 兜底、不加迟滞;③ 曲线加 `--hs-bg-hover` 实心浅填充(表面令牌类别正确、亮暗双值构造性成立、零新色相;否掉 text-secondary 叠 opacity——文字令牌当涂料是类别误用),填充随段断、孤立点不填充。**附记(同日):** 全失败桶 tooltip 措辞修正——p50 null 桶按桶事实二分(无探测→「无数据」;全失败→「探测全部失败,无延迟样本」),取代 ticket #8 空桶/全失败桶同词登记,无整卡级特判,占位轨道形态不变(§5 LatencySparkline 条目)。
-12. **判分不完整呈现(ticket 92,spec 0014 决策 A,2026-07-28 设计评审):** ① 水印文案定稿「判分不完整,缺 N/M 维度」——「缺」字保留:裸「N/M」与 ScoreCell 覆盖率水印「·8/10」(分子=已判数)的既有分子口径冲突,会误读为「已判 N/M」;N = missing_suites(契约定稿即冻结,取代票正文「N=有分维度数」),M = missing_suites + 该行非 null suite_scores 数(行级自洽推导,门槛分母无现成字段;「判完后题库清空」边缘把已清空但有分的维度计入 M,与行内可见分数一致,恒有 N ≤ M)。② 水印位置取**模型列模型名之下第二行**,否掉票面「总分列 dash 之下」:语义主语是模型(判分不完整是模型的判定状态,dash 是后果);总分列 96px(页面)/64px(物料)下两至三行折行排版差且顶破 ticket 82「行高恒 46px」不变式,模型列 260/150px 单行可容(≈124px),行高保持 46px。③ 两模式(live 半成品 vs settle 不完整)区分不由名次形态承担(共享 `–` 占位,登记为允许复用),由三重构造性差异承担:半成品墨色数字 + 动态注 vs dash + 静态水印结论;涨跌列整列隐藏 vs 常显;live 行无 complete 键 / settle 行无 live-note,永不同时出现。④ rank-top 仪式感按 `complete !== false` 判定,否掉纯 index 判定(完整模型 <3 时 index<3 命中不完整行)。⑤ /board sortRows 镜像增补「complete===false 恒沉底 × 任意排序键」,`undefined` 视为完整与后端 rankable() 同口径——既有 null 沉底逻辑不充分(不完整行维度分非 null,按 suite 列排序会混入中游)。
-13. **实时排名 + 行内展开详情 + 成本指标(GH #40/#41/#42,2026-07-29 设计评审,三票同区域一次评审):** ① **实时排序键 = 半成品总分(ADR-0005 归一化口径:已判维度加权平均,未判维度不进分子分母)**,否掉「含 null 维度按 0 计」——0 计口径让先判完低权重/简单维度的模型被系统性压低,且与后端既有 totalScore 函数双口径;弱化样式定稿 = sm/secondary 位次数字、无前 3 名仪式感(竖条/大字/徽章),null 总分沉底留 `–`;列头保持禁点——实时榜只有总分降序一个口径,禁列头切换制造第二排序口径(与 spec 0009「禁前端 reverse」同纪律)。② **未判分格子内联批次状态词**(进行中/等待中/失败,纯文字禁圆点)取代裸 `–`,解决「维度实时进度在分数视图不可见」——圆点 + 词是进度网格的形态,分数视图用文字避免第二状态灯观感,且不增行高(46px 不变式不破)。③ **行内展开否掉弹窗**(用户决策):feed 是流式监控面板,弹窗打断「盯着流」场景;详情按 result id 按需拉取 + 缓存,防轮询载荷膨胀;展开态 keyed by id,新条目前插不塌。期望答案块 label 随判定方式分叉(rule=「期望答案」/ judge=「评分要点」),与行内判定方式 tag 同口径。④ **成本指标中性化**:耗时/Token 是成本不是质量,禁档色挂钩、禁前端自定分界线;榜单矩阵不加成本列(列 x 恒定不变式 + 防质量暗示),明细走双 tooltip + 报告页独立明细表;成本数据控制台专属(运营数据,超 ticket 54「运行状态与覆盖」公开范围);汇总行形态(main 裁决 2026-07-29,评审后修订)=「判分耗时 X · 批次用时 Y · Token Z(输入 I / 输出 O)」——判分耗时 = Σ latency_ms(成本视角),批次用时 = wall-clock(started/finished 推导,running 取当前时刻),两者并列各司其职,取代评审初稿「总耗时 = 判分累计,非 wall-clock」的单一口径。
-17. **UptimeStrip 组级分段条(GH #64,spec 0017 ticket 1,2026-07-30 设计评审):** ① **共享接缝定在纯函数层而非 DOM 层**——EndpointCard 卡内条不改造为 UptimeStrip:卡内条与 LatencySparkline 存在 GAP=2px x 对齐不变式 + 26px 标签对齐(§5 LatencySparkline 硬约束),把该耦合拖进共享组件的代价大于去重收益;两条的着色/dotTier/tooltip 措辞经 `utils/overviewDots.ts` 同源消费,一致性由构造保证。② **组条随筛选重算 vs 标头标量为后端未筛选口径,登记为已知并接受**——组条数据源与卡片矩阵是同一份筛选后 enabled entries(条与矩阵构造性永不矛盾),标头「24h 可用率/均延」仍为后端未筛选口径,有筛选时数值可不一致;沿批 59「内部自洽优先于与页面逐字相等」先例(分组卡均延口径同例)。(2026-07-31 GH #85 起「本组:」指标自组头移至组条行,上文「标头」定位词随之失效,数值口径不变。)③ 组级条无行内标签、无 sparkline 对齐约束,其 2px 间距是形态沿用、非 GAP=2px 共享常量,不受「改动必须同步」纪律管辖。④ 空组/全禁用 → 24 格全灰 + tooltip 裸「无数据」,永不读作「全部正常」(批 56 空态纪律镜像);聚合探测加权禁端点平均,禁用端点陈旧探测不染色。
-18. **告警事件词表与借字例外(spec 0017 ticket 5,GH #63–#68,main 裁决 2026-07-30):** ① **登记第三套词表**——告警事件类别九 kind(既有五词 down「故障」/ recovered「恢复」/ score_drop「分数大跌」/ score_drop_skipped「对比跳过」/ test「测试」不变,新增 group_down「厂商组告警」/ group_recovered「厂商组恢复」/ batch「聚合发送」/ quiet_summary「静默摘要」,未知回落「未知类型」),中文标签集中 `utils/alertKind.ts`(role.ts 集中原则先例);语义域是审计/历史(「这条事件是什么」),非健康状态,§3 语义色映射不动。② **借字例外:** 「厂商组告警」的「告警」借自 endpoint 状态词表,为「两套词表互不混用」纪律的唯一具名例外——告警事件词表描述的是事件类别而非 endpoint 健康状态,语境限定告警历史表,与 endpoint 状态域不相遇;`utils/alertKind.ts` 注释与本文件互指,禁「修」字。③ **tag type 映射:** group_down→danger、group_recovered→success(与 down/recovered 同向);batch/quiet_summary→info——投递形态记录非健康信号,同 test→info 先例。
-
-14. **warning 亮值对比度修订(2026-07-29,impeccable audit 发现 + plan 设计评审):** `--hs-warning` 亮值 `#d97706` → **`#a16207`**(yellow-700),暗值保留 `#d97706` 分档(tokens.css 新增 `--hs-warning-dark`,semantics.css `html.dark` 块覆盖)。理由:① 旧值白底实测仅 **3.19:1**(相对亮度公式实测,比 audit 估计的 3.9 更糟),小字场景(ScoreCell 黄档分数、降级状态词、组头计数)全不过 WCAG AA 4.5:1;② 新值 4.92:1 有余量且是具名刻度档(非刻度外孤立值);③ **可分辨性不为 AA 让路**:否掉 amber-700(历史候选值,对 failing ΔE 仅 6.9、色相仅差 9°——精确复现附录 B 第 1 项的邻近问题),选 yellow-700 使色相角远离 failing(ΔE 16.3 接近现状 18.4,远高于已登记先例 failing-danger 的 9.6),消歧从明度单通道升级为色相+明度双通道;④ 暗值保留是因暗底实测 5.93/5.52 全达标,改动无收益;暗值升级 yellow-500(ΔE 升至 18.7)登记为后续可选。连带:chartColors LIGHT 镜像同步,Vue 组件零改动(全消费令牌),分段条黄格(图形 3:1 门槛)从压线 3.19 升至 4.92 纯改善。附记:success `#059669` 白底实测 3.77 同类不过 AA,由「success 文字场景用 dark-2 阶」既有条款兜底,同等处置另立票。
-
-15. **success 文字深阶与词随灯着色(2026-07-30,GH #69 批 T1/T2,plan 设计评审;处置结论 = 关闭 GH #62):** ① success 本体 `#059669` 白底 3.77:1 不过 AA(GH #62 实测,与第 14 项 warning 同病)。处置与 #14 **不同**:warning 是改本体(它同时承担文字),success 改本体会牵连四色体系、暗色双编码与全站图形填充,故走**文字/图形分工**——本体保留为图形色(圆点/条形/分段格/soft 浅底,3:1 图形门槛 3.77 过),新增 `--hs-success-text` 令牌专供文字场景:亮 `#047857`(emerald-700,白底 5.48:1;与 EP dark-2 color-mix 派生 #047854 天然同值,机制对齐 EP 刻度) / 暗 `#10b981`(emerald-500,暗卡 6.94:1)。候选对比(亮):#059669 3.77 / **#047857 5.48(选)** / #065f46 7.68(过深,与墨色正文层级混淆,否);候选(暗,暗卡 #17191d):**#10b981 6.94(选)** / #34d399 9.15(过亮呈霓虹感,与暗色克制基调冲突,否)。与 warning 新值 #a16207 的可分辨性:不同色相族(绿 vs 黄),无邻近问题。② **词随灯着色**:StatusBadge 状态词着色 = 状态语义色(warning/danger/failing 本体均过 AA;healthy 走 success-text)——左边条退役(GH #72)后卡片状态信号收敛于 Badge,色+词双编码同向;词是 Badge 固有部分,不构成第二状态灯;成因副标签保持 secondary。③ **GH #62 关闭口径**:文字场景全覆盖(状态词/绿档分数/升箭头/物料绿词),图形场景保留本体为既定口径(分段格绿格 3.77 ≥ 3:1 图形门槛);tokens/semantics/DESIGN.md 由 T1 落地,chartColors 的 success 字段是系列图形色不动、不增设 successText 镜像字段。④ 连带(同批 T1):青灰刻度加深提纯、表面三层拉开、hairline 与 hover 解耦、电波青加深(brand #0c8078→#0b7a72,白底 4.80→5.20:1,AA 红线守住)——具体值与实测见 DESIGN.md「同族精修登记」。
-
-16. **Dashboard 实机迭代四裁决(2026-07-30 实机迭代批,批次 GH #80;GH #69–#74 发布测试线后用户实机反馈逐项裁决;I1=GH #81 Hero 重组+计数行 dotless / I2=GH #82 卡片 dotless+协议 tag 迁移 / I3=GH #83 折叠组头):**
-  ① **Hero 带构图(实机证据「可用率沉底」):** 原「右列垂直居中」的可用率大数字不在第一视线,违反 Display Anchor Rule(锚点须在 3 秒场景第一眼可见)与「视觉权重 = 业务严重度」。裁决:可用率大数字上提行 1 与结论同基线(右端),「24h 可用率」label 与 meta(更新于/stale)在其下,异常 chips 与计数行全宽居下两行;两列沉底构图废弃。连带硬要求:首载 skeleton 的 114px 锚定(结论 42 + chips 28 + counts 28 + 两 8px 间距,check GH #73 LOW-1)随构图失效,必须按新构图 chips-present 布局从最终 CSS 算术重算并写入代码注释与 brief,锚定哲学不变(偏向异常态)。
-  ② **每卡一灯 + StatusBadge dotless(实机证据「灯看花眼」):** 词随灯着色(#71)后,卡片上头灯 + Badge 点 + 计数点同屏多灯,信号稀释——双灯是冗余信号不是冗余编码(着色词自身已满足色+词双编码)。裁决:灯与词分层——灯 = 实体信号位(卡片头灯、详情页/速览弹窗 Badge 点),着色词 = 聚合/重复场景文本证据;封闭去点清单仅三处(卡片状态行 / Hero 计数行 / 组头计数 chips),禁止扩散,管理台表格等其余消费方不动;闪烁收敛为封闭清单(卡片头灯 + Hero alert-dot + 带点 Badge failing 点),dotless 词永不闪烁。a11y 无回退:状态词本就是可访问名,点是无词装饰。
-  ③ **协议 tag 移状态行(实机证据「模型名截断」):** 头行 tag 挤压模型名。裁决:头行 = 模型名 + 灯;状态行 = Badge(dotless)+ 协议 tag + 评分徽章 + 最近探测;组内同协议收敛(GH #34/#54)逻辑随迁状态行,口径与三例外不动;模型名中间截断 tailKeep=12 不动(tag 移走后头部空间已够)。
-  ④ **折叠组头(实机证据「折叠线」):** 折叠态 hairline 让干净单行多一条割裂线,组头行重心偏上。裁决:hairline 仅展开态显示,折叠态以 **1px 透明边占位**(几何稳定硬要求,折叠/展开两态组头行高度逐像素一致,与 §6 披露容器「禁布局跳动」同纪律);组头行 padding 上下对称,重心回中。
-
-19. **分享面手机端批次(GH #91–#95,share-mobile-polish 批,2026-07-31 设计评审;规格本体在 share-materials surface brief):** ① **正常端点名单区取代汇总行(GH #92):** 全集可见是防作假加强(不只挑异常示众);排序键定 24h 可用率升序(null 沉底、同率字典序)而非字典序——视觉权重 = 业务严重度,最脆弱的正常端点在前;不带协议/点条——名单是花名册,点条会把它变成十个迷你明细行、稀释异常明细首位度;封顶 20(2 列 × 10 行)与异常明细封顶 10 同哲学(高度有界);`healthyRangeText` 聚合用法退役(逐条着色率是其超集),全正常陈述行保留(显式结论是防作假正面形态)。② **480 紧凑版 = 同数据第二排版(GH #93):** 数字口径零变化、快照纯函数复用;端点小卡 = 单模型紧凑版,Hub/评估区/status_reason 不渲染登记为物料分工信息差(小卡 = 监控域快读,完整信息在大卡);版式默认档按视口 <768 一次性判定、不持久化(转发意图每次不同);EvalCard 无紧凑版(手机可读性由弹窗缩放承担)。③ **断点 768 与「窄屏 = 形态切换,非横滚豁免」(GH #94):** 列收敛方案算术证伪(最紧收敛 472px > 375 视口可用的 343px,维度数由数据决定不能按典型值赌),横向滚动否决(§4 承重纪律无豁免),定卡片式列表;预览 transform 缩放与离屏捕获双份构造性隔离(捕获不吃 transform,按设计宽渲染)。④ **盒模型事实登记:** 本仓无全局 box-sizing reset,物料卡根 content-box——width:720 = 内容盒,外盒 722(描边在盒外),「内容宽 640」口径由此而来;480 族同(内容 440);弹窗缩放按外盒 722/482 计算;桌面 752 弹窗 content 720 < 卡外盒 722 的 2px 溢出原由 overflow:auto 兜底,**2026-07-31 GH #95 已随预览衬底级联修复**——预览可用宽 = dialog 内容宽 − 衬底 padding(space-4×2),缩放分支与桌面分支都不再溢出(原「本批不动」登记被本批末票事实推翻,GH #85 旧定位词同类修订)。
-
-## 附录 C:迁移验收 checklist(供品牌迁移 ticket 引用)
-
-**令牌与主题基建**
-- [ ] `web/src/styles/` 三层文件就位:tokens.css(原始刻度)/ semantics.css(语义令牌 + `html.dark` 块)/ ep-theme.css(EP 映射,亮暗两块,color-mix 派生)
-- [ ] main.ts 引入顺序:element-plus/index.css → element-plus dark/css-vars.css → tokens → semantics → ep-theme → print
-- [ ] 页面/组件 scoped style 零硬编码色值(grep `#` 十六进制 + rgb/rgba 字面量,仅允许 utils/chartColors.ts 镜像与 BrandMark 渐变 stop 引用原始刻度)
-- [ ] 页面零 `--el-*` 书写、零刻度外 z-index 字面量
-- [ ] `hs-blink` 仍全局唯一定义,StatusBadge/HealthBanner 复用
-
-**暗色**
-- [ ] AppHeader 主题切换按钮(未登录可用),`hs:dark` 持久化,index.html 防闪脚本键名一致
-- [ ] 暗色下全页面抽查:状态板/榜单/报告/管理台/登录页,无亮底残留、无白闪
-- [ ] 暗色下 StatusBadge 四态、EvalProgressGrid 四态、24h 分段条三档可分辨
-- [ ] 暗色下 ECharts 图表(TimeSeriesChart/TrendChart/ModelTrendDialog)取 DARK 镜像,主题切换即重渲染
-- [ ] StatusCard PNG 导出与分享报告页在暗色会话下仍产出亮主题物料
-
-**语义色与组件**
-- [ ] StatusBadge 四态色 = success/warning/danger/failing 新值,告警闪烁保留
-- [ ] HealthBanner 四态 + 大字结论 display 档;仅异常态可点行为不变
-- [ ] 24h 分段条三档 + 无数据灰,格形不变(radius-xs 2px 分段填满式)
-- [ ] 榜单条形档位色、涨跌箭头、断点不显示箭头,口径不变
-- [ ] EvalProgressGrid 运行中 = teal,禁 warning 黄、禁闪烁
-- [ ] 角色 tag 四词表 + primary(teal)/info 映射,AppHeader/AdminView/UserManager 三处一致
-- [ ] StatusCard 全部批 56/59 条款回归:范围 chips、hero panel 构成(中性灰底/display 大数字/verdict/分布串)、分段条、三段式明细行、正常端点名单区(GH #92 起,原汇总行)、一句话总结、页脚;空态不读作「全部正常」
-- [ ] 分享报告页运行中信息边界(ticket 54)不变;settle 转场轮询口径不变
-
-**品牌标识**
-- [ ] BrandMark.vue/Wordmark.vue 就位,AppHeader/LoginView/StatusCard 接入,favicon 重生成
-- [ ] `web/public/logo.png` 删除,全仓无残留引用;logo.svg/favicon.png 一并替换
-- [ ] Wordmark 完全静止(无动画);字体为系统等宽字栈,全仓无外部字体文件引入(无 woff2/Google Fonts 引用)
-
-**圆角/阴影/密度**
-- [ ] 卡片/弹窗 radius-lg 8px、控件 radius-sm 4px、分段条 radius-xs 2px;无 6px 残留
-- [ ] 静态卡片 `shadow="never"` + 描边;阴影只在可点 hover 与浮层
-- [ ] 消费页 16px / 管理台 12px 密度档不变
-
-**文档**
-- [ ] 本草案替换 `.claude/rules/ui-guidelines.md` 本体
-- [ ] spec 0003 相关章节标注「已被品牌并入 supersede」或同步更新
+1. **ADR 0015 三推翻(2026-07-31,spec 0018):** 品牌色 teal → #007AFF(白底 4.02:1 不过 AA,用户已知并接受;品牌色文字从简、关键文本墨色);四态词表 → 显示层三态(failing 并入服务异常;域模型四态与告警管线不动);闪烁独占 → 禁闪烁 + §15 动效体系。替代方案(定向演进/深色蓝保 AA/英文主显)均经用户否决,记录在 ADR。
+2. **功能色图形档本体按简报原文执行:** #34C759 / #FF9500 白底 2.2:1 不过 3:1 图形门槛——处置 = 文字/图形分工(*-text 阶实测均过 AA 4.5),本体不改(改本体会推翻简报锚点);已知代价登记在 ADR 0015 与 tokens.css 注释。
+3. **三态映射接口(GH #113 main 裁决):** utils/statusDisplay.ts 唯一映射点,接口六件(statusDisplay/statusLabel/statusTone/toDisplayStatus/displayStatusCounts/DISPLAY_SEVERITY_ORDER);色槽抽象,文字 *-text 阶、图形本体阶;未知 →「未知」+ warning 槽。状态筛选跟显示词表走(「服务异常」同筛 down+failing);物料分布串四段→三段,failing 计数由「含 N 个告警」事件 chip 披露(防作假不回退)。
+4. **图表平滑与逐探测例外(GH #114):** 单调插值唯一来源 utils/monotoneSmooth.ts(否掉 ECharts smooth);ProbeLatencyChart 不平滑(tooltip 保真红线 + 尖峰是事故证据);样式口径与动画门控见 §3.3。
+5. **hover 上浮豁免表格行(GH #118 main 裁决):** §15 的 2–4px 上浮针对卡片类可点元素;hairline 分隔的矩阵行上浮破坏共享 grid 基线与仪式竖条几何,行可点性由 hover 填充 brand-soft + 指针承担。ModelStatusList 行(圆角盒卡片读感)与 Leaderboard 矩阵行(表格读感)分属两侧,差异登记。
+6. **页面 h1 = 侧边栏标签(GH #118 main 裁决):** 消除「评估榜单」vs「Benchmark」类漂移;描述性短语退居 lede。深链页 h1 为对象名,不受管辖。
+7. **「错误趋势」范围收窄(GH #116 main 裁决):** 详情面板错误维度由三处承担(延迟趋势图故障窗 markArea + 错误率指标格 + 事件记录),独立错误趋势图与 markArea 冗余,不另立;spec 0018 §10 story 34 按此口径执行。
+8. **自造模态面三件套(GH #116 check MEDIUM-2 沉淀):** focus trap + ESC/scrim 统一关闭 + 焦点归还,为一切自造 aria-modal 弹层的基线;utils/focusTrap.ts 为唯一 trap 实现。
+9. **告警事件词表九词扩十一词(GH #98):** retire_pending「待退役」(warning)/ retired「已退役」(info),集中 utils/alertKind.ts;借字例外与语义边界条款沿置不变。
+10. **版权行恢复(GH #122,保守裁决):** PublicFooter 退役带走「© 2026 HubScope」,spec 0018 未载有意去除——恢复于侧边栏底部(AppSidebar side-footer)。
+11. **:deep(.祖先类) 死选择器纪律(GH #121 check HIGH-1 沉淀):** 见 §4;跨组件变体只走「子组件 prop 绑自身类」或「父组件 .ancestor :deep(.child)」。
+12. **编号撞车登记:** 仓内存在两个「spec 0018」——UI v2.0 完全重构(docs/specs/0018-ui-v2-apple-rebuild.md,GH #109)与生成式端点 Ping 监测与端点退役机制(GH #96 母票,无独立 spec 文件落档)。引用时须带限定词(「spec 0018·UI v2」/「spec 0018·端点退役」);后续 spec 编号从 0019 起,撞车不重排(历史引用已散见各票)。
+13. **family 词表统一「厂商」(2026-08-01 main 裁决,GH #122):** Leaderboard 筛选 UI 与 EvalCard 范围 chip 的「系列」全部统一为「厂商」(与 GH #59 范围 chips 既定词表一致);评估域 family 数据字段名不动,仅 UI 文案。
