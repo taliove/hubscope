@@ -13,6 +13,7 @@ import {
   endpointAvailability24h,
   healthyRateRange,
   healthyRangeText,
+  healthyRoster,
   longestDegradedStreak,
   meanP50Ms,
   scopedAvailability,
@@ -178,6 +179,56 @@ describe('healthyRangeText', () => {
     expect(healthyRangeText([makeEntry()])).toBe(' (24h 内无探测数据)')
   })
 })
+
+describe('healthyRoster', () => {
+  it('keeps only healthy endpoints', () => {
+    const roster = healthyRoster([
+      makeEntry({ model_id: 'a' }),
+      makeEntry({ endpoint_id: 2, model_id: 'b', status: 'degraded' }),
+    ])
+    expect(roster.rows.map(e => e.model_id)).toEqual(['a'])
+    expect(roster.overflow).toBe(0)
+  })
+  it('sorts by success rate ascending — the most fragile first', () => {
+    const roster = healthyRoster([
+      makeEntry({ model_id: 'high', success_rate_24h: 1 }),
+      makeEntry({ endpoint_id: 2, model_id: 'low', success_rate_24h: 0.96 }),
+      makeEntry({ endpoint_id: 3, model_id: 'mid', success_rate_24h: 0.99 }),
+    ])
+    expect(roster.rows.map(e => e.model_id)).toEqual(['low', 'mid', 'high'])
+  })
+  it('sinks null rates to the bottom', () => {
+    const roster = healthyRoster([
+      makeEntry({ model_id: 'no-data', success_rate_24h: null }),
+      makeEntry({ endpoint_id: 2, model_id: 'full', success_rate_24h: 1 }),
+      makeEntry({ endpoint_id: 3, model_id: 'low', success_rate_24h: 0.9 }),
+    ])
+    expect(roster.rows.map(e => e.model_id)).toEqual(['low', 'full', 'no-data'])
+  })
+  it('breaks equal rates by model_id localeCompare (null ties too)', () => {
+    const roster = healthyRoster([
+      makeEntry({ model_id: 'b-model', success_rate_24h: 0.98 }),
+      makeEntry({ endpoint_id: 2, model_id: 'a-model', success_rate_24h: 0.98 }),
+      makeEntry({ endpoint_id: 3, model_id: 'z-null', success_rate_24h: null }),
+      makeEntry({ endpoint_id: 4, model_id: 'y-null', success_rate_24h: null }),
+    ])
+    expect(roster.rows.map(e => e.model_id)).toEqual(['a-model', 'b-model', 'y-null', 'z-null'])
+  })
+  it('caps at 20 rows and reports the overflow', () => {
+    const entries = Array.from({ length: 23 }, (_, i) =>
+      makeEntry({ endpoint_id: i + 1, model_id: `model-${String(i).padStart(2, '0')}` }),
+    )
+    const roster = healthyRoster(entries)
+    expect(roster.rows).toHaveLength(20)
+    expect(roster.overflow).toBe(3)
+  })
+  it('is empty when no endpoint is healthy (all-abnormal scope)', () => {
+    const roster = healthyRoster([makeEntry({ status: 'down' })])
+    expect(roster.rows).toEqual([])
+    expect(roster.overflow).toBe(0)
+  })
+})
+
 
 describe('longestDegradedStreak', () => {
   it('counts continuous non-green hours back from the latest bucket', () => {

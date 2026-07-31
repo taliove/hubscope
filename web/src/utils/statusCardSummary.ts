@@ -69,6 +69,38 @@ export function healthyRateRange(entries: OverviewEntry[]): { min: number; max: 
   return { min: Math.min(...values), max: Math.max(...values) }
 }
 
+// Healthy-endpoint roster (GH #92, design ruling on the ticket; share-materials
+// surface brief): the compact name-list that replaces the batch-59 "其余 N 个
+// 端点正常 · 24h 可用率区间" summary line. Listing EVERY healthy endpoint (not
+// just parading the abnormal ones) is an anti-fake strengthening — the roster
+// is the superset of the old range text.
+// Sort: 24h success rate ASCENDING (the most fragile healthy endpoint first —
+// visual weight follows business severity), null rates sink to the bottom,
+// ties break by model_id localeCompare. Capped so a large group cannot produce
+// an unbounded tall image (same philosophy as the abnormal list's cap of 10);
+// the footer origin is the escape hatch to the live board.
+export const HEALTHY_ROSTER_CAP = 20 // 2 columns x 10 rows
+
+export interface HealthyRoster {
+  rows: OverviewEntry[]
+  overflow: number // healthy endpoints not listed (rows capped)
+}
+
+export function healthyRoster(entries: OverviewEntry[]): HealthyRoster {
+  const healthy = entries
+    .filter(e => e.status === 'healthy')
+    .sort((a, b) => {
+      if (a.success_rate_24h === null && b.success_rate_24h === null) {
+        return a.model_id.localeCompare(b.model_id)
+      }
+      if (a.success_rate_24h === null) return 1 // null sinks
+      if (b.success_rate_24h === null) return -1
+      return a.success_rate_24h - b.success_rate_24h || a.model_id.localeCompare(b.model_id)
+    })
+  const rows = healthy.slice(0, HEALTHY_ROSTER_CAP)
+  return { rows, overflow: healthy.length - rows.length }
+}
+
 // Longest continuous degraded streak (hours) counting back from the latest
 // bucket, among degraded endpoints. Only hours WITH probes that came back
 // non-green count; a gray no-data hour breaks the streak — "持续" requires
@@ -206,8 +238,11 @@ export function distributionSegments(counts: HealthCounts): DistributionSegment[
   }))
 }
 
-// Healthy-side summary line under the abnormal list: range when data exists,
-// a no-data note otherwise. Single value when min == max.
+// Healthy-side 24h availability suffix; null when nothing was probed. Single
+// value when min == max. GH #92: the aggregate usage ("其余 N 个端点正常" line
+// and the all-healthy range suffix) retired with the healthy roster — the
+// per-entry colored rates are a superset of the range text. The single-model
+// line keeps it (one entry, always the single-value form).
 export function healthyRangeText(entries: OverviewEntry[]): string {
   const range = healthyRateRange(entries)
   if (range === null) return ' (24h 内无探测数据)'
