@@ -331,6 +331,7 @@ func (s *Server) routes() chi.Router {
 				r.Use(s.requireRole(store.RoleSuperAdmin, store.RoleAdmin, store.RoleOperator))
 
 				r.Post("/models", s.handleCreateModel)
+				r.Patch("/models/{id}", s.handlePatchModel)
 				r.Delete("/models/{id}", s.handleDeleteModel)
 				r.Post("/models/{id}/trial", s.handleTrialModel)
 

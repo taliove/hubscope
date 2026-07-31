@@ -11,6 +11,7 @@ export interface EndpointRow {
   modelDbId: number
   modelOrigin: string // "manual" | "discovered"
   modelFamily: string // vendor series, "other" when unmatched
+  modelCapability: string // "chat" | "image" | "video" | ... (editable, GH #105)
 }
 
 // A model with zero endpoints: invisible in the endpoint table, managed via
@@ -39,6 +40,7 @@ export function useAdminData() {
           modelDbId: model.id,
           modelOrigin: model.origin,
           modelFamily: model.family,
+          modelCapability: model.capability,
         })
       }
     }

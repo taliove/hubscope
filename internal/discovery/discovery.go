@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/taliove/hubscope/internal/classifier"
@@ -18,24 +19,20 @@ import (
 )
 
 // protocols lists the chat hub API protocols in canonical endpoint order.
-// Every model is trialed on them; image-capable models additionally trial
-// the image protocol (see trialProtocolsFor).
+// Chat models are trialed on them; image and video models are trial-free
+// (see trialProtocolsFor).
 var protocols = []string{"anthropic", "openai"}
 
-// trialProtocolsFor returns the protocols a model is trial-probed on: chat
-// protocols for every model, plus the image protocols for image-capable
-// models only (spec 0014 / ADR 0012) — a wrong image trial would burn money
-// per call and produce upstream noise, so the gate stays strict. The image
-// trials run after the chat trials: a fast-failing chat path costs nothing,
-// and image trials only happen for models that classify as image anyway.
-// Generation comes before edit within the image family (GH #32): the two
-// are independent trials with independent outcomes.
+// trialProtocolsFor returns the protocols a model gets endpoints for, split
+// by capability (GH #100, spec 0018 T2): the mapping is shared via
+// hubclient.ProtocolsForCapability. Chat models are trial-probed (W3: trial
+// before creation, failed trials leave no placeholder endpoints per ticket
+// 17); image and video models are trial-free — generation protocols cost real
+// money per call, so the gate is strict and does not fall back to chat
+// trials: a misconfigured image/video model presents as unverified, not as a
+// chat model.
 func trialProtocolsFor(capability string) []string {
-	list := append([]string(nil), protocols...)
-	if capability == "image" {
-		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
-	}
-	return list
+	return hubclient.ProtocolsForCapability(capability)
 }
 
 // Stats summarizes one sync run across all hubs.
@@ -106,12 +103,61 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 		stats.EndpointsCreated += endpoints
 	}
 
+	// Query models about to be retired before marking them (GH #98, spec 0018
+	// T4): the aggregated retirement alert needs the model_id list.
+	retiredBefore, err := s.db.ListRetiredModels(hub.ID)
+	if err != nil {
+		return stats, err
+	}
+
 	retired, err := s.db.MarkRetiredMissing(hub.ID, ids)
 	if err != nil {
 		return stats, err
 	}
 	stats.Retired += retired
+
+	// Emit one aggregated "retired" alert per sync batch when models
+	// disappeared (GH #98, spec 0018 T4): info level, NULL endpoint_id,
+	// message lists the newly-retired model IDs. The before/after diff ensures
+	// only this batch's retirements are reported — models already retired by
+	// an earlier sync are not re-announced.
+	if retired > 0 {
+		retiredAfter, err := s.db.ListRetiredModels(hub.ID)
+		if err != nil {
+			return stats, err
+		}
+		newlyRetired := diffModelIDs(retiredBefore, retiredAfter)
+		if len(newlyRetired) > 0 {
+			msg := fmt.Sprintf("Hub %q: %d model(s) retired (disappeared from listing): %s",
+				hub.Name, len(newlyRetired), strings.Join(newlyRetired, ", "))
+			if _, err := s.db.CreateAlertEvent(store.AlertEvent{
+				Kind:    store.AlertKindRetired,
+				Message: msg,
+				SentOK:  true, // info-level retirement alerts are recorded, not sent
+			}); err != nil {
+				// Fail the sync: retirement alerts must be recorded (spec 0018 T4).
+				// Swallowing the error would silently lose the retirement event.
+				return stats, fmt.Errorf("create retirement alert: %w", err)
+			}
+		}
+	}
+
 	return stats, nil
+}
+
+// diffModelIDs returns the model IDs present in after but not in before.
+func diffModelIDs(before, after []string) []string {
+	seen := make(map[string]bool, len(before))
+	for _, id := range before {
+		seen[id] = true
+	}
+	var diff []string
+	for _, id := range after {
+		if !seen[id] {
+			diff = append(diff, id)
+		}
+	}
+	return diff
 }
 
 // Sync runs one full discovery pass over all hubs and returns aggregated
@@ -258,10 +304,13 @@ func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub, source string) (
 	return stats, nil
 }
 
-// trialAndCreateEndpoints trial-probes the model on every protocol it does
-// not yet have an endpoint for and creates an enabled endpoint per protocol
-// that answered. Failed trials create nothing — they are logged, so no
-// permanently-disabled placeholder endpoints accumulate (ticket 17).
+// trialAndCreateEndpoints creates endpoints for every protocol the model does
+// not yet have, respecting the capability's trial discipline: chat models are
+// trial-probed on each protocol (W3: trial before creation, failed trials
+// leave no placeholder endpoint per ticket 17); image and video models get
+// their endpoints created without any probe call (GH #100, spec 0018 T2:
+// trial-free creation shrinks W3 to chat protocols only, preventing upstream
+// generation noise and placeholder accumulation).
 func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, model *store.Model) (int, error) {
 	existing, err := s.db.ListEndpointsByModelID(model.ID)
 	if err != nil {
@@ -277,6 +326,21 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		if have[protocol] {
 			continue
 		}
+		// Trial-free protocols (image/video) are created without probe calls;
+		// chat protocols still go through the trial-probe flow.
+		if hubclient.IsTrialFreeProtocol(protocol) {
+			if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+				return created, err
+			} else if isNew {
+				if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
+					slog.Error("discovery: apply creation defaults",
+						"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol, "error", err)
+				}
+				created++
+			}
+			continue
+		}
+		// Chat protocols: trial-probe before creation (W3).
 		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false, s.imageParamsFor(protocol, model.ModelID))
 		if !result.OK {
 			slog.Debug("discovery: protocol trial failed",

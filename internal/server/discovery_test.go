@@ -43,6 +43,8 @@ type discoveryStubHub struct {
 	// in arrival order) so tests can assert an image model received zero
 	// chat trials (GH #45).
 	chatReqs map[string][]string
+	// videoReqs records every /v1/video/generations request per model (GH #100).
+	videoReqs map[string]int
 }
 
 // imageRequest is the recorded body of one /v1/images/generations call.
@@ -76,6 +78,7 @@ func newDiscoveryStubHub(t *testing.T, modelIDs []string) *discoveryStubHub {
 		editModes:  map[string]string{},
 		editReqs:   map[string][]editRequest{},
 		chatReqs:   map[string][]string{},
+		videoReqs:  map[string]int{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	t.Cleanup(stub.Close)
@@ -122,6 +125,14 @@ func (s *discoveryStubHub) chatRequests(modelID string) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.chatReqs[modelID]...)
+}
+
+// videoRequests returns the count of /v1/video/generations requests for the
+// model (GH #100).
+func (s *discoveryStubHub) videoRequests(modelID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.videoReqs[modelID]
 }
 
 // setModels replaces the model list returned by /v1/models.
@@ -222,6 +233,13 @@ func (s *discoveryStubHub) handle(w http.ResponseWriter, r *http.Request) {
 	// silently misread as an empty model and pollute the chat failure maps.
 	if strings.HasSuffix(r.URL.Path, "/v1/images/edits") {
 		s.handleImageEdit(w, r)
+		return
+	}
+
+	// The video generation route (GH #100, spec 0018 T2) records every call
+	// so tests can assert trial-free video models receive zero upstream calls.
+	if strings.HasSuffix(r.URL.Path, "/v1/video/generations") {
+		s.handleVideoGeneration(w, r)
 		return
 	}
 
@@ -361,6 +379,26 @@ func (s *discoveryStubHub) handleImageEdit(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
 	}
+}
+
+// handleVideoGeneration answers POST /v1/video/generations. Every call is
+// recorded so tests can assert trial-free video models receive zero upstream
+// calls (GH #100, spec 0018 T2). The stub always answers 503 (trial-free
+// means the endpoint is created without any probe call).
+func (s *discoveryStubHub) handleVideoGeneration(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Model string `json:"model"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	s.mu.Lock()
+	s.videoReqs[req.Model]++
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	fmt.Fprint(w, `{"error":{"message":"No available providers for this model"}}`)
 }
 
 // createHubViaAPI registers a hub pointing at hubURL and returns its ID.
@@ -511,8 +549,16 @@ func TestDiscoveryFirstSync(t *testing.T) {
 	if img["capability"] != "image" {
 		t.Errorf("gpt-image-2 capability: expected image, got %v", img["capability"])
 	}
-	if !hasEndpoint(img, "openai") || !hasEndpoint(img, "anthropic") {
-		t.Error("gpt-image-2 should have both endpoints (both trials succeeded)")
+	// Image models are trial-free (GH #100): they get images_generation and
+	// images_edit endpoints without any probe call, and no chat endpoints.
+	if !hasEndpoint(img, "images_generation") {
+		t.Error("gpt-image-2 should have an images_generation endpoint (trial-free)")
+	}
+	if !hasEndpoint(img, "images_edit") {
+		t.Error("gpt-image-2 should have an images_edit endpoint (trial-free)")
+	}
+	if hasEndpoint(img, "openai") || hasEndpoint(img, "anthropic") {
+		t.Error("gpt-image-2 should have NO chat endpoints (image models are trial-free)")
 	}
 
 	// A full sync over the unchanged list must be a no-op.
@@ -635,5 +681,263 @@ func TestDiscoveryEmptyListRetiresNothing(t *testing.T) {
 	models := listModelsViaAPI(t, ts.URL)
 	if status := models["auto-model"]["status"]; status != "active" {
 		t.Errorf("auto-model status: expected active, got %v", status)
+	}
+}
+
+// TestDiscoveryRetirementAlert (GH #98, spec 0018 T4) verifies that when
+// models disappear from the hub listing causing retirement, one aggregated
+// "retired" alert event is emitted per sync batch listing the affected models.
+func TestDiscoveryRetirementAlert(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"model-a", "model-b", "model-c"})
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+	// Before retirement, alert history is empty.
+	if got := listAlerts(t, ts, ""); len(got) != 0 {
+		t.Fatalf("initial alerts: expected 0, got %d", len(got))
+	}
+
+	// Two models vanish from the hub listing in one sync batch.
+	stub.setModels([]string{"model-a"})
+	stats := runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 2 {
+		t.Errorf("retired: expected 2, got %d", got)
+	}
+
+	// One aggregated "retired" alert event is emitted (not one per model).
+	events := listAlerts(t, ts, "")
+	if len(events) != 1 {
+		t.Fatalf("alert events: expected 1 aggregated event, got %d", len(events))
+	}
+	event := events[0]
+	if kind := event["kind"].(string); kind != "retired" {
+		t.Errorf("alert kind: expected 'retired', got %q", kind)
+	}
+	// endpoint_id is NULL for aggregated retirement alerts.
+	if epID := event["endpoint_id"]; epID != nil {
+		t.Errorf("endpoint_id: expected nil (aggregated), got %v", epID)
+	}
+	// Message lists the affected models.
+	msg := event["message"].(string)
+	if !strings.Contains(msg, "model-b") || !strings.Contains(msg, "model-c") {
+		t.Errorf("message should list model-b and model-c, got: %s", msg)
+	}
+	if strings.Contains(msg, "model-a") {
+		t.Errorf("message should NOT list model-a (still active), got: %s", msg)
+	}
+
+	// A subsequent sync with no changes emits no new alert.
+	stats = runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 0 {
+		t.Errorf("second sync retired: expected 0, got %d", got)
+	}
+	if got := listAlerts(t, ts, ""); len(got) != 1 {
+		t.Errorf("alerts after no-op sync: expected 1 (unchanged), got %d", len(got))
+	}
+
+	// Verify model-a is still active before the final retirement.
+	models := listModelsViaAPI(t, ts.URL)
+	if status := models["model-a"]["status"]; status != "active" {
+		t.Errorf("model-a status before final retirement: expected active, got %v", status)
+	}
+	if status := models["model-b"]["status"]; status != "retired" {
+		t.Errorf("model-b status: expected retired, got %v", status)
+	}
+
+	// The last remaining model retires in a separate batch: a second aggregated
+	// alert. We use a different model (not empty list) to avoid the empty-list
+	// guard in MarkRetiredMissing.
+	stub.setModels([]string{"model-d"})
+	stats = runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 1 {
+		t.Errorf("third sync retired: expected 1, got %d", got)
+	}
+	events = listAlerts(t, ts, "")
+	if len(events) != 2 {
+		t.Fatalf("alerts after second retirement: expected 2, got %d", len(events))
+	}
+	// Newest first: the second alert is events[0].
+	secondEvent := events[0]
+	if kind := secondEvent["kind"].(string); kind != "retired" {
+		t.Errorf("second alert kind: expected 'retired', got %q", kind)
+	}
+	secondMsg := secondEvent["message"].(string)
+	if !strings.Contains(secondMsg, "model-a") {
+		t.Errorf("second alert should list model-a, got: %s", secondMsg)
+	}
+}
+
+// TestDiscoveryRetirementAlertNoRestart (GH #98, spec 0018 T4) verifies W5
+// lazy rebuild semantics: restart does not re-fire retirement alerts. The
+// retirement alert is a one-shot event, not a state transition, so it
+// intentionally does not participate in LatestDownRecoveryEvent /
+// LatestGroupEvent lazy rebuild.
+func TestDiscoveryRetirementAlertNoRestart(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"model-x", "model-y"})
+	createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, 1, "succeeded")
+
+	// One model retires, emitting one alert.
+	stub.setModels([]string{"model-x"})
+	runDiscovery(t, ts.URL)
+	if got := listAlerts(t, ts, ""); len(got) != 1 {
+		t.Fatalf("alerts before restart: expected 1, got %d", len(got))
+	}
+
+	// Alert history persists across server restarts (database persistence).
+	// A restart-safe test would need store-level verification, which is
+	// covered by the fact that CreateAlertEvent writes to the database and
+	// ListAlertEventsAll reads from it. The one-shot nature (no state rebuild)
+	// is verified by the fact that retirement alerts have NULL endpoint_id and
+	// do not participate in LatestDownRecoveryEvent / LatestGroupEvent queries
+	// (those filter by kind IN ('down','recovered') or kind IN
+	// ('group_down','group_recovered'), which never match 'retired').
+	events := listAlerts(t, ts, "")
+	if len(events) != 1 {
+		t.Errorf("persisted alerts: expected 1, got %d", len(events))
+	}
+	if kind := events[0]["kind"].(string); kind != "retired" {
+		t.Errorf("persisted alert kind: expected 'retired', got %q", kind)
+	}
+}
+
+// TestDiscoveryTrialFreeVideo (GH #100, spec 0018 T2) verifies that video-
+// capable models are registered with a video_generation endpoint without any
+// trial-probe calls: the image/video trial-free path (no upstream generation
+// call, no trial failure leaving placeholder endpoints) is the spec 0018
+// decision to shrink W3 "trial before creation" to chat protocols only.
+func TestDiscoveryTrialFreeVideo(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	// seedance is classified as video by the default rules seeded on first run.
+	stub := newDiscoveryStubHub(t, []string{"seedance-v1"})
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+	models := listModelsViaAPI(t, ts.URL)
+	video := models["seedance-v1"]
+	if video == nil {
+		t.Fatal("seedance-v1 model not found after sync")
+	}
+	if video["capability"] != "video" {
+		t.Errorf("seedance-v1 capability: expected video, got %v", video["capability"])
+	}
+
+	// The model has a video_generation endpoint but received zero trial-probe
+	// calls — no chat trials, no video generation calls.
+	if !hasEndpoint(video, "video_generation") {
+		t.Error("seedance-v1 should have a video_generation endpoint (trial-free creation)")
+	}
+	if hasEndpoint(video, "anthropic") || hasEndpoint(video, "openai") {
+		t.Error("seedance-v1 should have NO chat endpoints (video models are trial-free)")
+	}
+	if endpointEnabled(t, video, "video_generation") != true {
+		t.Error("seedance-v1 video_generation endpoint should be enabled")
+	}
+
+	// The stub received zero chat requests and zero video generation requests
+	// for this model: trial-free means no upstream calls at all.
+	if reqs := stub.chatRequests("seedance-v1"); len(reqs) != 0 {
+		t.Errorf("seedance-v1 chat requests: expected 0 (trial-free), got %d: %v", len(reqs), reqs)
+	}
+	if count := stub.videoRequests("seedance-v1"); count != 0 {
+		t.Errorf("seedance-v1 video requests: expected 0 (trial-free), got %d", count)
+	}
+}
+
+// TestDiscoveryTrialFreeImage (GH #100, spec 0018 T2) verifies that image-
+// capable models are registered with images_generation and images_edit
+// endpoints without any trial-probe calls (the same trial-free path as video).
+func TestDiscoveryTrialFreeImage(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"dall-e-3"})
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+	models := listModelsViaAPI(t, ts.URL)
+	img := models["dall-e-3"]
+	if img == nil {
+		t.Fatal("dall-e-3 model not found after sync")
+	}
+	if img["capability"] != "image" {
+		t.Errorf("dall-e-3 capability: expected image, got %v", img["capability"])
+	}
+
+	// The model has both image endpoints but received zero trial calls.
+	if !hasEndpoint(img, "images_generation") {
+		t.Error("dall-e-3 should have an images_generation endpoint (trial-free)")
+	}
+	if !hasEndpoint(img, "images_edit") {
+		t.Error("dall-e-3 should have an images_edit endpoint (trial-free)")
+	}
+	if hasEndpoint(img, "anthropic") || hasEndpoint(img, "openai") {
+		t.Error("dall-e-3 should have NO chat endpoints (image models are trial-free)")
+	}
+
+	// Zero upstream calls for image or chat protocols.
+	if reqs := stub.chatRequests("dall-e-3"); len(reqs) != 0 {
+		t.Errorf("dall-e-3 chat requests: expected 0 (trial-free), got %d: %v", len(reqs), reqs)
+	}
+	if reqs := stub.imageRequests("dall-e-3"); len(reqs) != 0 {
+		t.Errorf("dall-e-3 image generation requests: expected 0 (trial-free), got %d", len(reqs))
+	}
+	if reqs := stub.editRequests("dall-e-3"); len(reqs) != 0 {
+		t.Errorf("dall-e-3 image edit requests: expected 0 (trial-free), got %d", len(reqs))
+	}
+}
+
+// TestDiscoveryChatStillTrials (GH #100, spec 0018 T2) verifies that chat
+// models still go through the trial-probe flow (anthropic/openai) and that
+// trial failures still leave no placeholder endpoints (ticket 17 unchanged).
+func TestDiscoveryChatStillTrials(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"gpt-5", "claude-opus-9"})
+	// gpt-5 speaks openai only; claude-opus-9 speaks anthropic only.
+	stub.setFailing("gpt-5", "anthropic")
+	stub.setFailing("claude-opus-9", "openai")
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+	models := listModelsViaAPI(t, ts.URL)
+	gpt5 := models["gpt-5"]
+	if gpt5["capability"] != "chat" {
+		t.Errorf("gpt-5 capability: expected chat, got %v", gpt5["capability"])
+	}
+	// Only the working protocol gets an endpoint; failed trial leaves none.
+	if !hasEndpoint(gpt5, "openai") {
+		t.Error("gpt-5 should have an openai endpoint (trial succeeded)")
+	}
+	if hasEndpoint(gpt5, "anthropic") {
+		t.Error("gpt-5 should have NO anthropic endpoint (trial failed)")
+	}
+
+	claude := models["claude-opus-9"]
+	if claude["capability"] != "chat" {
+		t.Errorf("claude-opus-9 capability: expected chat, got %v", claude["capability"])
+	}
+	if !hasEndpoint(claude, "anthropic") {
+		t.Error("claude-opus-9 should have an anthropic endpoint (trial succeeded)")
+	}
+	if hasEndpoint(claude, "openai") {
+		t.Error("claude-opus-9 should have NO openai endpoint (trial failed)")
+	}
+
+	// Both models received chat trial requests (the trial-probe path is unchanged).
+	if reqs := stub.chatRequests("gpt-5"); len(reqs) != 2 {
+		t.Errorf("gpt-5 chat requests: expected 2 (anthropic+openai trials), got %d: %v", len(reqs), reqs)
+	}
+	if reqs := stub.chatRequests("claude-opus-9"); len(reqs) != 2 {
+		t.Errorf("claude-opus-9 chat requests: expected 2 (anthropic+openai trials), got %d: %v", len(reqs), reqs)
 	}
 }

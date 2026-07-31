@@ -70,6 +70,8 @@ func DefaultRules() []Rule {
 		{DimensionCapability, "dall", "image"},
 		{DimensionCapability, "flux", "image"},
 		{DimensionCapability, "stable-diffusion", "image"},
+		{DimensionCapability, "video", "video"},
+		{DimensionCapability, "seedance", "video"},
 		{DimensionCapability, "tts", "audio"},
 		{DimensionCapability, "whisper", "audio"},
 		{DimensionCapability, "audio", "audio"},

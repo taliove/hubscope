@@ -5,6 +5,7 @@
 // tests stub the tiny slice of `window.matchMedia` the module touches —
 // same precedent as visibilityPoll.test.ts stubbing `document`.
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { isReadonly } from 'vue'
 import { subscribeBreakpoint } from '@/composables/useBreakpoint'
 
 type Listener = () => void
@@ -70,6 +71,13 @@ describe('subscribeBreakpoint', () => {
     a.release()
     expect(mql.listenerCount()).toBe(1)
     b.release()
+  })
+
+  it('returns a readonly ref so consumers cannot mutate shared state', () => {
+    stubMatchMedia(false)
+    const sub = subscribeBreakpoint()
+    expect(isReadonly(sub.isNarrow)).toBe(true)
+    sub.release()
   })
 
   it('tears down on last release and re-creates on the next subscription', () => {

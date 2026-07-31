@@ -22,34 +22,33 @@ type createModelRequest struct {
 }
 
 // modelProtocols lists the chat hub API protocols in canonical endpoint
-// order. Image-capable models additionally trial the image protocol (see
-// trialProtocolsFor).
+// order. Chat models are trialed on them; image and video models are
+// trial-free (see trialProtocolsFor).
 var modelProtocols = []string{"anthropic", "openai"}
 
-// trialProtocolsFor returns the protocols a model is trial-probed on: chat
-// protocols for every model, plus the image protocols for image-capable
-// models (spec 0014 / ADR 0012), generation before edit (GH #32). On a
-// rule-read failure the chat-only list is returned: a missed image trial is
-// backfilled by the next discovery sync, while a wrongly sent image trial
-// would burn money per call.
+// trialProtocolsFor returns the protocols a manually registered model gets
+// endpoints for, split by capability: chat models are trial-probed on
+// anthropic/openai; image models get images_generation and images_edit
+// endpoints without trial; video models get video_generation without trial
+// (GH #100, spec 0018 T2: trial-free creation, same discipline as discovery
+// sync). On a rule-read failure the chat-only list is returned: a missed
+// image/video trial-free path is backfilled by the next discovery sync.
 func (s *Server) trialProtocolsFor(modelID string) []string {
-	list := append([]string(nil), modelProtocols...)
 	rules, err := s.db.ListClassificationRules()
 	if err != nil {
 		slog.Error("trial protocols: load classification rules, trialing chat protocols only", "error", err)
-		return list
+		return append([]string(nil), modelProtocols...)
 	}
 	capability, _ := classifier.Classify(modelID, rules)
-	if capability == "image" {
-		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
-	}
-	return list
+	return hubclient.ProtocolsForCapability(capability)
 }
 
-// handleCreateModel handles POST /api/models. The model is trial-probed on
-// its candidate protocols first: an endpoint is created per protocol that
-// answered. A model unreachable on all of them is rejected with 400 and
-// nothing is stored.
+// handleCreateModel handles POST /api/models. Chat models are trial-probed
+// on their candidate protocols first: an endpoint is created per protocol that
+// answered. Image and video models get their endpoints created without trial
+// (GH #100, spec 0018 T2: trial-free creation, same discipline as discovery
+// sync). A chat model unreachable on all protocols is rejected with 400 and
+// nothing is stored; an image/video model always succeeds (trial-free).
 func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 	var req createModelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -104,14 +103,22 @@ func (s *Server) handleCreateModel(w http.ResponseWriter, r *http.Request) {
 
 // trialProtocols probes the model on the given protocols and returns the
 // protocols that answered plus a human-readable summary of the failures.
-// Image protocol trials carry the rule-merged extra parameters (GH #33) via
-// the single resolution entry (store.ImageParamsFor); a rules-table hiccup
+// Trial-free protocols (image/video) are returned without probe calls
+// (GH #100, spec 0018 T2); chat protocols go through the probe flow. Image
+// protocol trials carry the rule-merged extra parameters (GH #33) via the
+// single resolution entry (store.ImageParamsFor); a rules-table hiccup
 // degrades the trial to the minimal request body rather than failing it.
 func (s *Server) trialProtocols(ctx context.Context, hub store.Hub, modelID string, protocols []string) ([]string, string) {
 	client := hubclient.New()
 	working := []string{}
 	failures := []string{}
 	for _, protocol := range protocols {
+		// Trial-free protocols (image/video) are returned without probe calls.
+		if hubclient.IsTrialFreeProtocol(protocol) {
+			working = append(working, protocol)
+			continue
+		}
+		// Chat protocols: trial-probe before accepting.
 		var imageParams map[string]string
 		if hubclient.IsImageProtocol(protocol) {
 			if params, err := s.db.ImageParamsFor(modelID); err != nil {
@@ -182,6 +189,166 @@ func (s *Server) listModelsForScope(scope int64) ([]store.Model, error) {
 	default:
 		return s.db.ListModelsByHub(scope)
 	}
+}
+
+// patchModelRequest is the body for PATCH /api/models/{id}. Only capability
+// is editable (spec 0018 T7): changing it triggers endpoint set reconciliation.
+type patchModelRequest struct {
+	Capability *string `json:"capability"`
+}
+
+// validCapabilities is the set of capabilities accepted by PATCH /api/models/{id}.
+var validCapabilities = map[string]bool{"chat": true, "image": true, "video": true}
+
+// handlePatchModel handles PATCH /api/models/{id}. It updates the model's
+// capability and reconciles the endpoint set: protocols the new capability
+// implies but are missing get created (chat trials, image/video trial-free);
+// protocols the old capability had but the new one does not get disabled
+// (history preserved). Spec 0018 T7 (GH #105).
+func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid model id")
+		return
+	}
+
+	model, err := s.db.GetModel(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
+
+	var req patchModelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if req.Capability == nil {
+		writeError(w, http.StatusBadRequest, "capability is required")
+		return
+	}
+	newCap := strings.TrimSpace(*req.Capability)
+	if !validCapabilities[newCap] {
+		writeError(w, http.StatusBadRequest, "capability must be one of: chat, image, video")
+		return
+	}
+	// Note: no early return when newCap == model.Capability. Reconciliation is
+	// idempotent, and a same-capability PATCH is the repair path for legacy
+	// endpoint drift — e.g. pre-GH #100 image models still holding surplus
+	// chat endpoints (which keep burning probe requests). One click fixes it.
+
+	oldCap := model.Capability
+	if err := s.db.SetModelCapability(model.ID, newCap); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update capability")
+		return
+	}
+	model.Capability = newCap
+
+	// Reconcile endpoint set: create missing, disable surplus.
+	newProtocols := hubclient.ProtocolsForCapability(newCap)
+
+	existing, err := s.db.ListEndpointsByModelID(model.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load endpoints")
+		return
+	}
+	have := make(map[string]bool, len(existing))
+	for _, ep := range existing {
+		have[ep.Protocol] = true
+	}
+
+	// Create missing endpoints for the new capability's protocols.
+	missing := []string{}
+	for _, protocol := range newProtocols {
+		if !have[protocol] {
+			missing = append(missing, protocol)
+		}
+	}
+	created := []string{}
+	if len(missing) > 0 {
+		// Chat protocols need trial; image/video are trial-free.
+		chatSet := make(map[string]bool)
+		for _, p := range modelProtocols {
+			chatSet[p] = true
+		}
+		trialNeeded := []string{}
+		trialFree := []string{}
+		for _, p := range missing {
+			if chatSet[p] {
+				trialNeeded = append(trialNeeded, p)
+			} else {
+				trialFree = append(trialFree, p)
+			}
+		}
+
+		// Trial chat protocols (if any) — image/video are trial-free.
+		if len(trialNeeded) > 0 {
+			hub, err := s.db.GetHub(model.HubID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to load hub")
+				return
+			}
+			working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, trialNeeded)
+			for _, protocol := range working {
+				ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true)
+				if err != nil {
+					slog.Error("model patch: create endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
+					continue
+				}
+				if isNew {
+					_ = s.db.ApplyCreationDefaults(ep.ID, protocol)
+					created = append(created, protocol)
+				}
+			}
+			_ = failures // trial failures are not fatal — model still saved
+		}
+
+		// Trial-free: directly create image/video endpoints.
+		for _, protocol := range trialFree {
+			ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true)
+			if err != nil {
+				slog.Error("model patch: create trial-free endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
+				continue
+			}
+			if isNew {
+				_ = s.db.ApplyCreationDefaults(ep.ID, protocol)
+				created = append(created, protocol)
+			}
+		}
+	}
+
+	// Disable surplus endpoints: protocols the old capability had but the
+	// new one does not (history preserved, not deleted).
+	disabled := []string{}
+	for _, ep := range existing {
+		stillNeeded := false
+		for _, p := range newProtocols {
+			if ep.Protocol == p {
+				stillNeeded = true
+				break
+			}
+		}
+		if !stillNeeded && ep.Enabled {
+			if _, err := s.db.SetEndpointEnabled(ep.ID, false); err != nil {
+				slog.Error("model patch: disable surplus endpoint", "endpoint_id", ep.ID, "error", err)
+				continue
+			}
+			disabled = append(disabled, ep.Protocol)
+		}
+	}
+
+	endpoints, err := s.db.ListEndpointsByModelID(model.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load endpoints")
+		return
+	}
+
+	s.audit(r, "model.patch", "model", strconv.FormatInt(model.ID, 10),
+		fmt.Sprintf("model_id=%q capability %s→%s created=%v disabled=%v",
+			model.ModelID, oldCap, newCap, created, disabled), "success")
+	s.InvalidateOverview()
+	writeData(w, http.StatusOK, toModelDTO(*model, endpoints))
 }
 
 // handleDeleteModel handles DELETE /api/models/{id}. Only manual models can
@@ -265,19 +432,11 @@ func (s *Server) handleTrialModel(w http.ResponseWriter, r *http.Request) {
 		have[ep.Protocol] = true
 	}
 	missing := []string{}
-	for _, protocol := range modelProtocols {
+	// The stored capability is authoritative here because the model already
+	// exists (GH #100: shared capability→protocol mapping, incl. video).
+	for _, protocol := range hubclient.ProtocolsForCapability(model.Capability) {
 		if !have[protocol] {
 			missing = append(missing, protocol)
-		}
-	}
-	// Image-capable models also trial the image protocols (spec 0014); the
-	// stored capability is authoritative here because the model already
-	// exists. Generation and edit are independent trials (GH #32).
-	if model.Capability == "image" {
-		for _, protocol := range []string{hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit} {
-			if !have[protocol] {
-				missing = append(missing, protocol)
-			}
 		}
 	}
 

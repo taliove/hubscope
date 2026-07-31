@@ -167,14 +167,20 @@ build_image() {
     log_success "Built production image: $IMAGE_TAG"
   else
     log_info "Building from current working directory (development)"
-    # Pass a fresh timestamp as both VERSION and CACHEBUST on every dev deploy:
+    # Stamp the version with the git base (latest tag + commits ahead + short
+    # hash, `-dirty` when the tree has uncommitted changes) plus the build
+    # time, e.g. dev-v0.3.0-2-gfe91a9d-20260730-153045 — one glance at the
+    # test line's header / `hubscope --version` tells exactly which code it
+    # runs and when it was built.
+    # Pass a fresh value as both VERSION and CACHEBUST on every dev deploy:
     # VERSION busts the Go build layer (fresh version stamp) and CACHEBUST busts
     # the frontend build layer — both frontend and backend are recompiled from
     # the current code, never reused from a stale cached layer.
     # Local time (no -u): all deploys happen in one timezone, wall-clock
     # readability beats UTC purity on the test line.
-    local dev_version
-    dev_version="dev-$(date +%Y%m%d-%H%M%S)"
+    local dev_version git_stamp
+    git_stamp="$(git -C "$REPO_ROOT" describe --tags --always --dirty 2>/dev/null || echo "nogit")"
+    dev_version="dev-${git_stamp}-$(date +%Y%m%d-%H%M%S)"
     docker build $build_args \
       --build-arg VERSION="$dev_version" \
       --build-arg CACHEBUST="$dev_version" \

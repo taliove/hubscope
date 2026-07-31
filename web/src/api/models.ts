@@ -27,3 +27,11 @@ export async function deleteModel(modelId: number): Promise<void> {
 export async function trialModel(modelId: number): Promise<ModelTrialResult> {
   return http.post<ModelTrialResult>(`/models/${modelId}/trial`)
 }
+
+// Update a model's capability (chat / image / video) and reconcile its
+// endpoint set (GH #105, spec 0018 T7): missing protocols get created (chat
+// via trial, image/video trial-free), surplus protocols get disabled with
+// history preserved.
+export async function updateModelCapability(modelId: number, capability: string): Promise<Model> {
+  return http.patch<Model>(`/models/${modelId}`, { capability })
+}

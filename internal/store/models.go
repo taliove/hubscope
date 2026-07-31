@@ -38,6 +38,19 @@ type Endpoint struct {
 	CreatedAt       time.Time
 }
 
+// IsPingProtocol reports whether the given protocol belongs to the Ping
+// monitoring family (image/video protocols that are never probed with real
+// generation calls). Chat protocols (anthropic, openai) return false and
+// receive real probe rounds. Spec 0018 ticket 1 (GH #97).
+func IsPingProtocol(protocol string) bool {
+	switch protocol {
+	case "images_generation", "images_edit", "video_generation":
+		return true
+	default:
+		return false
+	}
+}
+
 // endpointColumns is the canonical column list for scanning an Endpoint.
 const endpointColumns = "id, model_id, protocol, enabled, interval_seconds, created_at"
 
@@ -362,6 +375,20 @@ func (db *DB) GetEndpoint(id int64) (*Endpoint, error) {
 		return nil, err
 	}
 	return &e, nil
+}
+
+// SetEndpointEnabled enables or disables an endpoint by id. Returns the
+// updated endpoint. Used by spec 0018 T7 capability reconciliation to disable
+// surplus endpoints (history preserved).
+func (db *DB) SetEndpointEnabled(id int64, enabled bool) (*Endpoint, error) {
+	enabledInt := 0
+	if enabled {
+		enabledInt = 1
+	}
+	if _, err := db.conn.Exec("UPDATE endpoints SET enabled = ? WHERE id = ?", enabledInt, id); err != nil {
+		return nil, err
+	}
+	return db.GetEndpoint(id)
 }
 
 // UpdateEndpoint applies a partial update to an endpoint and returns the

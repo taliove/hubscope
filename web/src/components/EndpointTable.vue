@@ -17,6 +17,22 @@
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="能力" width="130">
+        <template #default="{ row }">
+          <el-tag size="small" type="info" plain class="capability-tag">
+            {{ row.modelCapability }}
+          </el-tag>
+          <el-button
+            size="small"
+            text
+            class="capability-edit-btn"
+            :loading="capabilitySaving && capabilityRow?.modelDbId === row.modelDbId"
+            @click="onEditCapability(row)"
+          >
+            修改
+          </el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="协议" width="120">
         <template #default="{ row }">
           <el-tag :type="protocolTagType(row.endpoint.protocol)" size="small">
@@ -31,7 +47,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="420" fixed="right">
         <template #default="{ row }">
           <el-button
             type="primary"
@@ -40,6 +56,14 @@
             @click="onProbe(row.endpoint.id)"
           >
             立即探测
+          </el-button>
+          <el-button
+            :type="row.endpoint.enabled ? 'warning' : 'success'"
+            size="small"
+            :loading="togglingId === row.endpoint.id"
+            @click="onToggleEnabled(row)"
+          >
+            {{ row.endpoint.enabled ? '停用' : '启用' }}
           </el-button>
           <el-button size="small" @click="onViewHistory(row)">最近记录</el-button>
           <el-button
@@ -141,6 +165,31 @@
     <el-dialog v-model="historyVisible" :title="historyTitle" width="920px">
       <ProbeRecordTable v-loading="historyLoading" :records="historyRecords" />
     </el-dialog>
+
+    <!-- Capability edit (GH #105): changing a model's capability reconciles
+         its endpoint set server-side (missing created, surplus disabled). -->
+    <el-dialog
+      v-model="capabilityVisible"
+      :title="`修改模型能力 — ${capabilityRow?.modelName ?? ''}`"
+      width="420px"
+    >
+      <div class="capability-dialog-body">
+        <p class="capability-dialog-hint">
+          修改能力后系统按新能力重算端点集合:缺失的补建(chat 走试通,image/video 直接建),不再蕴含的停用(历史保留)。
+        </p>
+        <el-select v-model="capabilityDraft" class="capability-select">
+          <el-option label="chat(对话)" value="chat" />
+          <el-option label="image(生图)" value="image" />
+          <el-option label="video(生视频)" value="video" />
+        </el-select>
+      </div>
+      <template #footer>
+        <el-button @click="capabilityVisible = false">取消</el-button>
+        <el-button type="primary" :loading="capabilitySaving" @click="onSaveCapability">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -149,8 +198,8 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
-import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
-import { deleteModel, trialModel } from '@/api/models'
+import { deleteEndpoint, pruneDeadEndpoints, updateEndpoint } from '@/api/endpoints'
+import { deleteModel, trialModel, updateModelCapability } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
 import { protocolTagType } from '@/utils/protocol'
 import type { EndpointRow, EndpointlessModelRow } from '@/composables/useAdminData'
@@ -161,6 +210,7 @@ defineProps<{ rows: EndpointRow[]; endpointlessRows: EndpointlessModelRow[]; loa
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const probingId = ref<number | null>(null)
+const togglingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingModelId = ref<number | null>(null)
 const trialingId = ref<number | null>(null)
@@ -172,6 +222,40 @@ const historyVisible = ref(false)
 const historyLoading = ref(false)
 const historyRecords = ref<ProbeRecord[]>([])
 const historyEndpoint = ref<EndpointRow | null>(null)
+
+// Capability edit state (GH #105).
+const capabilityVisible = ref(false)
+const capabilitySaving = ref(false)
+const capabilityRow = ref<EndpointRow | null>(null)
+const capabilityDraft = ref('chat')
+
+function onEditCapability(row: EndpointRow) {
+  capabilityRow.value = row
+  capabilityDraft.value = ['chat', 'image', 'video'].includes(row.modelCapability)
+    ? row.modelCapability
+    : 'chat'
+  capabilityVisible.value = true
+}
+
+async function onSaveCapability() {
+  const row = capabilityRow.value
+  if (!row) return
+  // No same-value early return: a same-capability save is the repair path
+  // for legacy endpoint drift (backend reconciles idempotently, GH #105).
+  capabilitySaving.value = true
+  try {
+    await updateModelCapability(row.modelDbId, capabilityDraft.value)
+    ElMessage.success(`模型「${row.modelName}」能力已改为 ${capabilityDraft.value},端点集合已重算`)
+    capabilityVisible.value = false
+    // Endpoint set changed (created/disabled), so a full reload is the right
+    // refresh path here (unlike the enable toggle's optimistic flip, GH #99).
+    emit('changed')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    capabilitySaving.value = false
+  }
+}
 
 const historyTitle = computed(() => {
   const row = historyEndpoint.value
@@ -190,6 +274,35 @@ async function onProbe(endpointId: number) {
     ElMessage.error((err as Error).message)
   } finally {
     probingId.value = null
+  }
+}
+
+async function onToggleEnabled(row: EndpointRow) {
+  const targetEnabled = !row.endpoint.enabled
+  // Disabling is destructive: confirm before proceeding.
+  if (!targetEnabled) {
+    try {
+      await ElMessageBox.confirm(
+        `确认停用端点「${row.modelName} / ${row.endpoint.protocol}」？停用后调度器将停止对其探测，但历史数据与告警配置保留。需要时可随时重新启用。`,
+        '停用端点',
+        { type: 'warning', confirmButtonText: '停用', cancelButtonText: '取消' }
+      )
+    } catch {
+      return // user cancelled
+    }
+  }
+  togglingId.value = row.endpoint.id
+  try {
+    await updateEndpoint(row.endpoint.id, { enabled: targetEnabled })
+    // Optimistic update: flip the local state immediately for instant feedback
+    // (spec 0018 T9: "不依赖整页刷新"). The update call already invalidates
+    // the overview cache, so the next polling interval will sync naturally.
+    row.endpoint.enabled = targetEnabled
+    ElMessage.success(targetEnabled ? '端点已启用' : '端点已停用')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    togglingId.value = null
   }
 }
 
@@ -296,6 +409,17 @@ async function onTrial(row: EndpointlessModelRow) {
 </script>
 
 <style scoped>
+.capability-tag {
+  margin-right: var(--hs-space-1);
+}
+.capability-dialog-hint {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  margin: 0 0 var(--hs-space-3);
+}
+.capability-select {
+  width: 100%;
+}
 /* Admin density tier: compact 12px card padding (ui-guidelines §2). */
 .admin-card {
   --el-card-padding: 12px;
