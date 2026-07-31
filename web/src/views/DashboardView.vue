@@ -1,27 +1,38 @@
 <template>
   <div class="dashboard">
-    <!-- Semantic page heading (a11y harden 2026-07-29): screen readers get a
-         real h1; visually hidden — zero visual change. -->
+    <!-- Semantic page heading (a11y): screen readers get a real h1;
+         visually hidden — zero visual change. -->
     <h1 class="visually-hidden">HubScope 服务状态总览</h1>
-    <!-- First screen: the hero command band (GH #73) — global conclusion,
-         abnormal chips, status-counts row and 24h availability merged into
-         one flat surface (replaces the GH #53 banner card + stats strip).
-         The band always reflects the unfiltered global picture; the counts
-         row and the filter-row status select dual-control the same
-         statusFilter ref (GH #55). -->
-    <HealthBanner
-      :entries="entries"
-      :generated-at="generatedAt"
-      :loading="loading"
-      :stale="error !== null"
-      :status-counts="statusCounts"
-      :disabled-count="disabledCount"
-      :status-filter="statusFilter"
-      @inspect="onBannerInspect"
-      @toggle-status="toggleStatusFilter"
+
+    <!-- Hero (GH #115, spec 0018 §6): health index + delta + conclusion +
+         scope. The conclusion math comes from the shared healthConclusion
+         module (same words as the share material); a null health index is
+         folded into the empty branch so no-probe windows never read as
+         全部稳定. -->
+    <StatusHero
+      :health="healthScore24h"
+      :delta="healthScoreDelta"
+      :conclusion="heroConclusion"
+      :conclusion-tone="heroTone"
+      :scope="heroScope"
+      :skeleton="initialLoading"
     />
 
-    <!-- Filters: model keyword, protocol, status. -->
+    <!-- Widget row (spec 0018 §7): four Apple-Widget-style metric cells. -->
+    <MetricWidgets
+      :availability="availability24h"
+      :delta="healthScoreDelta"
+      :probes="probes24h"
+      :mean-latency-ms="meanLatency"
+      :abnormal="abnormal"
+      :availability-series="availabilitySeries"
+      :probe-series="probeSeries"
+      :latency-series="latencySeries"
+      :failure-series="failureSeries"
+      :skeleton="initialLoading"
+    />
+
+    <!-- Filters: model keyword, protocol, display status, grouping. -->
     <div class="filter-row">
       <el-input
         v-model="keyword"
@@ -29,16 +40,13 @@
         clearable
         class="filter-keyword"
       />
-      <!-- Inline labels (GH #55, Dashboard-local convention): the selects
-           no longer lean on placeholders as their only name. Keyword input
-           and grouping select stay as-is. -->
-      <span class="filter-label">协议:</span>
+      <span class="filter-label">协议：</span>
       <el-select v-model="protocolFilter" placeholder="全部" clearable class="filter-select">
         <!-- Options come from the single protocol vocabulary (utils/protocol.ts)
              so new protocols appear here automatically. -->
         <el-option v-for="p in PROTOCOLS" :key="p" :label="p" :value="p" />
       </el-select>
-      <span class="filter-label">状态:</span>
+      <span class="filter-label">状态：</span>
       <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
         <!-- Options come from the single display-layer mapping (GH #113):
              the three display states, light → heavy; down + failing filter
@@ -67,68 +75,74 @@
 
     <el-alert
       v-if="error"
-      :title="`刷新失败:${error}`"
+      :title="`刷新失败：${error}`"
       type="error"
       :closable="false"
       class="error-alert"
     />
 
-    <div ref="matrixRef">
-      <!-- Grouped status matrix: one collapsible section per group. -->
-      <template v-if="grouping !== 'none'">
-        <OverviewGroupSection
-          v-for="section in groupSections"
-          :key="section.group.key"
-          :group="section.group"
-          :entries="section.entries"
-          :grouping="grouping"
-          @share="openGroupShare(section)"
-          @open="openQuickView"
-        />
-        <el-empty v-if="groupSections.length === 0 && !loading" description="暂无匹配的 Endpoint" />
-      </template>
-
-      <!-- Flat status matrix: one card per endpoint. -->
-      <div v-else class="card-grid" v-loading="loading && entries.length === 0">
-        <EndpointCard
-          v-for="entry in filteredEntries"
-          :key="entry.endpoint_id"
-          :entry="entry"
-          @open="openQuickView"
-        />
-        <el-empty v-if="filteredEntries.length === 0 && !loading" description="暂无匹配的 Endpoint" />
-      </div>
-
-      <!-- Endpoint quick view (2026-07-29 /impeccable animate; 2026-07-30
-           quiet entrance — the card-flight morph is retired, user verdict):
-           card click opens this frozen-snapshot glance instead of navigating
-           away. -->
-      <EndpointQuickViewDialog
-        v-model:visible="quickViewVisible"
-        :entry="quickViewEntry"
-        @closed="onQuickViewClosed"
-      />
+    <!-- First-load skeleton rows (subsequent polls keep the list on screen —
+         local refresh, never a full re-mount). -->
+    <div v-if="initialLoading" class="list-skeleton">
+      <div v-for="i in 6" :key="i" class="skel-row" />
     </div>
+
+    <template v-else>
+      <ModelStatusList v-if="listSections.some(s => s.entries.length > 0)" :sections="listSections" @open="openDetail" />
+      <el-empty
+        v-else-if="entries.length > 0"
+        description="暂无匹配的 Endpoint"
+      />
+      <el-empty v-else description="暂无监控端点，请先在模型管理中添加" />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+// DashboardView (rebuilt for UI v2, GH #115, spec 0018 §6/§7/§8): hero +
+// metric widgets + model status list. The old world — HealthBanner,
+// EndpointCard matrix, OverviewGroupSection, UptimeStrip, quick-view dialog
+// — is retired wholesale with this ticket.
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview } from '@/composables/useOverview'
-import HealthBanner from '@/components/HealthBanner.vue'
-import EndpointCard from '@/components/EndpointCard.vue'
-import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
+import StatusHero from '@/components/StatusHero.vue'
+import MetricWidgets from '@/components/MetricWidgets.vue'
+import ModelStatusList, { type ListSection } from '@/components/ModelStatusList.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
-import EndpointQuickViewDialog from '@/components/EndpointQuickViewDialog.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
-import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
+import { sortEntriesBySeverity, sortGroupSections } from '@/utils/severitySort'
 import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
-import { freezeEntrySnapshot } from '@/utils/quickViewSnapshot'
-import type { Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
+import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
+import { aggregateDots24h } from '@/utils/overviewDots'
+import {
+  heroScopeText,
+  hourlyAvailabilitySeries,
+  hourlyProbeSeries,
+  hourlyLatencySeries,
+  hourlyFailureSeries,
+  abnormalModelCounts,
+} from '@/utils/overviewMetrics'
+import { meanP50Ms } from '@/utils/statusCardSummary'
+import type { Protocol, OverviewEntry } from '@/api/types'
 
-const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
+const router = useRouter()
+const {
+  entries,
+  byFamily,
+  byCapability,
+  byProtocol,
+  loading,
+  error,
+  enabledEndpoints,
+  availability24h,
+  healthScore24h,
+  healthScoreDelta,
+  probes24h,
+  start,
+} = useOverview()
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
@@ -139,9 +153,49 @@ const statusFilter = ref<DisplayStatus | ''>('')
 // Filter-select options: the three display states, light → heavy (the
 // severity order reversed), words from the single mapping.
 const statusOptions = [...DISPLAY_SEVERITY_ORDER].reverse()
-// Grouping dimension of the status matrix; vendor family by default.
+// Grouping dimension of the list; vendor family by default.
 const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
-const matrixRef = ref<HTMLElement | null>(null)
+
+// First load only: hero/widgets/list render skeletons until the first
+// response lands. Poll failures keep the last good data (error alert on
+// top), so skeleton never replaces a populated board.
+const initialLoading = computed(() => loading.value && entries.value.length === 0 && error.value === null)
+
+// --- Hero -------------------------------------------------------------------
+
+const enabledEntries = computed(() => entries.value.filter(e => e.enabled))
+
+const heroConclusion = computed(() => {
+  const counts = countByStatus(enabledEntries.value)
+  // A null health index (no probes in the window) folds into the empty
+  // branch: no data must never read as 全部稳定 (anti-fake).
+  const empty = enabledEntries.value.length === 0 || healthScore24h.value === null
+  return conclusionText(toneOf(counts), counts, empty)
+})
+
+const heroTone = computed<'success' | 'warning' | 'danger' | 'neutral'>(() => {
+  if (enabledEntries.value.length === 0 || healthScore24h.value === null) return 'neutral'
+  const tone = toneOf(countByStatus(enabledEntries.value))
+  return tone === 'abnormal' ? 'danger' : tone === 'degraded' ? 'warning' : 'success'
+})
+
+const heroScope = computed(() => heroScopeText(enabledEndpoints.value))
+
+// --- Widgets ------------------------------------------------------------------
+
+// Aggregated dots of the enabled set feed the availability/request/failure
+// sparklines (probe-weighted, overviewDots discipline); the latency
+// sparkline derives from the same entries (success-weighted hourly means).
+const aggregateDots = computed(() => aggregateDots24h(enabledEntries.value))
+const availabilitySeries = computed(() => hourlyAvailabilitySeries(aggregateDots.value))
+const probeSeries = computed(() => hourlyProbeSeries(aggregateDots.value))
+const failureSeries = computed(() => hourlyFailureSeries(aggregateDots.value))
+const latencySeries = computed(() => hourlyLatencySeries(enabledEntries.value))
+// The registered scope-consistent latency mean (batch-59 caliber).
+const meanLatency = computed(() => meanP50Ms(enabledEntries.value))
+const abnormal = computed(() => abnormalModelCounts(entries.value))
+
+// --- Share --------------------------------------------------------------------
 
 // Share dialog state. The snapshot freezes the filtered set and filter
 // conditions at open time so polling cannot change the card mid-preview.
@@ -160,81 +214,12 @@ function openShare() {
   shareVisible.value = true
 }
 
-// Per-group share (ticket 59): the snapshot scope is the group's filtered
-// entries; the card leads its scope chips with the group identity so the
-// subset can never read as the global picture.
-function openGroupShare(section: { group: OverviewGroup; entries: OverviewEntry[] }) {
-  if (grouping.value === 'none') return
-  shareSnapshot.value = {
-    entries: [...section.entries],
-    keyword: keyword.value.trim(),
-    protocol: protocolFilter.value,
-    status: statusFilter.value,
-    group: { dimension: grouping.value, key: section.group.key },
-    generatedAt: new Date().toISOString(),
-  }
-  shareVisible.value = true
-}
-
-// Quick-view state (2026-07-30 quiet entrance — the flight/morph machinery
-// is retired, user verdict): flipCardId remembers WHICH card opened the
-// dialog so focus can return to it after close (cleared ONLY in the dialog's
-// @closed — ESC / scrim click / close button all converge there).
-// quickViewEntry is the frozen snapshot — polling must never update the open
-// dialog (snapshot freeze, same philosophy as the StatusCard snapshot).
-const flipCardId = ref<number | null>(null)
-const quickViewVisible = ref(false)
-const quickViewEntry = ref<OverviewEntry | null>(null)
-
-function openQuickView(entry: OverviewEntry) {
-  quickViewEntry.value = freezeEntrySnapshot(entry)
-  flipCardId.value = entry.endpoint_id
-  quickViewVisible.value = true
-}
-
-// EP @closed fires after the leave transition: the single reset point for
-// flipCardId. Focus returns to the trigger card manually as a belt-and-
-// suspenders on top of EP's focus-trap restore — polling re-renders (keyed
-// by endpoint_id) keep the card node alive, but if the card left the board
-// (filter change) the lookup simply no-ops.
-function onQuickViewClosed() {
-  const id = flipCardId.value
-  flipCardId.value = null
-  quickViewEntry.value = null
-  if (id !== null) {
-    nextTick(() => {
-      document.querySelector<HTMLElement>(`[data-endpoint-id="${id}"]`)?.focus()
-    })
-  }
-}
-
-// Disabled endpoints show up in the band's counts row as a non-clickable
-// count.
-const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
-
-// Counts-row click (GH #73, migrated from the stats strip): '' (the 总数
-// item) clears the filter; a display status filters the matrix to that
-// state, clicking the active one clears it. The hero band counts row and
-// the filter-row status select dual-control this single ref (GH #55).
-function toggleStatusFilter(status: DisplayStatus | '') {
-  statusFilter.value = status === '' ? '' : statusFilter.value === status ? '' : status
-}
-
-// Abnormal-banner click: apply the status filter and scroll to the matrix.
-// reduced-motion degrades smooth scroll to instant (2026-07-29 /impeccable
-// animate 批:修补 a11y harden 批漏网,与 semantics.css 全局过渡归零同批;
-// one-shot check per click, no change listener).
-function onBannerInspect(status: DisplayStatus) {
-  statusFilter.value = status
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  matrixRef.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
-}
+// --- List ---------------------------------------------------------------------
 
 // Apply the three filters; an empty filter matches everything. The status
 // filter matches by DISPLAY state (toDisplayStatus), so 'incident' catches
 // down and failing entries together. The result is severity-ranked
-// (GH #52) so the flat matrix leads with the most severe endpoints; group
-// sections re-derive their own ordering from this set.
+// (GH #52) so abnormal models lead the first viewport.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   return sortEntriesBySeverity(
@@ -247,12 +232,14 @@ const filteredEntries = computed(() => {
   )
 })
 
-// Pair each group aggregate with its filtered entries, then severity-rank
-// (GH #52): groups by their most severe ENABLED entry (ties by group key,
-// empty-after-filter groups sink), entries within each group by severity.
-// Filtered-empty groups stay visible as headers and auto-collapse (user
-// request 2026-07-29) instead of showing a large empty-state box.
-const groupSections = computed<GroupSection[]>(() => {
+// Grouped mode: one light list section per group, severity-ranked by the
+// group's most severe ENABLED entry (the board's single rank table). The
+// meta line counts by DISPLAY state (down + failing read together as
+// 服务异常) with words from the single mapping — never a literal.
+const listSections = computed<ListSection[]>(() => {
+  if (grouping.value === 'none') {
+    return [{ key: null, label: '', meta: '', entries: filteredEntries.value }]
+  }
   const groups =
     grouping.value === 'family'
       ? byFamily.value
@@ -266,8 +253,21 @@ const groupSections = computed<GroupSection[]>(() => {
       group,
       entries: filteredEntries.value.filter(e => keyOf(e) === group.key),
     })),
-  )
+  ).map(section => {
+    const counts = abnormalModelCounts(section.entries)
+    const meta =
+      counts.total === 0
+        ? `${section.entries.length} 个端点`
+        : `${section.entries.length} 个端点 · ${statusLabel('incident')} ${counts.incident} · ${statusLabel('degraded')} ${counts.degraded}`
+    return { key: section.group.key, label: section.group.key, meta, entries: section.entries }
+  })
 })
+
+// Row click deep-links to the endpoint detail page; the side detail panel
+// replaces this in T6 (GH #116).
+function openDetail(entry: OverviewEntry) {
+  router.push(`/endpoints/${entry.endpoint_id}`)
+}
 
 onMounted(start)
 </script>
@@ -290,7 +290,8 @@ onMounted(start)
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--hs-space-5) var(--hs-space-4) var(--hs-space-7);
+  /* Public-page breathing room (spec 0018 IA: 32–48px whitespace). */
+  padding: var(--hs-space-6) var(--hs-space-6) var(--hs-space-8);
 }
 .filter-row {
   display: flex;
@@ -315,13 +316,14 @@ onMounted(start)
 .error-alert {
   margin-bottom: var(--hs-space-4);
 }
-.card-grid {
-  display: grid;
-  /* 272px floor keeps a stable 4-column matrix at the 1200px content width
-     (GH #72, surface brief EndpointCard 卡片网格节; group-section grid
-     mirrors this). */
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
-  gap: var(--hs-space-3);
-  min-height: 120px;
+.list-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-2);
+}
+.skel-row {
+  height: 46px;
+  border-radius: var(--hs-radius-lg);
+  background: var(--hs-bg-hover);
 }
 </style>

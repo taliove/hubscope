@@ -22,6 +22,15 @@ export function useOverview() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Global aggregates (GH #115): the backend is the single source of truth
+  // for the health index, its day-over-day delta, the probe count and the
+  // enabled-endpoint population — the dashboard displays, never derives.
+  const enabledEndpoints = ref(0)
+  const availability24h: Ref<number | null> = ref(null)
+  const healthScore24h: Ref<number | null> = ref(null)
+  const healthScoreDelta: Ref<number | null> = ref(null)
+  const probes24h = ref(0)
+
   let poll: VisibilityPollHandle | null = null
 
   async function reload() {
@@ -33,6 +42,11 @@ export function useOverview() {
       byCapability.value = overview.by_capability ?? []
       byProtocol.value = overview.by_protocol ?? []
       generatedAt.value = overview.generated_at
+      enabledEndpoints.value = overview.enabled_endpoints
+      availability24h.value = overview.availability_24h
+      healthScore24h.value = overview.health_score_24h
+      healthScoreDelta.value = overview.health_score_delta
+      probes24h.value = overview.probes_24h
       error.value = null
     } catch (err) {
       // Keep the last good data on screen; just surface the failure.
@@ -72,5 +86,22 @@ export function useOverview() {
     return counts
   })
 
-  return { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, reload, start, stop }
+  return {
+    entries,
+    byFamily,
+    byCapability,
+    byProtocol,
+    generatedAt,
+    loading,
+    error,
+    statusCounts,
+    enabledEndpoints,
+    availability24h,
+    healthScore24h,
+    healthScoreDelta,
+    probes24h,
+    reload,
+    start,
+    stop,
+  }
 }
