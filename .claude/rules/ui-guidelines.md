@@ -147,7 +147,7 @@
 - **分数展示统一 0–100 整数**(null → `-`),`formatScore` 集中于 `utils/format.ts`,组件内禁止自写 `toFixed` 分数格式;0~1 原始分只存在于 API 层。
 - 按钮用动词短语(「触发同步」「新建 Hub」);错误消息必须带原因,不只说「失败」。
 - 数字与时间格式统一走 `utils/format.ts`;评估成本格式同此集中(GH #42):题级耗时 `formatMs`、批次累计耗时 `formatDuration`、Token `formatTokens`(k/M 缩写一位小数),输入/输出分列标注;成本指标中性色不挂档色(§5 成本约定)。
-- **中文物料全角标点:** 界面与物料中文文案用全角标点(zh-punct skill 纪律:fix/check/selftest 三模式 + 线上回读复验);代码注释英文。
+- **中文标点分界(2026-08-01 修正,T13 误登记纠偏):** 对外中文物料(GitHub Release Notes/issue 正文/部署通告/ADR 等面向读者的说明)走 zh-punct skill 全角标点(fix/check/selftest + 线上回读);界面 UI 字符串按仓内存量惯例(当前半角为主,混用容忍,不做机械统一);代码注释英文。
 
 ## 8. 规范的维护
 
