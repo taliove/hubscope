@@ -138,16 +138,19 @@ const tooltip = computed(() => {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* GH #69 text/graphics split: the band-colored score number is text —
-   deepened grade (the .cell-fill bar below keeps the base as a graphic). */
+/* GH #69 text/graphics split + GH #118 v2-palette sweep: the band-colored
+   score number is text — deepened grade (the .cell-fill bar below keeps the
+   base as a graphic). On the v2 palette the warning/danger bases are
+   graphic-tier (2.20/3.55:1 on white), so ALL band-colored text consumes
+   the *-text steps — the band caliber and thresholds are untouched. */
 .cell-value.band-success {
   color: var(--hs-success-text);
 }
 .cell-value.band-warning {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .cell-value.band-danger {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .cell-value.is-null {
   color: var(--hs-text-placeholder);
@@ -167,7 +170,7 @@ const tooltip = computed(() => {
   color: var(--hs-text-placeholder);
 }
 .cell-live-status.live-failed {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .cell-live-status.live-done {
   color: var(--hs-text-placeholder);
