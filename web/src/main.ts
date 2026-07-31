@@ -80,6 +80,18 @@ import './styles/print.css'
 import router from './router'
 import App from './App.vue'
 
+// v1 dark-mode residue cleanup (GH #112, spec 0018 decision 10): the theme
+// toggle (utils/theme.ts) and the anti-FOUC script are gone, but a v1
+// session may have left the `hs:dark` localStorage key and the html.dark
+// class behind — scrub both once at boot so the light-first rebuild never
+// forks on a stale preference. The dark spec reintroduces its own flow.
+document.documentElement.classList.remove('dark')
+try {
+  localStorage.removeItem('hs:dark')
+} catch {
+  /* storage unavailable (private mode) — nothing persisted anyway */
+}
+
 const app = createApp(App)
 app.use(router)
 const epComponents = [
