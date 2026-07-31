@@ -179,6 +179,7 @@ func TestImageParamRulesSeedOnBoot(t *testing.T) {
 // through the API (create/list/patch/delete, duplicate 409, missing 404) and
 // a mutation takes effect on the very next probe — no restart, no cache.
 func TestImageParamRulesCRUDAndImmediateEffect(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -416,6 +417,7 @@ func TestImageParamRulesPermissions(t *testing.T) {
 // priority number wins a key collision, and reserved keys are skipped even
 // when a rule bypassing API validation carries them (double insurance).
 func TestImageParamMergeCollisionAndReservedDefense(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
