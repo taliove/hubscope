@@ -31,7 +31,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="420" fixed="right">
         <template #default="{ row }">
           <el-button
             type="primary"
@@ -40,6 +40,14 @@
             @click="onProbe(row.endpoint.id)"
           >
             立即探测
+          </el-button>
+          <el-button
+            :type="row.endpoint.enabled ? 'warning' : 'success'"
+            size="small"
+            :loading="togglingId === row.endpoint.id"
+            @click="onToggleEnabled(row)"
+          >
+            {{ row.endpoint.enabled ? '停用' : '启用' }}
           </el-button>
           <el-button size="small" @click="onViewHistory(row)">最近记录</el-button>
           <el-button
@@ -149,7 +157,7 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
-import { deleteEndpoint, pruneDeadEndpoints } from '@/api/endpoints'
+import { deleteEndpoint, pruneDeadEndpoints, updateEndpoint } from '@/api/endpoints'
 import { deleteModel, trialModel } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
 import { protocolTagType } from '@/utils/protocol'
@@ -161,6 +169,7 @@ defineProps<{ rows: EndpointRow[]; endpointlessRows: EndpointlessModelRow[]; loa
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const probingId = ref<number | null>(null)
+const togglingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingModelId = ref<number | null>(null)
 const trialingId = ref<number | null>(null)
@@ -190,6 +199,35 @@ async function onProbe(endpointId: number) {
     ElMessage.error((err as Error).message)
   } finally {
     probingId.value = null
+  }
+}
+
+async function onToggleEnabled(row: EndpointRow) {
+  const targetEnabled = !row.endpoint.enabled
+  // Disabling is destructive: confirm before proceeding.
+  if (!targetEnabled) {
+    try {
+      await ElMessageBox.confirm(
+        `确认停用端点「${row.modelName} / ${row.endpoint.protocol}」？停用后调度器将停止对其探测，但历史数据与告警配置保留。需要时可随时重新启用。`,
+        '停用端点',
+        { type: 'warning', confirmButtonText: '停用', cancelButtonText: '取消' }
+      )
+    } catch {
+      return // user cancelled
+    }
+  }
+  togglingId.value = row.endpoint.id
+  try {
+    await updateEndpoint(row.endpoint.id, { enabled: targetEnabled })
+    // Optimistic update: flip the local state immediately for instant feedback.
+    row.endpoint.enabled = targetEnabled
+    ElMessage.success(targetEnabled ? '端点已启用' : '端点已停用')
+    // Trigger parent reload to sync with backend (consistency guarantee).
+    emit('changed')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    togglingId.value = null
   }
 }
 

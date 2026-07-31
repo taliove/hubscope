@@ -84,6 +84,31 @@ func (db *DB) MarkRetiredMissing(hubID int64, seenIDs []string) (int, error) {
 	return int(affected), nil
 }
 
+// ListRetiredModels returns the model_id strings of all models for the hub
+// that are currently in 'retired' status and were 'discovered' (not manual).
+// The discovery syncer uses it to list affected models when emitting the
+// aggregated retirement alert (GH #98, spec 0018 T4).
+func (db *DB) ListRetiredModels(hubID int64) ([]string, error) {
+	rows, err := db.conn.Query(
+		"SELECT model_id FROM models WHERE hub_id = ? AND origin = 'discovered' AND status = 'retired' ORDER BY model_id",
+		hubID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // CreateEndpoint inserts one endpoint for a model with the given enabled
 // state. Discovery uses it to record per-protocol probe outcomes: reachable
 // protocols start enabled, unreachable ones start disabled but stay visible.

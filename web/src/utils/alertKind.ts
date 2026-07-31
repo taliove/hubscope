@@ -24,13 +24,18 @@ const ALERT_KIND_LABELS: Record<AlertKind, string> = {
   group_recovered: '厂商组恢复',
   batch: '聚合发送',
   quiet_summary: '静默摘要',
+  // spec 0018 T4 retirement words (GH #98).
+  retire_pending: '待退役',
+  retired: '已退役',
 }
 
 // el-tag `type` accepts 'primary' | 'success' | 'warning' | 'danger' |
 // 'info'. Fault/recovery kinds keep the legacy status-color mapping; the
 // spec 0017 delivery-form kinds (batch / quiet_summary) are neutral info —
 // they record HOW alerts went out, not a health signal. The manual channel
-// check (test) is likewise not a health signal.
+// check (test) is likewise not a health signal. The spec 0018 T4 retirement
+// kinds (GH #98): retire_pending is warning (needs attention, like failures),
+// retired is info (delivery record, not a health signal).
 const ALERT_KIND_TAG_TYPES: Record<AlertKind, TagProps['type']> = {
   down: 'danger',
   recovered: 'success',
@@ -41,6 +46,8 @@ const ALERT_KIND_TAG_TYPES: Record<AlertKind, TagProps['type']> = {
   group_recovered: 'success',
   batch: 'info',
   quiet_summary: 'info',
+  retire_pending: 'warning',
+  retired: 'info',
 }
 
 // alertKindLabel returns the Chinese display word for an alert event kind.

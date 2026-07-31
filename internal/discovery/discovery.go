@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/taliove/hubscope/internal/classifier"
@@ -106,12 +107,59 @@ func (s *Syncer) syncHub(ctx context.Context, hub store.Hub) (Stats, error) {
 		stats.EndpointsCreated += endpoints
 	}
 
+	// Query models about to be retired before marking them (GH #98, spec 0018
+	// T4): the aggregated retirement alert needs the model_id list.
+	retiredBefore, err := s.db.ListRetiredModels(hub.ID)
+	if err != nil {
+		return stats, err
+	}
+
 	retired, err := s.db.MarkRetiredMissing(hub.ID, ids)
 	if err != nil {
 		return stats, err
 	}
 	stats.Retired += retired
+
+	// Emit one aggregated "retired" alert per sync batch when models
+	// disappeared (GH #98, spec 0018 T4): info level, NULL endpoint_id,
+	// message lists the newly-retired model IDs. The before/after diff ensures
+	// only this batch's retirements are reported — models already retired by
+	// an earlier sync are not re-announced.
+	if retired > 0 {
+		retiredAfter, err := s.db.ListRetiredModels(hub.ID)
+		if err != nil {
+			return stats, err
+		}
+		newlyRetired := diffModelIDs(retiredBefore, retiredAfter)
+		if len(newlyRetired) > 0 {
+			msg := fmt.Sprintf("Hub %q: %d model(s) retired (disappeared from listing): %s",
+				hub.Name, len(newlyRetired), strings.Join(newlyRetired, ", "))
+			if _, err := s.db.CreateAlertEvent(store.AlertEvent{
+				Kind:    store.AlertKindRetired,
+				Message: msg,
+				SentOK:  true, // info-level retirement alerts are recorded, not sent
+			}); err != nil {
+				slog.Error("discovery: create retirement alert", "hub_id", hub.ID, "error", err)
+			}
+		}
+	}
+
 	return stats, nil
+}
+
+// diffModelIDs returns the model IDs present in after but not in before.
+func diffModelIDs(before, after []string) []string {
+	seen := make(map[string]bool, len(before))
+	for _, id := range before {
+		seen[id] = true
+	}
+	var diff []string
+	for _, id := range after {
+		if !seen[id] {
+			diff = append(diff, id)
+		}
+	}
+	return diff
 }
 
 // Sync runs one full discovery pass over all hubs and returns aggregated

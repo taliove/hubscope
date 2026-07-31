@@ -637,3 +637,126 @@ func TestDiscoveryEmptyListRetiresNothing(t *testing.T) {
 		t.Errorf("auto-model status: expected active, got %v", status)
 	}
 }
+
+// TestDiscoveryRetirementAlert (GH #98, spec 0018 T4) verifies that when
+// models disappear from the hub listing causing retirement, one aggregated
+// "retired" alert event is emitted per sync batch listing the affected models.
+func TestDiscoveryRetirementAlert(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"model-a", "model-b", "model-c"})
+	hubID := createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
+
+	// Before retirement, alert history is empty.
+	if got := listAlerts(t, ts, ""); len(got) != 0 {
+		t.Fatalf("initial alerts: expected 0, got %d", len(got))
+	}
+
+	// Two models vanish from the hub listing in one sync batch.
+	stub.setModels([]string{"model-a"})
+	stats := runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 2 {
+		t.Errorf("retired: expected 2, got %d", got)
+	}
+
+	// One aggregated "retired" alert event is emitted (not one per model).
+	events := listAlerts(t, ts, "")
+	if len(events) != 1 {
+		t.Fatalf("alert events: expected 1 aggregated event, got %d", len(events))
+	}
+	event := events[0]
+	if kind := event["kind"].(string); kind != "retired" {
+		t.Errorf("alert kind: expected 'retired', got %q", kind)
+	}
+	// endpoint_id is NULL for aggregated retirement alerts.
+	if epID := event["endpoint_id"]; epID != nil {
+		t.Errorf("endpoint_id: expected nil (aggregated), got %v", epID)
+	}
+	// Message lists the affected models.
+	msg := event["message"].(string)
+	if !strings.Contains(msg, "model-b") || !strings.Contains(msg, "model-c") {
+		t.Errorf("message should list model-b and model-c, got: %s", msg)
+	}
+	if strings.Contains(msg, "model-a") {
+		t.Errorf("message should NOT list model-a (still active), got: %s", msg)
+	}
+
+	// A subsequent sync with no changes emits no new alert.
+	stats = runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 0 {
+		t.Errorf("second sync retired: expected 0, got %d", got)
+	}
+	if got := listAlerts(t, ts, ""); len(got) != 1 {
+		t.Errorf("alerts after no-op sync: expected 1 (unchanged), got %d", len(got))
+	}
+
+	// Verify model-a is still active before the final retirement.
+	models := listModelsViaAPI(t, ts.URL)
+	if status := models["model-a"]["status"]; status != "active" {
+		t.Errorf("model-a status before final retirement: expected active, got %v", status)
+	}
+	if status := models["model-b"]["status"]; status != "retired" {
+		t.Errorf("model-b status: expected retired, got %v", status)
+	}
+
+	// The last remaining model retires in a separate batch: a second aggregated
+	// alert. We use a different model (not empty list) to avoid the empty-list
+	// guard in MarkRetiredMissing.
+	stub.setModels([]string{"model-d"})
+	stats = runDiscovery(t, ts.URL)
+	if got := statNumber(t, stats, "retired"); got != 1 {
+		t.Errorf("third sync retired: expected 1, got %d", got)
+	}
+	events = listAlerts(t, ts, "")
+	if len(events) != 2 {
+		t.Fatalf("alerts after second retirement: expected 2, got %d", len(events))
+	}
+	// Newest first: the second alert is events[0].
+	secondEvent := events[0]
+	if kind := secondEvent["kind"].(string); kind != "retired" {
+		t.Errorf("second alert kind: expected 'retired', got %q", kind)
+	}
+	secondMsg := secondEvent["message"].(string)
+	if !strings.Contains(secondMsg, "model-a") {
+		t.Errorf("second alert should list model-a, got: %s", secondMsg)
+	}
+}
+
+// TestDiscoveryRetirementAlertNoRestart (GH #98, spec 0018 T4) verifies W5
+// lazy rebuild semantics: restart does not re-fire retirement alerts. The
+// retirement alert is a one-shot event, not a state transition, so it
+// intentionally does not participate in LatestDownRecoveryEvent /
+// LatestGroupEvent lazy rebuild.
+func TestDiscoveryRetirementAlertNoRestart(t *testing.T) {
+	db := openTempDB(t)
+	ts := newTestAPIServer(t, db)
+
+	stub := newDiscoveryStubHub(t, []string{"model-x", "model-y"})
+	createHubViaAPI(t, ts.URL, stub.URL)
+	waitForHubSyncStatus(t, ts.URL, 1, "succeeded")
+
+	// One model retires, emitting one alert.
+	stub.setModels([]string{"model-x"})
+	runDiscovery(t, ts.URL)
+	if got := listAlerts(t, ts, ""); len(got) != 1 {
+		t.Fatalf("alerts before restart: expected 1, got %d", len(got))
+	}
+
+	// Alert history persists across server restarts (database persistence).
+	// A restart-safe test would need store-level verification, which is
+	// covered by the fact that CreateAlertEvent writes to the database and
+	// ListAlertEventsAll reads from it. The one-shot nature (no state rebuild)
+	// is verified by the fact that retirement alerts have NULL endpoint_id and
+	// do not participate in LatestDownRecoveryEvent / LatestGroupEvent queries
+	// (those filter by kind IN ('down','recovered') or kind IN
+	// ('group_down','group_recovered'), which never match 'retired').
+	events := listAlerts(t, ts, "")
+	if len(events) != 1 {
+		t.Errorf("persisted alerts: expected 1, got %d", len(events))
+	}
+	if kind := events[0]["kind"].(string); kind != "retired" {
+		t.Errorf("persisted alert kind: expected 'retired', got %q", kind)
+	}
+}

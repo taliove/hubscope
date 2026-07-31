@@ -21,6 +21,11 @@ describe('alertKindLabel', () => {
     expect(alertKindLabel('quiet_summary')).toBe('静默摘要')
   })
 
+  it('maps the spec 0018 T4 retirement kinds (GH #98)', () => {
+    expect(alertKindLabel('retire_pending')).toBe('待退役')
+    expect(alertKindLabel('retired')).toBe('已退役')
+  })
+
   it('falls back to a placeholder for unknown kinds (never the raw string)', () => {
     expect(alertKindLabel('some_future_kind')).toBe('未知类型')
     expect(alertKindLabel('some_future_kind')).not.toBe('some_future_kind')
@@ -49,6 +54,13 @@ describe('alertKindTagType', () => {
     expect(alertKindTagType('test')).toBe('info')
     expect(alertKindTagType('batch')).toBe('info')
     expect(alertKindTagType('quiet_summary')).toBe('info')
+  })
+
+  it('maps spec 0018 T4 retirement kinds (GH #98): retire_pending warning, retired info', () => {
+    // retire_pending is warning (needs attention, like failures).
+    expect(alertKindTagType('retire_pending')).toBe('warning')
+    // retired is info (delivery record, not a health signal).
+    expect(alertKindTagType('retired')).toBe('info')
   })
 
   it('falls back to info for unknown kinds (never claims a status color)', () => {

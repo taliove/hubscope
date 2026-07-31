@@ -21,6 +21,12 @@ import (
 // (LatestGroupEvent), never the per-endpoint one. "quiet_summary" (spec 0017
 // ticket 4, GH #67) records one quiet-hours end summary: the actual text
 // sent and the real delivery result; it carries a NULL endpoint_id.
+// "retire_pending" / "retired" (GH #98, spec 0018 T4) record endpoint
+// retirement lifecycle events: "retire_pending" fires when a chat endpoint
+// enters the 72h-no-success pending state (warning level), "retired" fires
+// once when models disappear from the Hub listing causing retirement (info
+// level, aggregated per sync batch). Both carry NULL endpoint_id and are
+// one-shot events that never participate in state rebuild.
 const (
 	AlertKindDown             = "down"
 	AlertKindRecovered        = "recovered"
@@ -31,6 +37,8 @@ const (
 	AlertKindGroupDown        = "group_down"
 	AlertKindGroupRecovered   = "group_recovered"
 	AlertKindQuietSummary     = "quiet_summary"
+	AlertKindRetirePending    = "retire_pending"
+	AlertKindRetired          = "retired"
 )
 
 // maxAlertLimit caps how many alert events a single query may return.

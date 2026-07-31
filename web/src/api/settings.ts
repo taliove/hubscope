@@ -27,7 +27,10 @@ export type UpdateSettingsPayload = Partial<AppSettings>
 // Alert event kinds: the five legacy kinds plus the spec 0017 noise-
 // reduction kinds — group_down / group_recovered (vendor group state
 // transitions), batch (one aggregated window flush delivery), quiet_summary
-// (quiet-hours end summary delivery).
+// (quiet-hours end summary delivery) — plus the spec 0018 T4 retirement
+// kinds — retire_pending (chat endpoint enters 72h-no-success pending state,
+// warning level), retired (models disappeared from Hub listing causing
+// retirement, info level, aggregated per sync batch).
 export type AlertKind =
   | 'down'
   | 'recovered'
@@ -38,6 +41,8 @@ export type AlertKind =
   | 'group_recovered'
   | 'batch'
   | 'quiet_summary'
+  | 'retire_pending'
+  | 'retired'
 
 export interface AlertEvent {
   id: number
