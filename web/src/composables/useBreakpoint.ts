@@ -7,7 +7,7 @@
 // EvalShareDialog / Leaderboard / EvalProgressGrid / CampaignReportView (shared
 // mode); the dashboard and admin console never consume this breakpoint (the
 // desktop-first declaration does not invalidate — ui-guidelines §5).
-import { ref, onMounted, onUnmounted, readonly } from 'vue'
+import { ref, onMounted, onUnmounted, readonly, type Ref } from 'vue'
 
 // The single breakpoint value for the whole batch: 767px max-width means
 // narrow viewports (<=767px) get the responsive treatment, and desktop
@@ -26,20 +26,28 @@ function updateNarrowState() {
   }
 }
 
-function addListener() {
+// Subscribes to the shared MediaQueryList: the first subscriber creates it and
+// seeds the state, later subscribers share the same listener, and the last
+// release tears it down. Exported as the testable seam (the project has no
+// DOM test environment, so the composable's lifecycle glue stays thin and
+// untested, mirroring the visibilityPoll factory precedent); components must
+// consume useBreakpoint, not this.
+export function subscribeBreakpoint(): { isNarrow: Readonly<Ref<boolean>>; release: () => void } {
   if (listenerCount === 0) {
     mediaQuery = window.matchMedia(BREAKPOINT_QUERY)
-    updateNarrowState()
+    isNarrow.value = mediaQuery.matches
     mediaQuery.addEventListener('change', updateNarrowState)
   }
   listenerCount += 1
-}
-
-function removeListener() {
-  listenerCount -= 1
-  if (listenerCount === 0 && mediaQuery) {
-    mediaQuery.removeEventListener('change', updateNarrowState)
-    mediaQuery = null
+  return {
+    isNarrow: readonly(isNarrow),
+    release: () => {
+      listenerCount -= 1
+      if (listenerCount === 0 && mediaQuery) {
+        mediaQuery.removeEventListener('change', updateNarrowState)
+        mediaQuery = null
+      }
+    },
   }
 }
 
@@ -51,12 +59,14 @@ function removeListener() {
  * @returns Readonly ref: true if viewport width <= 767px, false otherwise.
  */
 export function useBreakpoint() {
+  let release: (() => void) | null = null
+
   onMounted(() => {
-    addListener()
+    release = subscribeBreakpoint().release
   })
 
   onUnmounted(() => {
-    removeListener()
+    release?.()
   })
 
   // Return readonly to prevent consumers from mutating the shared state.
