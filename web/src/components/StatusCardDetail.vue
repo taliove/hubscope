@@ -242,10 +242,11 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   margin-top: 8px;
 }
 /* Healthy roster (GH #92): two equal columns — repeat(2, 1fr) resolves to
-   312px on the 720 card (content 640 − 16 gap) and 212px on the 480 compact
-   variant (content 440), so GH #93 gets the narrow layout by reusing this
-   block as-is. Rows are compact (4px) so twenty names stay light against the
-   abnormal detail above. */
+   (640 − 16) / 2 = 312px on the 720 card and (440 − 16) / 2 = 212px on the
+   480 compact variant (full cascade in the share-materials brief arithmetic
+   table), so GH #93 gets the narrow layout by reusing this block as-is.
+   Rows are compact (4px) so twenty names stay light against the abnormal
+   detail above. */
 .roster-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
