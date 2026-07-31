@@ -265,7 +265,7 @@
 > **视觉交互部分已迁 `DESIGN.md`(GH #49)**;三态/轮询纪律(visibilityPoll、settle 转场口径)属工程行为约定,迁移期仍以本节为准,随语义手册定稿(GH #59)归位。
 
 - **三态必备:** 加载态(skeleton 或 loading)、空态(空数据说明 + 引导操作)、错误态(错误原因 + 重试入口),任何数据区块缺一不可。
-- **长文本:** 模型名/Hub 名/错误信息一律截断 + `title` hover 全显。
+- **长文本:** 模型名/Hub 名/错误信息一律截断 + `title` hover 全显。**具名口径(GH #86,2026-07-31 /impeccable 实机迭代,用户裁决):** EndpointCard 头行模型名的全显从原生 `title` 换 `el-tooltip` 快显(show-after 200ms,样式与全站 tooltip 统一)——原生 title 出现慢(约 1s 系统延迟)、样式不可控;**默认常滚与 hover 跑马灯均被否决**:常滚直接撞「failing 闪烁 = 全站唯一动画,无任何豁免」承重语义(监控墙上「有东西在动」即「有情况」,字标静止裁决同理由),跑马灯读完一个长 ID 需数秒、比 tooltip 即时全显慢,且区分性尾部由中间截断 tailKeep=12 已露出。范围仅 EndpointCard 头行模型名一处,其他 `title` 消费方(组头、榜单等)不动;零动画,「failing 独占全站唯一动画」纪律不破。
 - **轮询:** `setInterval` 必配对清理(组件卸载时);可点汇总卡有反馈态且可再点取消(fix fc8bdb6)。
 - **轮询可见性感知(GH #22 登记,spec 0015 决策 5):** 所有页面轮询一律走共享封装 `utils/visibilityPoll.ts` 的 `createVisibilityPoll`,禁止各处自造 `visibilitychange` 监听、禁止第三套轮询实现。口径:标签页隐藏时——状态板 overview 轮询 10s 降频为 60s(`useOverview.HIDDEN_POLL_INTERVAL_MS`;挂大屏/后台标签页场景降频不停摆,读者切回时数据不至长时间陈旧);批次类轮询(AppHeader 批次进度 3s、/eval 3s、报告页 3s、EvalOpsPanel 批次追踪 1.5s)整段暂停;`visibilitychange` 回前台立即触发一次刷新再恢复原周期(`refreshOnVisible` 默认开)。settle 转场口径不变:批次在隐藏期间 settle 时,回前台的立即刷新即「观察到 settle 的那次响应」,照常停轮询并走 ElMessage 提示。清理纪律不变:卸载时调 `handle.clear()`(替代原 `clearInterval` 对),封装内部同时停表并移除 visibility 监听。
 - **即时反馈:** 点击类操作在请求期间给 loading 或禁用态,不静默等待。

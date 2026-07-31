@@ -18,10 +18,20 @@
     @keydown.space.prevent="emit('open', entry)"
   >
     <div class="card-head">
-      <span class="model-id" :title="entry.model_id">
-        <span class="model-head">{{ modelSplit.head }}</span>
-        <span v-if="modelSplit.tail" class="model-tail">{{ modelSplit.tail }}</span>
-      </span>
+      <!-- Full name on hover via el-tooltip (GH #86, replacing the native
+           title — ~1s system delay, unstyleable). Always attached, no
+           truncation measurement: for short names the tooltip content equals
+           the visible text and changes nothing. Zero animation — auto-scroll
+           and hover marquee were both rejected ("failing blink = the site's
+           only animation"). The tooltip neither swallows clicks (whole-card
+           quick-view still opens) nor enters the tab order, so the card's
+           focus-visible ring is untouched. -->
+      <el-tooltip :content="entry.model_id" placement="top" :show-after="200">
+        <span class="model-id">
+          <span class="model-head">{{ modelSplit.head }}</span>
+          <span v-if="modelSplit.tail" class="model-tail">{{ modelSplit.tail }}</span>
+        </span>
+      </el-tooltip>
       <!-- Signal-wall lamp (GH #72; GH #82 tag moved to the status row): the
            head row is now model name + lamp only — the lamp is the card's
            sole status light, so the StatusBadge below renders dotless. Only
