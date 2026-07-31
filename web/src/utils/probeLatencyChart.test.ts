@@ -15,7 +15,7 @@ import {
   WINDOW_MERGE_FACTOR,
   MIN_INTERVAL_MS,
 } from '@/utils/probeLatencyChart'
-import { MIN_Y_RANGE_MS } from '@/utils/latencySparkline'
+import { MIN_Y_RANGE_MS } from '@/utils/probeLatencyChart'
 import type { ProbeRecord } from '@/api/types'
 
 function rec(id: number, ok: boolean, latencyMs: number, createdAt: string, errorSummary: string | null = null): ProbeRecord {

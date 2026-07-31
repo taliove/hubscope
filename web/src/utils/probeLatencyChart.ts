@@ -34,13 +34,15 @@
 //     itself (clamping reads a spike as "exactly at the ceiling", a shape
 //     forgery); tooltips always carry the true value.
 //   - Same principle, different parameters (ui-guidelines §5: 同原则不同参数
-//     不算第二口径): utils/latencySparkline.ts uses peak ×1.25 because its
-//     hourly P50 buckets already shave spikes; this per-point curve has no
-//     such buffer, hence the P99 trim. The MIN_Y_RANGE_MS floor is shared
-//     with the sparkline (same value, imported) — keep the two files'
-//     range-discipline comments cross-referencing each other.
+//     不算第二口径): the retired hourly-bucket sparkline used peak ×1.25
+//     because its P50 buckets already shaved spikes; this per-point curve
+//     has no such buffer, hence the P99 trim.
 import type { ProbeRecord } from '@/api/types'
-import { MIN_Y_RANGE_MS } from './latencySparkline'
+
+// 1s y-range floor (formerly shared with the retired LatencySparkline, which
+// was deleted in GH #115 — the constant now lives here): below it, sub-second
+// jitter would stretch into a fake shape (honest, non-exaggerated reading).
+export const MIN_Y_RANGE_MS = 1000
 
 export interface LatencyPoint {
   time: number // ms epoch, for the ECharts time axis

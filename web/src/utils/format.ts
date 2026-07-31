@@ -117,6 +117,16 @@ export function formatTokens(value: number | null): string {
   return `${(value / 1_000_000).toFixed(1)}M`
 }
 
+// Render a plain count (GH #115 metric widgets: probe totals): raw below
+// 1000, then one-decimal k/M — the formatTokens sibling for non-token
+// counts. Dash when null.
+export function formatCount(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  if (value < 1000) return String(Math.round(value))
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`
+  return `${(value / 1_000_000).toFixed(1)}M`
+}
+
 // Render an hour-aligned bucket timestamp as a compact local "MM-dd HH:mm"
 // label for chart axes.
 export function formatBucketTime(value: string): string {
