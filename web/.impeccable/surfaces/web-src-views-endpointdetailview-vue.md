@@ -13,7 +13,7 @@ related_targets: ["web/src/components/TimeSeriesChart.vue","web/src/components/P
 
 ## 页面构成
 1. AppHeader(公开侧形态,同 Dashboard 简报)
-2. 标题行:模型名 + 协议 tag + StatusBadge(含降级成因副标签)+ status_reason + 登录态操作(评估此模型、分享)
+2. 标题行:模型名 + 协议 tag + StatusBadge(含降级成因副标签)+ status_reason + 登录态操作(评估此模型、分享——分享弹窗 GH #93 起含「完整版/紧凑版」切换,紧凑版 = 端点小卡,规格见 share-materials 简报)
 3. 指标卡区:稳定性 KPI + 评估总分卡
 4. 窗口/mode 控件行(24h/7天/30天 × 合并/流式/非流式)
 5. 时序图表区(TimeSeriesChart:成功率/延迟/TTFT——非流式模式隐藏 TTFT 图)
