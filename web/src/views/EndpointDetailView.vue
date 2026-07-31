@@ -120,9 +120,6 @@
     />
 
     <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
-
-    <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
-    <PublicFooter />
   </div>
 </template>
 
@@ -141,7 +138,6 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import TimeSeriesChart from '@/components/TimeSeriesChart.vue'
 import ProbeRecordTable from '@/components/ProbeRecordTable.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import { formatBucketTime, formatPercent, formatScore, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'

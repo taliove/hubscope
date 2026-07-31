@@ -1,9 +1,10 @@
 import type { Campaign } from '@/api/types'
 
-// Batch-selection helpers for /eval (issue #16). The AppHeader progress
-// entry deep-links to /eval?batch=<id> so the user lands on the running
-// batch they were watching; a direct /eval visit keeps the established
-// default of the newest done batch.
+// Batch-selection helpers for /eval (issue #16). The sidebar batch progress
+// entry (AppSidebar, moved from AppHeader in GH #112) deep-links to
+// /eval?batch=<id> so the user lands on the running batch they were
+// watching; a direct /eval visit keeps the established default of the
+// newest done batch.
 
 // Parse the ?batch= route query into a campaign id, rejecting anything
 // that cannot name a batch (missing, non-numeric, fractional, non-positive).

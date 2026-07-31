@@ -35,10 +35,6 @@
         @query="onQuery"
       />
     </template>
-
-    <!-- Quiet admin entry (ticket 90): the shared PublicFooter, identical
-         on every public page. -->
-    <PublicFooter />
   </div>
 </template>
 
@@ -53,7 +49,6 @@ import { computed, onMounted, ref } from 'vue'
 import { getPublicEvalBoard } from '@/api/campaigns'
 import type { CampaignReport } from '@/api/types'
 import Leaderboard from '@/components/Leaderboard.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import { familyOptionsOf, filterRowsByFamily, sortRows } from '@/utils/boardSort'
 import { campaignSettleVerb, campaignTriggerLabel } from '@/utils/evalWording'
 import { formatTimeMinute } from '@/utils/format'

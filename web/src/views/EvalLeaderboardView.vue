@@ -161,8 +161,8 @@ import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedE
 // view switch (ticket 52), and only they are polled (ui-guidelines §6). Ops
 // and the case library live in /admin since ticket 44; row drill-down opens
 // the shared ModelTrendDialog (ticket 32 pattern). A ?batch=<id> query
-// (issue #16, from the AppHeader progress entry) overrides the default so
-// the entry lands on the batch it was showing.
+// (issue #16, from the sidebar batch progress entry) overrides the default
+// so the entry lands on the batch it was showing.
 const router = useRouter()
 const route = useRoute()
 
@@ -403,8 +403,8 @@ function onBatchChange() {
 }
 
 // Late navigation to /eval?batch=<id> while the page is already mounted
-// (e.g. clicking the AppHeader progress entry from /eval itself): re-target
-// the selection when the query names a different, existing batch.
+// (e.g. clicking the sidebar batch progress entry from /eval itself):
+// re-target the selection when the query names a different, existing batch.
 watch(requestedBatchId, (id) => {
   if (id === null || id === selectedId.value) return
   if (!campaigns.value.some((c) => c.id === id)) return

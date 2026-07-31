@@ -2,7 +2,8 @@
   <div class="login-page">
     <div class="login-stack">
       <!-- Brand block above the card (ui-guidelines §2b): BrandMark +
-           Wordmark (display step) + subtitle; the page renders no AppHeader. -->
+           Wordmark (display step) + subtitle; the page renders outside the
+           sidebar shell (route meta.bare, GH #112). -->
       <div class="login-brand">
         <div class="login-brand-row">
           <BrandMark class="login-mark" />
