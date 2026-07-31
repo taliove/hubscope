@@ -1,5 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { fetchAuthStatus } from '@/api/auth'
+import { legacyAdminTarget } from '@/utils/adminNav'
+
+// First query value of a possibly-repeated route query param (router-level
+// mirror of the adminNav parsing discipline).
+function firstQueryValue(raw: unknown): string | null {
+  const first = Array.isArray(raw) ? raw[0] : raw
+  return typeof first === 'string' ? first : null
+}
 
 const router = createRouter({
   history: createWebHistory(),
@@ -61,30 +69,29 @@ const router = createRouter({
       path: '/models',
       name: 'models',
       component: () => import('@/views/ModelsView.vue'),
-      // Session-gated admin surface (GH #112): AdminView's resources/rules
-      // panels moved into the shell; the v2 rebuild lands in T8.
+      // Session-gated admin surface (GH #112 shell, GH #119 migration):
+      // AdminView's resources/rules panes live here (spec 0018 IA).
     },
     {
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/AlertsView.vue'),
-      // Session-gated alert history (GH #112); the timeline rebuild is T10.
+      // Session-gated alert history (GH #112); the timeline rebuild landed in GH #117.
     },
     {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
-      // Session-gated settings area (GH #112): settings/audit/users plus the
-      // folded-in task center (spec 0018 decision 63); the rebuild is T11.
+      // Session-gated settings area (GH #112 shell, GH #119 migration):
+      // settings/audit/users plus the folded-in task center (spec 0018
+      // decision 63).
     },
     {
+      // Legacy path (GH #119): the task center folds into /settings in the
+      // v2 IA; the redirect keeps shared /tasks deep links landing on the
+      // tasks pane.
       path: '/tasks',
-      name: 'task-center',
-      component: () => import('@/views/TaskCenterView.vue'),
-      // Task reads are session-gated monitoring data, like eval runs.
-      // Legacy entry point (GH #112): the task center is folded into
-      // /settings in the v2 IA; this route stays alive for deep links and
-      // highlights the 系统设置 sidebar item.
+      redirect: { path: '/settings', query: { tab: 'tasks' } },
     },
     {
       path: '/login',
@@ -94,11 +101,13 @@ const router = createRouter({
       meta: { public: true, bare: true },
     },
     {
+      // Legacy path (GH #119): AdminView retired. The redirect re-targets
+      // every legacy ?tab= deep link to the console that pane landed on
+      // (/models, /settings, or the /eval secondary tabs) via the pure,
+      // vitest-covered legacyAdminTarget mapping; unknown tabs fall back to
+      // /settings (spec 0018).
       path: '/admin',
-      name: 'admin',
-      component: () => import('@/views/AdminView.vue'),
-      // Transitional (GH #112): kept alive until T11 — the eval-ops and
-      // case-library tabs still live only here. Not in the sidebar.
+      redirect: (to) => legacyAdminTarget(firstQueryValue(to.query.tab), firstQueryValue(to.query.item)),
     },
   ],
 })
