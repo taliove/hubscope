@@ -46,30 +46,9 @@
       </el-form>
 
       <el-divider content-position="left">近期告警事件</el-divider>
-      <el-table :data="alerts" size="small" empty-text="暂无告警事件">
-        <el-table-column prop="kind" label="类型" width="110">
-          <template #default="{ row }">
-            <el-tag :type="alertKindTagType(row.kind)" size="small">{{ alertKindLabel(row.kind) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="厂商" width="120">
-          <template #default="{ row }">
-            <!-- Vendor family name rides group_key (spec 0017 group alerts);
-                 blank on every endpoint- or hub-scoped event. -->
-            <span v-if="row.group_key" class="vendor-cell" :title="row.group_key">{{ row.group_key }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="message" label="内容" min-width="240" show-overflow-tooltip />
-        <el-table-column label="发送" width="80">
-          <template #default="{ row }">
-            <span v-if="row.kind === 'score_drop_skipped'" class="sent-skip">未发送</span>
-            <span v-else :class="row.sent_ok ? 'sent-ok' : 'sent-fail'">{{ row.sent_ok ? '成功' : '失败' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="时间" width="170">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-      </el-table>
+      <!-- Shared history table (GH #112): the same component backs the
+           first-class 故障记录 page; a Lark test send refreshes it. -->
+      <AlertHistory ref="historyRef" />
     </el-card>
 
     <el-card shadow="never" class="admin-card">
@@ -121,14 +100,12 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import {
   getSettings,
   updateSettings,
-  listAlerts,
   testLark,
-  type AlertEvent,
   type AppSettings,
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
-import { formatTime, formatHour } from '@/utils/format'
-import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
+import { formatHour } from '@/utils/format'
+import AlertHistory from '@/components/AlertHistory.vue'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
 
@@ -197,12 +174,11 @@ const form = reactive<AppSettings>({
 // not width-capped).
 const hourOptions = Array.from({ length: 24 }, (_, h) => h)
 const suites = ref<Suite[]>([])
-const alerts = ref<AlertEvent[]>([])
+// Embedded alert-history table (GH #112): refreshed after every Lark test
+// send, since the attempt lands in the history as kind="test".
+const historyRef = ref<InstanceType<typeof AlertHistory> | null>(null)
 const saving = ref(false)
 const testing = ref(false)
-
-// Kind word/tag mapping lives in utils/alertKind.ts (GH #68): the alert
-// event vocabulary is a single source of truth, never component literals.
 
 // Only suites in the evaluation rotation take a weight input: retired
 // suites no longer join campaigns, so weighting them would be misleading.
@@ -250,7 +226,7 @@ async function onTestLark() {
     } else {
       ElMessage.error(`测试消息发送失败:${result.error ?? '未知原因'}`)
     }
-    alerts.value = await listAlerts()
+    await historyRef.value?.reload()
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -263,11 +239,10 @@ onMounted(async () => {
   // active, so the anchored row can flash as soon as the pane is painted.
   if (props.highlightItem) void flashItem(props.highlightItem)
   try {
-    const [settings, suiteList, alertList] = await Promise.all([getSettings(), listSuites(), listAlerts()])
+    const [settings, suiteList] = await Promise.all([getSettings(), listSuites()])
     Object.assign(form, settings)
     suites.value = suiteList
     fillSuiteWeights(settings.suite_weights)
-    alerts.value = alertList
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
@@ -305,13 +280,6 @@ onMounted(async () => {
 /* 320px standard-input tier for short identifiers (§4). */
 .judge-input {
   width: 320px;
-}
-/* Delivery outcome maps to the semantic status palette (§3). */
-.sent-ok {
-  color: var(--hs-success);
-}
-.sent-fail {
-  color: var(--hs-danger);
 }
 .field-hint {
   margin-left: var(--hs-space-3);
@@ -356,17 +324,5 @@ onMounted(async () => {
 .field-static {
   font-size: var(--hs-text-md);
   color: var(--hs-text-secondary);
-}
-/* A recorded-but-unsent event (skipped comparison) reads neutral. */
-.sent-skip {
-  color: var(--hs-text-secondary);
-}
-/* Vendor family name (spec 0017 group alerts): long names truncate with
-   title hover carrying the full string (§6). */
-.vendor-cell {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>
