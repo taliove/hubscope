@@ -498,4 +498,17 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
+/* Statement-row tone colors (check GH #93 CRITICAL-1): scoped styles from
+   StatusCardSingleModelMetrics do not reach this template, so the small
+   card defines its own set. Text-scenario success consumes the deepened
+   text grade, not the base green (GH #69 text/graphics split). */
+.vc-healthy {
+  color: var(--hs-success-text);
+}
+.vc-degraded {
+  color: var(--hs-warning);
+}
+.vc-abnormal {
+  color: var(--hs-danger);
+}
 </style>
