@@ -36,6 +36,38 @@ const ProtocolImagesEdit = "images_edit"
 // (POST /v1/video/generations, spec 0018 / GH #100).
 const ProtocolVideoGeneration = "video_generation"
 
+// ProtocolAnthropic and ProtocolOpenAI are the chat hub API protocols in
+// canonical endpoint order.
+const ProtocolAnthropic = "anthropic"
+const ProtocolOpenAI = "openai"
+
+// ProtocolsForCapability maps a model capability to the endpoint protocols it
+// implies (GH #100, spec 0018 T2; shared by discovery sync, manual model
+// creation, and capability recompute in GH #105): chat and every other
+// capability trial the chat protocols; image gets both image protocols;
+// video gets the video protocol. Image/video are trial-free — the caller
+// decides trial discipline per protocol via IsTrialFreeProtocol.
+func ProtocolsForCapability(capability string) []string {
+	switch capability {
+	case "image":
+		return []string{ProtocolImagesGeneration, ProtocolImagesEdit}
+	case "video":
+		return []string{ProtocolVideoGeneration}
+	default:
+		return []string{ProtocolAnthropic, ProtocolOpenAI}
+	}
+}
+
+// IsTrialFreeProtocol reports whether endpoints for the protocol are created
+// without any probe call (GH #100, spec 0018 T2: generation protocols cost
+// real money per call, so creation is trial-free and monitoring is
+// Ping-only). Chat protocols return false — they keep W3 trial-before-create.
+func IsTrialFreeProtocol(protocol string) bool {
+	return protocol == ProtocolImagesGeneration ||
+		protocol == ProtocolImagesEdit ||
+		protocol == ProtocolVideoGeneration
+}
+
 // IsImageProtocol reports whether the protocol belongs to the image family:
 // one call per probe round, no streaming or TTFT, and the image request
 // budget.

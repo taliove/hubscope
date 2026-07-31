@@ -17,6 +17,22 @@
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="能力" width="130">
+        <template #default="{ row }">
+          <el-tag size="small" type="info" plain class="capability-tag">
+            {{ row.modelCapability }}
+          </el-tag>
+          <el-button
+            size="small"
+            text
+            class="capability-edit-btn"
+            :loading="capabilitySaving && capabilityRow?.modelDbId === row.modelDbId"
+            @click="onEditCapability(row)"
+          >
+            修改
+          </el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="协议" width="120">
         <template #default="{ row }">
           <el-tag :type="protocolTagType(row.endpoint.protocol)" size="small">
@@ -149,6 +165,31 @@
     <el-dialog v-model="historyVisible" :title="historyTitle" width="920px">
       <ProbeRecordTable v-loading="historyLoading" :records="historyRecords" />
     </el-dialog>
+
+    <!-- Capability edit (GH #105): changing a model's capability reconciles
+         its endpoint set server-side (missing created, surplus disabled). -->
+    <el-dialog
+      v-model="capabilityVisible"
+      :title="`修改模型能力 — ${capabilityRow?.modelName ?? ''}`"
+      width="420px"
+    >
+      <div class="capability-dialog-body">
+        <p class="capability-dialog-hint">
+          修改能力后系统按新能力重算端点集合:缺失的补建(chat 走试通,image/video 直接建),不再蕴含的停用(历史保留)。
+        </p>
+        <el-select v-model="capabilityDraft" class="capability-select">
+          <el-option label="chat(对话)" value="chat" />
+          <el-option label="image(生图)" value="image" />
+          <el-option label="video(生视频)" value="video" />
+        </el-select>
+      </div>
+      <template #footer>
+        <el-button @click="capabilityVisible = false">取消</el-button>
+        <el-button type="primary" :loading="capabilitySaving" @click="onSaveCapability">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -158,7 +199,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
 import { deleteEndpoint, pruneDeadEndpoints, updateEndpoint } from '@/api/endpoints'
-import { deleteModel, trialModel } from '@/api/models'
+import { deleteModel, trialModel, updateModelCapability } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
 import { protocolTagType } from '@/utils/protocol'
 import type { EndpointRow, EndpointlessModelRow } from '@/composables/useAdminData'
@@ -181,6 +222,42 @@ const historyVisible = ref(false)
 const historyLoading = ref(false)
 const historyRecords = ref<ProbeRecord[]>([])
 const historyEndpoint = ref<EndpointRow | null>(null)
+
+// Capability edit state (GH #105).
+const capabilityVisible = ref(false)
+const capabilitySaving = ref(false)
+const capabilityRow = ref<EndpointRow | null>(null)
+const capabilityDraft = ref('chat')
+
+function onEditCapability(row: EndpointRow) {
+  capabilityRow.value = row
+  capabilityDraft.value = ['chat', 'image', 'video'].includes(row.modelCapability)
+    ? row.modelCapability
+    : 'chat'
+  capabilityVisible.value = true
+}
+
+async function onSaveCapability() {
+  const row = capabilityRow.value
+  if (!row) return
+  if (capabilityDraft.value === row.modelCapability) {
+    capabilityVisible.value = false
+    return
+  }
+  capabilitySaving.value = true
+  try {
+    await updateModelCapability(row.modelDbId, capabilityDraft.value)
+    ElMessage.success(`模型「${row.modelName}」能力已改为 ${capabilityDraft.value},端点集合已重算`)
+    capabilityVisible.value = false
+    // Endpoint set changed (created/disabled), so a full reload is the right
+    // refresh path here (unlike the enable toggle's optimistic flip, GH #99).
+    emit('changed')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    capabilitySaving.value = false
+  }
+}
 
 const historyTitle = computed(() => {
   const row = historyEndpoint.value
@@ -334,6 +411,17 @@ async function onTrial(row: EndpointlessModelRow) {
 </script>
 
 <style scoped>
+.capability-tag {
+  margin-right: var(--hs-space-1);
+}
+.capability-dialog-hint {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  margin: 0 0 var(--hs-space-3);
+}
+.capability-select {
+  width: 100%;
+}
 /* Admin density tier: compact 12px card padding (ui-guidelines §2). */
 .admin-card {
   --el-card-padding: 12px;

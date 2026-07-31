@@ -24,25 +24,15 @@ import (
 var protocols = []string{"anthropic", "openai"}
 
 // trialProtocolsFor returns the protocols a model gets endpoints for, split
-// by capability: chat models are trial-probed on anthropic/openai (W3: trial
-// before creation, failed trials leave no placeholder endpoints per ticket 17);
-// image models get images_generation and images_edit endpoints without any
-// trial (GH #100, spec 0018 T2: trial-free creation, no upstream generation
-// call, shrinking W3 to chat protocols only); video models get video_generation
-// without trial (same trial-free rationale). Generation protocols cost real
-// money per call, so the trial-free gate is strict and does not fall back to
-// chat trials — a misconfigured image/video model presents as down, not as a
+// by capability (GH #100, spec 0018 T2): the mapping is shared via
+// hubclient.ProtocolsForCapability. Chat models are trial-probed (W3: trial
+// before creation, failed trials leave no placeholder endpoints per ticket
+// 17); image and video models are trial-free — generation protocols cost real
+// money per call, so the gate is strict and does not fall back to chat
+// trials: a misconfigured image/video model presents as unverified, not as a
 // chat model.
 func trialProtocolsFor(capability string) []string {
-	switch capability {
-	case "image":
-		return []string{hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit}
-	case "video":
-		return []string{hubclient.ProtocolVideoGeneration}
-	default:
-		// chat and every other capability trial the chat protocols.
-		return append([]string(nil), protocols...)
-	}
+	return hubclient.ProtocolsForCapability(capability)
 }
 
 // Stats summarizes one sync run across all hubs.
@@ -338,7 +328,7 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		}
 		// Trial-free protocols (image/video) are created without probe calls;
 		// chat protocols still go through the trial-probe flow.
-		if s.isTrialFree(protocol) {
+		if hubclient.IsTrialFreeProtocol(protocol) {
 			if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
 				return created, err
 			} else if isNew {
@@ -372,15 +362,6 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		}
 	}
 	return created, nil
-}
-
-// isTrialFree reports whether the protocol should be created without probe
-// calls (GH #100, spec 0018 T2: image and video generation protocols are
-// trial-free to avoid upstream noise and cost).
-func (s *Syncer) isTrialFree(protocol string) bool {
-	return protocol == hubclient.ProtocolImagesGeneration ||
-		protocol == hubclient.ProtocolImagesEdit ||
-		protocol == hubclient.ProtocolVideoGeneration
 }
 
 // imageParamsFor resolves the rule-merged extra probe parameters for image
