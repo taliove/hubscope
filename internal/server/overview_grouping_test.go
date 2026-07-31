@@ -133,8 +133,10 @@ func TestOverviewGrouping(t *testing.T) {
 	if gpt.EndpointCount != 4 {
 		t.Errorf("gpt endpoints: expected 4, got %d", gpt.EndpointCount)
 	}
-	if gpt.StatusCounts["degraded"] != 1 || gpt.StatusCounts["healthy"] != 3 {
-		t.Errorf("gpt status counts: expected degraded=1 healthy=3, got %v", gpt.StatusCounts)
+	// spec 0018 T1: Ping endpoints (gpt-image-2's images_*) stay group members
+	// but bucket as "unverified", separate from the health counts.
+	if gpt.StatusCounts["degraded"] != 1 || gpt.StatusCounts["healthy"] != 1 || gpt.StatusCounts["unverified"] != 2 {
+		t.Errorf("gpt status counts: expected degraded=1 healthy=1 unverified=2, got %v", gpt.StatusCounts)
 	}
 	if gpt.Availability24h == nil || !approxEq(*gpt.Availability24h, 0.8) {
 		t.Errorf("gpt availability: expected 0.8, got %v", gpt.Availability24h)
@@ -169,8 +171,10 @@ func TestOverviewGrouping(t *testing.T) {
 	}
 
 	image := findGroup(t, payload.ByCapability, "image")
-	if image.EndpointCount != 2 || image.StatusCounts["healthy"] != 2 {
-		t.Errorf("image group: expected 2 healthy endpoints, got %+v", image)
+	// spec 0018 T1: image endpoints are Ping-monitored — no probe samples, so
+	// the group buckets them as unverified with null metrics (no 24h data).
+	if image.EndpointCount != 2 || image.StatusCounts["unverified"] != 2 {
+		t.Errorf("image group: expected 2 unverified endpoints, got %+v", image)
 	}
 	if image.Availability24h != nil || image.AvgLatencyMs != nil {
 		t.Errorf("image group has no 24h data: expected null metrics, got %+v", image)

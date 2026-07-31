@@ -19,24 +19,30 @@ import (
 )
 
 // protocols lists the chat hub API protocols in canonical endpoint order.
-// Every model is trialed on them; image-capable models additionally trial
-// the image protocol (see trialProtocolsFor).
+// Chat models are trialed on them; image and video models are trial-free
+// (see trialProtocolsFor).
 var protocols = []string{"anthropic", "openai"}
 
-// trialProtocolsFor returns the protocols a model is trial-probed on: chat
-// protocols for every model, plus the image protocols for image-capable
-// models only (spec 0014 / ADR 0012) — a wrong image trial would burn money
-// per call and produce upstream noise, so the gate stays strict. The image
-// trials run after the chat trials: a fast-failing chat path costs nothing,
-// and image trials only happen for models that classify as image anyway.
-// Generation comes before edit within the image family (GH #32): the two
-// are independent trials with independent outcomes.
+// trialProtocolsFor returns the protocols a model gets endpoints for, split
+// by capability: chat models are trial-probed on anthropic/openai (W3: trial
+// before creation, failed trials leave no placeholder endpoints per ticket 17);
+// image models get images_generation and images_edit endpoints without any
+// trial (GH #100, spec 0018 T2: trial-free creation, no upstream generation
+// call, shrinking W3 to chat protocols only); video models get video_generation
+// without trial (same trial-free rationale). Generation protocols cost real
+// money per call, so the trial-free gate is strict and does not fall back to
+// chat trials — a misconfigured image/video model presents as down, not as a
+// chat model.
 func trialProtocolsFor(capability string) []string {
-	list := append([]string(nil), protocols...)
-	if capability == "image" {
-		list = append(list, hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit)
+	switch capability {
+	case "image":
+		return []string{hubclient.ProtocolImagesGeneration, hubclient.ProtocolImagesEdit}
+	case "video":
+		return []string{hubclient.ProtocolVideoGeneration}
+	default:
+		// chat and every other capability trial the chat protocols.
+		return append([]string(nil), protocols...)
 	}
-	return list
 }
 
 // Stats summarizes one sync run across all hubs.
@@ -308,10 +314,13 @@ func (s *Syncer) syncMarked(ctx context.Context, hub store.Hub, source string) (
 	return stats, nil
 }
 
-// trialAndCreateEndpoints trial-probes the model on every protocol it does
-// not yet have an endpoint for and creates an enabled endpoint per protocol
-// that answered. Failed trials create nothing — they are logged, so no
-// permanently-disabled placeholder endpoints accumulate (ticket 17).
+// trialAndCreateEndpoints creates endpoints for every protocol the model does
+// not yet have, respecting the capability's trial discipline: chat models are
+// trial-probed on each protocol (W3: trial before creation, failed trials
+// leave no placeholder endpoint per ticket 17); image and video models get
+// their endpoints created without any probe call (GH #100, spec 0018 T2:
+// trial-free creation shrinks W3 to chat protocols only, preventing upstream
+// generation noise and placeholder accumulation).
 func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, model *store.Model) (int, error) {
 	existing, err := s.db.ListEndpointsByModelID(model.ID)
 	if err != nil {
@@ -327,6 +336,21 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		if have[protocol] {
 			continue
 		}
+		// Trial-free protocols (image/video) are created without probe calls;
+		// chat protocols still go through the trial-probe flow.
+		if s.isTrialFree(protocol) {
+			if ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true); err != nil {
+				return created, err
+			} else if isNew {
+				if err := s.db.ApplyCreationDefaults(ep.ID, protocol); err != nil {
+					slog.Error("discovery: apply creation defaults",
+						"hub_id", hub.ID, "model", model.ModelID, "protocol", protocol, "error", err)
+				}
+				created++
+			}
+			continue
+		}
+		// Chat protocols: trial-probe before creation (W3).
 		result := s.client.Probe(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, false, s.imageParamsFor(protocol, model.ModelID))
 		if !result.OK {
 			slog.Debug("discovery: protocol trial failed",
@@ -348,6 +372,15 @@ func (s *Syncer) trialAndCreateEndpoints(ctx context.Context, hub store.Hub, mod
 		}
 	}
 	return created, nil
+}
+
+// isTrialFree reports whether the protocol should be created without probe
+// calls (GH #100, spec 0018 T2: image and video generation protocols are
+// trial-free to avoid upstream noise and cost).
+func (s *Syncer) isTrialFree(protocol string) bool {
+	return protocol == hubclient.ProtocolImagesGeneration ||
+		protocol == hubclient.ProtocolImagesEdit ||
+		protocol == hubclient.ProtocolVideoGeneration
 }
 
 // imageParamsFor resolves the rule-merged extra probe parameters for image

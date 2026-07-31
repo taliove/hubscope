@@ -215,7 +215,11 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 		}
 		for _, ep := range endpoints {
 			// Ping-monitored endpoints (spec 0018 T1): produce no probe records,
-			// excluded from all aggregates and enabled count, status = "unverified".
+			// so their status is always "unverified" and their (empty) samples
+			// contribute nothing to availability/latency aggregates. They stay
+			// group members — dropping them would make all-Ping groups vanish
+			// from the dashboard, hiding the cards entirely. Only the global
+			// enabled count excludes them (spec AC: not evidence-bearing).
 			isPing := store.IsPingProtocol(ep.Protocol)
 
 			stats, err := s.gatherWindowStats(ep.ID, now)
@@ -234,16 +238,12 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 			}
 
 			entries = append(entries, entry)
-
-			// Exclude Ping endpoints from aggregates (spec 0018 T1 AC)
-			if !isPing {
-				families.add(model.Family, entry, stats.samples24h)
-				capabilities.add(model.Capability, entry, stats.samples24h)
-				protocols.add(ep.Protocol, entry, stats.samples24h)
-				global.add("all", entry, stats.samples24h)
-				if ep.Enabled {
-					enabledEndpoints++
-				}
+			families.add(model.Family, entry, stats.samples24h)
+			capabilities.add(model.Capability, entry, stats.samples24h)
+			protocols.add(ep.Protocol, entry, stats.samples24h)
+			global.add("all", entry, stats.samples24h)
+			if ep.Enabled && !isPing {
+				enabledEndpoints++
 			}
 		}
 	}

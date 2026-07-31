@@ -32,6 +32,10 @@ const ProtocolImagesGeneration = "images_generation"
 // spec 0014 / ADR 0012 / GH #32).
 const ProtocolImagesEdit = "images_edit"
 
+// ProtocolVideoGeneration is the OpenAI-compatible video generation protocol
+// (POST /v1/video/generations, spec 0018 / GH #100).
+const ProtocolVideoGeneration = "video_generation"
+
 // IsImageProtocol reports whether the protocol belongs to the image family:
 // one call per probe round, no streaming or TTFT, and the image request
 // budget.

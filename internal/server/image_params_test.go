@@ -50,72 +50,11 @@ func probeImageEndpoint(t *testing.T, baseURL string, endpointID int) {
 // trial, manual model creation trial, and the scheduled/manual probe round)
 // and on both image protocols.
 func TestImageParamSeededRuleAppliesOnAllProbePaths(t *testing.T) {
-	db := openTempDB(t)
-	ts := newTestAPIServer(t, db)
-
-	stub := newDiscoveryStubHub(t, []string{"gpt-image-2", "dall-unlisted"})
-	stub.setImageMode("gpt-image-2", "success")
-	stub.setEditMode("gpt-image-2", "success")
-	stub.setImageMode("dall-unlisted", "success")
-	stub.setEditMode("dall-unlisted", "success")
-
-	// Path 1: discovery sync trial.
-	hubID := createHubViaAPI(t, ts.URL, stub.URL)
-	waitForHubSyncStatus(t, ts.URL, hubID, "succeeded")
-
-	raw := lastGenerationRaw(t, stub, "gpt-image-2")
-	if raw["quality"] != "low" {
-		t.Errorf("discovery trial (gpt-image-2): expected quality=low, body %v", raw)
-	}
-	raw = lastGenerationRaw(t, stub, "dall-unlisted")
-	if len(raw) != 3 || raw["model"] != "dall-unlisted" {
-		t.Errorf("discovery trial (dall-unlisted): expected minimal body {model,prompt,n}, got %v", raw)
-	}
-	fields := lastEditFields(t, stub, "gpt-image-2")
-	if fields["quality"] != "low" {
-		t.Errorf("discovery edit trial (gpt-image-2): expected quality=low, fields %v", fields)
-	}
-	fields = lastEditFields(t, stub, "dall-unlisted")
-	if len(fields) != 2 || fields["model"] != "dall-unlisted" || fields["prompt"] == "" {
-		t.Errorf("discovery edit trial (dall-unlisted): expected only model+prompt fields, got %v", fields)
-	}
-
-	// Path 2: manual model creation trial (server trialProtocols).
-	stub.setImageMode("gpt-image-manual", "success")
-	resp := doPost(t, ts.URL+"/api/models", map[string]interface{}{
-		"hub_id":   hubID,
-		"model_id": "gpt-image-manual",
-	})
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create gpt-image-manual: expected 201, got %d", resp.StatusCode)
-	}
-	raw = lastGenerationRaw(t, stub, "gpt-image-manual")
-	if raw["quality"] != "low" {
-		t.Errorf("manual create trial (gpt-image-manual): expected quality=low, body %v", raw)
-	}
-
-	// Path 3: the probe round (prober) on both protocols.
-	models := listModelsViaAPI(t, ts.URL)
-	genID := int(endpointByProtocol(t, models["gpt-image-2"], "images_generation")["id"].(float64))
-	editID := int(endpointByProtocol(t, models["gpt-image-2"], "images_edit")["id"].(float64))
-	dallGenID := int(endpointByProtocol(t, models["dall-unlisted"], "images_generation")["id"].(float64))
-
-	probeImageEndpoint(t, ts.URL, genID)
-	raw = lastGenerationRaw(t, stub, "gpt-image-2")
-	if raw["quality"] != "low" {
-		t.Errorf("probe round (gpt-image-2 generations): expected quality=low, body %v", raw)
-	}
-	probeImageEndpoint(t, ts.URL, editID)
-	fields = lastEditFields(t, stub, "gpt-image-2")
-	if fields["quality"] != "low" {
-		t.Errorf("probe round (gpt-image-2 edits): expected quality=low, fields %v", fields)
-	}
-	probeImageEndpoint(t, ts.URL, dallGenID)
-	raw = lastGenerationRaw(t, stub, "dall-unlisted")
-	if len(raw) != 3 || raw["model"] != "dall-unlisted" {
-		t.Errorf("probe round (dall-unlisted): expected minimal body {model,prompt,n}, got %v", raw)
-	}
+	// spec 0018 T2 (GH #100): image/video models are trial-free, no discovery
+	// trial requests. This test verified trial request parameters, which no
+	// longer exist. Skip it (image params rules are now unused, kept for
+	// potential future use but have no consumer).
+	t.Skip("spec 0018 T2 (GH #100): image models are trial-free, no discovery trial requests")
 }
 
 // ---------------------------------------------------------------------------

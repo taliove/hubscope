@@ -115,9 +115,13 @@ def process(text: str, mode: str):
 
 
 def read_input(argv):
-    if len(argv) > 1 and argv[1] not in ("-i",):
-        with open(argv[1], encoding="utf-8") as f:
-            return f.read(), argv[1]
+    # Accept the file in any position after the mode (both "fix notes.md -i"
+    # and "fix -i notes.md"); flags are skipped, the first non-flag wins.
+    for arg in argv[1:]:
+        if arg.startswith("-"):
+            continue
+        with open(arg, encoding="utf-8") as f:
+            return f.read(), arg
     return sys.stdin.read(), None
 
 

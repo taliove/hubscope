@@ -12,7 +12,7 @@ import (
 )
 
 // probeImagePNG is the fixed test image uploaded on every images_edit probe
-// (spec 0014 / GH #32): a 1024x1024 solid teal PNG, embedded so probing the
+// (spec 0016 / GH #32): a 1024x1024 solid teal PNG, embedded so probing the
 // edit path never depends on external assets and the single-binary delivery
 // (W8) stays intact. The content is a fixed asset (not generated at runtime)
 // so it can be eyeballed and stays byte-stable across releases.
@@ -24,14 +24,14 @@ var probeImagePNG []byte
 const probeImageFilename = "probe-image.png"
 
 // editProbePrompt is the fixed edit instruction sent on every images_edit
-// probe. Each call produces a real edited image and costs money (spec 0014),
+// probe. Each call produces a real edited image and costs money (spec 0016),
 // so the instruction stays trivial.
 const editProbePrompt = "Make the teal square slightly darker"
 
 // callImagesEdit executes one POST /v1/images/edits call as a multipart form
 // with the OpenAI contract fields: image (the embedded test image), prompt,
 // model — singular field names, no image[]/file dialects — plus any
-// rule-merged extra parameters as plain form fields (spec 0014 / GH #33, the
+// rule-merged extra parameters as plain form fields (spec 0016 / GH #33, the
 // same merged map generations puts into its JSON body). Success
 // determination and usage mapping are identical to generations (see
 // doImageCall); there is no streaming mode and no TTFT.

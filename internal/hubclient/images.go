@@ -12,7 +12,7 @@ import (
 
 // imageProbePrompt is the fixed generation instruction sent on every
 // images_generation probe. Each call generates a real image and costs money
-// (spec 0014), so the prompt stays trivial; model-specific cost-saving
+// (spec 0016), so the prompt stays trivial; model-specific cost-saving
 // parameters (e.g. quality:"low" for gpt-image models) arrive via the
 // rule-merged imageParams argument (GH #33).
 const imageProbePrompt = "A single solid teal square on a white background"
@@ -40,7 +40,7 @@ func imageDataComplete(data []imageDataItem) bool {
 
 // callImagesGeneration executes one POST /v1/images/generations call with the
 // minimal request body (model + prompt + n=1, the most portable shape across
-// upstreams) plus any rule-merged extra parameters (spec 0014 / GH #33, e.g.
+// upstreams) plus any rule-merged extra parameters (spec 0016 / GH #33, e.g.
 // quality:"low" for gpt-image models). Success requires HTTP 2xx AND a
 // complete data payload; upstream usage, when present, maps into the existing
 // token fields. There is no streaming mode and no TTFT — LatencyMs carries
