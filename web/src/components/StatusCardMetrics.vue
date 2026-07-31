@@ -1,12 +1,12 @@
 <template>
   <div>
     <!-- Hero panel: the 24h availability leads (the objective 3-second
-         number, tier-colored), with the verdict and full four-status
-         distribution riding underneath as a secondary line. The top never
-         foregrounds the abnormal endpoints — but the verdict and counts are
-         still right there, so the anti-fake invariant (never paper over an
-         abnormal state) holds. Failing keeps its static double-encoding
-         (orange-red dot + chip). -->
+         number, tier-colored), with the verdict and full three-state
+         distribution riding underneath as a secondary line (down + failing
+         merge into 服务异常, GH #113). The top never foregrounds the
+         abnormal endpoints — but the verdict and counts are still right
+         there, so the anti-fake invariant (never paper over an abnormal
+         state) holds. The alert count keeps its static event-worded chip. -->
     <div class="hero-panel">
       <div class="hero-left">
         <span class="metric-label">
@@ -31,7 +31,7 @@
             class="dist-seg"
             :class="{ 'dist-zero': seg.count === 0 }"
           >
-            <span class="dist-label" :class="seg.count > 0 ? `st-${seg.status}` : ''">{{ seg.label }}</span>
+            <span class="dist-label" :class="seg.count > 0 ? `st-${seg.tone}` : ''">{{ seg.label }}</span>
             <span class="dist-num">{{ seg.count }}</span>
           </span>
         </div>
@@ -99,7 +99,7 @@ const availability = computed(() => scopedAvailability(props.entries))
 const avgLatency = computed(() => meanP50Ms(props.entries))
 const dots = computed(() => aggregateDots24h(props.entries))
 // Verdict rides under the availability number; '' when empty so the panel
-// stays neutral on the no-data state (never reads as "全部正常").
+// stays neutral on the no-data state (never reads as "全部稳定").
 const verdict = computed(() => (props.isEmpty ? '' : conclusionText(toneOf(counts.value), counts.value, false)))
 const hasFailing = computed(() => !props.isEmpty && counts.value.failing > 0)
 const distribution = computed(() => distributionSegments(counts.value))
@@ -173,7 +173,8 @@ const distribution = computed(() => distributionSegments(counts.value))
   color: var(--hs-text-primary);
 }
 /* Verdict secondary line: smaller than the availability lead, but colored
-   by tone so the severity is still legible at a glance. */
+   by tone so the severity is still legible at a glance. Text channel → the
+   *-text grade of each slot (graphic/text division, GH #113). */
 .hero-verdict {
   display: flex;
   align-items: center;
@@ -190,31 +191,33 @@ const distribution = computed(() => distributionSegments(counts.value))
   color: var(--hs-success-text);
 }
 .vc-degraded {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .vc-abnormal {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .vc-empty {
   color: var(--hs-text-secondary);
 }
+/* Alert chip + dot (event-worded "含 N 个告警"): failing has no separate
+   display color in the three-state world — both take the danger slot. */
 .alert-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-  background: var(--hs-status-failing);
+  background: var(--hs-danger);
 }
 .failing-chip {
   font-size: var(--hs-text-xs);
-  color: var(--hs-status-failing);
-  border: 1px solid var(--hs-status-failing);
+  color: var(--hs-danger-text);
+  border: 1px solid var(--hs-danger-text);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
   padding: 0 var(--hs-space-2);
 }
-/* Distribution line: four segments always listed; a zero segment fades to
-   placeholder so "no failing" is confirmed, not inferred. */
+/* Distribution line: three display segments always listed; a zero segment
+   fades to placeholder so a clean dimension is confirmed, not inferred. */
 .distribution {
   display: flex;
   align-items: center;
@@ -239,17 +242,16 @@ const distribution = computed(() => distributionSegments(counts.value))
   color: var(--hs-text-placeholder);
   font-weight: 400;
 }
-.st-healthy {
+/* Distribution words: text channel → *-text grades (GH #69 text/graphics
+   split; GH #113 tone slots success/warning/danger). */
+.st-success {
   color: var(--hs-success-text);
 }
-.st-degraded {
-  color: var(--hs-warning);
+.st-warning {
+  color: var(--hs-warning-text);
 }
-.st-down {
-  color: var(--hs-danger);
-}
-.st-failing {
-  color: var(--hs-status-failing);
+.st-danger {
+  color: var(--hs-danger-text);
 }
 .av-ok {
   color: var(--hs-success-text);

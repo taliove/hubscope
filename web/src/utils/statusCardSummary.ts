@@ -12,8 +12,15 @@
 // internal/server/overview.go's groupAccumulator).
 import type { OverviewEntry } from '@/api/types'
 import { formatPercent, formatPercentDigits } from '@/utils/format'
-import { STATUS_LABELS, type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
+import { type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
 import { dotTier, type AvailabilityTier } from '@/utils/overviewDots'
+import {
+  displayStatusCounts,
+  statusLabel,
+  statusTone,
+  type DisplayStatus,
+  type DisplayTone,
+} from '@/utils/statusDisplay'
 
 // dotTier / aggregateDots24h / AvailabilityTier live in utils/overviewDots.ts
 // since spec 0017 (GH #64) so the group-level UptimeStrip shares the batch-59
@@ -134,25 +141,28 @@ export function summaryText(counts: HealthCounts, entries: OverviewEntry[], empt
   const availability = scopedAvailability(entries)
   let text: string
   if (counts.failing > 0) {
+    // "触发告警" is alert-EVENT wording (the Lark pipeline fired), not a
+    // status word — the event-category domain is untouched by the
+    // three-state display mapping (GH #113).
     text = `有 ${counts.failing} 个端点触发告警,建议立即处理`
   } else if (counts.down > 0) {
     const first = entries.find(e => e.status === 'down')
     text = first
-      ? `${counts.down} 个端点宕机,建议优先排查 ${first.model_id}`
-      : `${counts.down} 个端点宕机,建议优先排查`
+      ? `${counts.down} 个端点${statusLabel('down')},建议优先排查 ${first.model_id}`
+      : `${counts.down} 个端点${statusLabel('down')},建议优先排查`
   } else if (counts.degraded > 0) {
     const streak = longestDegradedStreak(entries)
     text = streak
-      ? `${streak.modelId} 持续降级约 ${streak.hours} 小时,建议排查上游`
-      : `${counts.degraded} 个端点降级,建议关注,暂不紧急`
+      ? `${streak.modelId} 持续${statusLabel('degraded')}约 ${streak.hours} 小时,建议排查上游`
+      : `${counts.degraded} 个端点${statusLabel('degraded')},建议关注,暂不紧急`
   } else if (availability !== null && availability < 0.95) {
-    text = `状态全部正常,但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
+    text = `状态全部${statusLabel('stable')},但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
   } else if (availability !== null) {
     text = '近 24 小时运行平稳,无需处理'
   } else {
-    // All green but the window has no probes: "平稳" would claim evidence we
+    // All stable but the window has no probes: "平稳" would claim evidence we
     // do not have, so state the fact and the gap.
-    text = '当前全部正常'
+    text = `当前全部${statusLabel('stable')}`
   }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text
@@ -175,26 +185,30 @@ export interface SingleModelStatement {
 }
 
 // Statement under the availability number, replacing the aggregate verdict +
-// distribution: "降级 · 24h 可用率 80.0%". The rate clause degrades to a
-// no-data note when the window has no probes.
+// distribution: "性能下降 · 24h 可用率 80.0%". The leading word comes from
+// the display-layer mapping (down and failing both render 服务异常); the
+// rate clause degrades to a no-data note when the window has no probes.
 export function singleModelStatement(entry: OverviewEntry, availability: number | null): SingleModelStatement {
   const rate = availability !== null ? `24h 可用率 ${formatPercent(availability)}` : '24h 内无探测数据'
+  const word = statusLabel(entry.status)
   switch (entry.status) {
     case 'healthy':
       return {
         text:
           availability !== null && availability < 0.95
-            ? `正常 · 24h 可用率仅 ${formatPercent(availability)},低于 95%`
-            : `正常 · ${rate}`,
+            ? `${word} · 24h 可用率仅 ${formatPercent(availability)},低于 95%`
+            : `${word} · ${rate}`,
         tone: 'healthy',
         failingChip: null,
       }
     case 'degraded':
-      return { text: `降级 · ${rate}`, tone: 'degraded', failingChip: null }
+      return { text: `${word} · ${rate}`, tone: 'degraded', failingChip: null }
     case 'down':
-      return { text: `宕机 · ${rate}`, tone: 'abnormal', failingChip: null }
+      return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: null }
     case 'failing':
-      return { text: `告警 · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+      // The chip copy is alert-event wording (event category, untouched);
+      // the status word itself has already merged into 服务异常.
+      return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
   }
 }
 
@@ -206,35 +220,43 @@ export function singleModelSummaryText(entry: OverviewEntry, availability: numbe
   if (entry.status === 'failing') {
     text = '触发告警,建议立即处理'
   } else if (entry.status === 'down') {
-    text = '宕机,建议优先排查'
+    text = `${statusLabel('down')},建议优先排查`
   } else if (entry.status === 'degraded') {
     const streak = longestDegradedStreak([entry])
-    text = streak ? `持续降级约 ${streak.hours} 小时,建议排查上游` : '降级,建议关注,暂不紧急'
+    text = streak
+      ? `持续${statusLabel('degraded')}约 ${streak.hours} 小时,建议排查上游`
+      : `${statusLabel('degraded')},建议关注,暂不紧急`
   } else if (availability !== null && availability < 0.95) {
-    text = `状态正常,但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
+    text = `状态${statusLabel('stable')},但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
   } else if (availability !== null) {
     text = '近 24 小时运行平稳,无需处理'
   } else {
-    text = '当前状态正常'
+    text = `当前状态${statusLabel('stable')}`
   }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text
 }
 
-// Distribution segment of the conclusion block: all four statuses always
-// listed (zero counts included) so "no failing" is confirmed at a glance
-// rather than inferred from absence.
+// Distribution segments of the conclusion block (three-state display,
+// GH #113): the four domain counts merge into the three display states —
+// down + failing count together under 服务异常. All three segments are
+// always listed (zero counts included) so a clean dimension is confirmed at
+// a glance rather than inferred from absence; the alert count stays
+// disclosed by the event-worded "含 N 个告警" chip when failing > 0.
 export interface DistributionSegment {
-  status: keyof HealthCounts
+  status: DisplayStatus
   label: string
+  tone: DisplayTone
   count: number
 }
 
 export function distributionSegments(counts: HealthCounts): DistributionSegment[] {
-  return (['healthy', 'degraded', 'down', 'failing'] as const).map(status => ({
+  const merged = displayStatusCounts(counts)
+  return (['stable', 'degraded', 'incident'] as const).map(status => ({
     status,
-    label: STATUS_LABELS[status],
-    count: counts[status],
+    label: statusLabel(status),
+    tone: statusTone(status),
+    count: merged[status],
   }))
 }
 

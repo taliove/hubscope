@@ -422,17 +422,20 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
+/* Small-card alert chip + dot (event-worded "含告警"): same treatment as
+   StatusCardSingleModelMetrics — failing has no separate display color in
+   the three-state world (GH #113), both take the danger slot. */
 .alert-dot-small {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-  background: var(--hs-status-failing);
+  background: var(--hs-danger);
 }
 .failing-chip-small {
   font-size: var(--hs-text-xs);
-  color: var(--hs-status-failing);
-  border: 1px solid var(--hs-status-failing);
+  color: var(--hs-danger-text);
+  border: 1px solid var(--hs-danger-text);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
   padding: 0 var(--hs-space-2);

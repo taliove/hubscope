@@ -3,11 +3,12 @@
     <!-- Hero panel (single-model mode, design ruling): availability leads at
          display size; a single-status statement replaces the aggregate
          verdict + distribution (the scope is one endpoint — counts would be
-         noise). Failing keeps its static double-encoding (orange dot + the
-         count-less "含告警" chip). The right column carries eval data; the
-         panel stays put (with a no-data line) when the model was never
-         evaluated. The failing chip copy comes from the statement object
-         (null unless failing), so no status wording lives in the template. -->
+         noise). The alert event keeps its static chip (event-worded
+         "含告警", danger slot — failing has no fourth display color, GH #113).
+         The right column carries eval data; the panel stays put (with a
+         no-data line) when the model was never evaluated. The chip copy
+         comes from the statement object (null unless failing), so no status
+         wording lives in the template. -->
     <div class="hero-panel">
       <div class="hero-left">
         <span class="metric-label">
@@ -175,28 +176,30 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .statement-text {
   font-weight: 600;
 }
-/* GH #69 text/graphics split: statement/availability words are text —
-   success as text consumes the deepened text grade. */
+/* Statement words: text channel → the *-text grade of each slot (GH #69
+   text/graphics split; graphic/text division, GH #113). */
 .vc-healthy {
   color: var(--hs-success-text);
 }
 .vc-degraded {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .vc-abnormal {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
+/* Alert chip + dot (event-worded "含告警"): failing has no separate display
+   color in the three-state world — both take the danger slot. */
 .alert-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-  background: var(--hs-status-failing);
+  background: var(--hs-danger);
 }
 .failing-chip {
   font-size: var(--hs-text-xs);
-  color: var(--hs-status-failing);
-  border: 1px solid var(--hs-status-failing);
+  color: var(--hs-danger-text);
+  border: 1px solid var(--hs-danger-text);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
   padding: 0 var(--hs-space-2);
