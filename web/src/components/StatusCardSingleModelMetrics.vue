@@ -87,6 +87,7 @@ import { dotTier, availabilityTier, scopedAvailability, singleModelStatement } f
 const props = defineProps<{
   entry: OverviewEntry
   evalSummary: ModelEvalSummary | null
+  compact?: boolean // GH #93: 480px compact variant
 }>()
 
 // Compute availability from the entry's 24h dots
@@ -110,6 +111,10 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   padding: 16px 20px;
   margin-bottom: 16px;
 }
+/* Compact variant (GH #93): tighter padding. */
+:deep(.compact) .hero-panel {
+  padding: 12px 16px;
+}
 .hero-left {
   flex: 1;
   min-width: 0;
@@ -127,6 +132,10 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   width: 1px;
   background: var(--hs-border);
   margin: 0 20px;
+}
+/* Compact variant: narrower divider margin. */
+:deep(.compact) .metric-divider {
+  margin: 0 12px;
 }
 .metric-block {
   display: flex;

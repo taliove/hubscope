@@ -8,6 +8,12 @@
     @update:model-value="emit('update:visible', $event)"
     @closed="onClosed"
   >
+    <!-- Variant selector (GH #93): full vs compact toggle. -->
+    <el-radio-group v-model="variant" size="small" class="variant-selector">
+      <el-radio-button label="full">完整版</el-radio-button>
+      <el-radio-button label="compact">紧凑版</el-radio-button>
+    </el-radio-group>
+
     <div class="preview">
       <StatusCard
         v-if="snapshot"
@@ -20,6 +26,7 @@
         :origin="origin"
         :hub-name="snapshot.hubName"
         :eval-summary="snapshot.evalSummary"
+        :compact="variant === 'compact'"
       />
     </div>
 
@@ -41,6 +48,7 @@
       :origin="origin"
       :hub-name="snapshot.hubName"
       :eval-summary="snapshot.evalSummary"
+      :compact="variant === 'compact'"
     />
 
     <el-alert
@@ -69,12 +77,13 @@
 // below): snapdom applies ancestor overflow clipping to its output, so the
 // scroll-capped preview cannot be the capture source. Failures keep the
 // buttons usable — the buttons themselves are the retry path
-// (ui-guidelines §6).
-import { ref, computed } from 'vue'
+// (ui-guidelines §6). GH #93: variant toggle (full/compact) defaults based on
+// viewport width at open time (<768px → compact).
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import StatusCard from '@/components/StatusCard.vue'
 import { canCopyImage, copyImageBlob } from '@/utils/clipboard'
-import { captureCardImage, downloadCardImage, cardFilename } from '@/utils/cardImage'
+import { captureCardImage, downloadCardImage, cardFilename, type CardVariant } from '@/utils/cardImage'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 
 const props = defineProps<{
@@ -88,6 +97,22 @@ const cardRef = ref<InstanceType<typeof StatusCard> | null>(null)
 const copying = ref(false)
 const downloading = ref(false)
 const error = ref<string | null>(null)
+
+// Variant state (GH #93): defaults based on viewport width at dialog open.
+// One-time matchMedia check when visible becomes true (onBannerInspect mode);
+// no resize listener, no persistence (share intent varies per occasion).
+const variant = ref<CardVariant>('full')
+
+// Watch visible prop to set default variant on open
+watch(
+  () => props.visible,
+  (nowVisible) => {
+    if (nowVisible) {
+      const isNarrowViewport = window.matchMedia('(max-width: 767px)').matches
+      variant.value = isNarrowViewport ? 'compact' : 'full'
+    }
+  },
+)
 
 // Secure-context capability is static for the page lifetime; evaluate once.
 const copySupported = canCopyImage()
@@ -156,7 +181,7 @@ async function onDownload() {
   error.value = null
   try {
     await withLightCapture((el) =>
-      downloadCardImage(el, cardFilename(new Date(), 'status', props.snapshot?.group?.key)),
+      downloadCardImage(el, cardFilename(new Date(), 'status', props.snapshot?.group?.key, variant.value)),
     )
     ElMessage.success('已开始下载 PNG')
   } catch (e) {
@@ -172,6 +197,9 @@ function onClosed() {
 </script>
 
 <style scoped>
+.variant-selector {
+  margin-bottom: 16px;
+}
 .preview {
   display: flex;
   justify-content: center;

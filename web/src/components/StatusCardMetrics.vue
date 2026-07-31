@@ -90,6 +90,7 @@ import {
 const props = defineProps<{
   entries: OverviewEntry[] // scoped ENABLED entries only
   isEmpty: boolean
+  compact?: boolean // GH #93: 480px compact variant
 }>()
 
 const counts = computed<HealthCounts>(() => countByStatus(props.entries))
@@ -115,6 +116,10 @@ const distribution = computed(() => distributionSegments(counts.value))
   padding: 16px 20px;
   margin-bottom: 16px;
 }
+/* Compact variant (GH #93): tighter padding. */
+:deep(.compact) .hero-panel {
+  padding: 12px 16px;
+}
 .hero-left {
   flex: 1;
   min-width: 0;
@@ -133,6 +138,10 @@ const distribution = computed(() => distributionSegments(counts.value))
   width: 1px;
   background: var(--hs-border);
   margin: 0 20px;
+}
+/* Compact variant: narrower divider margin. */
+:deep(.compact) .metric-divider {
+  margin: 0 12px;
 }
 .metric-label {
   font-size: var(--hs-text-xs);

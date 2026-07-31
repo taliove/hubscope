@@ -17,15 +17,20 @@ export const CARD_EXPORT_SCALE = 2
 // status and eval shares sort apart in a download folder.
 export type CardKind = 'status' | 'eval'
 
-// hubscope-{kind}[-scope-]YYYYMMDD-HHmm.png — scope (e.g. a group key for
-// status, "批次N" for eval) lets saved scoped shares sort apart from the
-// unscoped one. Characters outside letters/digits/CJK/-/_ collapse to
-// underscores.
-export function cardFilename(now: Date, kind: CardKind, scope?: string): string {
+// Variant type for 480px compact version (GH #93).
+export type CardVariant = 'full' | 'compact'
+
+// hubscope-{kind}[-scope-][-compact-]YYYYMMDD-HHmm.png — scope (e.g. a group
+// key for status, "批次N" for eval) lets saved scoped shares sort apart from
+// the unscoped one; compact appends the variant segment. Characters outside
+// letters/digits/CJK/-/_ collapse to underscores. Full-width variant preserves
+// the established filename convention (no -full segment).
+export function cardFilename(now: Date, kind: CardKind, scope?: string, variant: CardVariant = 'full'): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
   const scopePart = scope ? `-${scope.replace(/[^\w一-鿿.-]+/g, '_')}` : ''
-  return `hubscope-${kind}${scopePart}-${date}-${pad(now.getHours())}${pad(now.getMinutes())}.png`
+  const variantPart = variant === 'compact' ? '-compact' : ''
+  return `hubscope-${kind}${scopePart}${variantPart}-${date}-${pad(now.getHours())}${pad(now.getMinutes())}.png`
 }
 
 async function capture(el: HTMLElement) {

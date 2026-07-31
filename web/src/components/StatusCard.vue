@@ -1,18 +1,25 @@
 <template>
-  <div class="status-card">
+  <div class="status-card" :class="{ 'compact': compact, 'endpoint-small-card': isEndpointSmallCard }">
     <div class="brand-bar" />
-    <div class="brand-section">
+    <div v-if="isEndpointSmallCard" class="brand-slim">
       <BrandMark class="brand-mark" />
       <Wordmark class="brand-wordmark" />
-      <span class="brand-title">服务状态</span>
+    </div>
+    <div v-else class="brand-section">
+      <BrandMark class="brand-mark" />
+      <Wordmark class="brand-wordmark" />
+      <span v-if="!compact" class="brand-title">服务状态</span>
+      <span v-else class="brand-title">服务状态</span>
     </div>
 
     <div class="card-body">
       <!-- Scope: the anti-fake line. Single-model mode states the exact
            subject (model · protocol · Hub chips); a group share leads with
            the group chip; every active filter shows up as a chip (none
-           omitted); neither → the plain "全部端点" line. -->
-      <div v-if="isSingleModel" class="scope-row">
+           omitted); neither → the plain "全部端点" line. Endpoint small card
+           (single-model compact) omits scope chips: Hub is internal topology,
+           complete range declaration stays in the full card. -->
+      <div v-if="isSingleModel && !isEndpointSmallCard" class="scope-row">
         <span class="scope-chip">
           <span class="chip-label">模型</span>
           <span class="chip-value" :title="singleEntry.model_id">{{ singleEntry.model_id }}</span>
@@ -38,17 +45,73 @@
 
       <!-- Hero panel: single-model mode mounts the reworked single-model
            panel (statement instead of verdict + distribution); the aggregate
-           panel is untouched for global/group shares. -->
+           panel is untouched for global/group shares. Endpoint small card
+           (single-model compact) uses inline indicators instead of the hero
+           panel. -->
+      <template v-if="isEndpointSmallCard">
+        <!-- Model row: model name + protocol tag -->
+        <div class="model-row">
+          <span class="model-name" :title="singleEntry.model_id">{{ singleEntry.model_id }}</span>
+          <el-tag size="small" :type="protocolTagType(singleEntry.protocol)">
+            {{ singleEntry.protocol }}
+          </el-tag>
+        </div>
+
+        <!-- Statement row: status statement with failing double-encoding -->
+        <div class="statement-row">
+          <span v-if="smallCardStatement.failingChip" class="alert-dot-small" />
+          <span class="statement-text-small" :class="`vc-${smallCardStatement.tone}`">
+            {{ smallCardStatement.text }}
+          </span>
+          <span v-if="smallCardStatement.failingChip" class="failing-chip-small">
+            {{ smallCardStatement.failingChip }}
+          </span>
+        </div>
+
+        <!-- Indicators row: availability + latency -->
+        <div class="indicators-row">
+          <div class="indicator-col">
+            <span class="indicator-label">24h 可用率</span>
+            <span class="indicator-big" :class="`av-${availabilityTier(smallCardAvailability)}`">
+              <template v-if="smallCardAvailability !== null">
+                {{ formatPercentDigits(smallCardAvailability) }}<span class="indicator-unit">%</span>
+              </template>
+              <template v-else>-</template>
+            </span>
+          </div>
+          <div class="indicator-col">
+            <span class="indicator-label">平均延迟</span>
+            <span class="indicator-latency" :class="{ 'av-none': singleEntry.p50_ms === null }">
+              {{ formatMs(singleEntry.p50_ms) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Mini 24h dots: 8px height with axis labels -->
+        <div class="mini-uptime-section">
+          <div class="mini-uptime-strip">
+            <span v-for="(dot, i) in singleEntry.dots_24h" :key="i" class="mini-uptime-slot">
+              <span class="mini-uptime-seg" :class="`seg-${dotTier(dot.total, dot.failures)}`" />
+            </span>
+          </div>
+          <div class="mini-uptime-axis">
+            <span>24 小时前</span>
+            <span>现在</span>
+          </div>
+        </div>
+      </template>
       <StatusCardSingleModelMetrics
-        v-if="isSingleModel"
+        v-else-if="isSingleModel"
         :entry="singleEntry"
         :eval-summary="evalSummary ?? null"
+        :compact="compact"
       />
-      <StatusCardMetrics v-else :entries="enabledEntries" :is-empty="isEmpty" />
+      <StatusCardMetrics v-else :entries="enabledEntries" :is-empty="isEmpty" :compact="compact" />
 
-      <div class="divider" />
+      <div v-if="!isEndpointSmallCard" class="divider" />
 
       <StatusCardDetail
+        v-if="!isEndpointSmallCard"
         :entries="enabledEntries"
         :empty-text="emptyDetailText"
         :summary="summary"
@@ -82,9 +145,17 @@
 import { computed } from 'vue'
 import type { EndpointStatus, ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
-import { formatTimeMinute } from '@/utils/format'
+import { formatTimeMinute, formatPercentDigits, formatMs } from '@/utils/format'
 import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
-import { scopedAvailability, singleModelSummaryText, summaryText } from '@/utils/statusCardSummary'
+import {
+  scopedAvailability,
+  singleModelSummaryText,
+  summaryText,
+  singleModelStatement,
+  availabilityTier,
+  dotTier,
+} from '@/utils/statusCardSummary'
+import { protocolTagType } from '@/utils/protocol'
 import StatusCardMetrics from '@/components/StatusCardMetrics.vue'
 import StatusCardSingleModelMetrics from '@/components/StatusCardSingleModelMetrics.vue'
 import StatusCardDetail from '@/components/StatusCardDetail.vue'
@@ -104,6 +175,9 @@ const props = defineProps<{
   // hubName and stays on the aggregate layout.
   hubName?: string
   evalSummary?: ModelEvalSummary | null
+  // Compact variant (GH #93): 480px width adaptation. Endpoint small card =
+  // single-model + compact (six-section compact structure).
+  compact?: boolean
 }>()
 
 const DIMENSION_LABELS: Record<GroupDimension, string> = {
@@ -132,6 +206,14 @@ const isEmpty = computed(() => enabledEntries.value.length === 0)
 // empty hubName) never flips the layout.
 const isSingleModel = computed(() => props.entries.length === 1 && Boolean(props.hubName))
 const singleEntry = computed(() => props.entries[0])
+
+// Endpoint small card (GH #93): single-model + compact. Six-section compact
+// structure for mobile sharing.
+const isEndpointSmallCard = computed(() => isSingleModel.value && props.compact)
+
+// Small card computeds (only used when isEndpointSmallCard is true)
+const smallCardAvailability = computed(() => scopedAvailability([singleEntry.value]))
+const smallCardStatement = computed(() => singleModelStatement(singleEntry.value, smallCardAvailability.value))
 
 const counts = computed(() => countByStatus(enabledEntries.value))
 const summary = computed(() =>
@@ -172,6 +254,11 @@ const emptyDetailText = computed(() => {
   overflow: hidden;
   text-align: left;
 }
+/* Compact variant: 480px width (GH #93). Content-box (no global reset):
+   width 480 = content, outer box = 482 (1px border × 2). */
+.status-card.compact {
+  width: 480px;
+}
 .brand-bar {
   height: 4px;
   background: var(--hs-brand);
@@ -183,21 +270,49 @@ const emptyDetailText = computed(() => {
   padding: 16px 40px;
   background: var(--hs-brand-soft);
 }
+.compact .brand-section {
+  padding: 12px 20px;
+}
 .brand-mark {
   font-size: 32px;
   flex-shrink: 0;
 }
+.compact .brand-mark {
+  font-size: 24px;
+}
+/* Endpoint small card: slim brand row (no soft background, smaller sizing) */
+.brand-slim {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+}
+.brand-slim .brand-mark {
+  font-size: 16px;
+}
+.brand-slim .brand-wordmark {
+  font-size: var(--hs-text-sm);
+}
 .brand-wordmark {
   font-size: var(--hs-text-xl);
   flex-shrink: 0;
+}
+.compact .brand-wordmark {
+  font-size: var(--hs-text-lg);
 }
 .brand-title {
   font-size: var(--hs-text-2xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
+.compact .brand-title {
+  font-size: var(--hs-text-xl);
+}
 .card-body {
   padding: 24px 40px 0;
+}
+.compact .card-body {
+  padding: 16px 20px 0;
 }
 .scope-row {
   display: flex;
@@ -225,6 +340,9 @@ const emptyDetailText = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.compact .chip-value {
+  max-width: 160px;
 }
 .value-healthy {
   color: var(--hs-success);
@@ -257,10 +375,127 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
+.compact .card-footer {
+  margin: 16px 20px 0;
+  padding: 12px 0 16px;
+}
 .footer-origin {
   flex: none;
 }
 .disabled-note {
   margin-left: 8px;
+}
+
+/* Endpoint small card sections (GH #93): six-section compact structure for
+   single-model + compact. */
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.model-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statement-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.statement-text-small {
+  font-size: var(--hs-text-sm);
+  font-weight: 600;
+}
+.alert-dot-small {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--hs-status-failing);
+}
+.failing-chip-small {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-status-failing);
+  border: 1px solid var(--hs-status-failing);
+  border-radius: var(--hs-radius-sm);
+  background: var(--hs-bg-card);
+  padding: 0 6px;
+}
+.indicators-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.indicator-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.indicator-label {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+  margin-bottom: 4px;
+}
+.indicator-big {
+  font-size: var(--hs-text-display);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.indicator-unit {
+  font-size: var(--hs-text-md);
+  font-weight: 400;
+  color: var(--hs-text-secondary);
+  margin-left: 2px;
+}
+.indicator-latency {
+  font-size: var(--hs-text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--hs-text-primary);
+}
+.mini-uptime-section {
+  margin-bottom: 16px;
+}
+.mini-uptime-strip {
+  display: flex;
+  gap: 2px;
+}
+.mini-uptime-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+}
+.mini-uptime-seg {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--hs-radius-xs);
+}
+.seg-ok {
+  background: var(--hs-success);
+}
+.seg-partial {
+  background: var(--hs-warning);
+}
+.seg-fail {
+  background: var(--hs-danger);
+}
+.seg-none {
+  background: var(--hs-border);
+}
+.mini-uptime-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
 }
 </style>
