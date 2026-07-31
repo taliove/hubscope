@@ -45,10 +45,6 @@
         </el-form-item>
       </el-form>
 
-      <el-divider content-position="left">近期告警事件</el-divider>
-      <!-- Shared history table (GH #112): the same component backs the
-           first-class 故障记录 page; a Lark test send refreshes it. -->
-      <AlertHistory ref="historyRef" />
     </el-card>
 
     <el-card shadow="never" class="admin-card">
@@ -105,13 +101,13 @@ import {
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
 import { formatHour } from '@/utils/format'
-import AlertHistory from '@/components/AlertHistory.vue'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
 
-// Settings item anchor requested via /admin?tab=settings&item=... (GH #29):
-// AdminView owns the query parsing; this panel only scrolls the named row
-// into view and flashes it. Null = no deep link, render as before.
+// Settings item anchor requested via /settings?tab=settings&item=... (GH #29;
+// path since GH #119 — legacy /admin links redirect here): SettingsView owns
+// the query parsing; this panel only scrolls the named row into view and
+// flashes it. Null = no deep link, render as before.
 const props = defineProps<{
   highlightItem?: SettingsItem | null
 }>()
@@ -174,9 +170,6 @@ const form = reactive<AppSettings>({
 // not width-capped).
 const hourOptions = Array.from({ length: 24 }, (_, h) => h)
 const suites = ref<Suite[]>([])
-// Embedded alert-history table (GH #112): refreshed after every Lark test
-// send, since the attempt lands in the history as kind="test".
-const historyRef = ref<InstanceType<typeof AlertHistory> | null>(null)
 const saving = ref(false)
 const testing = ref(false)
 
@@ -210,8 +203,9 @@ async function onSave() {
 }
 
 // Sends the test message to the address currently in the input (not the
-// saved setting). Success or failure, the attempt lands in the alert history
-// as kind="test", so the table refreshes after every try.
+// saved setting). Every attempt lands in the alert history as kind="test";
+// that history now lives on the first-class /alerts timeline (GH #117), so
+// this panel no longer refreshes an embedded table after a send.
 async function onTestLark() {
   const url = form.lark_webhook_url.trim()
   if (!url) {
@@ -226,7 +220,6 @@ async function onTestLark() {
     } else {
       ElMessage.error(`测试消息发送失败:${result.error ?? '未知原因'}`)
     }
-    await historyRef.value?.reload()
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -235,7 +228,7 @@ async function onTestLark() {
 }
 
 onMounted(async () => {
-  // Initial deep link (/admin?tab=settings&item=...): the tab is already
+  // Initial deep link (/settings?tab=settings&item=...): the tab is already
   // active, so the anchored row can flash as soon as the pane is painted.
   if (props.highlightItem) void flashItem(props.highlightItem)
   try {

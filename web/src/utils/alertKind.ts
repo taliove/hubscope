@@ -50,6 +50,14 @@ const ALERT_KIND_TAG_TYPES: Record<AlertKind, TagProps['type']> = {
   retired: 'info',
 }
 
+// ALERT_KINDS lists every kind in the union — the keys of the exhaustive
+// Record above, so the type system keeps this list in sync automatically
+// (PROTOCOLS precedent in protocol.ts, GH #38 single-source discipline).
+// Filter dropdowns (the /alerts timeline type filter, GH #117) render from
+// this single source instead of hand-listing values. Labels and tag types
+// stay untouched — this is an additive export, not a vocabulary change.
+export const ALERT_KINDS = Object.keys(ALERT_KIND_LABELS) as AlertKind[]
+
 // alertKindLabel returns the Chinese display word for an alert event kind.
 // Unknown/null kinds fall back to a placeholder (role.ts precedent) so the
 // UI never renders a bare technical kind string to admin readers.
