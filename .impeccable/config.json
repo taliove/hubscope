@@ -55,6 +55,15 @@
         ],
         "createdAt": "2026-07-31T10:02:15.627Z",
         "reason": "BrandMark em 宿主字号,同 32px 既定豁免机制;24px 为 480 紧凑版品牌区降档规格(share-materials brief 定稿)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#d2d2d7",
+        "files": [
+          "web/src/utils/chartColors.ts"
+        ],
+        "createdAt": "2026-07-31T00:00:00.000Z",
+        "reason": "v2.0 完全重建(spec 0018/GH #110,用户裁决):新 border 锚点 gray-200;chartColors.ts 是 ECharts 色板 JS 镜像既定豁免文件(check-tokens 同例),DESIGN.md 旧色板由 T13 批末重写,混合期 detector 豁免已在 spec 0018 Testing Decisions 登记"
       }
     ]
   }

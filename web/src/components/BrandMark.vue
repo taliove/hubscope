@@ -2,9 +2,10 @@
   <!-- BrandMark: the only graphic mark. Scope glyph (ring + crosshair
        ticks + center pulse dot) as inline SVG — the monitoring metaphor:
        a scope trained on the Hub's endpoints. Gradient stops consume the
-       teal raw scale — the single sanctioned exception to "semantics layer
-       only" (a graphic mark, not semantic expression; ui-guidelines §2b).
-       Distinct from ProxyHub's spoke-hub glyph by design. -->
+       blue raw scale — the single sanctioned exception to "semantics layer
+       only" (a graphic mark, not semantic expression). v2.0 (GH #110,
+       spec 0018): the teal scale is retired, the gradient moves to the
+       brand-blue steps (ADR 0015); the scope glyph itself is unchanged. -->
   <svg
     class="hs-brand-mark"
     viewBox="0 0 64 64"
@@ -14,16 +15,16 @@
   >
     <defs>
       <linearGradient :id="gradientId" x1="0" y1="0" x2="1" y2="1">
-        <!-- stop-color attributes mirror tokens.css (teal-400/teal-700) as a
+        <!-- stop-color attributes mirror tokens.css (blue-400/blue-700) as a
              capture fallback: snapdom never inlines computed styles for SVG
              inner elements, so class-based var() colors are lost in PNG
              export and the gradient falls back to black. In the live app the
              scoped CSS var() rules below stay authoritative (CSS beats the
-             presentation attribute). Synced with teal-700 refinement
-             2026-07-30 (#095f59, GH #69 纪律⑤); favicon.svg carries the
-             same stop. -->
-        <stop offset="0" class="hs-brand-mark__stop-start" stop-color="#30c4b8" />
-        <stop offset="1" class="hs-brand-mark__stop-end" stop-color="#095f59" />
+             presentation attribute). v2.0 blue rebuild (GH #110): #549cff /
+             #0062cc stay in sync with tokens.css blue-400/blue-700 — always
+             change both places together; favicon.svg carries the same stops. -->
+        <stop offset="0" class="hs-brand-mark__stop-start" stop-color="#549cff" />
+        <stop offset="1" class="hs-brand-mark__stop-end" stop-color="#0062cc" />
       </linearGradient>
     </defs>
     <rect x="2" y="2" width="60" height="60" rx="14" :fill="`url(#${gradientId})`" />
@@ -57,10 +58,10 @@ const gradientId = `hs-brand-grad-${useId()}`
 }
 
 .hs-brand-mark__stop-start {
-  stop-color: var(--hs-teal-400);
+  stop-color: var(--hs-blue-400);
 }
 
 .hs-brand-mark__stop-end {
-  stop-color: var(--hs-teal-700);
+  stop-color: var(--hs-blue-700);
 }
 </style>

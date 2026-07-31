@@ -5,20 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>HubScope</title>
-    <script>
-      // Anti-FOUC theme bootstrap: apply the persisted theme before first
-      // paint. Reads the SAME localStorage key as web/src/utils/theme.ts —
-      // keep the key name in sync between the two files.
-      ;(function () {
-        try {
-          if (localStorage.getItem('hs:dark') === '1') {
-            document.documentElement.classList.add('dark')
-          }
-        } catch (e) {
-          /* localStorage unavailable (private mode etc.) — stay light */
-        }
-      })()
-    </script>
+    <!-- The dark anti-FOUC script is removed with the dark deferral
+         (GH #110, spec 0018 decision 10: light first, dark ships as its own
+         spec). The semantic layer keeps the html.dark keys with values
+         temporarily mirroring light, so a stale localStorage `hs:dark`
+         preference produces no visual fork; the script returns in its
+         anti-FOUC form when the dark spec lands. -->
   </head>
   <body>
     <div id="app"></div>
