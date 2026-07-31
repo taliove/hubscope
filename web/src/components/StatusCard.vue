@@ -139,9 +139,14 @@
 // never present a filtered subset as the global picture (mirror of ADR 0007
 // anti-fake semantics). The hero panel and detail blocks live in child
 // components; this file owns the brand, scope and footer.
-// Static medium rules: no animations (the failing blink freezes into a solid
-// dot + text chip), no hover reliance (truncation thresholds stay
-// conservative).
+// v2 visual rebuild (GH #121, spec 0018 §13 (share materials)): the frame keeps its
+// registered structure (brand bar / soft ground / title / scope chips /
+// footer) re-typeset on the Apple type scale — the material title takes the
+// page-title tier (3xl), hero numbers take the hero tier (72px) on the full
+// card and 3xl on the 480 variants, and every text scenario consumes the
+// deepened *-text steps (the v2 warning/danger bases are graphic-tier).
+// Static medium rules: no animations, no hover reliance (truncation
+// thresholds stay conservative).
 import { computed } from 'vue'
 import type { ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
@@ -307,12 +312,14 @@ const emptyDetailText = computed(() => {
   font-size: var(--hs-text-lg);
 }
 .brand-title {
-  font-size: var(--hs-text-2xl);
+  /* v2 type scale (GH #121): the material title takes the page-title tier —
+     the artifact's own headline (v2.0 §14: page title 32). */
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
 .compact .brand-title {
-  font-size: var(--hs-text-xl);
+  font-size: var(--hs-text-2xl);
 }
 .card-body {
   padding: var(--hs-space-5) 40px 0;
@@ -370,7 +377,9 @@ const emptyDetailText = computed(() => {
   margin-bottom: var(--hs-space-4);
 }
 .divider {
-  border-top: 1px solid var(--hs-border);
+  /* Hairline rhythm (GH #121, same line-lightening as GH #118): in-card
+     separators take the hairline tier, never the loud border. */
+  border-top: 1px solid var(--hs-border-light);
 }
 .card-footer {
   display: flex;
@@ -379,7 +388,7 @@ const emptyDetailText = computed(() => {
   gap: var(--hs-space-4);
   margin: var(--hs-space-5) 40px 0;
   padding: var(--hs-space-4) 0 var(--hs-space-5);
-  border-top: 1px solid var(--hs-border);
+  border-top: 1px solid var(--hs-border-light);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
@@ -457,9 +466,14 @@ const emptyDetailText = computed(() => {
   margin-bottom: var(--hs-space-1);
 }
 .indicator-big {
-  font-size: var(--hs-text-display);
+  /* v2 type scale (GH #121): the small card's anchor number takes the 3xl
+     tier — the hero tier (72px) cannot fit the two-column indicators row on
+     the 480 canvas; the legacy display tier is retired. */
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .indicator-unit {
   font-size: var(--hs-text-md);
@@ -510,16 +524,51 @@ const emptyDetailText = computed(() => {
   color: var(--hs-text-placeholder);
 }
 /* Statement-row tone colors (check GH #93 CRITICAL-1): scoped styles from
-   StatusCardSingleModelMetrics do not reach this template, so the small
-   card defines its own set. Text-scenario success consumes the deepened
-   text grade, not the base green (GH #69 text/graphics split). */
+ * StatusCardSingleModelMetrics do not reach this template, so the small
+ * card defines its own set. Text scenarios consume the deepened *-text
+ * grade (GH #69 text/graphics split; on the v2 palette the warning/danger
+ * bases are graphic-tier and fail as text, GH #121). */
 .vc-healthy {
   color: var(--hs-success-text);
 }
 .vc-degraded {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .vc-abnormal {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
+}
+/* Availability tier colors for the small-card indicator number (GH #121):
+ * the template has consumed av-* since GH #93 but the classes were never
+ * defined in this scope — the number silently inherited default ink. Same
+ * text-channel mapping as the sibling panels: text → *-text grade. */
+.av-ok {
+  color: var(--hs-success-text);
+}
+.av-partial {
+  color: var(--hs-warning-text);
+}
+.av-fail {
+  color: var(--hs-danger-text);
+}
+.av-none {
+  color: var(--hs-text-placeholder);
+}
+/* Compact-variant overrides for the metrics panel (GH #121 check HIGH-1):
+ * scoped ids flow parent-to-child only, so these must live here as
+ * `.compact :deep(...)` — the old `:deep(.compact)` rules inside
+ * StatusCardMetrics were dead selectors (two of them since GH #93).
+ * The 480 hero panel's left column cannot hold the 72px tier — the anchor
+ * number steps down to 3xl (still the largest figure on the card). */
+.compact :deep(.hero-panel) {
+  padding: var(--hs-space-3) var(--hs-space-4);
+}
+.compact :deep(.metric-divider) {
+  margin: 0 var(--hs-space-3);
+}
+.compact :deep(.hero-big) {
+  font-size: var(--hs-text-3xl);
+}
+.compact :deep(.metric-unit) {
+  font-size: var(--hs-text-md);
 }
 </style>

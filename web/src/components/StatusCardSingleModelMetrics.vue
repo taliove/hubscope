@@ -133,7 +133,8 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 .metric-divider {
   width: 1px;
-  background: var(--hs-border);
+  /* Hairline tier (GH #121 line-lightening, same as GH #118). */
+  background: var(--hs-border-light);
   margin: 0 20px;
 }
 /* Compact variant: narrower divider margin. */
@@ -154,12 +155,19 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 .hero-big {
   margin-top: var(--hs-space-1);
-  font-size: var(--hs-text-display);
+  /* v2 hero tier (GH #121, spec 0018 §14): same typesetting as the overview
+     StatusHero (72px, weight 600, tight tracking, tabular digits); the
+     legacy display tier is retired. This panel only ever mounts at the full
+     720 width (single-model + compact is the endpoint small card, a
+     separate template in StatusCard.vue), so no compact tier is needed. */
+  font-size: var(--hs-text-hero);
   font-weight: 600;
   line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .metric-unit {
-  font-size: var(--hs-text-md);
+  font-size: var(--hs-text-xl);
   font-weight: 400;
   color: var(--hs-text-secondary);
   margin-left: var(--hs-space-1);
@@ -232,15 +240,18 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
-/* Availability tier colors (ui-guidelines §3) */
+/* Availability tier colors: text channel → the *-text grade of each slot
+ * (GH #69 text/graphics split; on the v2 palette the warning/danger bases
+ * are graphic-tier and fail as text, GH #121). The segment strips keep the
+ * bases as graphic fills. */
 .av-ok {
   color: var(--hs-success-text);
 }
 .av-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .av-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .av-none {
   color: var(--hs-text-placeholder);

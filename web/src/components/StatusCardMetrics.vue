@@ -118,10 +118,10 @@ const distribution = computed(() => distributionSegments(counts.value))
   padding: var(--hs-space-4) 20px;
   margin-bottom: var(--hs-space-4);
 }
-/* Compact variant (GH #93): tighter padding. */
-:deep(.compact) .hero-panel {
-  padding: var(--hs-space-3) var(--hs-space-4);
-}
+/* Compact-variant overrides for this panel live in StatusCard.vue as
+   `.compact :deep(...)` — scoped ids flow parent-to-child only, so
+   `:deep(.compact)` here was a structurally dead selector (GH #121 check
+   HIGH-1; two GH #93-era rules had the same disease). */
 .hero-left {
   flex: 1;
   min-width: 0;
@@ -139,12 +139,9 @@ const distribution = computed(() => distributionSegments(counts.value))
 }
 .metric-divider {
   width: 1px;
-  background: var(--hs-border);
+  /* Hairline tier (GH #121 line-lightening, same as GH #118). */
+  background: var(--hs-border-light);
   margin: 0 20px;
-}
-/* Compact variant: narrower divider margin. */
-:deep(.compact) .metric-divider {
-  margin: 0 var(--hs-space-3);
 }
 .metric-label {
   font-size: var(--hs-text-xs);
@@ -156,12 +153,17 @@ const distribution = computed(() => distributionSegments(counts.value))
 }
 .hero-big {
   margin-top: var(--hs-space-1);
-  font-size: var(--hs-text-display);
+  /* v2 hero tier (GH #121, spec 0018 §14: core numbers 72+) — the same
+     typesetting as the overview StatusHero (weight 600, tight tracking,
+     tabular digits); the legacy display tier is retired. */
+  font-size: var(--hs-text-hero);
   font-weight: 600;
   line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .metric-unit {
-  font-size: var(--hs-text-md);
+  font-size: var(--hs-text-xl);
   font-weight: 400;
   color: var(--hs-text-secondary);
   margin-left: var(--hs-space-1);
@@ -253,14 +255,18 @@ const distribution = computed(() => distributionSegments(counts.value))
 .st-danger {
   color: var(--hs-danger-text);
 }
+/* Availability tier of the hero number and the rate figures: text channel →
+ * the *-text grade of each slot (GH #69 text/graphics split; on the v2
+ * palette the warning/danger bases are graphic-tier and fail as text,
+ * GH #121). The segment strips below keep the bases as graphic fills. */
 .av-ok {
   color: var(--hs-success-text);
 }
 .av-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .av-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .av-none {
   color: var(--hs-text-placeholder);

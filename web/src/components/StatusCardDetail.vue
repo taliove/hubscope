@@ -136,7 +136,8 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 
 <style scoped>
 .divider {
-  border-top: 1px solid var(--hs-border);
+  /* Hairline rhythm (GH #121, same line-lightening as GH #118). */
+  border-top: 1px solid var(--hs-border-light);
 }
 .detail-title {
   font-size: var(--hs-text-sm);
@@ -148,7 +149,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   padding: var(--hs-space-2) 0;
 }
 .detail-item + .detail-item {
-  border-top: 1px solid var(--hs-border);
+  border-top: 1px solid var(--hs-border-light);
 }
 .detail-row {
   display: flex;
@@ -192,16 +193,18 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
-/* GH #69: success as TEXT always consumes the deepened text grade (the base
-   green is graphics-only); dots (.seg-ok) keep the base as graphic fills. */
+/* Rate figures are text: the *-text grade of each slot (GH #69
+ * text/graphics split; on the v2 palette the warning/danger bases are
+ * graphic-tier and fail as text, GH #121). The per-endpoint dots below
+ * keep the bases as graphic fills. */
 .av-ok {
   color: var(--hs-success-text);
 }
 .av-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .av-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .av-none {
   color: var(--hs-text-placeholder);
