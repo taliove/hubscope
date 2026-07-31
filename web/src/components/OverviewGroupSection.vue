@@ -50,19 +50,20 @@
       </el-button>
     </div>
 
-    <!-- Group strip row (2026-07-31, GH #85 slim band + GH #87 fixed width):
-         the slim band (left-aligned, fixed 360px) and the "本组:" metrics share
-         one row, metrics right-aligned via margin-left:auto with natural
-         whitespace between — shape → reading in a single scan. The "本组:"
-         prefix (GH #55) remains one container-level scope marker so the
-         group's availability/latency can never be read as the global figures
-         the banner carries. Metrics moved OUT of the header row; folding the
-         strip into the header was rejected (per-group left content varies,
-         cross-group alignment is the timeline language's core value). Always
-         visible, collapsed or not (GH #64). Fixed width makes every group's
-         strip identical in width with strictly aligned left AND right edges —
-         GH #85's right-edge-variance registration lapses with the fixed
-         width. -->
+    <!-- Group strip row (2026-07-31, GH #85 slim band + GH #87 fixed width,
+         GH #88 aligned to the in-card strip spec): the strip (left-aligned,
+         fixed 246px — same width as the in-card strip slot, so its ≈8.3×10px
+         segments match the cards' dots pixel-for-pixel) and the "本组:"
+         metrics share one row, metrics right-aligned via margin-left:auto
+         with natural whitespace between — shape → reading in a single scan.
+         The "本组:" prefix (GH #55) remains one container-level scope marker
+         so the group's availability/latency can never be read as the global
+         figures the banner carries. Metrics moved OUT of the header row;
+         folding the strip into the header was rejected (per-group left
+         content varies, cross-group alignment is the timeline language's
+         core value). Always visible, collapsed or not (GH #64). Fixed width
+         makes every group's strip identical in width with strictly aligned
+         left AND right edges. -->
     <div class="strip-row">
       <UptimeStrip :dots="groupDots" />
       <span class="group-metrics">
@@ -307,13 +308,15 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
   margin-bottom: 10px;
 }
 .strip-row .uptime-strip {
-  /* GH #87 fixed width (user sign-off 2026-07-31, replaces GH #85 flex:1):
-     at full content width each slot was ~76px — a row of capsules reading as
-     lamps. Segment width = strip width ÷ 24, so only narrowing the strip
-     shrinks the "lamps": 360px → slots ≈ (360 − 23×2) / 24 ≈ 13px. flex 0 1
-     + min-width 0 lets the strip shrink on narrow viewports (the 24 inner
+  /* GH #88 fixed width (user sign-off 2026-07-31, replaces GH #87's 360px):
+     segment width = strip width ÷ 24, and the "lamp" reading came from the
+     segment aspect ratio — GH #85 (6px height) and GH #87 (360px) each
+     pressed only one dimension. The fix aligns the strip with the in-card
+     strip slot: 272px card − 26px label = 246px → slots ≈ (246 − 23×2) / 24
+     ≈ 8.3px, the same near-square 8.3×10px dots as the cards. flex 0 1 +
+     min-width 0 lets the strip shrink on narrow viewports (the 24 inner
      slots are flex 1 1 0 and shrink with it) — §4 no horizontal scroll. */
-  flex: 0 1 360px;
+  flex: 0 1 246px;
   min-width: 0;
 }
 .group-share {
