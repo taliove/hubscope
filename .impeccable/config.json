@@ -18,25 +18,7 @@
           "web/src/components/StatusCard.vue"
         ],
         "createdAt": "2026-07-29T09:59:36.550Z",
-        "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines s2b 既定机制(导出物料不受令牌字阶约束)"
-      },
-      {
-        "rule": "design-system-color",
-        "value": "#2a2d33",
-        "files": [
-          "web/src/utils/chartColors.ts"
-        ],
-        "createdAt": "2026-07-30T13:47:00.000Z",
-        "reason": "chartColors.ts 是 ui-guidelines s3 登记的 ECharts 暗色镜像单一来源(check-tokens 同例豁免),detector 对镜像文件的既定盲区"
-      },
-      {
-        "rule": "design-system-color",
-        "value": "#1f2227",
-        "files": [
-          "web/src/utils/chartColors.ts"
-        ],
-        "createdAt": "2026-07-30T13:47:00.000Z",
-        "reason": "同机制:bgHover 暗值镜像(与 semantics.css --hs-bg-hover html.dark 一致),防 Stop 深扫重报"
+        "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines §2b 既定机制(导出物料不受令牌字阶约束)"
       },
       {
         "rule": "design-system-font-size",
@@ -45,7 +27,7 @@
           "web/src/components/StatusCard.vue"
         ],
         "createdAt": "2026-07-31T10:02:15.542Z",
-        "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines §2b 既定机制(导出物料不受令牌字阶约束);16px 为端点小卡品牌细条行规格(share-materials brief 定稿)"
+        "reason": "BrandMark em 宿主字号,同 32px 既定豁免机制;16px 为端点小卡品牌细条行规格(share-materials brief 定稿)"
       },
       {
         "rule": "design-system-font-size",
@@ -57,13 +39,22 @@
         "reason": "BrandMark em 宿主字号,同 32px 既定豁免机制;24px 为 480 紧凑版品牌区降档规格(share-materials brief 定稿)"
       },
       {
-        "rule": "design-system-color",
-        "value": "#d2d2d7",
+        "rule": "design-system-font-size",
+        "value": "40px",
         "files": [
-          "web/src/utils/chartColors.ts"
+          "web/src/views/LoginView.vue"
         ],
-        "createdAt": "2026-07-31T00:00:00.000Z",
-        "reason": "v2.0 完全重建(spec 0018/GH #110,用户裁决):新 border 锚点 gray-200;chartColors.ts 是 ECharts 色板 JS 镜像既定豁免文件(check-tokens 同例),DESIGN.md 旧色板由 T13 批末重写,混合期 detector 豁免已在 spec 0018 Testing Decisions 登记"
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "reason": "BrandMark em 宿主字号(LoginView .login-mark 40px),§2b 图形标尺寸由宿主 font-size 控制、物料/品牌区定字号是既定机制;detector 误判(GH #122 登记)"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "24px",
+        "files": [
+          "web/src/components/AppSidebar.vue"
+        ],
+        "createdAt": "2026-08-01T00:10:00.000Z",
+        "reason": "BrandMark em 宿主字号(AppSidebar .brand-mark 24px,侧边栏品牌位),同 LoginView 40px/StatusCard 16/24/32px 既定豁免机制——图形标非文字字阶(GH #122 登记)"
       }
     ]
   }

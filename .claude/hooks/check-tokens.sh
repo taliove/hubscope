@@ -25,8 +25,10 @@ esac
 
 [ -f "$file" ] || exit 0
 
-# 去注释行与锚点引用(href="#..." 非色值),减少误报
-filtered=$(grep -vE '^[[:space:]]*(//|/\*|\*|<!--)' "$file" | sed 's/href="#[^"]*"//g' || true)
+# 去注释行与锚点引用(href="#..." 非色值),减少误报;再剥 issue 引用
+# 「GH #NNN」——块注释续行(无 * 前缀)里的票号会撞 3 位 hex 字面量
+# (如 GH #113 → "#113" 命中 3-hex 模式,GH #121/#118 等一大批误报)。
+filtered=$(grep -vE '^[[:space:]]*(//|/\*|\*|<!--)' "$file" | sed 's/href="#[^"]*"//g; s/GH #[0-9][0-9]*//g' || true)
 
 findings=""
 hex_hits=$(printf '%s\n' "$filtered" | grep -nE '#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})([^0-9a-zA-Z]|$)|rgba?\(' | head -5 || true)
