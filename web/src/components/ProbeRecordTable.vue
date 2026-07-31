@@ -45,7 +45,7 @@ import { formatTime, formatMetric } from '@/utils/format'
 // compact 12px tier (`compact`, default), the public status board passes
 // `:compact="false"` for the roomier default row height.
 // slim (2026-07-29 main 裁决, ui-guidelines §4 禁横向滚动; 与 surface brief
-// EndpointQuickViewDialog 节互指): the quick-view variant — drops the five
+// retired with GH #115): the quick-view variant — drops the five
 // detail-page material columns (类型/HTTP/TTFT/输入 token/输出 token), keeps
 // 结果/错误摘要/延迟/时间 (≈550px, arithmetic fit for the 640px dialog).
 // slim and compact are orthogonal axes: column trim vs. row density.
