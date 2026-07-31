@@ -37,6 +37,24 @@
         ],
         "createdAt": "2026-07-30T13:47:00.000Z",
         "reason": "同机制:bgHover 暗值镜像(与 semantics.css --hs-bg-hover html.dark 一致),防 Stop 深扫重报"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "16px",
+        "files": [
+          "web/src/components/StatusCard.vue"
+        ],
+        "createdAt": "2026-07-31T10:02:15.542Z",
+        "reason": "BrandMark em 宿主字号,物料画布定字号是 ui-guidelines §2b 既定机制(导出物料不受令牌字阶约束);16px 为端点小卡品牌细条行规格(share-materials brief 定稿)"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "24px",
+        "files": [
+          "web/src/components/StatusCard.vue"
+        ],
+        "createdAt": "2026-07-31T10:02:15.627Z",
+        "reason": "BrandMark em 宿主字号,同 32px 既定豁免机制;24px 为 480 紧凑版品牌区降档规格(share-materials brief 定稿)"
       }
     ]
   }
