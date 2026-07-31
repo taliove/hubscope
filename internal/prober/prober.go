@@ -25,14 +25,23 @@ func New(db *store.DB, client *hubclient.Client) *Prober {
 	return &Prober{db: db, client: client}
 }
 
-// RunRound executes one probe round for a single endpoint. Chat protocols run
-// a non-streaming request followed by a streaming request (serially), image
-// protocols run a single call — they have no streaming mode or TTFT concept
-// (spec 0014). All probe records are persisted and returned in order.
+// RunRound executes one probe round for a single endpoint. Chat protocols
+// (anthropic, openai) run a non-streaming request followed by a streaming
+// request (serially). Ping protocols (images_generation, images_edit,
+// video_generation) are skipped entirely and produce no probe records (spec
+// 0018 T1, GH #97): they are monitored via discovery's Ping signal only. All
+// probe records are persisted and returned in order.
 func (p *Prober) RunRound(ctx context.Context, endpointID int64) ([]store.Probe, error) {
 	endpoint, err := p.db.GetEndpoint(endpointID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Ping protocols (image/video generation) are never probed with real calls.
+	// Return empty slice immediately (spec 0018 T1: zero probe records = no
+	// health status evidence = "unverified" in overview).
+	if store.IsPingProtocol(endpoint.Protocol) {
+		return []store.Probe{}, nil
 	}
 
 	model, err := p.db.GetModel(endpoint.ModelID)

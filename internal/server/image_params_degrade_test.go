@@ -18,6 +18,7 @@ import (
 // corrupt row is injected via the store.ExecRawForTest test seam: data
 // preparation only, with every assertion made on real HTTP behavior (W1).
 func TestImageParamRuleReadFailureDegradesToMinimalBody(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 

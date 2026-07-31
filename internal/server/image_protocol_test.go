@@ -211,6 +211,7 @@ func TestImageManualCreateAndTrial(t *testing.T) {
 // ttft null) with usage mapped into the token fields, while a chat endpoint
 // of the same model still produces its two records.
 func TestImageProbeRoundSingleRecord(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -276,6 +277,7 @@ func TestImageProbeRoundSingleRecord(t *testing.T) {
 // 0014: 503, 200 with empty data, and 200 with a malformed data payload all
 // fail; only 200 with a complete data payload succeeds.
 func TestImageProbeSuccessDetermination(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -334,6 +336,7 @@ func TestImageProbeSuccessDetermination(t *testing.T) {
 // images_generation protocol, the status machine shows failing then down,
 // and a recovery rides the next window flush.
 func TestImageAlertingLifecycle(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	clock := scheduler.NewFakeClock(time.Now())
 	ts := newAlertClockServer(t, db, clock)
@@ -416,6 +419,7 @@ func TestImageAlertingLifecycle(t *testing.T) {
 // probe), stays quiet across a 300s advance, and fires the second round only
 // once 1800s have elapsed.
 func TestImageEndpointSchedulerInterval(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -662,6 +666,7 @@ func TestImageEditManualTrialBackfill(t *testing.T) {
 // false, ttft null) with usage mapped into the token fields, and the probe
 // really uploads the embedded test image as a multipart form.
 func TestImageEditProbeRoundSingleRecord(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -726,6 +731,7 @@ func TestImageEditProbeRoundSingleRecord(t *testing.T) {
 // malformed data payload all fail; only 200 with a complete data payload
 // succeeds.
 func TestImageEditProbeSuccessDetermination(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	ts := newTestAPIServer(t, db)
 	stub := newDiscoveryStubHub(t, nil)
@@ -784,6 +790,7 @@ func TestImageEditProbeSuccessDetermination(t *testing.T) {
 // sends one down card naming the images_edit protocol, and a recovery rides
 // the next flush.
 func TestImageEditAlertingLifecycle(t *testing.T) {
+	t.Skip("spec 0018 T1 (GH #97): image endpoints no longer probed, test obsolete")
 	db := openTempDB(t)
 	clock := scheduler.NewFakeClock(time.Now())
 	ts := newAlertClockServer(t, db, clock)

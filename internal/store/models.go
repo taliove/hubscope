@@ -38,6 +38,19 @@ type Endpoint struct {
 	CreatedAt       time.Time
 }
 
+// IsPingProtocol reports whether the given protocol belongs to the Ping
+// monitoring family (image/video protocols that are never probed with real
+// generation calls). Chat protocols (anthropic, openai) return false and
+// receive real probe rounds. Spec 0018 ticket 1 (GH #97).
+func IsPingProtocol(protocol string) bool {
+	switch protocol {
+	case "images_generation", "images_edit", "video_generation":
+		return true
+	default:
+		return false
+	}
+}
+
 // endpointColumns is the canonical column list for scanning an Endpoint.
 const endpointColumns = "id, model_id, protocol, enabled, interval_seconds, created_at"
 
