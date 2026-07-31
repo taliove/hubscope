@@ -96,10 +96,10 @@ Dashboard 卡片点击开启的轻量速览(el-dialog,640px + max-width 92vw,**a
 - **关闭:** ESC/浮层/按钮/路由跳转统一走 EP @closed 单点复位路径;关闭后焦点归还触发卡片(EP focus-trap + 手动 focus 双保险)。
 
 ### AppHeader(公开侧形态)
-导航按登录态过滤:未登录只渲染公开页项(状态总览 + 评估榜单→/board);登录态 = 状态总览 + 评估榜单(→/eval)+ 任务中心,随路由切换重检。**未登录 header 一律不渲染登录按钮**(ticket 90 裁决:醒目登录按钮传递「内容要账号」错误信号;判定走 route meta.public),登录入口统一由 PublicFooter 承担。右栏:亮/暗切换(未登录可用,localStorage `hs:dark`,默认亮不跟随系统)+ 登录态时批次进度入口(仅存在未完成批次时渲染,3s 轮询 settle 即停,「批次运行中 X/Y」点击跳 /eval;禁用橙与闪烁)+ 角色 tag(集中映射 utils/role.ts,primary=管理权/info=非管理,语义=权限层级非健康度)。
+**品牌块 = BrandMark + Wordmark 单行**(2026-07-31 GH #90:版本号迁出至 PublicFooter,live 变体 1 纯移除、零样式改动;变体 2 大 Mark、变体 3 hover 浅底留档不实施)。导航按登录态过滤:未登录只渲染公开页项(状态总览 + 评估榜单→/board);登录态 = 状态总览 + 评估榜单(→/eval)+ 任务中心,随路由切换重检。**未登录 header 一律不渲染登录按钮**(ticket 90 裁决:醒目登录按钮传递「内容要账号」错误信号;判定走 route meta.public),登录入口统一由 PublicFooter 承担。右栏:亮/暗切换(未登录可用,localStorage `hs:dark`,默认亮不跟随系统)+ 登录态时批次进度入口(仅存在未完成批次时渲染,3s 轮询 settle 即停,「批次运行中 X/Y」点击跳 /eval;禁用橙与闪烁)+ 角色 tag(集中映射 utils/role.ts,primary=管理权/info=非管理,语义=权限层级非健康度)。
 
 ### PublicFooter(公开页管理入口唯一组件)
-hairline + 一行左右分置:左 © 版权,右「管理登录」→ /login(xs placeholder,链接 hover brand)。状态总览、EndpointDetail、/board 三页一律复用;/login 页不渲染;登录态照常渲染。豁免:/report/:token 分享页不挂页脚。
+hairline + 一行左右分置:左 © 版权 + 「 · {shortVersion}」版本号(2026-07-31 GH #90,自 AppHeader 品牌块迁入:title 全版本,等宽字栈,xs placeholder 与版权同档;vX.Y.Z 前缀口径、dev 构建显全串;获取失败静默不显示),右「管理登录」→ /login(xs placeholder,链接 hover brand)。状态总览、EndpointDetail、/board 三页一律复用;/login 页不渲染;登录态照常渲染。豁免:/report/:token 分享页不挂页脚。**可见范围登记(GH #90,已知并接受):** 版本号随 PublicFooter 仅公开三页可见,管理台无版本显示——如需管理台可见另立票。
 
 ## 数据与行为约束
 - **防作假:** 任何汇总结论必须标注统计范围;筛选快照不得引用未筛选聚合字段;空态中性,永不读作「全部正常」。

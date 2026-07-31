@@ -3,14 +3,12 @@
     <div class="header-inner">
       <!-- Brand block: BrandMark + Wordmark, click goes home. BrandMark is
            never used bare — it always appears alongside the Wordmark
-           (ui-guidelines §2b). Version number displays below the brand. -->
-      <div class="brand-block">
-        <router-link to="/" class="brand">
-          <BrandMark class="brand-mark" />
-          <Wordmark class="brand-wordmark" />
-        </router-link>
-        <span v-if="version" class="version" :title="`HubScope ${version}`">{{ shortVersion }}</span>
-      </div>
+           (ui-guidelines §2b). The version number moved to PublicFooter
+           (GH #90, live variant 1: pure removal, zero style change). -->
+      <router-link to="/" class="brand">
+        <BrandMark class="brand-mark" />
+        <Wordmark class="brand-wordmark" />
+      </router-link>
 
       <nav class="main-nav">
         <router-link
@@ -82,7 +80,6 @@ import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
-import { fetchVersion } from '@/api/version'
 import { roleLabel, roleTagType } from '@/utils/role'
 import { useTheme } from '@/utils/theme'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
@@ -120,7 +117,6 @@ const NAV_ITEMS: NavItem[] = [
 // `user` is null when unauthenticated; every authed-only branch reads it.
 const user = ref<AuthUser | null>(null)
 const loggingOut = ref(false)
-const version = ref<string>('')
 const { dark, toggleTheme } = useTheme()
 
 // Anonymous visitors only get the public nav entries; logout flips user
@@ -136,14 +132,6 @@ const visibleNavItems = computed(() =>
 // in the brief pre-auth-check window of a gated page.
 const isPublicPage = computed(() => Boolean(route.meta.public))
 
-// Short version: extract only the tag part (e.g., "v0.2.3" from "v0.2.3-4-g1adea03-dirty")
-const shortVersion = computed(() => {
-  if (!version.value) return ''
-  // Match vX.Y.Z at the start
-  const match = version.value.match(/^v\d+\.\d+\.\d+/)
-  return match ? match[0] : version.value
-})
-
 // The dashboard owns both '/' and the endpoint detail pages.
 function isActive(item: NavItem): boolean {
   if (item.to === '/') return route.path === '/' || route.path.startsWith('/endpoints')
@@ -156,17 +144,6 @@ async function refreshAuth() {
     user.value = (await fetchAuthStatus()).user ?? null
   } catch {
     user.value = null
-  }
-}
-
-// Fetch version once on mount; it never changes during a session.
-async function loadVersion() {
-  try {
-    const res = await fetchVersion()
-    version.value = res.version
-  } catch {
-    // Silent failure: version display is non-critical.
-    version.value = ''
   }
 }
 
@@ -237,7 +214,6 @@ async function refreshHeaderState() {
 
 onMounted(() => {
   void refreshHeaderState()
-  void loadVersion()
 })
 watch(() => route.fullPath, refreshHeaderState)
 onBeforeUnmount(stopBatchPolling)
@@ -261,11 +237,6 @@ onBeforeUnmount(stopBatchPolling)
   align-items: center;
   gap: 24px;
 }
-.brand-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 .brand {
   display: flex;
   align-items: center;
@@ -277,12 +248,6 @@ onBeforeUnmount(stopBatchPolling)
 }
 .brand-wordmark {
   font-size: var(--hs-text-lg);
-}
-.version {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-placeholder);
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
-  margin-left: 32px;
 }
 .main-nav {
   display: flex;

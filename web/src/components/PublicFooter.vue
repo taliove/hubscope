@@ -4,14 +4,52 @@
        button in the header — the entry retreats to this hairline footer
        line, identical on the status board, endpoint detail and /board.
        Rendered regardless of session state (same as the /board precedent);
-       /login itself carries no footer. Footer composition: copyright left,
-       admin entry right (2026-07-28 design decision) so the quiet entry
-       does not float alone. -->
+       /login itself carries no footer. Footer composition: copyright +
+       version left, admin entry right (2026-07-28 design decision) so the
+       quiet entry does not float alone. The version number moved here from
+       the AppHeader brand block (GH #90): since this footer only mounts on
+       the three public pages, the version is visible there only — the
+       admin console shows no version (accepted scope; a separate ticket
+       would be needed to surface it there). -->
   <footer class="public-footer">
-    <span class="copyright">© 2026 HubScope</span>
+    <span class="copyright">
+      © 2026 HubScope<span v-if="version" class="version" :title="`HubScope ${version}`"> · {{ shortVersion }}</span>
+    </span>
     <router-link to="/login" class="admin-link">管理登录</router-link>
   </footer>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { fetchVersion } from '@/api/version'
+
+// Build version, fetched once on mount; it never changes during a session.
+// Failure stays silent (empty string hides the span) — the version display
+// is non-critical, same policy as the AppHeader original.
+const version = ref<string>('')
+
+// Short version: extract only the tag part (e.g., "v0.2.3" from
+// "v0.2.3-4-g1adea03-dirty"); dev builds without a vX.Y.Z prefix show the
+// full string.
+const shortVersion = computed(() => {
+  if (!version.value) return ''
+  const match = version.value.match(/^v\d+\.\d+\.\d+/)
+  return match ? match[0] : version.value
+})
+
+async function loadVersion() {
+  try {
+    const res = await fetchVersion()
+    version.value = res.version
+  } catch {
+    version.value = ''
+  }
+}
+
+onMounted(() => {
+  void loadVersion()
+})
+</script>
 
 <style scoped>
 .public-footer {
@@ -25,6 +63,9 @@
 .copyright {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
+}
+.version {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 .admin-link {
   font-size: var(--hs-text-xs);
