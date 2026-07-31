@@ -35,13 +35,15 @@
       <!-- Signal-wall lamp (GH #72; GH #82 tag moved to the status row): the
            head row is now model name + lamp only — the lamp is the card's
            sole status light, so the StatusBadge below renders dotless. Only
-           non-healthy channels light up. aria-hidden — the StatusBadge word
-           already reports status. Renders regardless of showProtocolTag: the
-           group protocol-tag collapse (GH #54) must not take the lamp down. -->
+           non-healthy channels light up, colored by the display-layer tone
+           slot (down and failing share the danger slot, GH #113).
+           aria-hidden — the StatusBadge word already reports status.
+           Renders regardless of showProtocolTag: the group protocol-tag
+           collapse (GH #54) must not take the lamp down. -->
       <span
         v-if="entry.status !== 'healthy'"
         class="lamp"
-        :class="`lamp-${entry.status}`"
+        :class="`lamp-${statusTone(entry.status)}`"
         aria-hidden="true"
       ></span>
     </div>
@@ -97,6 +99,7 @@ import StatusBadge from './StatusBadge.vue'
 import EndpointUptimePanel from './EndpointUptimePanel.vue'
 import { formatPercent, formatMs, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
+import { statusTone } from '@/utils/statusDisplay'
 import { splitMiddle } from '@/utils/truncate'
 
 // One card of the status matrix: a single Endpoint with its 24h summary.
@@ -154,23 +157,24 @@ const scoreTooltip = computed(() => {
 }
 /* Signal-wall lamp (GH #72): the leading-edge status bar is retired; status
    signaling is the two-channel "head-row lamp + StatusBadge colored word".
-   The lamp lights only for abnormal channels (healthy renders nothing);
-   failing owns the blink (--hs-blink token, reduced-motion zeroes it). */
+   The lamp lights only for abnormal channels (healthy renders nothing) and
+   is STATIC — the failing blink is retired wholesale with the three-state
+   display (GH #113); down and failing share the danger tone slot. */
 .lamp {
   width: 9px;
   height: 9px;
   border-radius: var(--hs-radius-full);
   flex: none;
+  /* State changes glide through color (the semantics.css global
+     reduced-motion rule zeroes this). */
+  transition: background-color var(--hs-transition);
 }
-.lamp-degraded {
+/* The lamp is a graphic: body grade of the tone slot. */
+.lamp-warning {
   background: var(--hs-warning);
 }
-.lamp-down {
+.lamp-danger {
   background: var(--hs-danger);
-}
-.lamp-failing {
-  background: var(--hs-status-failing);
-  animation: var(--hs-blink);
 }
 .card-head {
   display: flex;

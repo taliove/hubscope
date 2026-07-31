@@ -24,10 +24,11 @@
            availability big number pinned right on the SAME baseline
            (margin-left:auto; the availability block wraps below the
            conclusion on narrow widths without breaking alignment). The
-           failing alert-dot owns the band's sole animation — chips and
-           counts never animate. The big number is ink, never tinted: the
-           band ground + conclusion already double-encode severity; null
-           renders a placeholder dash with an inline no-data note. -->
+           alert-dot marks active alerting (event signal, static — the blink
+           is retired wholesale with the three-state display, GH #113).
+           The big number is ink, never tinted: the band ground + conclusion
+           already double-encode severity; null renders a placeholder dash
+           with an inline no-data note. -->
       <div class="headline-row">
         <span v-if="hasFailing" class="alert-dot" title="存在告警端点" />
         <span class="conclusion">{{ conclusion }}</span>
@@ -59,32 +60,33 @@
       </div>
       <!-- Row 2 (full width): which endpoints are abnormal (GH #53) — most
            severe first, capped at MAX_ABNORMAL_CHIPS with a neutral "+N"
-           overflow. No dots, no blink — the alert-dot above owns the
-           animation. -->
+           overflow. No dots, no blink — the alert-dot above is the only
+           signal lamp, and it is static. -->
       <div v-if="abnormal.chips.length > 0" class="chips">
         <button
           v-for="chip in abnormal.chips"
           :key="chip.endpoint_id"
           type="button"
           class="chip"
-          :title="`${chip.model_id} · ${chip.protocol} · ${STATUS_LABELS[chip.status]}`"
+          :title="`${chip.model_id} · ${chip.protocol} · ${statusLabel(chip.status)}`"
           @click.stop="onChipInspect(chip.status)"
         >
-          <span class="chip-status" :class="`chip-status-${chip.status}`">{{ STATUS_LABELS[chip.status] }}</span>
+          <span class="chip-status" :class="`chip-status-${statusTone(chip.status)}`">{{ statusLabel(chip.status) }}</span>
           <span class="chip-model">{{ chip.model_id }}</span>
         </button>
         <span v-if="abnormal.overflow > 0" class="chip-overflow">+{{ abnormal.overflow }}</span>
       </div>
       <!-- Row 3 (full width): counts row (GH #73, migrated from the stats
-           strip; behavior kept verbatim): total + four status counts
-           (SEVERITY_ORDER heavy → light, the board's single severity
-           caliber, GH #55) + disabled. Status items toggle the filter /
-           click again to clear; the active item gets a 1px brand inset
-           ring on a transparent ground. Items are real <button>s
-           (keyboard Enter/Space + focus ring). Clicks stop at the item so
-           they never trigger the whole-band inspect. Count badges are
-           dotless (GH #81, closed-list scene ②): the state-colored word
-           is itself the double encoding; dots would multiply lamps. -->
+           strip): total + the three DISPLAY-state counts (down + failing
+           merge into 服务异常, GH #113; DISPLAY_SEVERITY_ORDER heavy →
+           light mirrors the board's single severity caliber, GH #55) +
+           disabled. Status items toggle the filter / click again to clear;
+           the active item gets a 1px brand inset ring on a transparent
+           ground. Items are real <button>s (keyboard Enter/Space + focus
+           ring). Clicks stop at the item so they never trigger the
+           whole-band inspect. Count badges are dotless (GH #81, closed-list
+           scene ②): the state-colored word is itself the double encoding;
+           dots would multiply lamps. -->
       <div class="counts-row">
         <button
           type="button"
@@ -95,15 +97,15 @@
           总数 <span class="count-num">{{ entries.length }}</span>
         </button>
         <button
-          v-for="status in SEVERITY_ORDER"
-          :key="status"
+          v-for="item in displayCountItems"
+          :key="item.status"
           type="button"
           class="count-item count-clickable"
-          :class="{ 'count-active': statusFilter === status }"
-          @click.stop="emit('toggle-status', status)"
+          :class="{ 'count-active': statusFilter === item.status }"
+          @click.stop="emit('toggle-status', item.status)"
         >
-          <StatusBadge :status="status" dotless />
-          <span class="count-num">{{ statusCounts[status] }}</span>
+          <StatusBadge :status="item.status" dotless />
+          <span class="count-num">{{ item.count }}</span>
         </button>
         <span v-if="disabledCount > 0" class="count-item count-disabled">
           已停用 <span class="count-num">{{ disabledCount }}</span>
@@ -131,14 +133,20 @@ import type { OverviewEntry, EndpointStatus } from '@/api/types'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { formatPercentDigits, formatClockMinute } from '@/utils/format'
 import {
-  STATUS_LABELS,
   abnormalChips,
   conclusionText,
   countByStatus,
   toneOf,
   type HealthCounts,
 } from '@/utils/healthConclusion'
-import { SEVERITY_ORDER } from '@/utils/severitySort'
+import {
+  DISPLAY_SEVERITY_ORDER,
+  displayStatusCounts,
+  statusLabel,
+  statusTone,
+  toDisplayStatus,
+  type DisplayStatus,
+} from '@/utils/statusDisplay'
 import { scopedAvailability } from '@/utils/statusCardSummary'
 import { POLL_INTERVAL_MS } from '@/composables/useOverview'
 
@@ -147,26 +155,28 @@ const props = defineProps<{
   generatedAt: string | null
   loading: boolean
   stale: boolean // last refresh failed; showing previous successful data
-  // Counts row (migrated strip): all-entries status counts, the disabled
-  // count, and the active status filter (dual-controlled with the
-  // filter-row select — DashboardView owns the single ref).
+  // Counts row (migrated strip): all-entries DOMAIN-status counts (merged
+  // into display states for render), the disabled count, and the active
+  // status filter — which speaks display states (dual-controlled with the
+  // filter-row select — DashboardView owns the single ref, GH #55).
   statusCounts: HealthCounts
   disabledCount: number
-  statusFilter: EndpointStatus | ''
+  statusFilter: DisplayStatus | ''
 }>()
 
 const emit = defineEmits<{
-  (e: 'inspect', status: EndpointStatus): void
-  // Counts-row click: '' (the 总数 item) clears the filter; a status payload
-  // toggles it (click again clears). DashboardView owns the toggle math.
-  (e: 'toggle-status', status: EndpointStatus | ''): void
+  (e: 'inspect', status: DisplayStatus): void
+  // Counts-row click: '' (the 总数 item) clears the filter; a display status
+  // payload toggles it (click again clears). DashboardView owns the toggle
+  // math.
+  (e: 'toggle-status', status: DisplayStatus | ''): void
 }>()
 
 // Only the very first load (no data yet) shows the skeleton; subsequent
 // poll refreshes keep the previous numbers on screen.
 const isInitialLoading = computed(() => props.loading && props.entries.length === 0)
 // Loaded but zero endpoints (or a first-load failure with nothing to show):
-// render a neutral "no data" state instead of a misleading "全部正常".
+// render a neutral "no data" state instead of a misleading "全部稳定".
 const isEmpty = computed(() => !isInitialLoading.value && props.entries.length === 0)
 
 // Conclusion math only counts enabled endpoints; disabled ones are the
@@ -193,6 +203,14 @@ const availability = computed(() => scopedAvailability(enabledEntries.value))
 // Which endpoints are abnormal, most severe first (single severity rank).
 const abnormal = computed(() => abnormalChips(enabledEntries.value))
 
+// Counts-row items: the domain counts merge into the three display states
+// (down + failing → incident, GH #113) so the row never shows the 服务异常
+// word twice; order stays heavy → light (DISPLAY_SEVERITY_ORDER).
+const displayCountItems = computed(() => {
+  const merged = displayStatusCounts(props.statusCounts)
+  return DISPLAY_SEVERITY_ORDER.map(status => ({ status, count: merged[status] }))
+})
+
 const pollSeconds = POLL_INTERVAL_MS / 1000
 
 // Bare "HH:mm" freshness reading via the shared clock helper (no slicing).
@@ -200,8 +218,9 @@ const updatedAt = computed(() => (props.generatedAt ? formatClockMinute(props.ge
 
 function onClick() {
   if (!clickable.value) return
-  // Filter to the more urgent abnormal status first.
-  emit('inspect', hasFailing.value ? 'failing' : 'down')
+  // The filter speaks display states: down and failing inspect together
+  // under incident (GH #113).
+  emit('inspect', 'incident')
 }
 
 // Whole-band keyboard activation fires ONLY when the band root itself is the
@@ -218,8 +237,10 @@ function onBandKeydown(event: KeyboardEvent) {
 
 // Chip click = the same inspect path as the whole-band click (status filter
 // + scroll to the matrix), stopped so it never triggers the band click.
+// Chips carry the DOMAIN status; the filter speaks display states, so a
+// failing chip filters to the same incident set as a down chip.
 function onChipInspect(status: EndpointStatus) {
-  emit('inspect', status)
+  emit('inspect', toDisplayStatus(status) ?? 'incident')
 }
 </script>
 
@@ -262,14 +283,16 @@ function onChipInspect(status: EndpointStatus) {
 .banner-degraded {
   background: var(--hs-warning-soft);
 }
+/* Conclusion is text: the *-text grade of each slot (graphic/text
+   division, GH #113). */
 .banner-degraded .conclusion {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .banner-abnormal {
   background: var(--hs-danger-soft);
 }
 .banner-abnormal .conclusion {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 /* Four-row vertical stack (GH #81): headline row (conclusion + same-baseline
    availability) / availability sub-row / chips / counts. Rows 2–3 span the
@@ -291,17 +314,19 @@ function onChipInspect(status: EndpointStatus) {
   font-weight: 600;
   line-height: 1.5;
 }
-/* Same pulse as StatusBadge's failing dot (sole animated state, §3);
-   --hs-blink (semantics.css) goes still under prefers-reduced-motion.
-   Baseline-aligned rows would drop the dot oddly — it self-centers. */
+/* Alert dot: marks active alerting (event signal). Static — the blink is
+   retired wholesale with the three-state display (GH #113; the --hs-blink
+   token stays none until the display-layer rebuild batch removes the
+   @keyframes) — and failing has no fourth display color, so the dot takes
+   the danger slot. Baseline-aligned rows would drop the dot oddly — it
+   self-centers. */
 .alert-dot {
   align-self: center;
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-  background: var(--hs-status-failing);
-  animation: var(--hs-blink);
+  background: var(--hs-danger);
 }
 /* Availability sub-row: right-aligned directly under the big number —
    the xs label plus the meta cluster. */
@@ -389,7 +414,7 @@ function onChipInspect(status: EndpointStatus) {
   min-width: 0;
 }
 /* Abnormal chip: borderless surface card on the tinted ground — no dot, no
-   blink, no status fill (W5 mirror: the alert-dot owns the sole animation).
+   blink, no status fill (the alert-dot is the band's only signal lamp).
    Borderless bg-card + radius reads as a clean card on any tone-soft ground
    (user feedback 2026-07-29: the outline was ugly even after the surface
    fill); hover lifts with shadow-md — shadow means "clickable" per the
@@ -421,14 +446,13 @@ function onChipInspect(status: EndpointStatus) {
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
-.chip-status-failing {
-  color: var(--hs-status-failing);
+/* Chip status words: text channel → *-text grades; chips only ever render
+   abnormal states, so the success slot never appears here. */
+.chip-status-warning {
+  color: var(--hs-warning-text);
 }
-.chip-status-down {
-  color: var(--hs-danger);
-}
-.chip-status-degraded {
-  color: var(--hs-warning);
+.chip-status-danger {
+  color: var(--hs-danger-text);
 }
 .chip-model {
   font-size: var(--hs-text-sm);

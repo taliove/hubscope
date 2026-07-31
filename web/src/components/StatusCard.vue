@@ -143,10 +143,11 @@
 // dot + text chip), no hover reliance (truncation thresholds stay
 // conservative).
 import { computed } from 'vue'
-import type { EndpointStatus, ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
+import type { ModelEvalSummary, OverviewEntry, Protocol } from '@/api/types'
 import type { GroupDimension } from '@/utils/statusCardSnapshot'
 import { formatTimeMinute, formatPercentDigits, formatMs } from '@/utils/format'
-import { STATUS_LABELS, countByStatus } from '@/utils/healthConclusion'
+import { countByStatus } from '@/utils/healthConclusion'
+import { statusLabel, statusTone, type DisplayStatus, type DisplayTone } from '@/utils/statusDisplay'
 import {
   scopedAvailability,
   singleModelSummaryText,
@@ -166,7 +167,7 @@ const props = defineProps<{
   entries: OverviewEntry[] // scoped snapshot, disabled endpoints included
   keyword: string
   protocol: Protocol | ''
-  status: EndpointStatus | ''
+  status: DisplayStatus | ''
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the snapshot moment
   origin: string
@@ -189,7 +190,7 @@ const DIMENSION_LABELS: Record<GroupDimension, string> = {
 interface ScopeChip {
   label: string
   value: string
-  tone?: EndpointStatus
+  tone?: DisplayTone
 }
 
 // Counts feed the summary only; the hero panel computes its own availability
@@ -229,7 +230,7 @@ const scopeChips = computed<ScopeChip[]>(() => {
   }
   if (props.keyword) chips.push({ label: '模型', value: props.keyword })
   if (props.protocol) chips.push({ label: '协议', value: props.protocol })
-  if (props.status) chips.push({ label: '状态', value: STATUS_LABELS[props.status], tone: props.status })
+  if (props.status) chips.push({ label: '状态', value: statusLabel(props.status), tone: statusTone(props.status) })
   return chips
 })
 
@@ -351,19 +352,17 @@ const emptyDetailText = computed(() => {
 .compact .chip-value {
   max-width: 160px;
 }
-/* GH #69 text/graphics split: chip state values are text — success as text
-   consumes the deepened text grade, never the base green. */
-.value-healthy {
+/* Scope-chip status value: text channel → the *-text grade of the tone slot
+   (GH #69 text/graphics split — success as text never consumes the base
+   green; GH #113 display mapping — three tone slots, no fourth color). */
+.value-success {
   color: var(--hs-success-text);
 }
-.value-degraded {
-  color: var(--hs-warning);
+.value-warning {
+  color: var(--hs-warning-text);
 }
-.value-down {
-  color: var(--hs-danger);
-}
-.value-failing {
-  color: var(--hs-status-failing);
+.value-danger {
+  color: var(--hs-danger-text);
 }
 .scope-plain {
   font-size: var(--hs-text-sm);

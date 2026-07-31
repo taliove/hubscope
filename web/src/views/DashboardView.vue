@@ -40,10 +40,10 @@
       </el-select>
       <span class="filter-label">状态:</span>
       <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
-        <el-option label="正常" value="healthy" />
-        <el-option label="降级" value="degraded" />
-        <el-option label="宕机" value="down" />
-        <el-option label="告警" value="failing" />
+        <!-- Options come from the single display-layer mapping (GH #113):
+             the three display states, light → heavy; down + failing filter
+             together under 服务异常. No status word literals here. -->
+        <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
       </el-select>
       <el-select v-model="grouping" class="filter-select">
         <el-option label="按厂商分组" value="family" />
@@ -108,9 +108,6 @@
         :entry="quickViewEntry"
         @closed="onQuickViewClosed"
       />
-
-      <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
-      <PublicFooter />
     </div>
   </div>
 </template>
@@ -124,18 +121,24 @@ import EndpointCard from '@/components/EndpointCard.vue'
 import OverviewGroupSection from '@/components/OverviewGroupSection.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import EndpointQuickViewDialog from '@/components/EndpointQuickViewDialog.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { PROTOCOLS } from '@/utils/protocol'
 import { sortEntriesBySeverity, sortGroupSections, type GroupSection } from '@/utils/severitySort'
+import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
 import { freezeEntrySnapshot } from '@/utils/quickViewSnapshot'
-import type { EndpointStatus, Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
+import type { Protocol, OverviewGroup, OverviewEntry } from '@/api/types'
 
 const { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, start } = useOverview()
 
 const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
-const statusFilter = ref<EndpointStatus | ''>('')
+// The status filter speaks DISPLAY states (GH #113): the domain status
+// machine keeps four states, but the board renders three — down and
+// failing filter together under 'incident' (服务异常).
+const statusFilter = ref<DisplayStatus | ''>('')
+// Filter-select options: the three display states, light → heavy (the
+// severity order reversed), words from the single mapping.
+const statusOptions = [...DISPLAY_SEVERITY_ORDER].reverse()
 // Grouping dimension of the status matrix; vendor family by default.
 const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
 const matrixRef = ref<HTMLElement | null>(null)
@@ -210,10 +213,10 @@ function onQuickViewClosed() {
 const disabledCount = computed(() => entries.value.filter(e => !e.enabled).length)
 
 // Counts-row click (GH #73, migrated from the stats strip): '' (the 总数
-// item) clears the filter; a status filters the matrix to that status,
-// clicking the active one clears it. The hero band counts row and the
-// filter-row status select dual-control this single ref (GH #55).
-function toggleStatusFilter(status: EndpointStatus | '') {
+// item) clears the filter; a display status filters the matrix to that
+// state, clicking the active one clears it. The hero band counts row and
+// the filter-row status select dual-control this single ref (GH #55).
+function toggleStatusFilter(status: DisplayStatus | '') {
   statusFilter.value = status === '' ? '' : statusFilter.value === status ? '' : status
 }
 
@@ -221,22 +224,24 @@ function toggleStatusFilter(status: EndpointStatus | '') {
 // reduced-motion degrades smooth scroll to instant (2026-07-29 /impeccable
 // animate 批:修补 a11y harden 批漏网,与 semantics.css 全局过渡归零同批;
 // one-shot check per click, no change listener).
-function onBannerInspect(status: EndpointStatus) {
+function onBannerInspect(status: DisplayStatus) {
   statusFilter.value = status
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   matrixRef.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
-// Apply the three filters; an empty filter matches everything. The result
-// is severity-ranked (GH #52) so the flat matrix leads with the most severe
-// endpoints; group sections re-derive their own ordering from this set.
+// Apply the three filters; an empty filter matches everything. The status
+// filter matches by DISPLAY state (toDisplayStatus), so 'incident' catches
+// down and failing entries together. The result is severity-ranked
+// (GH #52) so the flat matrix leads with the most severe endpoints; group
+// sections re-derive their own ordering from this set.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   return sortEntriesBySeverity(
     entries.value.filter(entry => {
       if (kw && !entry.model_id.toLowerCase().includes(kw)) return false
       if (protocolFilter.value && entry.protocol !== protocolFilter.value) return false
-      if (statusFilter.value && entry.status !== statusFilter.value) return false
+      if (statusFilter.value && toDisplayStatus(entry.status) !== statusFilter.value) return false
       return true
     }),
   )

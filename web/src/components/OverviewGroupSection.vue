@@ -28,12 +28,14 @@
         </el-tag>
 
         <span class="group-stats">
-          <template v-for="s in presentStatuses" :key="s">
+          <template v-for="item in presentDisplayStatuses" :key="item.status">
             <!-- Count chips dotless (GH #82, closed-list scene ③): the
                  state-colored word alone carries the double encoding; dots
-                 here would be a wall of repeated lamps. -->
-            <StatusBadge :status="s" dotless />
-            <span class="stat-num">{{ group.status_counts[s] }}</span>
+                 here would be a wall of repeated lamps. Counts merge into
+                 the three display states (down + failing → 服务异常,
+                 GH #113) so the header never shows the same word twice. -->
+            <StatusBadge :status="item.status" dotless />
+            <span class="stat-num">{{ item.count }}</span>
           </template>
           <el-tag v-if="group.status_counts['disabled']" type="info" size="small">
             禁用 {{ group.status_counts['disabled'] }}
@@ -104,7 +106,7 @@ import EndpointCard from './EndpointCard.vue'
 import UptimeStrip from './UptimeStrip.vue'
 import { formatPercent, formatMs } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
-import { SEVERITY_ORDER } from '@/utils/severitySort'
+import { DISPLAY_SEVERITY_ORDER, displayStatusCounts } from '@/utils/statusDisplay'
 import { aggregateDots24h } from '@/utils/overviewDots'
 import type { OverviewGroup, OverviewEntry, Protocol } from '@/api/types'
 
@@ -145,12 +147,18 @@ watch(
   { immediate: true },
 )
 
-// Statuses present in this group, in the board's single severity caliber
-// (GH #55 — SEVERITY_ORDER, heavy → light, shared with the stats strip;
-// the local STATUS_PRIORITY list is deleted).
-const presentStatuses = computed(() =>
-  SEVERITY_ORDER.filter(s => (props.group.status_counts[s] ?? 0) > 0)
-)
+// Display states present in this group with their merged counts (GH #113):
+// the backend status_counts speak the four domain states; down + failing
+// merge into 服务异常 for display (displayStatusCounts), ordered heavy →
+// light by DISPLAY_SEVERITY_ORDER (mirror of the board's single severity
+// caliber, GH #55).
+const presentDisplayStatuses = computed(() => {
+  const merged = displayStatusCounts(props.group.status_counts)
+  return DISPLAY_SEVERITY_ORDER.filter(status => merged[status] > 0).map(status => ({
+    status,
+    count: merged[status],
+  }))
+})
 
 // Uniform-protocol collapse (GH #54): the protocol shared by every filtered
 // entry, or null for mixed/empty groups. Based on the filtered entries prop
