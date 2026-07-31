@@ -1,7 +1,7 @@
-// Shared health-conclusion logic and status vocabulary. Extracted from
-// HealthBanner so the banner (global scope, never filtered) and the
-// StatusCard (filtered scope, ticket 56) speak with one voice — same words,
-// same thresholds, same conclusion sentences (ui-guidelines §3/§7).
+// Shared health-conclusion logic and status vocabulary. Originally extracted
+// from the retired HealthBanner; current consumers — the overview hero
+// (DashboardView, GH #115) and the StatusCard share material — speak with
+// one voice: same words, same thresholds, same conclusion sentences.
 // Pure functions only: callers decide which entries enter the math
 // (banner passes all enabled endpoints, the card its filtered snapshot).
 import type { EndpointStatus, OverviewEntry, Protocol } from '@/api/types'
@@ -45,7 +45,8 @@ export function conclusionText(tone: HealthTone, counts: HealthCounts, empty: bo
   return `全部${statusLabel('stable')}`
 }
 
-// Cap of abnormal-endpoint chips on the HealthBanner (GH #53); the rest
+// Cap of abnormal-endpoint chips carried by the old HealthBanner (GH #53,
+// retired GH #115); the rest
 // collapse into a neutral "+N" overflow chip.
 export const MAX_ABNORMAL_CHIPS = 5
 
