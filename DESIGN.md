@@ -50,6 +50,10 @@ typography:
     lineHeight: 1.5
   mono:
     fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace"
+    # fontSize intentionally null: mono is sized per usage — Wordmark uses an
+    # em base (the host scales it via font-size, ui-guidelines §2b), the
+    # version stamp uses the xs tier; no single tier value applies.
+    fontSize: null
     fontWeight: 400
     lineHeight: 1.5
 rounded:
