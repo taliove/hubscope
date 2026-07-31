@@ -50,17 +50,19 @@
       </el-button>
     </div>
 
-    <!-- Group strip row (2026-07-31, GH #85): the slim band (flex-1) and the
-         "本组:" metrics share one row, metrics right-aligned — shape → reading
-         in a single scan. The "本组:" prefix (GH #55) remains one
-         container-level scope marker so the group's availability/latency can
-         never be read as the global figures the banner carries. Metrics moved
-         OUT of the header row; folding the strip into the header was rejected
-         (per-group left content varies, cross-group alignment is the timeline
-         language's core value). Always visible, collapsed or not (GH #64).
-         Strip left edge aligns strictly across groups; the right edge varies
-         a few px with the metrics text — registered as known and accepted
-         (never fix the metrics width to force alignment). -->
+    <!-- Group strip row (2026-07-31, GH #85 slim band + GH #87 fixed width):
+         the slim band (left-aligned, fixed 360px) and the "本组:" metrics share
+         one row, metrics right-aligned via margin-left:auto with natural
+         whitespace between — shape → reading in a single scan. The "本组:"
+         prefix (GH #55) remains one container-level scope marker so the
+         group's availability/latency can never be read as the global figures
+         the banner carries. Metrics moved OUT of the header row; folding the
+         strip into the header was rejected (per-group left content varies,
+         cross-group alignment is the timeline language's core value). Always
+         visible, collapsed or not (GH #64). Fixed width makes every group's
+         strip identical in width with strictly aligned left AND right edges —
+         GH #85's right-edge-variance registration lapses with the fixed
+         width. -->
     <div class="strip-row">
       <UptimeStrip :dots="groupDots" />
       <span class="group-metrics">
@@ -285,11 +287,13 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
   margin-right: 4px;
 }
 .group-metrics {
-  /* GH #85: moved out of the header row into the strip row; right alignment
-     comes from the strip's flex:1, not margin-left:auto. nowrap keeps the
-     metric pair on one line; the strip's flex slots absorb the remaining
-     width (right-edge variance of a few px registered as accepted). */
+  /* GH #85: moved out of the header row into the strip row. GH #87: the
+     strip no longer flexes, so right alignment now comes from this element's
+     own margin-left:auto (was: absorbed by the strip's flex:1). nowrap keeps
+     the metric pair on one line; the fixed-width strip plus the natural
+     whitespace between the two is the tool-grade calm layout. */
   flex: none;
+  margin-left: auto;
   white-space: nowrap;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
@@ -303,7 +307,13 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
   margin-bottom: 10px;
 }
 .strip-row .uptime-strip {
-  flex: 1;
+  /* GH #87 fixed width (user sign-off 2026-07-31, replaces GH #85 flex:1):
+     at full content width each slot was ~76px — a row of capsules reading as
+     lamps. Segment width = strip width ÷ 24, so only narrowing the strip
+     shrinks the "lamps": 360px → slots ≈ (360 − 23×2) / 24 ≈ 13px. flex 0 1
+     + min-width 0 lets the strip shrink on narrow viewports (the 24 inner
+     slots are flex 1 1 0 and shrink with it) — §4 no horizontal scroll. */
+  flex: 0 1 360px;
   min-width: 0;
 }
 .group-share {

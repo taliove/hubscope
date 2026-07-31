@@ -3,7 +3,9 @@
        ui-guidelines §5 UptimeStrip registration): one flex slot per hour,
        filled so the strip reads as one continuous timeline (§2 segmented-fill
        convention). Purely presentational — the parent feeds aggregated dots
-       from utils/overviewDots (probe-weighted, never a per-endpoint average). -->
+       from utils/overviewDots (probe-weighted, never a per-endpoint average).
+       Width is governed by the parent: the group strip row fixes it at 360px
+       left-aligned (GH #87), shrinkable on narrow viewports. -->
   <div class="uptime-strip">
     <el-tooltip
       v-for="(dot, i) in dots"
