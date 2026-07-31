@@ -2,6 +2,9 @@
 // Role semantics is "permission tier", NOT health — status colors
 // (success/warning/danger) are reserved for endpoint & batch health
 // signals per §3, so role tags only use primary (brand) and info (neutral).
+// v2 palette (GH #110/#119, spec 0018): primary resolves to brand blue
+// #007AFF and info to the neutral gray via ep-theme.css; the
+// permission-tier semantics carry over unchanged.
 
 import type { TagProps } from 'element-plus'
 
