@@ -76,12 +76,13 @@ related_targets: ["web/src/components/HealthBanner.vue","web/src/components/Over
 - **对齐约束修订:** 条宽定值 → 跨组条完全同宽、左缘严格对齐,右缘亦因定宽天然对齐——GH #85「右缘随指标文字长度几 px 参差」的登记随定宽自然失效撤销。
 - **窄视口(§4 不破):** 条 `flex: 0 1 360px` + `min-width: 0` 可收缩(槽内 24 格 flex 1 1 0 同步缩),指标 nowrap 不收缩,叠加不撑出横向滚动。
 - 其余规格不动:24 格、2px 间距、`--hs-radius-xs`、§3 批 59 三档着色 + 无数据灰、逐格 tooltip、折叠恒显。
-**组条对齐卡内条规格(2026-07-31 /impeccable 实机迭代,用户裁选定稿;GH #88,取代 GH #87 的 360px/6px 细带登记):**
+**组条对齐卡内条规格(2026-07-31 /impeccable 实机迭代,用户裁选定稿;GH #88,取代 GH #87 的 360px/6px 细带登记;同日 check MEDIUM-1 定宽修正 246→220px):**
 - **根因诊断:** GH #85 细带化(6px)与 GH #87 定宽(360px)两轮后实机仍判「非常丑」——根因是格比例:全宽时每格 ≈46px 长胶囊、360px 时 13×6px 扁丸,横向比例使格子读作「灯/药丸」而非「点」;只压高度或只收宽度都治不了。
-- **格规格 = 卡内条同规格:** 格高回 10px、间距 2px、`--hs-radius-xs`、§3 批 59 三档着色 + 无数据灰,与 EndpointCard 卡内条逐像素同规格;GH #85「组条 6px、卡内 10px 分档」登记随本票显式撤销。
-- **定宽 246px 左对齐:** 格宽算术 (246 − 23×2) / 24 ≈ 8.3px,与 272px 卡片扣除 26px 行内标签后的条槽同宽——组条格与卡内格同形同色,「组的条 = 卡片的条的聚合」读感成立(本票核心收益)。
-- **窄视口(§4 不破):** 条 `flex: 0 1 246px` + `min-width: 0` 可收缩(槽内 24 格 flex 1 1 0 同步缩),指标 nowrap 不收缩,叠加不撑出横向滚动。
+- **格规格 = 卡内条同规格:** 格高回 10px、间距 2px、`--hs-radius-xs`、§3 批 59 三档着色 + 无数据灰——**格高/间距/圆角/着色与 EndpointCard 卡内条严格同规格**(格宽为近似贴近,见下条);GH #85「组条 6px、卡内 10px 分档」登记随本票显式撤销。
+- **定宽 220px 左对齐:** 格宽算术 (220 − 23×2) / 24 ≈ 7.2px,贴近典型 1200px 视口的卡内条槽(291px 卡 − 2×20px 卡 padding − 26px 行内标签 − 6px 标签↔条 gap = 219px,格 ≈7.2px);卡宽弹性,定宽无法全视口逐像素一致,格宽取近似贴近——组条格与卡内格同形同色,「组的条 = 卡片的条的聚合」读感成立(本票核心收益)。
+- **窄视口(§4 不破):** 条 `flex: 0 1 220px` + `min-width: 0` 可收缩(槽内 24 格 flex 1 1 0 同步缩),指标 nowrap 不收缩,叠加不撑出横向滚动。
 - 其余规格不动:「本组:」指标右对齐同行(margin-left:auto)、逐格 tooltip 口径、折叠恒显(GH #64)、空组全灰、暗色双主题。
+- **后续注记(2026-07-31 check MEDIUM-1):** 票面 246px 算术失实——「246 = 272px 卡 − 26px 标签」漏算 el-card body padding(EP 默认 `--el-card-padding` 20px×2,DashboardView/OverviewGroupSection/EndpointCard 均无密度档覆盖)与标签↔条 6px gap(EndpointUptimePanel `.card-dots`);真实级联:条槽 = 卡宽 − 40 − 26 − 6(地板 272px 卡 → 200px,典型 1200px 视口 291px 卡 → 219px)。经用户裁决修正为 220px 贴近档,级联逐项见 OverviewGroupSection.vue `.strip-row .uptime-strip` 代码注释。
 标题行(2026-07-31 GH #85 修订,组聚合指标移出):折叠箭头 + 组名 + 端点计数 + 状态计数 chips + 分享入口。整行可点折叠。**分组独立分享入口**(批 59):标题行右端 text 型按钮(Share 图标 + 「分享」文字),@click.stop 不触发折叠;复用 StatusShareDialog,快照范围 = 该分组条目 ∩ 当前页面筛选,scope chips 首位恒为分组 chip(label「分组」,值「厂商/能力/协议 · 组名」);**卡片所有数字一律从快照 entries(enabled)计算,与范围 chips 恒一致**——24h 可用率 = 快照 entries dots_24h 按小时求和 ok/total;平均延迟 = enabled entries p50_ms 均值(唯一 scope 恒一致口径;与组条行右侧「本组:均延」探测加权值可能略异,卡片内部自洽优先)。
 
 ### EndpointQuickViewDialog(端点速览弹窗,2026-07-29 设计评审;2026-07-30 安静入场 + 明细曲线视觉修订,morph 编舞同日退役)

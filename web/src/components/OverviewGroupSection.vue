@@ -51,19 +51,21 @@
     </div>
 
     <!-- Group strip row (2026-07-31, GH #85 slim band + GH #87 fixed width,
-         GH #88 aligned to the in-card strip spec): the strip (left-aligned,
-         fixed 246px — same width as the in-card strip slot, so its ≈8.3×10px
-         segments match the cards' dots pixel-for-pixel) and the "本组:"
-         metrics share one row, metrics right-aligned via margin-left:auto
-         with natural whitespace between — shape → reading in a single scan.
-         The "本组:" prefix (GH #55) remains one container-level scope marker
-         so the group's availability/latency can never be read as the global
-         figures the banner carries. Metrics moved OUT of the header row;
-         folding the strip into the header was rejected (per-group left
-         content varies, cross-group alignment is the timeline language's
-         core value). Always visible, collapsed or not (GH #64). Fixed width
-         makes every group's strip identical in width with strictly aligned
-         left AND right edges. -->
+         GH #88 aligned to the in-card strip spec; width corrected 246 → 220px
+         same day — check MEDIUM-1, cascade in the .strip-row .uptime-strip
+         comment): the strip (left-aligned, fixed 220px hugging the
+         typical-viewport in-card strip slot, so its ≈7.2×10px segments read
+         near-square like the cards' dots) and the "本组:" metrics share one
+         row, metrics right-aligned via margin-left:auto with natural
+         whitespace between — shape → reading in a single scan. The "本组:"
+         prefix (GH #55) remains one container-level scope marker so the
+         group's availability/latency can never be read as the global figures
+         the banner carries. Metrics moved OUT of the header row; folding the
+         strip into the header was rejected (per-group left content varies,
+         cross-group alignment is the timeline language's core value). Always
+         visible, collapsed or not (GH #64). Fixed width makes every group's
+         strip identical in width with strictly aligned left AND right
+         edges. -->
     <div class="strip-row">
       <UptimeStrip :dots="groupDots" />
       <span class="group-metrics">
@@ -308,15 +310,23 @@ const groupDots = computed(() => aggregateDots24h(props.entries.filter(e => e.en
   margin-bottom: 10px;
 }
 .strip-row .uptime-strip {
-  /* GH #88 fixed width (user sign-off 2026-07-31, replaces GH #87's 360px):
-     segment width = strip width ÷ 24, and the "lamp" reading came from the
-     segment aspect ratio — GH #85 (6px height) and GH #87 (360px) each
-     pressed only one dimension. The fix aligns the strip with the in-card
-     strip slot: 272px card − 26px label = 246px → slots ≈ (246 − 23×2) / 24
-     ≈ 8.3px, the same near-square 8.3×10px dots as the cards. flex 0 1 +
-     min-width 0 lets the strip shrink on narrow viewports (the 24 inner
-     slots are flex 1 1 0 and shrink with it) — §4 no horizontal scroll. */
-  flex: 0 1 246px;
+  /* GH #88 fixed width (user sign-off 2026-07-31, replaces GH #87's 360px),
+     width corrected 246 → 220px same day (check MEDIUM-1): the original
+     "246 = 272px card − 26px label" arithmetic missed the el-card body
+     padding (EP default --el-card-padding 20px×2 — DashboardView,
+     OverviewGroupSection and EndpointCard set no density override) and the
+     6px label↔strip gap (EndpointUptimePanel .card-dots). Real cascade of
+     the in-card strip slot: card width − 40 − 26 − 6 → 200px at the 272px
+     card floor (segment ≈6.4px), 219px at a typical 1200px viewport with a
+     291px flat-grid card (segment ≈7.2px). Card width is elastic, so no
+     fixed width can match the in-card slot pixel-for-pixel across
+     viewports — user ruling: 220px, segment ≈ (220 − 23×2) / 24 ≈ 7.2px,
+     hugging the typical viewport. What stays strictly identical to the
+     in-card strip is segment height / color / gap / radius; segment width
+     is approximate. flex 0 1 + min-width 0 lets the strip shrink on narrow
+     viewports (the 24 inner slots are flex 1 1 0 and shrink with it) — §4
+     no horizontal scroll. */
+  flex: 0 1 220px;
   min-width: 0;
 }
 .group-share {
