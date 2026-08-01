@@ -1,5 +1,5 @@
 // Sidebar navigation model (GH #112, spec 0018 IA mapping): the v2 macOS
-// Settings-style sidebar replaces the top AppHeader. Item definitions,
+// Settings-style sidebar replaced the v1 AppHeader; GH #135 restores a slim top bar (AppTopbar) alongside it. Item definitions,
 // login-state visibility filtering, and active-route matching live here as
 // pure functions (role.ts / adminNav.ts centralization precedent) so the
 // AppSidebar component stays declarative and the behavior is vitest-covered.

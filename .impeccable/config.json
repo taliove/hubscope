@@ -51,10 +51,10 @@
         "rule": "design-system-font-size",
         "value": "24px",
         "files": [
-          "web/src/components/AppSidebar.vue"
+          "web/src/components/AppTopbar.vue"
         ],
         "createdAt": "2026-08-01T00:10:00.000Z",
-        "reason": "BrandMark em 宿主字号(AppSidebar .brand-mark 24px,侧边栏品牌位),同 LoginView 40px/StatusCard 16/24/32px 既定豁免机制——图形标非文字字阶(GH #122 登记)"
+        "reason": "BrandMark em 宿主字号(AppTopbar .brand-mark 24px,顶部 Header 品牌位——GH #135 品牌位自侧栏迁顶栏,豁免随宿主迁移),同 LoginView 40px/StatusCard 16/24/32px 既定豁免机制——图形标非文字字阶(GH #122 登记)"
       },
       {
         "rule": "design-system-color",
@@ -91,6 +91,15 @@
         ],
         "createdAt": "2026-08-01T00:30:00.000Z",
         "reason": "Alibaba Cloud 官方品牌橙(qwen),外部品牌资产豁免调色板纪律(BrandMark §2b 先例;票面已登记豁免)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#1783FF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T01:00:00.000Z",
+        "reason": "Kimi/Moonshot 官方品牌蓝点(moonshot 双路径标的蓝点路径),外部品牌资产豁免调色板纪律(BrandMark §2b 先例;GH #136 票面已登记豁免)"
       }
     ]
   }

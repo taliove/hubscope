@@ -2,7 +2,7 @@
 version: 1
 slug: "web-src-views-dashboardview-vue"
 primary_target: "web/src/views/DashboardView.vue"
-related_targets: ["web/src/components/StatusHero.vue","web/src/components/MetricWidgets.vue","web/src/components/ModelStatusList.vue","web/src/components/UptimeMicroStrip.vue","web/src/components/ModelDetailPanel.vue","web/src/components/StatusBadge.vue","web/src/components/TrendSparkline.vue","web/src/components/StatusShareDialog.vue","web/src/components/ProbeLatencyChart.vue","web/src/utils/statusDisplay.ts","web/src/utils/overviewMetrics.ts","web/src/utils/overviewDots.ts","web/src/utils/healthConclusion.ts","web/src/utils/severitySort.ts","web/src/utils/modelDetailPanel.ts","web/src/utils/numberTween.ts"]
+related_targets: ["web/src/components/StatusHero.vue","web/src/components/MetricWidgets.vue","web/src/components/ModelStatusList.vue","web/src/components/ModelDetailPanel.vue","web/src/components/StatusBadge.vue","web/src/components/TrendSparkline.vue","web/src/components/StatusShareDialog.vue","web/src/components/ProbeLatencyChart.vue","web/src/components/RecentEvents.vue","web/src/utils/statusDisplay.ts","web/src/utils/overviewMetrics.ts","web/src/utils/overviewDots.ts","web/src/utils/healthConclusion.ts","web/src/utils/severitySort.ts","web/src/utils/modelList.ts","web/src/utils/sparklineBars.ts","web/src/utils/modelDetailPanel.ts","web/src/utils/numberTween.ts","web/src/utils/recentEvents.ts"]
 ---
 
 # 状态概览(/,v2 重建)— 表面简报
@@ -18,10 +18,11 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 1. **可见页头(2026-08-01 参照稿复刻批):** h1「状态概览」(3xl 页面标题档,600 primary)+ lede 一行「全局视角,掌握 AI 服务运行健康状态」(md secondary)——「页面 h1 = 侧边栏标签」惯例的 sr-only 例外随本批退役,可见 h1 直接承担 a11y 树,不重复。
 2. **StatusHero**(健康指数 hero 区)
 3. **MetricWidgets**(四格指标区)
-4. **筛选工具条**(关键词 / 协议 / 状态(三态)/ 分组 + 「分享状态」主按钮)
-5. **ModelStatusList**(高级列表;分组模式为轻分区)
+4. **筛选工具条**(关键词 / 供应商 / 状态(三态)+ 「分享状态」主按钮;协议筛选与分组选择器随 GH #131 退役)
+5. **ModelStatusList**(高级列表,列头点击排序默认按可用率降序,GH #136)
 6. **ModelDetailPanel**(行点击开启的右侧详情面板,teleport)
-7. 三态:首载 skeleton 行(后续轮询保持列表不打断——局部刷新)、筛选零匹配「暂无匹配的 Endpoint」、零端点「暂无监控端点,请先在模型管理中添加」、刷新失败 el-alert 带原因(保留上次好数据)。
+7. **RecentEvents**(近期事件区,GH #132;**登录态专属**——`authed=false` 整区不渲染零请求,匿名读者面不泄露运营事件)
+8. 三态:首载 skeleton 行(后续轮询保持列表不打断——局部刷新)、筛选零匹配「暂无匹配的 Endpoint」、零端点「暂无监控端点,请先在模型管理中添加」、刷新失败 el-alert 带原因(保留上次好数据)。
 
 ## 组件规格
 
@@ -35,15 +36,15 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 ### MetricWidgets(指标区,GH #115)
 - 四格轻容器(grid 4 列 `minmax(0,1fr)`,gap space-4;hover 上浮 2px + shadow-md——卡片类):**24h 可用率**(3xl 大数字 + 副行日环比,与健康指数同口径同源;null 副行「较昨日暂无对比」)/ **24h 请求量**(大数字 + 副行「探测总次数」)/ **平均延迟**(大数字 + 副行恒注「启用端点 P50 均值」——批 59 scope 恒一致口径,`meanP50Ms`)/ **风险模型数**(大数字 + 副行「异常 N · 降级 N」或「全部稳定运行」;伞状标题不撞 incident 专属状态词「异常」,GH #128 裁决)。
 - **风险模型数(原「异常模型数」,GH #128 改题)去重口径(GH #115 裁决):** `abnormalModelCounts` 按**模型**去重(不是端点计数)——同模型多端点取最重显示态(incident > degraded),只计 enabled;一个双协议同时异常的模型只数一次,与「哪些模型有风险」的读者问题对齐。
-- 每格配 TrendSparkline(轻趋势线:单调插值、null 断线、无轴无网格、中性墨色 + bg-hover 面积填充,aria-hidden);可用率/请求量/失败格序列来自聚合 dots(探测加权,overviewDots 纪律),延迟格来自 enabled entries 小时均值。
+- 每格配 TrendSparkline(单调插值、null 断线、无轴无网格,aria-hidden;GH #130 语义四 lane 着色:线 = 功能基色、面积同色 0.15——可用率 success/请求量 brand/延迟 warning/风险模型 danger;GH #137 形态分工:**请求量格 = bars 柱状变体**(24 柱 2px 间隙、顶角 radius-xs、max 桶全高归一、空态灰轨道,`utils/sparklineBars.ts`),其余三格 = line 曲线);可用率/请求量/失败格序列来自聚合 dots(探测加权,overviewDots 纪律),延迟格来自 enabled entries 小时均值;每格右上 36px 图标 chip(radius-sm,soft 底 + 基色图标,GH #130)。
 - 核心数字补间(同 Hero);null 值显 placeholder 色;skeleton 四格同形。
 
 ### ModelStatusList(模型状态列表,GH #115;取代 EndpointCard 矩阵)
-- 列构成(共享 grid 模板 `minmax(0,1.8fr) 120px 150px 100px 100px minmax(150px,1fr) 56px`,表头与行同一模板):模型 / 供应商 / 状态 / 24h 可用率 / P95 延迟 / 24h 趋势 / 操作。
-- **模型名第一层级:** md/600 墨色,中间截断(splitMiddle tailKeep=12,头 ellipsis 尾保区分度后缀)+ el-tooltip 快显(show-after 200ms)全显;已停用行名弱化(secondary/400)+「已停用」xs placeholder 注。指标全部辅助层级(供应商 sm secondary、P95 sm regular tabular-nums、可用率 md tabular-nums `availabilityRateTier` *-text 阶)。
-- 状态列 = StatusBadge sm + causes(唯一状态灯纪律不破);趋势列 = UptimeMicroStrip(24 格、格高 14px、2px 间距、radius-xs,tier/tooltip 同源 overviewDots);操作列 =「详情」text 按钮(@click.stop)。
+- 列构成(共享 grid 模板 `minmax(0,1.8fr) 44px 150px 150px 100px minmax(150px,1fr) 40px`,表头与行同一模板,GH #136 重排):模型 / 供应商 / 状态 / 24h 可用率 / P95 延迟 / 24h 趋势 / 操作。
+- **模型名第一层级:** md/600 墨色,中间截断(splitMiddle tailKeep=12,头 ellipsis 尾保区分度后缀)+ el-tooltip 快显(show-after 200ms)全显;已停用行名弱化(secondary/400)+「已停用」xs placeholder 注。指标全部辅助层级(P95 sm regular tabular-nums、可用率 md tabular-nums `availabilityRateTier` *-text 阶,数字左进度条右同行,GH #136);**供应商列(GH #136)= 26×26 统一品牌色块瓦片(white glyph,未知回落字母瓦片,`utils/vendorIcon.ts` 单源),不渲染文本,`title` 兜底全名;名称格 vendor chip 随本列图标化退役(一行不重复两枚图标)。
+- 状态列 = StatusBadge sm + causes(唯一状态灯纪律不破);趋势列(GH #136)= TrendSparkline 行内 20px 道(行级延迟序列,按显示态着色 rowSparklineTone;UptimeMicroStrip 已随 GH #131 退役);操作列(GH #136)= chevron-right 裸按钮(lucide 18px,aria-label「查看详情」,@click.stop)。
 - **行交互:** 整行可点开 ModelDetailPanel(role="button" + tabindex="0" + Enter/Space + `data-endpoint-id` 焦点归还锚点);**行 hover 上浮 2px + shadow-md + 卡面底**(卡片类读感:radius-lg 圆角盒 + 12px padding;与 Leaderboard 矩阵行的表格读感豁免分属两侧,差异登记在 ui-guidelines 附录第 5 项);`:focus-visible` = 2px brand outline(offset 1px)。
-- **排序:** 行与分区都经 `utils/severitySort.ts` 单一秩表(异常领先首屏;已停用 DISABLED_RANK 沉底);轮询/筛选驱动的重排不做动画(GH #52 纪律)。
+- **排序(GH #136 重写):** 列头点击排序(可排序键 = 名称/可用率/P95;`nextListSort` 状态机,新列首击优在前,再击翻向;`sortListEntries` 执行——桶序不随向:有值启用行 → 无数据启用行 → 已停用沉底,方向只作用桶内,同值 severity 秩回退);**默认 = 可用率降序(高在前,推翻 GH #131「差在前」)**;持久化 localStorage 键 `hs:list-sort`(坏值回落默认);副注动态化 `listSortNote`(如「(按可用率降序)」,标签与数据构造性一致);severitySort 仅余分区排序与 healthConclusion 消费;轮询/筛选驱动的重排不做动画(GH #52 纪律)。
 - **分组模式(轻分区,取代 OverviewGroupSection):** section-header = 组名(lg/600)+ meta 行(xs secondary:「N 个端点」或「N 个端点 · 异常 N · 降级 N」,计数措辞由父级经显示层映射组句,禁字面量);分区排序 = 组内最重 enabled entry 秩,tie 组键字典序。**旧组头机械(折叠披露三件套、协议收敛 tag、「本组」指标、组级 UptimeStrip、组分享按钮)全部退役**——组分享入口退役后,分享只从筛选行全局入口与端点详情页进入(快照范围 = 当前筛选,分组 chip 由筛选条件承担)。
 
 ### ModelDetailPanel(右侧详情面板,GH #116;取代速览弹窗与整行深链)
@@ -55,14 +56,14 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - aria:`role="dialog" aria-modal="true" :aria-label="模型名"`;打开后焦点落关闭按钮。
 
 ### 筛选工具条
-- 关键词 el-input(220px)+ 协议 select(选项 = `PROTOCOLS` 单一来源)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 分组 select(按厂商/按能力/按协议/不分组,默认按厂商)+ 「分享状态」主按钮(margin-left:auto;首载前禁用)。
+- 关键词 el-input(220px)+ 供应商 select(选项 = `familyOptions` 单一来源,GH #131 取代协议筛选)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 「分享状态」主按钮(margin-left:auto;首载前禁用);**分组选择器随 GH #131 退役**;副注动态化(GH #136,`listSortNote`)。
 - 筛选语义(GH #113 main 裁决):状态筛选跟显示词表走,UI 不提供 failing 单筛;关键词小写子串匹配模型名。
-- 协议/状态 select 前置内联 label(sm secondary「协议:」「状态:」,GH #55 局部约定沿置)。
+- 供应商/状态 select 前置内联 label(sm secondary「供应商:」「状态:」,GH #55 局部约定沿置,GH #131 改词)。
 
 ## 数据与行为约束
 - **轮询:** overview 10s `createVisibilityPoll`(隐藏降频 60s,回前台立即刷新;useOverview 持有);**局部刷新**——轮询只更新数据,列表/hero/指标区组件级重渲,不整页重载;首载 skeleton 只在「无数据且无错误」分支,轮询失败保留上次好数据 + 顶部 el-alert。
 - **防作假:** hero 结论只反映全局 enabled 集合,统计范围恒注;null 不冒充(健康指数/可用率/延迟 null → 「暂无数据」/`-`);分享快照 = 打开时筛选后 entries 冻结,数字与范围 chips 同源(ui-guidelines §5 物料条)。
-- **严重度组织:** severitySort 单一秩表,筛选后计算;已停用沉底。
+- **严重度组织:** severitySort 秩表供 Hero 结论/分区排序/同值回退(healthConclusion 同源);行排序主键经 modelList(GH #136,见上);已停用沉底。
 - **statusFilter 单一来源:** 状态下拉是唯一状态筛选入口(旧 hero 计数行双控随信号墙退役)。
 
 ## 可访问性

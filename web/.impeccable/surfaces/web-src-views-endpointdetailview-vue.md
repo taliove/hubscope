@@ -31,7 +31,7 @@ related_targets: ["web/src/components/TimeSeriesChart.vue","web/src/components/P
 加载失败 alert 带原因 + 重试按钮(重跑首载加载链);eval summary 加载失败渲染「评估数据加载失败 · 重试」(中性 secondary,非 danger——评估卡是辅助信息,danger 会读作端点事故),与「暂无评估数据」真空态明确区分(**失败不冒充空态**);header/metrics 区首载 skeleton。
 
 ## 退役登记
-AppHeader / PublicFooter 随 GH #112 退役;本页导航与登录入口由 AppSidebar 承担。速览职责迁 ModelDetailPanel(GH #116),本页保持深链可用(书签与分享链接不失效,spec 0018 §10 story 37)。
+AppHeader / PublicFooter 随 GH #112 退役;本页导航由 AppSidebar 承担,登录入口由 AppTopbar 承担(GH #135 顶栏恢复,登录入口自侧栏底部迁顶栏右侧)。速览职责迁 ModelDetailPanel(GH #116),本页保持深链可用(书签与分享链接不失效,spec 0018 §10 story 37)。
 
 ## 未决(另立批次)
 - 排障动线重构(证据上移 + 三图收敛)、状态轮询与「更新于」、同 Hub 邻接上下文(「是不是只有我」零覆盖)、视图状态 URL 深链。
