@@ -43,14 +43,18 @@
   --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
   --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
-  /* Surfaces (2026-08-01 reference-design replica: the page ground goes
-     white — sidebar and content share one white canvas; panels, tracks and
-     preview "desk" grounds that used the old gray-50 page ground now
-     consume --hs-bg-subtle, which inherits the gray-50 value). */
+  /* Surfaces (2026-08-01 reference-design replica: the page ground token
+     goes white; panels, tracks and preview "desk" grounds that used the
+     old gray-50 page ground now consume --hs-bg-subtle, which inherits
+     the gray-50 value. GH #139: the SKELETON ground returns to gray —
+     App.vue's main lane and AppSidebar consume --hs-bg-subtle and the
+     content regions layer as bg-card white tiles; AppTopbar stays
+     white. Bare routes (login, shared report) keep the white ground.) */
   --hs-bg-page: #ffffff;
   --hs-bg-card: #ffffff;
-  /* Subtle neutral ground: in-surface panels (material hero panels, metric
-     cells, code blocks) and dialog preview grounds on a white canvas.
+  /* Subtle neutral ground: the app skeleton ground (main lane + sidebar,
+     GH #139) and in-surface panels (material hero panels, metric cells,
+     code blocks) and dialog preview grounds on a white canvas.
      Value = the retired gray-50 page ground, so exported materials render
      pixel-identical to before. */
   --hs-bg-subtle: var(--hs-gray-50);

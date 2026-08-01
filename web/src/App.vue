@@ -61,6 +61,11 @@ const isBare = computed(() => Boolean(route.meta.bare))
 .app-main {
   flex: 1;
   min-width: 0;
+  /* GH #139: the skeleton ground returns to the subtle gray — white region
+     tiles (hero / widgets / list / events) layer on top of it. AppTopbar
+     stays white; AppSidebar carries the same subtle ground. Bare routes
+     (/login, /report/:token) render outside this shell, unaffected. */
+  background: var(--hs-bg-subtle);
 }
 
 /* Page transition (spec 0018 §15): fade + 8px enter shift on the shared

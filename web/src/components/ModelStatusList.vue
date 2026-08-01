@@ -1,16 +1,20 @@
 <template>
   <!-- Model status list (GH #115, spec 0018 §8; GH #131 reference-design
-       enhancements; GH #136 seven fixes): the advanced list that replaced
-       the EndpointCard matrix. The model NAME is the first hierarchy
-       (md/600 ink, middle-truncated, hover shows the full name); every
-       metric is auxiliary. GH #136: the name/availability/p95 column
-       headers are CLICKABLE sort buttons (the parent owns the sort state,
-       persisted to localStorage) — the active column carries an ↑/↓
-       indicator; the vendor column renders the uniform brand TILE instead
-       of the family text (title carries the full name); the availability
-       cell is number-left + bar-right inline; the action cell is a bare
-       chevron. The default ordering is availability DESC — the GH #136
-       user ruling that overturned GH #131's「weakest first」default. -->
+       enhancements; GH #136 seven fixes; GH #139 gray-ground/white-tile
+       rework): the advanced list that replaced the EndpointCard matrix.
+       The model NAME is the first hierarchy (md/600 ink, middle-truncated,
+       hover shows the full name); every metric is auxiliary. GH #136: the
+       name/availability/p95 column headers are CLICKABLE sort buttons (the
+       parent owns the sort state, persisted to localStorage) — the active
+       column carries an ↑/↓ indicator; the availability cell is
+       number-left + bar-right inline; the action cell is a bare chevron.
+       GH #139: the vendor TILE moved back into the name cell (left of the
+       model id) and the vendor column renders the family TEXT again
+       (sm secondary, title carries the full name) — superseding GH #136's
+       tile-column layout; the sections themselves are white tiles on the
+       gray skeleton ground. The default ordering is availability DESC —
+       the GH #136 user ruling that overturned GH #131's「weakest first」
+       default. -->
   <div class="model-list">
     <section v-for="section in sections" :key="section.key ?? '__flat__'" class="list-section">
       <header v-if="section.key !== null" class="section-header">
@@ -65,21 +69,14 @@
         @keydown.space.prevent="emit('open', entry)"
       >
         <span class="cell-name">
-          <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
-            <span class="name-text">
-              <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
-              <span class="name-tail">{{ splitMiddle(entry.model_id).tail }}</span>
-            </span>
-          </el-tooltip>
-          <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
-        </span>
-        <span class="cell-vendor">
-          <!-- Uniform vendor tile (GH #136): every known vendor renders the
-               same 26x26 silhouette — solid brand ground + white glyph
-               (vendorIcon.ts single source, multi-path marks like kimi
-               carry per-path fills); unknown vendors fall back to the
-               neutral initials tile. The family TEXT retired from this
-               column — the tile's title carries the full name. -->
+          <!-- Vendor tile (GH #139: moved back into the name cell, left of
+               the model id — the reference design; GH #136's tile column
+               is superseded and the vendor column returns to text). One
+               uniform 26x26 silhouette per vendor: solid brand ground +
+               white glyph (vendorIcon.ts single source, multi-path marks
+               like kimi carry per-path fills); unknown vendors fall back
+               to the neutral initials tile. The title carries the full
+               family name. -->
           <span
             class="vendor-tile"
             :class="{ 'has-icon': vendorIcon(entry.family) }"
@@ -101,7 +98,18 @@
             </svg>
             <template v-else>{{ familyInitials(entry.family) }}</template>
           </span>
+          <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
+            <span class="name-text">
+              <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
+              <span class="name-tail">{{ splitMiddle(entry.model_id).tail }}</span>
+            </span>
+          </el-tooltip>
+          <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
         </span>
+        <!-- Vendor column as TEXT (GH #139, reference design: name cell =
+             tile + model id, vendor column = family word): sm secondary,
+             truncated with the full name on the title. -->
+        <span class="cell-vendor" :title="entry.family">{{ entry.family }}</span>
         <span class="cell-status">
           <StatusBadge :status="entry.status" :causes="entry.degrade_causes" :reason="entry.status_reason" />
         </span>
@@ -196,6 +204,15 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
 .list-section {
   display: flex;
   flex-direction: column;
+  /* White region tile on the gray skeleton ground (GH #139): bg-card +
+     1px border + radius-lg, same light-container syntax as the widgets.
+     The 8px inner padding keeps the row hover lift (translateY −2px,
+     GH #136) inside the tile and lets the last row drop its hairline
+     without touching the container edge. */
+  padding: var(--hs-space-2);
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
 }
 .section-header {
   display: flex;
@@ -213,16 +230,18 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   color: var(--hs-text-secondary);
 }
 /* Column template shared by the head and every row — alignment is a
-   construction property of the list, never per-row luck. GH #136 cascade
-   (content-box, 1200px content lane, row padding 12px×2 → grid lane
-   1176px): fixed = vendor 44 + status 150 + rate 150 + p95 100 + action
-   40 = 484px; gaps = 6 × 12px (space-3) = 72px; flex remainder 1176 − 484
-   − 72 = 620px splits name 1.8fr ≈ 399 / trend 1fr ≈ 221 (floor 150).
-   Vendor shrank 120 → 44 (tile-only column), rate grew 120 → 150 (number
-   + inline bar), action shrank 56 → 40 (bare chevron). */
+   construction property of the list, never per-row luck. GH #139 cascade
+   (content-box, 1200px content lane; section tile = border 1px×2 +
+   padding 8px×2 → inner lane 1182px; row padding 12px×2 → grid lane
+   1158px): fixed = vendor 100 + status 150 + rate 150 + p95 100 + action
+   40 = 540px; gaps = 6 × 12px (space-3) = 72px; flex remainder 1158 − 540
+   − 72 = 546px splits name 1.8fr ≈ 351 / trend 1fr ≈ 195 (floor 150).
+   GH #139: the vendor column grew 44 → 100 (family text returns; the
+   26px tile + 8px gap now live inside the name cell, leaving ≈317px for
+   the model id); the GH #136 vendor tile column (44px) is superseded. */
 .list-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) 44px 150px 150px 100px minmax(150px, 1fr) 40px;
+  grid-template-columns: minmax(0, 1.8fr) 100px 150px 150px 100px minmax(150px, 1fr) 40px;
   align-items: center;
   gap: var(--hs-space-3);
 }
@@ -272,8 +291,16 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
     box-shadow var(--hs-transition),
     background-color var(--hs-transition);
 }
+/* Inside the white section tile (GH #139) the last row drops its hairline
+   — the container edge already closes the list. */
+.list-section .list-row:last-child {
+  border-bottom: none;
+}
 /* Hover lift (spec 0018 §15: 2–4px + light shadow); semantics.css zeroes
    the transition under reduced motion. */
+/* Known item (GH #139 check LOW-2): the hover fill is white-on-white
+   inside the white section tile — the -2px lift + shadow-md carry the
+   hover feedback; revisit if a design review wants a bg-hover fill. */
 .list-row:hover {
   transform: translateY(-2px);
   box-shadow: var(--hs-shadow-md);
@@ -319,17 +346,24 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
 }
 .cell-vendor {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
 }
-/* Uniform vendor tile (GH #136): one fixed 26x26 square for EVERY vendor
-   — control-grade radius, neutral hover-surface ground + secondary
-   initials for unknown vendors. A 3-char CJK family name (~36px) would
-   otherwise spill past the fixed box (GH #131 check LOW-1). */
+/* Uniform vendor tile (GH #136; GH #139 render seat moved into the name
+   cell): one fixed 26x26 square for EVERY vendor — control-grade radius,
+   neutral hover-surface ground + secondary initials for unknown vendors.
+   A 3-char CJK family name (~36px) would otherwise spill past the fixed
+   box (GH #131 check LOW-1). */
 .vendor-tile {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
+  flex: none;
   overflow: hidden;
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-hover);

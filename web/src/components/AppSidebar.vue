@@ -25,10 +25,11 @@
     </button>
 
     <div class="side-footer">
-      <!-- User card (GH #135, reference design): avatar placeholder with a
-           presence dot, name and role. The logout action moved to the
-           AppTopbar user chip; anonymous visitors see no card (the quiet
-           admin entry lives in the topbar, ticket 90 spirit). -->
+      <!-- User card (GH #135, reference design; GH #139: white tile on the
+           gray sidebar ground): avatar placeholder with a presence dot,
+           name and role. The logout action moved to the AppTopbar user
+           chip; anonymous visitors see no card (the quiet admin entry
+           lives in the topbar, ticket 90 spirit). -->
       <div v-if="user" class="user-card">
         <span class="avatar">
           <CircleUserRoundIcon class="avatar-icon" />
@@ -39,11 +40,17 @@
           <span class="user-role">{{ roleLabel(user.role) }}</span>
         </span>
       </div>
-      <!-- Copyright line (GH #122, conservative restore): PublicFooter's
-           retirement dropped the © line with it and spec 0018 does not
-           record an intentional removal — the sidebar footer inherits it. -->
-      <span class="copyright">© 2026 HubScope</span>
-      <span v-if="shortVersion" class="version" :title="`HubScope ${version}`">{{ shortVersion }}</span>
+      <!-- Legal line (GH #122 conservative restore; GH #139 single-line
+           layout): a hairline separates it from the user card above, and
+           the copyright and the version share ONE line — the version's
+           title carries the full build string. -->
+      <div class="footer-legal">
+        <span>© 2026 HubScope</span>
+        <template v-if="shortVersion">
+          <span aria-hidden="true">·</span>
+          <span class="version" :title="`HubScope ${version}`">{{ shortVersion }}</span>
+        </template>
+      </div>
     </div>
   </aside>
 </template>
@@ -172,7 +179,9 @@ onBeforeUnmount(stopBatchPolling)
   display: flex;
   flex-direction: column;
   padding: var(--hs-space-4) var(--hs-space-3);
-  background: var(--hs-bg-card);
+  /* GH #139: the sidebar shares the subtle gray skeleton ground with the
+     main lane; the white layering is carried by the user card tile. */
+  background: var(--hs-bg-subtle);
   border-right: 1px solid var(--hs-border-light);
   overflow-y: auto;
 }
@@ -259,18 +268,21 @@ onBeforeUnmount(stopBatchPolling)
 }
 .side-footer {
   margin-top: auto;
-  padding-top: var(--hs-space-3);
-  border-top: 1px solid var(--hs-border-light);
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
 }
+/* White tile on the gray sidebar ground (GH #139): the same light-container
+   syntax as the content regions — bg-card + 1px border + radius-lg. */
 .user-card {
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
   min-width: 0;
-  padding: var(--hs-space-1) var(--hs-space-2);
+  padding: var(--hs-space-2) var(--hs-space-3);
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
 }
 .avatar {
   position: relative;
@@ -289,7 +301,8 @@ onBeforeUnmount(stopBatchPolling)
   color: var(--hs-text-secondary);
 }
 /* Presence dot (reference design): solid success green, ringed by the card
-   ground so it reads as a badge on the avatar edge. */
+   ground so it reads as a badge on the avatar edge — the user card is a
+   white tile (GH #139), so the bg-card ring matches its surface. */
 .avatar-dot {
   position: absolute;
   right: 0;
@@ -318,13 +331,19 @@ onBeforeUnmount(stopBatchPolling)
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
-.copyright {
+/* Legal line (GH #139): the hairline moved here from the footer box — it
+   now separates the white user card from the single copyright · version
+   line below it. */
+.footer-legal {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hs-space-1);
+  padding-top: var(--hs-space-3);
+  border-top: 1px solid var(--hs-border-light);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
 .version {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-placeholder);
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 </style>

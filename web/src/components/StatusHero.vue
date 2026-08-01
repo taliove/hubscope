@@ -106,20 +106,31 @@ const metaText = computed(
   display: flex;
   align-items: flex-start;
   gap: var(--hs-space-8);
-  padding: var(--hs-space-6) 0 var(--hs-space-5);
+  /* White region tile on the gray skeleton ground (GH #139): the same
+     light-container syntax as the widgets and the list — bg-card + 1px
+     border + radius-lg; inner padding 24 vertical / 32 horizontal. */
+  padding: var(--hs-space-5) var(--hs-space-6);
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  /* Region seam rhythm (GH #139): every dashboard region is spaced by
+     space-4 on the gray ground. */
+  margin-bottom: var(--hs-space-4);
   /* Height anchor (loaded and skeleton share it): both columns measure
      194px — right: meta 18 + gap 8 + chart 168; left: label 19.5 + gap 8 +
      digits 72 + gap 8 + side ≈ 86.5 (padding-top 4 + chip 27.5 + 8 +
-     delta 21 + 8 + scope 18). Vertical padding 44px → 238px floor. */
-  min-height: 238px;
+     delta 21 + 8 + scope 18). Vertical padding 48px → 242px floor. */
+  min-height: 242px;
 }
 .hero-left {
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
-  /* Fixed narrow stats column (reference design ≈1:3): 320px of the
-     1200px content width (content-box, no global reset): 1200 − 320
-     − 64 (space-8 gap) = 816px ≈ 1:2.55; the trend chart takes the rest. */
+  /* Fixed narrow stats column (reference design ≈1:3): 320px inside the
+     hero tile (GH #139 cascade, content-box, no global reset): 1200px
+     content lane − 2 (tile border) − 64 (tile padding 32×2) = 1134px
+     inner lane; 1134 − 320 − 64 (space-8 column gap) = 750px for the
+     trend chart (≈1:2.3). */
   flex: 0 0 320px;
   min-width: 0;
 }
@@ -200,8 +211,8 @@ const metaText = computed(
   color: var(--hs-text-secondary);
 }
 /* Right column: the trend chart flex-fills everything the fixed 320px
-   stats column leaves (≈68% of the hero width at 1200px content); the
-   refresh meta sits top-right above it. */
+   stats column leaves (750px of the 1134px tile inner lane at the 1200px
+   content width, ≈66%); the refresh meta sits top-right above it. */
 .hero-right {
   flex: 1 1 0;
   min-width: 0;

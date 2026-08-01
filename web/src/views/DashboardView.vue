@@ -366,7 +366,10 @@ onMounted(() => {
    a one-line lede (md secondary). Replaces the old sr-only h1 — the visible
    heading serves the a11y tree directly. */
 .page-header {
-  margin-bottom: var(--hs-space-2);
+  /* Region seam rhythm (GH #139): the header sits directly on the gray
+     skeleton ground, spaced from the hero tile by the shared space-4
+     seam. */
+  margin-bottom: var(--hs-space-4);
 }
 .page-title {
   margin: 0;

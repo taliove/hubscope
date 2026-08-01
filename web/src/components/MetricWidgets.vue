@@ -155,7 +155,9 @@ const widgets = computed<Widget[]>(() => {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--hs-space-4);
-  margin-bottom: var(--hs-space-5);
+  /* Region seam rhythm (GH #139): space-4 between dashboard regions on
+     the gray skeleton ground. */
+  margin-bottom: var(--hs-space-4);
 }
 /* Light containers (Apple syntax): white surface, 1px border, radius-lg;
    the hover lift (2–4px, spec 0018 §15) is the only shadow moment. */

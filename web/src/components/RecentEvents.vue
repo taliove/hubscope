@@ -210,7 +210,9 @@ const cardModels = computed(() => {
 
 <style scoped>
 .recent-events {
-  margin-top: var(--hs-space-6);
+  /* Region seam rhythm (GH #139): space-4 below the list tile on the
+     gray skeleton ground. */
+  margin-top: var(--hs-space-4);
 }
 .section-head {
   display: flex;
