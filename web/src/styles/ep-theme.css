@@ -83,7 +83,7 @@
   --el-fill-color: var(--hs-bg-hover);
   --el-fill-color-light: var(--hs-bg-hover);
   --el-fill-color-lighter: var(--hs-bg-hover);
-  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-extra-light: var(--hs-bg-subtle);
   --el-fill-color-blank: var(--hs-bg-card);
   /* Scrim: the single overlay language is --hs-overlay-bg (DESIGN.md Overlay
      Scrim). EP 2.14 draws dialog/drawer scrims from --el-overlay-color-lighter
@@ -253,7 +253,7 @@ body.el-popup-parent--hidden {
   --el-fill-color: var(--hs-bg-hover);
   --el-fill-color-light: var(--hs-bg-hover);
   --el-fill-color-lighter: var(--hs-bg-hover);
-  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-extra-light: var(--hs-bg-subtle);
   --el-fill-color-blank: var(--hs-bg-card);
   /* Scrim on dark grounds (same single-language mapping as the light block). */
   --el-mask-color: var(--hs-overlay-bg);

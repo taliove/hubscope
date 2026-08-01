@@ -243,7 +243,7 @@ function onClosed() {
   max-height: 62vh;
   /* GH #94: The preview background and padding frame the scaled card as a
      "card on a desk" (ui-guidelines §5 弹窗预览). */
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   padding: var(--hs-space-4);
   border-radius: var(--hs-radius-lg);
 }

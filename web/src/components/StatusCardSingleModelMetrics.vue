@@ -107,7 +107,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .hero-panel {
   display: flex;
   align-items: stretch;
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   border-radius: var(--hs-radius-lg);
   /* Horizontal 20px is the material canvas constant (share-materials brief),
      not grid spacing; vertical values consume --hs-space-* (GH #95). */

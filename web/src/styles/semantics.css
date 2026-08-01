@@ -43,9 +43,17 @@
   --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
   --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
-  /* Surfaces (three levels; page ground = the v2.0 anchor #F5F5F7). */
-  --hs-bg-page: var(--hs-gray-50);
+  /* Surfaces (2026-08-01 reference-design replica: the page ground goes
+     white — sidebar and content share one white canvas; panels, tracks and
+     preview "desk" grounds that used the old gray-50 page ground now
+     consume --hs-bg-subtle, which inherits the gray-50 value). */
+  --hs-bg-page: #ffffff;
   --hs-bg-card: #ffffff;
+  /* Subtle neutral ground: in-surface panels (material hero panels, metric
+     cells, code blocks) and dialog preview grounds on a white canvas.
+     Value = the retired gray-50 page ground, so exported materials render
+     pixel-identical to before. */
+  --hs-bg-subtle: var(--hs-gray-50);
   --hs-bg-hover: var(--hs-gray-100);
 
   /* Text (four levels; primary anchor #1D1D1F, secondary anchor #86868B). */
@@ -54,9 +62,9 @@
   --hs-text-secondary: var(--hs-gray-500);
   --hs-text-placeholder: var(--hs-gray-400);
 
-  /* Borders. The hairline takes the scale step between page ground and
-     hover (readable on a white card without competing with hover fills,
-     ≈1.28:1 on white). */
+  /* Borders. The hairline takes the scale step between the subtle ground
+     and hover (readable on a white card without competing with hover
+     fills, ≈1.28:1 on white). */
   --hs-border: var(--hs-gray-200);
   --hs-border-light: #e5e5ea;
 
@@ -94,8 +102,9 @@
   --hs-danger-soft: color-mix(in srgb, var(--hs-danger), #ffffff 90%);
   --hs-info-soft: color-mix(in srgb, var(--hs-info), #ffffff 90%);
 
-  --hs-bg-page: var(--hs-gray-50);
+  --hs-bg-page: #ffffff;
   --hs-bg-card: #ffffff;
+  --hs-bg-subtle: var(--hs-gray-50);
   --hs-bg-hover: var(--hs-gray-100);
 
   --hs-text-primary: var(--hs-gray-900);

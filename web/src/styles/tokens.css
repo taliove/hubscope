@@ -30,7 +30,9 @@
   --hs-blue-900: #003a75;
 
   /* Neutral grays: Apple neutral 10 steps (zero chroma; anchors noted).
-     gray-50 = page-ground anchor #F5F5F7; gray-500 = secondary-text anchor
+     gray-50 = subtle-ground anchor #F5F5F7 (the page ground went white in
+     the 2026-08-01 reference replica; gray-50 now feeds --hs-bg-subtle);
+     gray-500 = secondary-text anchor
      #86868B (3.62:1 on white — brief value, registered and accepted like the
      brand color); gray-900 = primary-text anchor #1D1D1F (16.83:1). */
   --hs-gray-50: #f5f5f7;
