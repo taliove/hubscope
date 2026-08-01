@@ -16,10 +16,10 @@ import {
 describe('statusDisplay: four domain states in, three display states out', () => {
   it('maps every domain status to its display state, word and tone slot', () => {
     const cases: Array<[EndpointStatus, string, string, string]> = [
-      ['healthy', 'stable', '稳定', 'success'],
-      ['degraded', 'degraded', '性能下降', 'warning'],
-      ['down', 'incident', '服务异常', 'danger'],
-      ['failing', 'incident', '服务异常', 'danger'],
+      ['healthy', 'stable', '稳定运行', 'success'],
+      ['degraded', 'degraded', '降级', 'warning'],
+      ['down', 'incident', '异常', 'danger'],
+      ['failing', 'incident', '异常', 'danger'],
     ]
     for (const [domain, display, label, tone] of cases) {
       const result = statusDisplay(domain)
@@ -35,9 +35,9 @@ describe('statusDisplay: four domain states in, three display states out', () =>
   })
 
   it('accepts an already-collapsed display status (aggregate scenes)', () => {
-    expect(statusDisplay('stable').label).toBe('稳定')
-    expect(statusDisplay('degraded').label).toBe('性能下降')
-    expect(statusDisplay('incident').label).toBe('服务异常')
+    expect(statusDisplay('stable').label).toBe('稳定运行')
+    expect(statusDisplay('degraded').label).toBe('降级')
+    expect(statusDisplay('incident').label).toBe('异常')
   })
 })
 
@@ -88,10 +88,10 @@ describe('statusDisplay: unknown-input defense', () => {
 
 describe('statusLabel / statusTone accessors', () => {
   it('expose the same mapping as statusDisplay', () => {
-    expect(statusLabel('healthy')).toBe('稳定')
-    expect(statusLabel('degraded')).toBe('性能下降')
-    expect(statusLabel('down')).toBe('服务异常')
-    expect(statusLabel('failing')).toBe('服务异常')
+    expect(statusLabel('healthy')).toBe('稳定运行')
+    expect(statusLabel('degraded')).toBe('降级')
+    expect(statusLabel('down')).toBe('异常')
+    expect(statusLabel('failing')).toBe('异常')
     expect(statusTone('healthy')).toBe('success')
     expect(statusTone('degraded')).toBe('warning')
     expect(statusTone('down')).toBe('danger')

@@ -112,7 +112,7 @@ export interface AbnormalCounts {
 // model_id (main ruling, GH #115 check LOW-3): the widget answers "which
 // models are at risk", so a model with two abnormal protocols still counts
 // once, at its WORST display state (display-layer mapping: down + failing
-// count together as 服务异常). Disabled endpoints are out of service by
+// count together as 异常). Disabled endpoints are out of service by
 // admin choice and never inflate the abnormal count.
 export function abnormalModelCounts(entries: OverviewEntry[]): AbnormalCounts {
   const worstByModel = new Map<string, 'incident' | 'degraded'>()

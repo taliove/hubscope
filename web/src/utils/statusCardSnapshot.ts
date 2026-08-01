@@ -16,7 +16,7 @@ export interface StatusCardSnapshot {
   keyword: string
   protocol: Protocol | ''
   // The Dashboard status filter speaks display states (GH #113): the scope
-  // chip names 稳定/性能下降/服务异常 and the filter matches down+failing
+  // chip names 稳定运行/降级/异常 and the filter matches down+failing
   // together under incident.
   status: DisplayStatus | ''
   group: { dimension: GroupDimension; key: string } | null

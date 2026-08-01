@@ -34,10 +34,11 @@ export function toneOf(counts: HealthCounts): HealthTone {
 }
 
 // One-sentence conclusion shared by banner and card. `empty` renders the
-// neutral wording so zero data never reads as a misleading "全部稳定".
+// neutral wording so zero data never reads as a misleading "全部稳定运行".
 // The status words compose from the display-layer mapping (three-state
-// language, GH #113): abnormal covers down+failing — both display as
-// 服务异常 — so the conclusion names the display state, not the domain ones.
+// language, GH #113; reference-design vocabulary GH #128): abnormal covers
+// down+failing — both display as 异常 — so the conclusion names the display
+// state, not the domain ones.
 export function conclusionText(tone: HealthTone, counts: HealthCounts, empty: boolean): string {
   if (empty) return '暂无数据'
   if (tone === 'abnormal') return `${counts.down + counts.failing} 个端点${statusLabel('incident')}`

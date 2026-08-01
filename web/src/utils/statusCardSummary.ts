@@ -185,8 +185,8 @@ export interface SingleModelStatement {
 }
 
 // Statement under the availability number, replacing the aggregate verdict +
-// distribution: "性能下降 · 24h 可用率 80.0%". The leading word comes from
-// the display-layer mapping (down and failing both render 服务异常); the
+// distribution: "降级 · 24h 可用率 80.0%". The leading word comes from
+// the display-layer mapping (down and failing both render 异常); the
 // rate clause degrades to a no-data note when the window has no probes.
 export function singleModelStatement(entry: OverviewEntry, availability: number | null): SingleModelStatement {
   const rate = availability !== null ? `24h 可用率 ${formatPercent(availability)}` : '24h 内无探测数据'
@@ -207,7 +207,7 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
       return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: null }
     case 'failing':
       // The chip copy is alert-event wording (event category, untouched);
-      // the status word itself has already merged into 服务异常.
+      // the status word itself has already merged into 异常.
       return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
   }
 }
@@ -239,7 +239,7 @@ export function singleModelSummaryText(entry: OverviewEntry, availability: numbe
 
 // Distribution segments of the conclusion block (three-state display,
 // GH #113): the four domain counts merge into the three display states —
-// down + failing count together under 服务异常. All three segments are
+// down + failing count together under 异常. All three segments are
 // always listed (zero counts included) so a clean dimension is confirmed at
 // a glance rather than inferred from absence; the alert count stays
 // disclosed by the event-worded "含 N 个告警" chip when failing > 0.

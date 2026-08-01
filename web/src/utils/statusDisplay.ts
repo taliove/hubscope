@@ -1,10 +1,11 @@
-// Display-layer status mapping (spec 0018 「显示层状态映射」, GH #113): the
+// Display-layer status mapping (spec 0018 「显示层状态映射」, GH #113; word
+// list switched to the reference-design vocabulary 2026-08-01, GH #128): the
 // SINGLE point where the backend's four-state domain model collapses into
-// the three display states of UI v2 — healthy → 稳定 (success), degraded →
-// 性能下降 (warning, degrade-cause sub-label preserved), down → 服务异常
-// (danger), failing → 服务异常 (danger; failing survives only in the domain
-// model, the Lark pipeline and the alert-history event vocabulary, never on
-// a status surface).
+// the three display states of UI v2 — healthy → 稳定运行 (success), degraded
+// → 降级 (warning, degrade-cause sub-label preserved), down → 异常 (danger),
+// failing → 异常 (danger; failing survives only in the domain model, the
+// Lark pipeline and the alert-history event vocabulary, never on a status
+// surface).
 //
 // Centralization discipline (role.ts / degradeCauses.ts precedent): every
 // status word and color slot comes from this module — components must never
@@ -29,7 +30,7 @@ export type DisplayTone = 'success' | 'warning' | 'danger'
 
 export interface StatusDisplay {
   status: DisplayStatus
-  label: string // 稳定 / 性能下降 / 服务异常
+  label: string // 稳定运行 / 降级 / 异常
   tone: DisplayTone
   // Degrade-cause sub-label suffix ('· 可用性' etc.); non-empty ONLY for the
   // degraded display state with causes passed in — defense in depth so a
@@ -38,9 +39,9 @@ export interface StatusDisplay {
 }
 
 const DISPLAY_INFO: Record<DisplayStatus, { label: string; tone: DisplayTone }> = {
-  stable: { label: '稳定', tone: 'success' },
-  degraded: { label: '性能下降', tone: 'warning' },
-  incident: { label: '服务异常', tone: 'danger' },
+  stable: { label: '稳定运行', tone: 'success' },
+  degraded: { label: '降级', tone: 'warning' },
+  incident: { label: '异常', tone: 'danger' },
 }
 
 // Domain → display: the four-state status machine (W5, untouched) collapses
@@ -96,7 +97,7 @@ export function statusTone(status: EndpointStatus | DisplayStatus | string): Dis
 
 // displayStatusCounts merges domain-status counts into display-status counts
 // (down + failing → incident). Consumed by the Hero band counts row and the
-// group-header count chips so a mixed group never shows the 服务异常 word
+// group-header count chips so a mixed group never shows the 异常 word
 // twice side by side. Unknown keys are ignored (defensive).
 export function displayStatusCounts(
   counts: Partial<Record<EndpointStatus, number>>,
