@@ -19,7 +19,7 @@
         </div>
         <span class="widget-value" :class="{ 'is-null': w.value === null }">{{ w.display }}</span>
         <span class="widget-sub" :class="w.subTone ? `tone-${w.subTone}` : ''">{{ w.sub }}</span>
-        <TrendSparkline :values="w.series" :tone="w.tone" />
+        <TrendSparkline :values="w.series" :tone="w.tone" :variant="w.variant ?? 'line'" />
       </div>
     </template>
     <template v-else>
@@ -40,7 +40,7 @@
 import { computed, toRef, type Component, type Ref } from 'vue'
 import { Clock, Histogram, TrendCharts, Warning } from '@element-plus/icons-vue'
 import TrendSparkline from '@/components/TrendSparkline.vue'
-import type { SparklineTone } from '@/components/TrendSparkline.vue'
+import type { SparklineTone, SparklineVariant } from '@/components/TrendSparkline.vue'
 import { useTweenedNumber } from '@/composables/useTweenedNumber'
 import { formatCount, formatMs, formatPercent } from '@/utils/format'
 import { healthDeltaText, healthDeltaTone } from '@/utils/overviewMetrics'
@@ -83,6 +83,9 @@ interface Widget {
   // Semantic lane (GH #130): tints the sparkline and the icon chip; the core
   // number itself always stays ink (coloring is carried by trend + icon).
   tone: Exclude<SparklineTone, 'neutral'>
+  // Sparkline variant (GH #137): request volume reads as columns; the other
+  // lanes keep the default curve. Undefined = 'line'.
+  variant?: SparklineVariant
   icon: Component
   series: (number | null)[]
 }
@@ -111,6 +114,8 @@ const widgets = computed<Widget[]>(() => {
       sub: '探测总次数',
       subTone: null,
       tone: 'brand',
+      // Count series read as a column chart, not a curve (GH #137).
+      variant: 'bars',
       icon: Histogram,
       series: props.probeSeries,
     },

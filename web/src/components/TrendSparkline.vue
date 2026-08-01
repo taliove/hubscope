@@ -1,12 +1,14 @@
 <template>
-  <!-- Trend sparkline (GH #115, spec 0018 图表纪律): a light auxiliary line
-       for the metric widgets — monotone interpolation (never invents
-       extrema), null breaks, no axes, no grid. `tone` (GH #130, user ruling
-       2026-08-01, superseding the T5 neutral-ink ruling): neutral keeps the
-       original low-key ink; semantic tones tint line + area with the
-       functional color (area at low opacity) so each widget reads its own
-       semantic lane. The core number stays ink — the trendline must never
-       compete with it. -->
+  <!-- Trend sparkline (GH #115, spec 0018 the chart discipline): a light auxiliary
+       trend for the metric widgets — no axes, no grid. `variant` (GH #137):
+       'line' (default) = monotone interpolation (never invents extrema) with
+       null breaks; 'bars' = equal-width columns (request-volume lane), one
+       bar per bucket, null buckets stay empty slots. `tone` (GH #130, user
+       ruling 2026-08-01, superseding the T5 neutral-ink ruling): neutral
+       keeps the original low-key ink; semantic tones tint line + area (bars
+       variant: the bar fill) with the functional color so each widget reads
+       its own semantic lane. The core number stays ink — the trendline must
+       never compete with it. -->
   <svg
     class="trend-sparkline"
     :class="tone !== 'neutral' ? `tone-${tone}` : ''"
@@ -14,7 +16,15 @@
     preserveAspectRatio="none"
     aria-hidden="true"
   >
-    <template v-if="paths.length > 0">
+    <template v-if="variant === 'bars'">
+      <template v-if="bars">
+        <path v-for="(b, i) in bars" :key="i" class="spark-bar" :d="b" />
+      </template>
+      <!-- Empty/all-zero series: same placeholder discipline as the line
+           variant — the slot keeps its height and never reads as data. -->
+      <line v-else class="spark-empty" :x1="0" :y1="HEIGHT / 2" :x2="WIDTH" :y2="HEIGHT / 2" />
+    </template>
+    <template v-else-if="paths.length > 0">
       <path
         v-for="(p, i) in paths"
         :key="i"
@@ -37,15 +47,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { smoothSeries } from '@/utils/monotoneSmooth'
+import { sparklineBarLayout, topRoundedBarPath } from '@/utils/sparklineBars'
 
 // Semantic lane of the sparkline (GH #130): neutral (default, original ink)
 // keeps every other consumer unchanged; the four widget lanes consume the
 // functional-color base (graphic tier, 3:1 — never the *-text steps).
 export type SparklineTone = 'neutral' | 'success' | 'brand' | 'warning' | 'danger'
 
+// Rendering variant (GH #137): 'line' (default) keeps every existing
+// consumer unchanged; 'bars' renders equal-width columns for the
+// request-volume widget (a count series reads as a column chart, not a
+// curve).
+export type SparklineVariant = 'line' | 'bars'
+
 const props = withDefaults(
-  defineProps<{ values: (number | null)[]; tone?: SparklineTone }>(),
-  { tone: 'neutral' },
+  defineProps<{ values: (number | null)[]; tone?: SparklineTone; variant?: SparklineVariant }>(),
+  { tone: 'neutral', variant: 'line' },
 )
 
 // Fixed internal coordinate system; the host stretches the SVG via CSS.
@@ -55,6 +72,19 @@ const props = withDefaults(
 const WIDTH = 120
 const HEIGHT = 32
 const PAD = 1 // stroke half-width headroom
+
+// Bars-variant geometry (GH #137): 2px gap and 2px top-corner radius — the
+// dots-strip family language (radius-xs). Bars are column paths with rounded
+// top corners; the bottom edge stays square so columns sit flush on the
+// track. The bar fill carries the lane color, so no PAD headroom is needed
+// (unlike the stroked line, nothing paints outside the column box).
+const BARS_GAP = 2
+const BARS_RADIUS = 2
+const bars = computed<string[] | null>(() => {
+  const layout = sparklineBarLayout(props.values, WIDTH, HEIGHT, BARS_GAP)
+  if (!layout) return null
+  return layout.map(b => topRoundedBarPath(b.x, b.y, b.width, b.height, BARS_RADIUS))
+})
 
 interface RunPath {
   line: string
@@ -152,6 +182,24 @@ const paths = computed<RunPath[]>(() => {
 .tone-danger .spark-area {
   fill: var(--hs-danger);
   fill-opacity: 0.15;
+}
+/* Bars variant (GH #137): solid columns in the lane color — the bar fill
+   IS the trend shape, so it takes the same functional base the line stroke
+   would (graphic tier); neutral keeps the original low-key ink. */
+.spark-bar {
+  fill: var(--hs-text-secondary);
+}
+.tone-success .spark-bar {
+  fill: var(--hs-success);
+}
+.tone-brand .spark-bar {
+  fill: var(--hs-brand);
+}
+.tone-warning .spark-bar {
+  fill: var(--hs-warning);
+}
+.tone-danger .spark-bar {
+  fill: var(--hs-danger);
 }
 .spark-empty {
   stroke: var(--hs-border);
