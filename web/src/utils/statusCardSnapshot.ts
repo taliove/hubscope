@@ -15,6 +15,10 @@ export interface StatusCardSnapshot {
   entries: OverviewEntry[] // scoped set, disabled endpoints included
   keyword: string
   protocol: Protocol | ''
+  // Vendor (供应商) filter of the Dashboard toolbar (GH #131): carried into
+  // the scope chips so a family-narrowed card never reads as the global
+  // picture (every active filter shows up as a chip, one none missing).
+  family?: string
   // The Dashboard status filter speaks display states (GH #113): the scope
   // chip names 稳定运行/降级/异常 and the filter matches down+failing
   // together under incident.

@@ -172,6 +172,9 @@ const props = defineProps<{
   entries: OverviewEntry[] // scoped snapshot, disabled endpoints included
   keyword: string
   protocol: Protocol | ''
+  // Vendor filter scope (GH #131): a family-narrowed share declares it as a
+  // chip — an active filter must never drop out of the scope row.
+  family?: string
   status: DisplayStatus | ''
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the snapshot moment
@@ -234,6 +237,7 @@ const scopeChips = computed<ScopeChip[]>(() => {
     chips.push({ label: '分组', value: `${DIMENSION_LABELS[props.group.dimension]} · ${props.group.key}` })
   }
   if (props.keyword) chips.push({ label: '模型', value: props.keyword })
+  if (props.family) chips.push({ label: '供应商', value: props.family })
   if (props.protocol) chips.push({ label: '协议', value: props.protocol })
   if (props.status) chips.push({ label: '状态', value: statusLabel(props.status), tone: statusTone(props.status) })
   return chips
