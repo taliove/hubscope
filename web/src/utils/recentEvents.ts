@@ -1,11 +1,13 @@
-// Recent-events card derivations (GH #132, UI v2 O5): the dashboard's
-// 近期事件 section renders at most four cards from the alert feed. Every
-// card field — title, impact scope, incident chip state, duration wording —
-// is derived here so the component only renders (alertTimeline.ts /
-// format.ts centralization precedent).
+// Recent-events card derivations (GH #132, UI v2 O5; GH #138 reference
+// card): the dashboard's 近期事件 section renders at most four cards from
+// the alert feed. Every card field — title, impact scope, event chip
+// (double-track: color = kind tag type, word = incident state or kind
+// word), duration wording — is derived here so the component only renders
+// (alertTimeline.ts / format.ts centralization precedent).
+import type { TagProps } from 'element-plus'
 import type { AlertEvent } from '@/api/settings'
 import type { OverviewEntry } from '@/api/types'
-import { alertKindLabel } from './alertKind'
+import { alertKindLabel, alertKindTagType } from './alertKind'
 import { formatDuration } from './format'
 import type { IncidentDuration } from './alertTimeline'
 
@@ -62,26 +64,32 @@ export function impactText(
   return alertKindLabel(ev.kind)
 }
 
-// Incident chip state. Only incident OPENERS (down / group_down) carry a
-// state — recovered events and point-in-time kinds render no chip.
-// pairIncidentDurations keys exactly the opener ids, so a missing entry
-// also covers scopeless events (a down with a null endpoint_id).
-export type IncidentChipState = 'ongoing' | 'recovered'
+// Event chip, double-track caliber (GH #138, reference-design replication —
+// main's dispatch ruling): COLOR = the event kind's tag type
+// (alertKindTagType, the same mapping the /alerts timeline consumes — all
+// eleven kinds covered, never a hand-rolled mapping); WORD = the incident
+// state for opener events (down / group_down with a pairing entry: 进行中
+// while unclosed, 已恢复 once the recovery arrived — the GH #132 pairing
+// caliber unchanged) or the event-kind word for point-in-time events
+// (recovered / test / batch / score_drop / retire_pending / … →
+// alertKindLabel). Every card renders a chip — the reference design shows
+// one per card, and point-in-time events carry their kind word instead of
+// rendering bare. Registered deviation from the reference mock: its
+// multi-colored 已恢复 chips do not map onto our data model — a recovered
+// INCIDENT reads 已恢复 on the opener's danger tone (the event IS a down),
+// while the recovered EVENT itself reads 恢复 on success.
+export type EventChip = { text: string; tone: TagProps['type'] }
 
-export function incidentChipState(
+export function eventChip(
   ev: AlertEvent,
   durations: ReadonlyMap<number, IncidentDuration>,
-): IncidentChipState | null {
+): EventChip {
   const d = durations.get(ev.id)
-  if (!d) return null
-  return d.state === 'ongoing' ? 'ongoing' : 'recovered'
-}
-
-// incidentChipText: the chip words (ticket-frozen): 进行中 for an unclosed
-// incident (AlertsView already uses the same word for its ongoing cell),
-// 已恢复 once the recovery arrived.
-export function incidentChipText(state: IncidentChipState): string {
-  return state === 'ongoing' ? '进行中' : '已恢复'
+  // pairIncidentDurations keys exactly the opener ids, so a missing entry
+  // also covers scopeless openers (a down with a null endpoint_id) — those
+  // fall through to the kind word like any point-in-time event.
+  const text = d ? (d.state === 'ongoing' ? '进行中' : '已恢复') : alertKindLabel(ev.kind)
+  return { text, tone: alertKindTagType(ev.kind) }
 }
 
 // incidentDurationText: paired incidents read 持续 X; unpaired openers read

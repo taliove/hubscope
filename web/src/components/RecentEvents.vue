@@ -13,11 +13,16 @@
 
     <!-- First-load skeleton: four static gray cards anchored to the real
          card height (no pulse — the v2 motion budget is reserved for status
-         changes, spec 0018 decision 4). Later refreshes keep the cards on
-         screen (local refresh, never a re-mount). -->
+         changes, spec 0018 decision 4). The bar layout mirrors the real
+         card: time-left + chip-right top row, title, two meta lines. Later
+         refreshes keep the cards on screen (local refresh, never a
+         re-mount). -->
     <div v-if="showSkeleton" class="card-grid" aria-label="加载中">
       <div v-for="i in RECENT_EVENTS_CARD_LIMIT" :key="i" class="event-card skeleton-card">
-        <span class="skeleton-bar sk-top" />
+        <div class="sk-toprow">
+          <span class="skeleton-bar sk-time" />
+          <span class="skeleton-bar sk-chip" />
+        </div>
         <span class="skeleton-bar sk-title" />
         <span class="skeleton-bar sk-meta" />
         <span class="skeleton-bar sk-meta" />
@@ -40,15 +45,12 @@
     <div v-else class="card-grid">
       <article v-for="card in cardModels" :key="card.ev.id" class="event-card">
         <div class="card-top">
-          <!-- Kind icon: the glyph carries the event category; the COLOR is
-               the kind's tag type (alertKindTagType) — the same glyph/color
-               split as the /alerts timeline nodes. -->
-          <el-icon class="kind-icon" :class="`icon--${alertKindTagType(card.ev.kind)}`">
-            <component :is="iconOf(card.ev.kind)" />
-          </el-icon>
           <span class="event-time">{{ formatClockMinute(card.ev.created_at) }}</span>
-          <span v-if="card.chip" class="status-chip" :class="`chip--${card.chip}`">
-            {{ incidentChipText(card.chip) }}
+          <!-- Chip double-track (GH #138): color = the kind's tag type
+               (soft ground + text step), word = incident state for openers
+               or the kind word for point-in-time events. -->
+          <span class="status-chip" :class="`chip--${card.chip.tone}`">
+            {{ card.chip.text }}
           </span>
         </div>
         <p class="event-title" :title="card.ev.message">{{ eventTitle(card.ev.message) }}</p>
@@ -56,18 +58,30 @@
           <span class="meta-line" :title="card.impact">{{ card.impact }}</span>
           <span v-if="card.duration" class="meta-line">{{ card.duration }}</span>
         </div>
+        <!-- Watermark kind icon (reference design): the glyph carries the
+             event category at low opacity in the corner; its COLOR is the
+             kind's tag type on the graphic tier — the same glyph/color
+             split as the /alerts timeline nodes. Decorative: aria-hidden. -->
+        <el-icon class="watermark-icon" :class="`icon--${card.chip.tone}`" aria-hidden="true">
+          <component :is="iconOf(card.ev.kind)" />
+        </el-icon>
       </article>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-// RecentEvents (GH #132, UI v2 O5): the dashboard's 近期事件 section — the
-// newest alert events as a horizontal card row plus a 查看全部事件 link to
-// the /alerts timeline. Self-built signature surface (light-container
-// cards). The kind vocabulary and tag colors come from utils/alertKind.ts
-// untouched; incident duration pairing reuses utils/alertTimeline.ts FIFO;
-// every card derivation lives in utils/recentEvents.ts.
+// RecentEvents (GH #132, UI v2 O5; card rebuilt to the reference design in
+// GH #138): the dashboard's 近期事件 section — the newest alert events as a
+// horizontal card row plus a 查看全部事件 link to the /alerts timeline.
+// Self-built signature surface (light-container cards). Card layout per the
+// reference: time top-left, chip top-right, md/600 title, two muted meta
+// lines, and a large low-opacity kind icon watermarking the bottom-right
+// corner. The chip is double-track: color = the kind's tag type, word =
+// incident state (openers) or kind word (point-in-time). The kind
+// vocabulary and tag colors come from utils/alertKind.ts untouched;
+// incident duration pairing reuses utils/alertTimeline.ts FIFO; every card
+// derivation lives in utils/recentEvents.ts.
 import { computed, ref, watch } from 'vue'
 import {
   Bell,
@@ -84,16 +98,14 @@ import {
 import { listAlerts, type AlertEvent, type AlertKind } from '@/api/settings'
 import type { OverviewEntry } from '@/api/types'
 import { formatClockMinute } from '@/utils/format'
-import { alertKindTagType } from '@/utils/alertKind'
 import { pairIncidentDurations } from '@/utils/alertTimeline'
 import {
   RECENT_EVENTS_CARD_LIMIT,
   RECENT_EVENTS_FETCH_LIMIT,
   buildEndpointModelMap,
+  eventChip,
   eventTitle,
   impactText,
-  incidentChipState,
-  incidentChipText,
   incidentDurationText,
   selectRecentEvents,
 } from '@/utils/recentEvents'
@@ -111,7 +123,7 @@ const props = defineProps<{
   refreshTick: string | null
 }>()
 
-// Kind icon glyphs (the color comes from alertKindTagType, not from the
+// Kind icon glyphs (the color comes from the kind's tag type, not from the
 // glyph). Line icons per the v2 iconography discipline.
 const KIND_ICONS: Record<AlertKind, unknown> = {
   down: CircleClose,
@@ -189,7 +201,7 @@ const cardModels = computed(() => {
   const now = new Date()
   return cards.value.map((ev) => ({
     ev,
-    chip: incidentChipState(ev, durations.value),
+    chip: eventChip(ev, durations.value),
     duration: incidentDurationText(ev, durations.value, now),
     impact: impactText(ev, modelMap.value),
   }))
@@ -228,10 +240,13 @@ const cardModels = computed(() => {
 }
 
 /* Light container (DESIGN.md: white surface + 1px border + radius-lg, no
-   shadow — a static container never takes a shadow). The min-height is the
-   skeleton anchor, shared by both: padding 16×2 + top row 20 + gap 8 +
-   title two md lines 42 + gap 8 + meta two xs lines 36 + meta gap 4 = 150. */
+   shadow — a static container never takes a shadow). relative + hidden
+   clip the corner watermark icon. The min-height is the skeleton anchor,
+   shared by both: padding 16×2 + top row 20 + gap 8 + title two md lines
+   42 + gap 8 + meta two xs lines 36 + meta gap 4 = 150. */
 .event-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 150px;
@@ -244,51 +259,42 @@ const cardModels = computed(() => {
 .card-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--hs-space-2);
   min-height: 20px;
 }
-.kind-icon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-/* Icon color = the kind's tag type, mapped onto the graphic-tier functional
-   tokens (the /alerts timeline node precedent). */
-.icon--danger {
-  color: var(--hs-danger);
-}
-.icon--success {
-  color: var(--hs-success);
-}
-.icon--warning {
-  color: var(--hs-warning);
-}
-.icon--info,
-.icon--primary {
-  color: var(--hs-info);
-}
 .event-time {
   font-size: var(--hs-text-xs);
-  color: var(--hs-text-secondary);
+  color: var(--hs-text-placeholder);
   font-variant-numeric: tabular-nums;
 }
-/* Incident chip (ticket-frozen colors): ongoing = danger soft ground +
-   danger text step; recovered = success soft + success text step. */
+/* Chip double-track (GH #138): tone = the kind's tag type — soft ground +
+   text step of that functional color (the el-tag light-effect equivalent).
+   info/primary share the neutral info pair (alertKindTagType never returns
+   primary today; the class pair is defensive). */
 .status-chip {
-  margin-left: auto;
   flex: none;
   padding: 1px var(--hs-space-2);
   border-radius: var(--hs-radius-sm);
   font-size: var(--hs-text-xs);
   font-weight: 600;
 }
-.chip--ongoing {
+.chip--danger {
   background: var(--hs-danger-soft);
   color: var(--hs-danger-text);
 }
-.chip--recovered {
+.chip--success {
   background: var(--hs-success-soft);
   color: var(--hs-success-text);
+}
+.chip--warning {
+  background: var(--hs-warning-soft);
+  color: var(--hs-warning-text);
+}
+.chip--info,
+.chip--primary {
+  background: var(--hs-info-soft);
+  color: var(--hs-info);
 }
 
 .event-title {
@@ -311,6 +317,10 @@ const cardModels = computed(() => {
   flex-direction: column;
   gap: var(--hs-space-1);
   margin-top: var(--hs-space-2);
+  /* Reserve the watermark corner: 44px icon + space-3 offset + space-2
+     clearance, so a long impact line ellipsizes before sliding under the
+     glyph. */
+  padding-right: calc(44px + var(--hs-space-3) + var(--hs-space-2));
 }
 .meta-line {
   font-size: var(--hs-text-xs);
@@ -318,6 +328,34 @@ const cardModels = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Watermark kind icon (reference design): ~44px in the bottom-right corner
+   at watermark opacity, colored on the graphic tier of the kind's tag
+   type. Purely decorative — the chip already carries the kind word.
+   Sized via font-size, NOT width/height: EP's `.el-icon svg` renders at
+   1em, so container dimensions would only inflate the box and leave the
+   glyph at 16px (GH #138 check HIGH-1). */
+.watermark-icon {
+  position: absolute;
+  right: var(--hs-space-3);
+  bottom: var(--hs-space-3);
+  font-size: 44px;
+  opacity: 0.18;
+  pointer-events: none;
+}
+.icon--danger {
+  color: var(--hs-danger);
+}
+.icon--success {
+  color: var(--hs-success);
+}
+.icon--warning {
+  color: var(--hs-warning);
+}
+.icon--info,
+.icon--primary {
+  color: var(--hs-info);
 }
 
 /* Empty / error panel: the same light-container syntax as the cards. */
@@ -340,9 +378,16 @@ const cardModels = computed(() => {
   color: var(--hs-danger-text);
 }
 
-/* Skeleton bars (static gray — no pulse). */
+/* Skeleton bars (static gray — no pulse). The top row mirrors the real
+   card: time bar left, chip bar right. */
 .skeleton-card {
   gap: var(--hs-space-2);
+}
+.sk-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
 }
 .skeleton-bar {
   display: block;
@@ -350,9 +395,13 @@ const cardModels = computed(() => {
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-hover);
 }
-.sk-top {
-  width: 45%;
-  height: 16px;
+.sk-time {
+  width: 32%;
+  height: 12px;
+}
+.sk-chip {
+  width: 52px;
+  height: 18px;
 }
 .sk-title {
   width: 85%;

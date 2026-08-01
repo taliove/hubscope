@@ -1,14 +1,14 @@
-// Unit tests for the recent-events card derivations (GH #132, UI v2 O5).
+// Unit tests for the recent-events card derivations (GH #132, UI v2 O5;
+// GH #138 chip double-track).
 // All timestamps are built through local-time Date constructors so the
 // suites pass in any host timezone (alertTimeline.test.ts precedent).
 import { describe, it, expect } from 'vitest'
 import {
   RECENT_EVENTS_CARD_LIMIT,
   buildEndpointModelMap,
+  eventChip,
   eventTitle,
   impactText,
-  incidentChipState,
-  incidentChipText,
   incidentDurationText,
   selectRecentEvents,
 } from '@/utils/recentEvents'
@@ -87,56 +87,103 @@ describe('impactText', () => {
   })
 })
 
-describe('incident chip and duration', () => {
+describe('eventChip (double-track: word = state or kind, tone = kind tag type)', () => {
   const t0 = new Date(2026, 6, 31, 14, 0, 0)
   const later = (minutes: number) => new Date(t0.getTime() + minutes * 60_000)
 
-  it('marks a paired down as recovered with the paired span', () => {
+  it('reads 已恢复 on the danger tone for a paired down', () => {
     const down = event('down', t0, { endpointId: 7 })
     const recovered = event('recovered', later(12), { endpointId: 7 })
     const durations = pairIncidentDurations([recovered, down])
-    expect(incidentChipState(down, durations)).toBe('recovered')
-    expect(incidentChipText('recovered')).toBe('已恢复')
-    expect(incidentDurationText(down, durations, later(20))).toBe('持续 12 分 0 秒')
+    expect(eventChip(down, durations)).toEqual({ text: '已恢复', tone: 'danger' })
   })
 
-  it('marks an unpaired down as ongoing, measured against now', () => {
+  it('reads 进行中 on the danger tone for an unpaired down', () => {
     const down = event('down', t0, { endpointId: 7 })
     const durations = pairIncidentDurations([down])
-    expect(incidentChipState(down, durations)).toBe('ongoing')
-    expect(incidentChipText('ongoing')).toBe('进行中')
-    expect(incidentDurationText(down, durations, later(45))).toBe('已持续 45 分 0 秒')
+    expect(eventChip(down, durations)).toEqual({ text: '进行中', tone: 'danger' })
   })
 
-  it('pairs group incidents by group key', () => {
+  it('pairs group incidents by group key (danger tone)', () => {
     const down = event('group_down', t0, { groupKey: 'openai' })
     const recovered = event('group_recovered', later(65), { groupKey: 'openai' })
     const durations = pairIncidentDurations([down, recovered])
-    expect(incidentChipState(down, durations)).toBe('recovered')
-    expect(incidentDurationText(down, durations, later(70))).toBe('持续 1 小时 5 分')
+    expect(eventChip(down, durations)).toEqual({ text: '已恢复', tone: 'danger' })
   })
 
-  it('gives the recovery event itself no chip and no duration', () => {
+  it('reads the kind word on the success tone for the recovery event itself', () => {
     const down = event('down', t0, { endpointId: 7 })
     const recovered = event('recovered', later(12), { endpointId: 7 })
     const durations = pairIncidentDurations([down, recovered])
-    expect(incidentChipState(recovered, durations)).toBeNull()
+    expect(eventChip(recovered, durations)).toEqual({ text: '恢复', tone: 'success' })
+  })
+
+  it('reads the kind word for point-in-time kinds, tone per the kind mapping', () => {
+    const at = t0
+    const cases: Array<[AlertKind, string, string]> = [
+      ['test', '测试', 'info'],
+      ['batch', '聚合发送', 'info'],
+      ['quiet_summary', '静默摘要', 'info'],
+      ['score_drop', '分数大跌', 'warning'],
+      ['score_drop_skipped', '对比跳过', 'warning'],
+      ['retire_pending', '待退役', 'warning'],
+      ['retired', '已退役', 'info'],
+      ['group_recovered', '厂商组恢复', 'success'],
+    ]
+    for (const [kind, text, tone] of cases) {
+      const ev = event(kind, at)
+      expect(eventChip(ev, pairIncidentDurations([ev]))).toEqual({ text, tone })
+    }
+  })
+
+  it('treats a scopeless down (null endpoint) as point-in-time: kind word, danger tone', () => {
+    const down = event('down', t0, { endpointId: null })
+    const durations = pairIncidentDurations([down])
+    expect(eventChip(down, durations)).toEqual({ text: '故障', tone: 'danger' })
+  })
+})
+
+describe('incident duration', () => {
+  const t0 = new Date(2026, 6, 31, 14, 0, 0)
+  const later = (minutes: number) => new Date(t0.getTime() + minutes * 60_000)
+
+  it('renders the paired span for a paired down', () => {
+    const down = event('down', t0, { endpointId: 7 })
+    const recovered = event('recovered', later(12), { endpointId: 7 })
+    const durations = pairIncidentDurations([recovered, down])
+    expect(incidentDurationText(down, durations, later(20))).toBe('持续 12 分 0 秒')
+  })
+
+  it('measures an unpaired down against now', () => {
+    const down = event('down', t0, { endpointId: 7 })
+    const durations = pairIncidentDurations([down])
+    expect(incidentDurationText(down, durations, later(45))).toBe('已持续 45 分 0 秒')
+  })
+
+  it('renders the paired group span', () => {
+    const down = event('group_down', t0, { groupKey: 'openai' })
+    const recovered = event('group_recovered', later(65), { groupKey: 'openai' })
+    const durations = pairIncidentDurations([down, recovered])
+    expect(incidentDurationText(down, durations, later(70))).toBe('持续 1 小时 5 分')
+  })
+
+  it('gives the recovery event itself no duration', () => {
+    const down = event('down', t0, { endpointId: 7 })
+    const recovered = event('recovered', later(12), { endpointId: 7 })
+    const durations = pairIncidentDurations([down, recovered])
     expect(incidentDurationText(recovered, durations, later(20))).toBe('')
   })
 
-  it('gives point-in-time kinds no chip and no duration', () => {
+  it('gives point-in-time kinds no duration', () => {
     const test = event('test', t0)
     const scoreDrop = event('score_drop', t0)
     const durations = pairIncidentDurations([test, scoreDrop])
-    expect(incidentChipState(test, durations)).toBeNull()
-    expect(incidentChipState(scoreDrop, durations)).toBeNull()
     expect(incidentDurationText(test, durations, later(5))).toBe('')
   })
 
   it('treats a scopeless down (null endpoint) as a non-incident card', () => {
     const down = event('down', t0, { endpointId: null })
     const durations = pairIncidentDurations([down])
-    expect(incidentChipState(down, durations)).toBeNull()
     expect(incidentDurationText(down, durations, later(5))).toBe('')
   })
 })
