@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-01T00:00:00Z",
+  "generatedAt": "2026-08-01T12:00:00Z",
   "title": "Design System: HubScope",
   "extensions": {
     "colorMeta": {
@@ -21,7 +21,7 @@
       },
       "success": {
         "role": "functional",
-        "displayName": "Success 绿(稳定,图形阶)",
+        "displayName": "Success 绿(稳定运行,图形阶)",
         "canonical": "#34c759",
         "tonalRamp": [
           "#1f7a33",
@@ -81,7 +81,22 @@
       },
       "page-bg": {
         "role": "surface",
-        "displayName": "页面底 Gray-50",
+        "displayName": "页面底(白;P1 背景白化,原 gray-50 页面底语义由 bg-subtle 承接)",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#6e6e73",
+          "#86868b",
+          "#a1a1a6",
+          "#d2d2d7",
+          "#e5e5ea",
+          "#e8e8ed",
+          "#f5f5f7",
+          "#ffffff"
+        ]
+      },
+      "surface-subtle": {
+        "role": "surface",
+        "displayName": "浅底 Gray-50(--hs-bg-subtle:白底之上的面板/轨道/预览衬底)",
         "canonical": "#f5f5f7",
         "tonalRamp": [
           "#48484a",
@@ -128,17 +143,24 @@
       "css": ".ds-input { background: var(--hs-bg-card); color: var(--hs-text-regular); border: 1px solid var(--hs-border); border-radius: var(--hs-radius-sm); height: 32px; padding: 0 12px; font-size: var(--hs-text-md); transition: border-color var(--hs-transition); } .ds-input:focus-visible { outline: none; border-color: var(--hs-brand); }"
     },
     {
+      "name": "App Topbar",
+      "kind": "nav",
+      "description": "全宽 56px 顶栏(GH #135,当前实例 AppTopbar.vue):白面 + 底部 hairline,sticky;左 = BrandMark 24px + Wordmark lg(回 /),右 = 铃铛图标按钮 + 用户 chip(未登录 =「管理登录」链接)。",
+      "html": "<header class=\"ds-topbar\"><a class=\"ds-topbar-brand\" href=\"#\"><span class=\"ds-topbar-mark\"></span><span class=\"ds-topbar-word\">HubScope</span></a><div class=\"ds-topbar-right\"><button class=\"ds-topbar-icon\" aria-label=\"故障记录\">🔔</button><button class=\"ds-topbar-chip\"><span class=\"ds-topbar-avatar\"></span><span class=\"ds-topbar-name\">devadmin</span><span class=\"ds-topbar-role\">管理员</span></button></div></header>",
+      "css": ".ds-topbar { position: sticky; top: 0; z-index: var(--hs-z-sticky); display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 var(--hs-space-5); background: var(--hs-bg-card); border-bottom: 1px solid var(--hs-border-light); } .ds-topbar-brand { display: flex; align-items: center; gap: var(--hs-space-2); text-decoration: none; } .ds-topbar-mark { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #549cff, #0062cc); } .ds-topbar-word { font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace; font-weight: 700; font-size: var(--hs-text-lg); color: var(--hs-text-primary); } .ds-topbar-right { display: flex; align-items: center; gap: var(--hs-space-2); } .ds-topbar-icon { width: 32px; height: 32px; border: none; border-radius: var(--hs-radius-sm); background: none; color: var(--hs-text-secondary); cursor: pointer; } .ds-topbar-icon:hover { background: var(--hs-bg-hover); color: var(--hs-text-regular); } .ds-topbar-chip { display: flex; align-items: center; gap: var(--hs-space-2); padding: var(--hs-space-1) var(--hs-space-2); border: none; border-radius: var(--hs-radius-full); background: none; cursor: pointer; } .ds-topbar-chip:hover { background: var(--hs-bg-hover); } .ds-topbar-avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--hs-bg-subtle); } .ds-topbar-name { font-size: var(--hs-text-md); color: var(--hs-text-regular); } .ds-topbar-role { font-size: var(--hs-text-xs); color: var(--hs-text-secondary); } .ds-topbar-icon:focus-visible, .ds-topbar-chip:focus-visible { outline: 2px solid var(--hs-brand); outline-offset: 1px; }"
+    },
+    {
       "name": "Sidebar Nav Item",
       "kind": "nav",
-      "description": "侧边栏导航项:线性图标 + 文字,轻量高亮(浅底 + 品牌蓝文字),无强背景块。",
-      "html": "<a class=\"ds-nav-item ds-nav-active\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"2\" y=\"2\" width=\"12\" height=\"12\" rx=\"3\"/></svg><span>状态概览</span></a>",
-      "css": ".ds-nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--hs-radius-sm); font-size: var(--hs-text-md); color: var(--hs-text-regular); text-decoration: none; transition: background-color var(--hs-transition), color var(--hs-transition); } .ds-nav-item:hover { background: var(--hs-bg-hover); } .ds-nav-item.ds-nav-active, .ds-nav-item.ds-nav-active:hover { background: var(--hs-bg-hover); color: var(--hs-brand); } .ds-nav-item:focus-visible { outline: 2px solid var(--hs-brand); outline-offset: -2px; }"
+      "description": "侧边栏导航项(GH #135 参照稿复刻,当前实例 AppSidebar.vue):Lucide 线性图标 18px + 文字,项高 48px、radius-lg;激活态 = 软蓝 pill(brand-soft 底 + brand 词与图标),未激活 text-regular、hover bg-hover。",
+      "html": "<a class=\"ds-nav-item ds-nav-active\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4\"/></svg><span>状态概览</span></a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; border-radius: var(--hs-radius-lg); font-size: var(--hs-text-md); color: var(--hs-text-regular); text-decoration: none; transition: background-color var(--hs-transition), color var(--hs-transition); } .ds-nav-item:hover { background: var(--hs-bg-hover); } .ds-nav-item.ds-nav-active, .ds-nav-item.ds-nav-active:hover { background: var(--hs-brand-soft); color: var(--hs-brand); } .ds-nav-item:focus-visible { outline: 2px solid var(--hs-brand); outline-offset: -2px; }"
     },
     {
       "name": "Status Badge",
       "kind": "chip",
-      "description": "唯一状态灯:小圆点(图形阶)+ 状态词(文字阶),三态双编码。",
-      "html": "<span class=\"ds-badge ds-badge-stable\"><span class=\"ds-badge-dot\"></span><span>稳定</span></span> <span class=\"ds-badge ds-badge-degraded\"><span class=\"ds-badge-dot\"></span><span>降级</span></span> <span class=\"ds-badge ds-badge-incident\"><span class=\"ds-badge-dot\"></span><span>异常</span></span>",
+      "description": "唯一状态灯:小圆点(图形阶)+ 状态词(文字阶),三态双编码;词表 = 稳定运行 / 降级 / 异常(参照稿词表,GH #128)。",
+      "html": "<span class=\"ds-badge ds-badge-stable\"><span class=\"ds-badge-dot\"></span><span>稳定运行</span></span> <span class=\"ds-badge ds-badge-degraded\"><span class=\"ds-badge-dot\"></span><span>降级</span></span> <span class=\"ds-badge ds-badge-incident\"><span class=\"ds-badge-dot\"></span><span>异常</span></span>",
       "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; font-size: var(--hs-text-sm); } .ds-badge-dot { width: 9px; height: 9px; border-radius: 50%; } .ds-badge-stable { color: var(--hs-success-text); } .ds-badge-stable .ds-badge-dot { background: var(--hs-success); } .ds-badge-degraded { color: var(--hs-warning-text); } .ds-badge-degraded .ds-badge-dot { background: var(--hs-warning); } .ds-badge-incident { color: var(--hs-danger-text); } .ds-badge-incident .ds-badge-dot { background: var(--hs-danger); }"
     },
     {
@@ -150,11 +172,18 @@
       "css": ".ds-card { background: var(--hs-bg-card); border: 1px solid var(--hs-border); border-radius: var(--hs-radius-lg); padding: 24px; } .ds-card-title { margin: 0; font-size: var(--hs-text-sm); font-weight: 400; color: var(--hs-text-secondary); } .ds-card-number { margin: 4px 0 0; font-size: var(--hs-text-3xl); font-weight: 600; color: var(--hs-text-primary); font-variant-numeric: tabular-nums; } .ds-card-sub { margin: 4px 0 0; font-size: var(--hs-text-xs); color: var(--hs-success-text); }"
     },
     {
+      "name": "Metric Widget",
+      "kind": "card",
+      "description": "指标区瓦片(GH #115/#130,当前实例 MetricWidgets.vue):轻容器 + 标题行(标题 + 36px 语义色 icon chip)+ 3xl 墨色核心数字(tabular-nums,轮询间数字补间)+ 次级说明行 + 轻趋势线;可点 hover 上浮 2px + md 阴影。",
+      "html": "<div class=\"ds-widget\"><div class=\"ds-widget-head\"><span class=\"ds-widget-title\">24h 可用率</span><span class=\"ds-widget-chip\"></span></div><span class=\"ds-widget-value\">99.2%</span><span class=\"ds-widget-sub\">较昨日 +0.3%</span></div>",
+      "css": ".ds-widget { display: flex; flex-direction: column; gap: var(--hs-space-1); padding: var(--hs-space-4); background: var(--hs-bg-card); border: 1px solid var(--hs-border); border-radius: var(--hs-radius-lg); transition: transform var(--hs-transition), box-shadow var(--hs-transition); } .ds-widget:hover { transform: translateY(-2px); box-shadow: var(--hs-shadow-md); } .ds-widget-head { display: flex; align-items: center; justify-content: space-between; gap: var(--hs-space-2); } .ds-widget-title { font-size: var(--hs-text-sm); color: var(--hs-text-secondary); } .ds-widget-chip { width: 36px; height: 36px; border-radius: var(--hs-radius-sm); background: var(--hs-success-soft); } .ds-widget-value { font-size: var(--hs-text-3xl); font-weight: 600; line-height: 1.2; color: var(--hs-text-primary); font-variant-numeric: tabular-nums; } .ds-widget-sub { font-size: var(--hs-text-xs); color: var(--hs-text-secondary); }"
+    },
+    {
       "name": "Model List Row",
       "kind": "custom",
-      "description": "模型状态列表行:模型名第一层级,指标辅助;行内嵌 24h 微条;hover 上浮限卡片类可点元素。",
-      "html": "<div class=\"ds-row\"><span class=\"ds-row-name\">qwen3-32b-instruct</span><span class=\"ds-row-badge\"><span class=\"ds-row-dot\"></span>稳定</span><span class=\"ds-row-rate\">99.6%</span><span class=\"ds-row-strip\"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class=\"warn\"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>",
-      "css": ".ds-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--hs-border-light); border-radius: var(--hs-radius-lg); transition: background-color var(--hs-transition); } .ds-row:hover { background: var(--hs-bg-card); } .ds-row-name { font-size: var(--hs-text-md); font-weight: 600; color: var(--hs-text-primary); } .ds-row-badge { display: inline-flex; align-items: center; gap: 6px; font-size: var(--hs-text-sm); color: var(--hs-success-text); } .ds-row-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--hs-success); } .ds-row-rate { font-size: var(--hs-text-md); color: var(--hs-success-text); font-variant-numeric: tabular-nums; } .ds-row-strip { display: flex; gap: 2px; flex: 1; } .ds-row-strip i { flex: 1; height: 14px; border-radius: var(--hs-radius-xs); background: var(--hs-success); } .ds-row-strip i.warn { background: var(--hs-warning); }"
+      "description": "模型状态列表行(当前实例 ModelStatusList.vue):模型名第一层级,指标辅助;行内嵌 24h 微条;行间 hairline 分隔,可点行 hover 上浮 2px + md 阴影。",
+      "html": "<div class=\"ds-row\"><span class=\"ds-row-name\">qwen3-32b-instruct</span><span class=\"ds-row-badge\"><span class=\"ds-row-dot\"></span>稳定运行</span><span class=\"ds-row-rate\">99.6%</span><span class=\"ds-row-strip\"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class=\"warn\"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>",
+      "css": ".ds-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--hs-border-light); border-radius: var(--hs-radius-lg); transition: transform var(--hs-transition), box-shadow var(--hs-transition), background-color var(--hs-transition); } .ds-row:hover { transform: translateY(-2px); box-shadow: var(--hs-shadow-md); background: var(--hs-bg-card); } .ds-row-name { font-size: var(--hs-text-md); font-weight: 600; color: var(--hs-text-primary); } .ds-row-badge { display: inline-flex; align-items: center; gap: 6px; font-size: var(--hs-text-sm); color: var(--hs-success-text); } .ds-row-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--hs-success); } .ds-row-rate { font-size: var(--hs-text-md); color: var(--hs-success-text); font-variant-numeric: tabular-nums; } .ds-row-strip { display: flex; gap: 2px; flex: 1; } .ds-row-strip i { flex: 1; height: 14px; border-radius: var(--hs-radius-xs); background: var(--hs-success); } .ds-row-strip i.warn { background: var(--hs-warning); }"
     },
     {
       "name": "Tag",
@@ -167,12 +196,12 @@
   ],
   "narrative": {
     "northStar": "AI 基础设施操作系统 (The AI Infrastructure OS)",
-    "overview": "HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答四个问题——整体是否健康、哪些模型有风险、异常影响范围、下一步该处理什么。审美语调冷静、专业、可信、极简、精准,参考坐标 Apple System Settings / Apple Health / Linear / Vercel / Stripe。大留白、轻容器、局部状态强调;情绪由三态语义色承担,不由装饰承担——不是 Grafana,是操作系统。",
+    "overview": "HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答四个问题——整体是否健康、哪些模型有风险、异常影响范围、下一步该处理什么。读者分三种——3 秒看屏的状态板读者、高密度作业的管理台读者、隔着一条分享链接的外部接收者——界面对这三种人都必须诚实:结论永远标注统计范围,没有数据就断线,失败不冒充空态。审美语调冷静、专业、可信、极简、精准,参考坐标 Apple System Settings / Apple Health / Linear / Vercel / Stripe。大留白、轻容器、局部状态强调;情绪由三态语义色承担,不由装饰承担——不是 Grafana,是操作系统。",
     "keyCharacteristics": [
-      "三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留",
-      "轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达可点/浮层",
-      "220px macOS 设置风侧边栏外壳,签名面自造,Element Plus 保留管理台复杂件",
-      "状态三态:稳定 / 降级 / 异常,小圆点 + 状态词双编码",
+      "三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留(暗色后置,独立 spec 定稿)",
+      "轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达「可点/浮层」",
+      "全宽顶栏 + 220px macOS 设置风侧边栏外壳(GH #135 顶栏恢复),签名面自造(顶栏/侧边栏/Hero/指标区/列表行/详情面板/时间线),Element Plus 保留管理台复杂件",
+      "状态三态:稳定运行 / 降级 / 异常(参照稿词表,GH #128),小圆点 + 状态词双编码,局部强调而非大面积色块",
       "动效成体系(v2.0 §15):数字补间、图表入场绘制、页面 Fade+Slight Move、hover 上浮;reduced-motion 全局归零"
     ],
     "rules": [
@@ -199,7 +228,7 @@
       "Don't 引入调色板外新色相——三态世界没有第四色,告警橙已整体退役。",
       "Don't 引入任何闪烁动画;动效只走 Motion 节登记的词汇表。",
       "Don't 用渐变装饰、大面积彩色背景块、营销物料;BrandMark 渐变是唯一允许的渐变。",
-      "Don't 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性暂无数据。"
+      "Don't 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性「暂无数据」,永不显示「全部正常/全部稳定运行」。"
     ]
   }
 }
