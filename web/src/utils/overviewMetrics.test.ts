@@ -7,6 +7,9 @@ import {
   hourlyProbeSeries,
   hourlyFailureSeries,
   hourlyLatencySeries,
+  heroTrendSeries,
+  availabilityTierPieces,
+  AVAILABILITY_SUCCESS_MIN_100,
   availabilityRateTier,
   abnormalModelCounts,
 } from '@/utils/overviewMetrics'
@@ -44,12 +47,12 @@ describe('healthDeltaText', () => {
   it('null renders nothing (no invented trend)', () => {
     expect(healthDeltaText(null)).toBe('')
   })
-  it('signs gains and losses in percentage points', () => {
-    expect(healthDeltaText(0.012)).toBe('较昨日 +1.2%')
-    expect(healthDeltaText(-0.008)).toBe('较昨日 -0.8%')
+  it('arrow carries the direction, number is unsigned (GH #129)', () => {
+    expect(healthDeltaText(0.012)).toBe('↑ 1.2% 相比昨日')
+    expect(healthDeltaText(-0.008)).toBe('↓ 0.8% 相比昨日')
   })
   it('zero is an explicit flat reading', () => {
-    expect(healthDeltaText(0)).toBe('较昨日持平')
+    expect(healthDeltaText(0)).toBe('相比昨日持平')
   })
 })
 
@@ -108,6 +111,47 @@ describe('availabilityRateTier', () => {
     expect(availabilityRateTier(0.94)).toBe('warning')
     expect(availabilityRateTier(0)).toBe('danger')
     expect(availabilityRateTier(null)).toBe('none')
+  })
+})
+
+describe('heroTrendSeries (GH #129)', () => {
+  it('lifts the hourly caliber to the 0–100 display scale', () => {
+    const s = heroTrendSeries([dot(10, 0), dot(10, 5), dot(4, 4)])
+    expect(s.values).toEqual([100, 50, 0])
+  })
+  it('no-probe hours stay null (the line breaks, never bridges)', () => {
+    const s = heroTrendSeries([dot(0, 0), dot(10, 0)])
+    expect(s.values).toEqual([null, 100])
+  })
+  it('labels read the local bucket hour; empty bucket_start yields an empty label', () => {
+    const at14 = new Date(2026, 6, 31, 14, 0, 0).toISOString()
+    const s = heroTrendSeries([
+      { bucket_start: at14, total: 10, failures: 0, p50_ms: null },
+      { bucket_start: '', total: 0, failures: 0, p50_ms: null },
+    ])
+    expect(s.categories).toEqual(['14:00', ''])
+  })
+  it('an empty dot set yields an empty series', () => {
+    expect(heroTrendSeries([])).toEqual({ categories: [], values: [] })
+  })
+})
+
+describe('availabilityTierPieces (GH #129)', () => {
+  const pieces = availabilityTierPieces({ success: 'S', warning: 'W', danger: 'D' })
+  it('exactly 0 (probes all failed) is the danger piece', () => {
+    expect(pieces[0]).toEqual({ max: 0, color: 'D' })
+  })
+  it('below the success floor is the warning band', () => {
+    expect(pieces[1]).toEqual({ gt: 0, lt: AVAILABILITY_SUCCESS_MIN_100, color: 'W' })
+  })
+  it('at/above the registered 95 floor is the success piece', () => {
+    expect(pieces[2]).toEqual({ gte: 95, color: 'S' })
+    expect(AVAILABILITY_SUCCESS_MIN_100).toBe(95)
+  })
+  it('mirrors the 0~1 sibling caliber (the two scales move together)', () => {
+    expect(availabilityRateTier(AVAILABILITY_SUCCESS_MIN_100 / 100)).toBe('success')
+    expect(availabilityRateTier((AVAILABILITY_SUCCESS_MIN_100 - 0.1) / 100)).toBe('warning')
+    expect(availabilityRateTier(0)).toBe('danger')
   })
 })
 

@@ -10,6 +10,7 @@
 //   MarkLineComponent-> series[].markLine (suite-version break markers)
 //   MarkAreaComponent-> series[].markArea (probe failure windows,
 //                       ProbeLatencyChart)
+//   VisualMapComponent-> visualMap (piecewise tier coloring, HeroTrendChart)
 //   CanvasRenderer   -> default renderer for echarts.init
 // Full `import 'echarts'` would pull ~1MB into the bundle; keep this list in
 // sync with the components' setOption configs when adding chart features.
@@ -21,6 +22,7 @@ import {
   LegendComponent,
   MarkLineComponent,
   MarkAreaComponent,
+  VisualMapComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
@@ -31,6 +33,7 @@ echarts.use([
   LegendComponent,
   MarkLineComponent,
   MarkAreaComponent,
+  VisualMapComponent,
   CanvasRenderer,
 ])
 

@@ -17,15 +17,16 @@ import { toDisplayStatus } from '@/utils/statusDisplay'
 
 // --- Hero wording ---------------------------------------------------------
 
-// Day-over-day delta wording: 「较昨日 +1.2%」 / 「较昨日 -0.8%」 /
-// 「较昨日持平」; null → '' (the hero hides the delta line entirely).
-// The delta is a difference of two 0~1 ratios, rendered in percentage
-// points with one decimal.
+// Day-over-day delta wording (GH #129: arrow + 「相比昨日」): the arrow
+// carries the direction and the number is unsigned — 「↑ 1.2% 相比昨日」 /
+// 「↓ 0.8% 相比昨日」 / 「相比昨日持平」; null → '' (the hero hides the
+// delta line entirely). The delta is a difference of two 0~1 ratios,
+// rendered in percentage points with one decimal.
 export function healthDeltaText(delta: number | null): string {
   if (delta === null || delta === undefined) return ''
   const points = delta * 100
-  if (Math.abs(points) < 0.05) return '较昨日持平'
-  return `较昨日 ${points > 0 ? '+' : ''}${points.toFixed(1)}%`
+  if (Math.abs(points) < 0.05) return '相比昨日持平'
+  return `${points > 0 ? '↑' : '↓'} ${Math.abs(points).toFixed(1)}% 相比昨日`
 }
 
 // Tone of the delta line: an availability gain is good (success), a loss is
@@ -56,6 +57,58 @@ export function hourlyAvailabilitySeries(dots: OverviewDot[]): (number | null)[]
 // Hourly probe totals (request-volume sparkline).
 export function hourlyProbeSeries(dots: OverviewDot[]): number[] {
   return dots.map(d => d.total)
+}
+
+// --- Hero 24h trend chart (GH #129) -----------------------------------------
+
+// Registered three-tier availability caliber on the chart's 0–100 display
+// scale (ui-guidelines §3 segmented-strip tiers, carried into the v2 hero):
+// ≥95 success, below warning, exactly 0 (probes existed, ALL failed) danger.
+// The 0~1 sibling lives in availabilityRateTier below — the two scales are
+// the same caliber and must move together; no new thresholds are invented.
+export const AVAILABILITY_SUCCESS_MIN_100 = 95
+
+export interface HeroTrendSeries {
+  categories: string[] // local "HH:00" labels, oldest hour first
+  values: (number | null)[] // hourly availability on the 0–100 display scale
+}
+
+// Series derivation for the hero trend chart: the same probe-weighted
+// hourly caliber as hourlyAvailabilitySeries, lifted to the 0–100 display
+// scale and paired with axis labels. A no-probe hour stays null — the line
+// breaks there (GH #56 honesty discipline), it is never bridged or zeroed.
+export function heroTrendSeries(dots: OverviewDot[]): HeroTrendSeries {
+  return {
+    categories: dots.map(d => hourLabel(d.bucket_start)),
+    values: hourlyAvailabilitySeries(dots).map(v => (v === null ? null : v * 100)),
+  }
+}
+
+// Local "HH:00" label of one bucket; an empty/unparseable bucket_start
+// yields an empty label (aggregateDots24h registers that an empty entry set
+// has no bucket_start at all).
+function hourLabel(bucketStart: string): string {
+  if (!bucketStart) return ''
+  const date = new Date(bucketStart)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:00`
+}
+
+// Piecewise-visualMap pieces for the hero trend chart: the display-scale
+// mirror of AVAILABILITY_SUCCESS_MIN_100. Exactly 0 lands in the danger
+// piece (a no-probe hour is null and never reaches the pieces); everything
+// below 95 is the warning band. Colors come from the chartColors mirror —
+// this function carries no color literals.
+export function availabilityTierPieces(colors: {
+  success: string
+  warning: string
+  danger: string
+}): { max?: number; gt?: number; lt?: number; gte?: number; color: string }[] {
+  return [
+    { max: 0, color: colors.danger },
+    { gt: 0, lt: AVAILABILITY_SUCCESS_MIN_100, color: colors.warning },
+    { gte: AVAILABILITY_SUCCESS_MIN_100, color: colors.success },
+  ]
 }
 
 // Hourly failure counts (abnormal-widget sparkline — the global "几点开始
