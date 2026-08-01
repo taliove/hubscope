@@ -1,15 +1,16 @@
 <template>
   <!-- Model status list (GH #115, spec 0018 §8; GH #131 reference-design
-       enhancements): the advanced list that replaces the EndpointCard
-       matrix. The model NAME is the first hierarchy (vendor chip + md/600
-       ink, middle-truncated, hover shows the full name); every metric is
-       auxiliary. Rows arrive availability-ranked from the parent
-       (sortEntriesByAvailability — the「(按可用率排序)」headline note must
-       be literally true), so the weakest models lead the first viewport.
-       GH #131 cells: availability = number + inline constant-scale tier bar;
-       trend = per-row latency sparkline tinted by display state (the 24h
-       micro dot strip retired from this column — its time shape survives in
-       the detail panel and the share material). -->
+       enhancements; GH #136 seven fixes): the advanced list that replaced
+       the EndpointCard matrix. The model NAME is the first hierarchy
+       (md/600 ink, middle-truncated, hover shows the full name); every
+       metric is auxiliary. GH #136: the name/availability/p95 column
+       headers are CLICKABLE sort buttons (the parent owns the sort state,
+       persisted to localStorage) — the active column carries an ↑/↓
+       indicator; the vendor column renders the uniform brand TILE instead
+       of the family text (title carries the full name); the availability
+       cell is number-left + bar-right inline; the action cell is a bare
+       chevron. The default ordering is availability DESC — the GH #136
+       user ruling that overturned GH #131's「weakest first」default. -->
   <div class="model-list">
     <section v-for="section in sections" :key="section.key ?? '__flat__'" class="list-section">
       <header v-if="section.key !== null" class="section-header">
@@ -18,11 +19,35 @@
       </header>
 
       <div class="list-head list-grid">
-        <span>模型</span>
-        <span>供应商</span>
+        <button
+          type="button"
+          class="col-sort"
+          :class="{ 'is-active': sort.key === 'name' }"
+          :aria-label="`按模型名称排序${sort.key === 'name' ? (sort.dir === 'desc' ? ',当前降序' : ',当前升序') : ''}`"
+          @click="emit('sort', 'name')"
+        >
+          模型<span v-if="sort.key === 'name'" class="sort-arrow" aria-hidden="true">{{ sort.dir === 'desc' ? '↓' : '↑' }}</span>
+        </button>
+        <span class="col-vendor">供应商</span>
         <span>状态</span>
-        <span>24h 可用率</span>
-        <span>P95 延迟</span>
+        <button
+          type="button"
+          class="col-sort"
+          :class="{ 'is-active': sort.key === 'rate' }"
+          :aria-label="`按 24h 可用率排序${sort.key === 'rate' ? (sort.dir === 'desc' ? ',当前降序' : ',当前升序') : ''}`"
+          @click="emit('sort', 'rate')"
+        >
+          24h 可用率<span v-if="sort.key === 'rate'" class="sort-arrow" aria-hidden="true">{{ sort.dir === 'desc' ? '↓' : '↑' }}</span>
+        </button>
+        <button
+          type="button"
+          class="col-sort"
+          :class="{ 'is-active': sort.key === 'p95' }"
+          :aria-label="`按 P95 延迟排序${sort.key === 'p95' ? (sort.dir === 'desc' ? ',当前降序' : ',当前升序') : ''}`"
+          @click="emit('sort', 'p95')"
+        >
+          P95 延迟<span v-if="sort.key === 'p95'" class="sort-arrow" aria-hidden="true">{{ sort.dir === 'desc' ? '↓' : '↑' }}</span>
+        </button>
         <span>24h 趋势</span>
         <span class="col-action">操作</span>
       </div>
@@ -40,27 +65,6 @@
         @keydown.space.prevent="emit('open', entry)"
       >
         <span class="cell-name">
-          <!-- Vendor chip (GH #131 + reference replica part 2): the real
-               vendor SVG mark when the family maps (vendorIcon.ts single
-               source, brand colors are exempt external assets); unknown
-               vendors fall back to the neutral initials chip. Mapped chips
-               drop the soft ground — the mark stands alone per the
-               reference. The full family name sits one column over. -->
-          <span
-            class="vendor-chip"
-            :class="{ 'has-icon': vendorIcon(entry.family) }"
-            :title="entry.family"
-          >
-            <svg
-              v-if="vendorIcon(entry.family)"
-              viewBox="0 0 24 24"
-              role="img"
-              :aria-label="entry.family"
-            >
-              <path :d="vendorIcon(entry.family)!.path" :fill="vendorIcon(entry.family)!.color" />
-            </svg>
-            <template v-else>{{ familyInitials(entry.family) }}</template>
-          </span>
           <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
             <span class="name-text">
               <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
@@ -69,16 +73,46 @@
           </el-tooltip>
           <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
         </span>
-        <span class="cell-family" :title="entry.family">{{ entry.family }}</span>
+        <span class="cell-vendor">
+          <!-- Uniform vendor tile (GH #136): every known vendor renders the
+               same 26x26 silhouette — solid brand ground + white glyph
+               (vendorIcon.ts single source, multi-path marks like kimi
+               carry per-path fills); unknown vendors fall back to the
+               neutral initials tile. The family TEXT retired from this
+               column — the tile's title carries the full name. -->
+          <span
+            class="vendor-tile"
+            :class="{ 'has-icon': vendorIcon(entry.family) }"
+            :style="vendorIcon(entry.family) ? { background: vendorIcon(entry.family)!.tile } : undefined"
+            :title="entry.family"
+          >
+            <svg
+              v-if="vendorIcon(entry.family)"
+              viewBox="0 0 24 24"
+              role="img"
+              :aria-label="entry.family"
+            >
+              <path
+                v-for="(p, i) in vendorIcon(entry.family)!.paths"
+                :key="i"
+                :d="p.d"
+                :fill="p.fill"
+              />
+            </svg>
+            <template v-else>{{ familyInitials(entry.family) }}</template>
+          </span>
+        </span>
         <span class="cell-status">
           <StatusBadge :status="entry.status" :causes="entry.degrade_causes" :reason="entry.status_reason" />
         </span>
         <span class="cell-rate" :class="`tier-${availabilityRateTier(entry.success_rate_24h)}`">
+          <!-- Number LEFT + bar RIGHT (GH #136): the tier-colored number
+               leads, the constant-scale (0–100) bar fills the remaining
+               column width on the same line. Track bg-hover, fill the
+               tier's GRAPHIC-grade token (text keeps the *-text grade —
+               the graphic/text division). No data = empty gray track
+               +「-」. No animation (GH #131: bars stay still). -->
           <span class="rate-value">{{ formatPercent(entry.success_rate_24h) }}</span>
-          <!-- Inline constant-scale (0–100) tier bar: track bg-hover, fill
-               the tier's GRAPHIC-grade token (text keeps the *-text grade —
-               the graphic/text division). No data = empty gray track +「-」.
-               No animation (GH #131: bars and sparklines stay still). -->
           <span class="rate-bar" aria-hidden="true">
             <span class="rate-fill" :style="{ width: `${availabilityBarWidth(entry.success_rate_24h)}%` }" />
           </span>
@@ -91,7 +125,29 @@
           />
         </span>
         <span class="cell-action">
-          <button type="button" class="detail-link" @click.stop="emit('open', entry)">详情</button>
+          <!-- Chevron affordance (GH #136): the「详情」text button retired —
+               a bare chevron-right carries the drill-down affordance; the
+               accessible name stays explicit. -->
+          <button
+            type="button"
+            class="detail-chevron"
+            aria-label="查看详情"
+            @click.stop="emit('open', entry)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
         </span>
       </div>
     </section>
@@ -108,6 +164,8 @@ import {
   entryLatencySeries,
   familyInitials,
   rowSparklineTone,
+  type ListSort,
+  type ListSortKey,
 } from '@/utils/modelList'
 import { vendorIcon } from '@/utils/vendorIcon'
 import { splitMiddle } from '@/utils/truncate'
@@ -123,8 +181,10 @@ export interface ListSection {
   entries: OverviewEntry[]
 }
 
-withDefaults(defineProps<{ sections: ListSection[] }>(), {})
-const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
+// The parent owns the sort state (persistence + the toolbar note); this
+// component only renders the indicator and reports header clicks.
+withDefaults(defineProps<{ sections: ListSection[]; sort: ListSort }>(), {})
+const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey] }>()
 </script>
 
 <style scoped>
@@ -153,12 +213,16 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   color: var(--hs-text-secondary);
 }
 /* Column template shared by the head and every row — alignment is a
-   construction property of the list, never per-row luck. The name column
-   flexes first; the trend sparkline keeps a readable floor. The rate
-   column (120px) carries the number + inline bar stack (GH #131). */
+   construction property of the list, never per-row luck. GH #136 cascade
+   (content-box, 1200px content lane, row padding 12px×2 → grid lane
+   1176px): fixed = vendor 44 + status 150 + rate 150 + p95 100 + action
+   40 = 484px; gaps = 6 × 12px (space-3) = 72px; flex remainder 1176 − 484
+   − 72 = 620px splits name 1.8fr ≈ 399 / trend 1fr ≈ 221 (floor 150).
+   Vendor shrank 120 → 44 (tile-only column), rate grew 120 → 150 (number
+   + inline bar), action shrank 56 → 40 (bare chevron). */
 .list-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) 120px 150px 120px 100px minmax(150px, 1fr) 56px;
+  grid-template-columns: minmax(0, 1.8fr) 44px 150px 150px 100px minmax(150px, 1fr) 40px;
   align-items: center;
   gap: var(--hs-space-3);
 }
@@ -167,6 +231,33 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
   border-bottom: 1px solid var(--hs-border);
+}
+/* Sortable column header (GH #136): a button reset onto the header text
+   style — the head spans and the buttons share one typographic lane. The
+   active column shows the direction arrow (brand); hover lifts the ink.
+   Vendor / status / trend / action stay plain spans (no total order). */
+.col-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hs-space-1);
+  justify-self: start;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.col-sort:hover {
+  color: var(--hs-text-primary);
+}
+.sort-arrow {
+  color: var(--hs-brand);
+  font-weight: 600;
+}
+.col-vendor {
+  overflow: hidden;
+  white-space: nowrap;
 }
 .col-action {
   text-align: right;
@@ -198,38 +289,6 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   gap: var(--hs-space-2);
   min-width: 0;
 }
-/* Vendor chip (GH #131): a fixed neutral square — the control-grade radius,
-   hover surface ground, secondary ink. */
-.vendor-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  /* GH #131 check LOW-1: a 3-char CJK family name (~36px) would otherwise
-     spill past the fixed box. */
-  overflow: hidden;
-  border-radius: var(--hs-radius-sm);
-  background: var(--hs-bg-hover);
-  color: var(--hs-text-secondary);
-  font-size: var(--hs-text-xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-/* Mapped vendor (reference replica part 2): the soft ground drops away and
-   the 16px brand mark stands alone. The primary-ink color only reaches
-   currentColor monochrome marks (openai) — explicit brand fills ignore it;
-   text-primary keeps the near-black mark visible on both themes. */
-.vendor-chip.has-icon {
-  background: transparent;
-  color: var(--hs-text-primary);
-}
-.vendor-chip.has-icon svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
 .name-text {
   display: flex;
   min-width: 0;
@@ -258,28 +317,58 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
-.cell-family {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-secondary);
+.cell-vendor {
+  min-width: 0;
+}
+/* Uniform vendor tile (GH #136): one fixed 26x26 square for EVERY vendor
+   — control-grade radius, neutral hover-surface ground + secondary
+   initials for unknown vendors. A 3-char CJK family name (~36px) would
+   otherwise spill past the fixed box (GH #131 check LOW-1). */
+.vendor-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-radius: var(--hs-radius-sm);
+  background: var(--hs-bg-hover);
+  color: var(--hs-text-secondary);
+  font-size: var(--hs-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* Known vendor: the ground is the inline brand tile color (vendorIcon.ts);
+   the 16px white glyph centers inside — the GH #134 transparent-ground
+   form retired with the uniform tile. */
+.vendor-tile.has-icon {
+  color: var(--hs-bg-card);
+}
+.vendor-tile.has-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 .cell-rate {
   display: flex;
-  flex-direction: column;
-  gap: var(--hs-space-1);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--hs-space-2);
   min-width: 0;
 }
 .rate-value {
+  flex: none;
   font-size: var(--hs-text-md);
   font-variant-numeric: tabular-nums;
 }
-/* Inline tier bar (GH #131): 0–100 constant scale, 4px fill over a
-   bg-hover track; the segmented-strip radius (radius-xs) marks it as a
-   time/scale bar element. The fill never transitions (GH #131: no bar
-   animation). */
+/* Inline tier bar (GH #131; GH #136 number-left + bar-right): 0–100
+   constant scale, 4px fill over a bg-hover track; the segmented-strip
+   radius (radius-xs) marks it as a time/scale bar element. The bar takes
+   the column width left over by the number (24px floor keeps it a bar,
+   not a dot). The fill never transitions (GH #131: no bar animation). */
 .rate-bar {
+  flex: 1 1 0;
+  min-width: 24px;
   display: block;
   height: 4px;
   border-radius: var(--hs-radius-xs);
@@ -330,15 +419,20 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
 .cell-action {
   text-align: right;
 }
-.detail-link {
+/* Chevron button (GH #136): secondary ink, brand on hover — a quiet
+   affordance, not a link. */
+.detail-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  padding: 0;
-  font-size: var(--hs-text-sm);
-  color: var(--hs-brand);
+  padding: var(--hs-space-1);
+  border-radius: var(--hs-radius-sm);
+  color: var(--hs-text-secondary);
   cursor: pointer;
 }
-.detail-link:hover {
-  color: var(--hs-brand-hover);
+.detail-chevron:hover {
+  color: var(--hs-brand);
 }
 </style>

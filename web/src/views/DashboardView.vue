@@ -42,16 +42,16 @@
       :skeleton="initialLoading"
     />
 
-    <!-- List toolbar (GH #131, reference design): the section title carries
-         the sort note (literally true — the rows are availability-ranked),
-         the filters right-align on the same row: keyword + vendor + display
-         status. The protocol filter and the grouping selector retire with
-         this ticket (the reference toolbar's composition); the list renders
-         the flat availability-ranked section. -->
+    <!-- List toolbar (GH #131, reference design; GH #136 sort rework): the
+         section title carries the sort note — DYNAMIC since GH #136, it
+         restates the current column ordering so the label stays literally
+         true after the user re-sorts (a label the data does not honor is
+         an anti-fake violation). The filters right-align on the same row:
+         keyword + vendor + display status. -->
     <div class="list-toolbar">
       <h2 class="list-heading">
         模型状态
-        <span class="list-note">（按可用率排序）</span>
+        <span class="list-note">{{ listSortNoteText }}</span>
       </h2>
       <div class="filter-row">
         <el-input
@@ -110,7 +110,13 @@
     </div>
 
     <template v-else>
-      <ModelStatusList v-if="listSections.some(s => s.entries.length > 0)" :sections="listSections" @open="openDetail" />
+      <ModelStatusList
+        v-if="listSections.some(s => s.entries.length > 0)"
+        :sections="listSections"
+        :sort="listSort"
+        @open="openDetail"
+        @sort="onListSort"
+      />
       <el-empty
         v-else-if="entries.length > 0"
         description="暂无匹配的 Endpoint"
@@ -142,9 +148,17 @@ import ModelDetailPanel from '@/components/ModelDetailPanel.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import RecentEvents from '@/components/RecentEvents.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
-import { sortEntriesByAvailability } from '@/utils/severitySort'
 import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
-import { familyOptions } from '@/utils/modelList'
+import {
+  familyOptions,
+  listSortNote,
+  loadListSort,
+  nextListSort,
+  saveListSort,
+  sortListEntries,
+  type ListSort,
+  type ListSortKey,
+} from '@/utils/modelList'
 import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
 import { aggregateDots24h } from '@/utils/overviewDots'
 import {
@@ -259,25 +273,41 @@ const vendorOptions = computed(() => familyOptions(entries.value))
 
 // Apply the three filters; an empty filter matches everything. The status
 // filter matches by DISPLAY state (toDisplayStatus), so 'incident' catches
-// down and failing entries together. The result is availability-ranked
-// (GH #131, sortEntriesByAvailability): the headline note 「(按可用率排序)」
-// is literally true — the weakest models lead the first viewport, a null
-// rate sinks below every rated row, disabled rows last.
+// down and failing entries together. The result is ranked by the ACTIVE
+// column sort (GH #136, sortListEntries): the default is availability DESC
+// — strongest first, the user ruling that overturned GH #131's
+//「weakest first」default; a null value sinks below every rated row and
+// disabled rows last under every key/direction.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  return sortEntriesByAvailability(
+  return sortListEntries(
     entries.value.filter(entry => {
       if (kw && !entry.model_id.toLowerCase().includes(kw)) return false
       if (familyFilter.value && entry.family !== familyFilter.value) return false
       if (statusFilter.value && toDisplayStatus(entry.status) !== statusFilter.value) return false
       return true
     }),
+    listSort.value,
   )
 })
 
+// Column sort state (GH #136): owned HERE, not inside the list — the
+// toolbar note must restate the current ordering, so the note owner holds
+// the state (the list stays presentational: sort prop in, click event
+// out). Initialized from localStorage (`hs:list-sort`, the `hs:dark`
+// family); every change persists best-effort.
+const listSort = ref<ListSort>(loadListSort())
+const listSortNoteText = computed(() => listSortNote(listSort.value))
+
+function onListSort(key: ListSortKey) {
+  listSort.value = nextListSort(listSort.value, key)
+  saveListSort(listSort.value)
+}
+
 // The reference toolbar retires the grouping selector (GH #131): the list
-// renders one flat availability-ranked section. ModelStatusList keeps its
-// section contract intact — grouping returns as a view-level change only.
+// renders one flat section ranked by the active column sort. ModelStatusList
+// keeps its section contract intact — grouping returns as a view-level
+// change only.
 const listSections = computed<ListSection[]>(() => [
   { key: null, label: '', meta: '', entries: filteredEntries.value },
 ])
