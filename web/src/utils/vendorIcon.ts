@@ -1,5 +1,5 @@
 // Vendor icon mapping (UI v2 reference replica, part 2; uniform-tile rework
-// GH #136): the model-list vendor column renders a uniform 26x26 brand tile
+// GH #136): the model-list NAME cell renders a uniform 26x26 brand tile (moved from the vendor column, GH #139)
 // — solid brand-color ground + white glyph — when the family maps to a known
 // vendor, else null and the caller falls back to the neutral initials tile
 // (familyInitials, GH #131). Centralized as the SINGLE SOURCE so no

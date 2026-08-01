@@ -15,6 +15,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - 全球约定见 PRODUCT.md(读者模型)与 DESIGN.md(令牌/轻容器/动效);业务语义(三态映射/防作假)见 ui-guidelines §3。
 
 ## 页面构成(自上而下)
+> **骨架底色(GH #139,2026-08-01 第四轮实机反馈):** 页面骨架底自白色回灰——App.vue main 区与 AppSidebar 同消费 `--hs-bg-subtle`,各区域(Hero / 指标格 / 列表容器 / 事件卡)= bg-card 白 tile + 1px 描边 + radius-lg 分层,AppTopbar 保持白面 + hairline;区间距统一 space-4 节奏(页头→Hero→指标→工具条→列表→事件)。
 1. **可见页头(2026-08-01 参照稿复刻批):** h1「状态概览」(3xl 页面标题档,600 primary)+ lede 一行「全局视角,掌握 AI 服务运行健康状态」(md secondary)——「页面 h1 = 侧边栏标签」惯例的 sr-only 例外随本批退役,可见 h1 直接承担 a11y 树,不重复。
 2. **StatusHero**(健康指数 hero 区)
 3. **MetricWidgets**(四格指标区)
@@ -27,11 +28,12 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 ## 组件规格
 
 ### StatusHero(健康指数区,GH #115)
-- **布局比例(2026-08-01 参照稿复刻批):** 左列(统计)定宽 320px 窄列(`flex: 0 0 320px`),右列(趋势图)`flex: 1 1 0` 占满余宽;级联算术(盒模型前提:本仓无全局 box-sizing reset,content-box):1200px 内容宽(max-width 1200,padding 不入内容宽)− 320 − 64(space-8 列距)→ 右列 816px,构造比例 320:816 ≈ 1:2.55(票面「约 1:3」容差内);meta「自动刷新」保持右上,列间距 space-8。
+- **白 tile 容器(GH #139):** bg-card + 1px 描边 + radius-lg,内 padding 24 纵 / 32 横(space-5/space-6),区间距 space-4;skeleton 与加载态同高锚定 242px(内容列 194 + 纵 padding 48,算术注释在组件内)。
+- **布局比例(2026-08-01 参照稿复刻批;GH #139 级联修订):** 左列(统计)定宽 320px 窄列(`flex: 0 0 320px`),右列(趋势图)`flex: 1 1 0` 占满余宽;级联算术(盒模型前提:本仓无全局 box-sizing reset,content-box):1200px 内容宽(max-width 1200,padding 不入内容宽)− 2(tile 描边)− 64(tile padding 32×2)= 1134 内道;1134 − 320 − 64(space-8 列距)→ 右列 750px,构造比例 320:750 ≈ 1:2.3(票面「约 1:3」容差内);meta「自动刷新」保持右上,列间距 space-8。
 - 构成:hero 72px/600 大数字(`--hs-text-hero`,tabular-nums,letter-spacing -0.02em)+ 次级「%」(2xl secondary)+ 右侧纵列:结论词(xl/600,tone *-text 阶)+ 日环比行(md,`较昨日 ±X.X%` / `较昨日持平`,tone 着色;null 整行不渲染)+ 统计范围(xs secondary,「统计范围:N 个启用端点」)。
 - 数据:`health_score_24h` / `health_score_delta` 后端聚合直渲(api-contract 健康指数节);结论词 `utils/healthConclusion.ts`(与物料同源):异常态「N 个端点异常」(down+failing 合并)、降级态「N 个端点降级」、全稳定「全部稳定运行」、空「暂无数据」(词表 GH #128)。
 - **防作假不变式:** null 健康指数 → 大数字位渲染中性「暂无数据」(3xl placeholder),永不显示 100%;null 折叠进 empty 分支,结论词与 tone 同归中性。
-- 数字补间 500–800ms(useTweenedNumber/numberTween.ts,600ms 中值 easeOutCubic,reduced-motion 立即落终值);skeleton 与加载态同高锚定(min-height 142px,算术注释在组件内)。
+- 数字补间 500–800ms(useTweenedNumber/numberTween.ts,600ms 中值 easeOutCubic,reduced-motion 立即落终值);skeleton 与加载态同高锚定(min-height 242px,见上条白 tile 容器)。
 
 ### MetricWidgets(指标区,GH #115)
 - 四格轻容器(grid 4 列 `minmax(0,1fr)`,gap space-4;hover 上浮 2px + shadow-md——卡片类):**24h 可用率**(3xl 大数字 + 副行日环比,与健康指数同口径同源;null 副行「较昨日暂无对比」)/ **24h 请求量**(大数字 + 副行「探测总次数」)/ **平均延迟**(大数字 + 副行恒注「启用端点 P50 均值」——批 59 scope 恒一致口径,`meanP50Ms`)/ **风险模型数**(大数字 + 副行「异常 N · 降级 N」或「全部稳定运行」;伞状标题不撞 incident 专属状态词「异常」,GH #128 裁决)。
@@ -40,8 +42,9 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - 核心数字补间(同 Hero);null 值显 placeholder 色;skeleton 四格同形。
 
 ### ModelStatusList(模型状态列表,GH #115;取代 EndpointCard 矩阵)
-- 列构成(共享 grid 模板 `minmax(0,1.8fr) 44px 150px 150px 100px minmax(150px,1fr) 40px`,表头与行同一模板,GH #136 重排):模型 / 供应商 / 状态 / 24h 可用率 / P95 延迟 / 24h 趋势 / 操作。
-- **模型名第一层级:** md/600 墨色,中间截断(splitMiddle tailKeep=12,头 ellipsis 尾保区分度后缀)+ el-tooltip 快显(show-after 200ms)全显;已停用行名弱化(secondary/400)+「已停用」xs placeholder 注。指标全部辅助层级(P95 sm regular tabular-nums、可用率 md tabular-nums `availabilityRateTier` *-text 阶,数字左进度条右同行,GH #136);**供应商列(GH #136)= 26×26 统一品牌色块瓦片(white glyph,未知回落字母瓦片,`utils/vendorIcon.ts` 单源),不渲染文本,`title` 兜底全名;名称格 vendor chip 随本列图标化退役(一行不重复两枚图标)。
+- **容器(GH #139):** 分区 = 白 tile(bg-card + 1px 描边 + radius-lg + space-2 内 padding,灰骨架底上分层;8px 内 padding 让行 hover 上浮留在 tile 内、末行去 hairline 由容器边收口)。
+- 列构成(共享 grid 模板 `minmax(0,1.8fr) 100px 150px 150px 100px minmax(150px,1fr) 40px`,表头与行同一模板,GH #139 重排):模型 / 供应商 / 状态 / 24h 可用率 / P95 延迟 / 24h 趋势 / 操作。
+- **模型名第一层级:** md/600 墨色,中间截断(splitMiddle tailKeep=12,头 ellipsis 尾保区分度后缀)+ el-tooltip 快显(show-after 200ms)全显;已停用行名弱化(secondary/400)+「已停用」xs placeholder 注。指标全部辅助层级(P95 sm regular tabular-nums、可用率 md tabular-nums `availabilityRateTier` *-text 阶,数字左进度条右同行,GH #136);**供应商瓦片回名称格(GH #139,参照稿:名称格 = 瓦片 + 模型 ID,供应商列 = 文本):** 26×26 统一品牌色块瓦片(white glyph,未知回落字母瓦片,`utils/vendorIcon.ts` 单源)内联于模型 ID 左侧,`title` 兜底全名;**供应商列恢复 family 文本**(sm secondary,截断 + title)——取代 GH #136「供应商列图标化、名称格 chip 退役」的处置,「一行不重复两枚图标」纪律以语义位交换形态存续。
 - 状态列 = StatusBadge sm + causes(唯一状态灯纪律不破);趋势列(GH #136)= TrendSparkline 行内 20px 道(行级延迟序列,按显示态着色 rowSparklineTone;UptimeMicroStrip 已随 GH #131 退役);操作列(GH #136)= chevron-right 裸按钮(lucide 18px,aria-label「查看详情」,@click.stop)。
 - **行交互:** 整行可点开 ModelDetailPanel(role="button" + tabindex="0" + Enter/Space + `data-endpoint-id` 焦点归还锚点);**行 hover 上浮 2px + shadow-md + 卡面底**(卡片类读感:radius-lg 圆角盒 + 12px padding;与 Leaderboard 矩阵行的表格读感豁免分属两侧,差异登记在 ui-guidelines 附录第 5 项);`:focus-visible` = 2px brand outline(offset 1px)。
 - **排序(GH #136 重写):** 列头点击排序(可排序键 = 名称/可用率/P95;`nextListSort` 状态机,新列首击优在前,再击翻向;`sortListEntries` 执行——桶序不随向:有值启用行 → 无数据启用行 → 已停用沉底,方向只作用桶内,同值 severity 秩回退);**默认 = 可用率降序(高在前,推翻 GH #131「差在前」)**;持久化 localStorage 键 `hs:list-sort`(坏值回落默认);副注动态化 `listSortNote`(如「(按可用率降序)」,标签与数据构造性一致);severitySort 仅余分区排序与 healthConclusion 消费;轮询/筛选驱动的重排不做动画(GH #52 纪律)。

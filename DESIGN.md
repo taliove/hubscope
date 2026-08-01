@@ -140,7 +140,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 - **Gray-800**(#3A3A3C):常规正文(11.35:1)。
 - **Gray-500**(#86868B):次文字锚点(3.62:1,简报值,与品牌色同类登记);次要说明、标签、辅助。
 - **Gray-400**(#A1A1A6):占位/禁用(2.57:1,非正文用途)。
-- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):浅底锚点(`--hs-bg-subtle`:白底之上的面板/轨道/预览衬底——2026-08-01 参照稿复刻批起页面底与卡面同为白色 #FFFFFF,原 gray-50 页面底语义由 bg-subtle 承接)、hover/轨道、描边——表面层由「page/card 白 + subtle 浅灰 + hover」构成,白面分层靠 1px 描边与浅灰面板。**hairline(border-light)= #E5E5EA**:介于 subtle 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
+- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):浅底锚点(`--hs-bg-subtle`:**页面骨架底**(GH #139,2026-08-01 第四轮实机反馈:骨架底自白色回灰——App.vue main 区与 AppSidebar 同底灰,各区域 = bg-card 白 tile + 1px 描边分层,AppTopbar 保持白面 + hairline;参照稿复刻批「页面底与卡面同白」的 P1 白化由本票在骨架层反转,白化仅在卡面层存续)+ 白底之上的面板/轨道/预览衬底——物料 hero panel/预览衬底/详情面板指标格的衬底语义不变)、hover/轨道、描边——表面层由「subtle 灰骨架 + card 白 tile + hover」构成,白面分层靠 1px 描边与浅灰骨架。**hairline(border-light)= #E5E5EA**:介于 subtle 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
 - **Gray-600**(#6E6E73):info 中性(5.07:1 过 AA)。
 
 ### Functional(三态语义,文字/图形双阶分工)
