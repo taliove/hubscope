@@ -40,10 +40,27 @@
         @keydown.space.prevent="emit('open', entry)"
       >
         <span class="cell-name">
-          <!-- Vendor chip (GH #131): neutral soft block + family initials;
-               no vendor color board, no real logo assets (registered
-               deviation). The full family name sits one column over. -->
-          <span class="vendor-chip" :title="entry.family">{{ familyInitials(entry.family) }}</span>
+          <!-- Vendor chip (GH #131 + reference replica part 2): the real
+               vendor SVG mark when the family maps (vendorIcon.ts single
+               source, brand colors are exempt external assets); unknown
+               vendors fall back to the neutral initials chip. Mapped chips
+               drop the soft ground — the mark stands alone per the
+               reference. The full family name sits one column over. -->
+          <span
+            class="vendor-chip"
+            :class="{ 'has-icon': vendorIcon(entry.family) }"
+            :title="entry.family"
+          >
+            <svg
+              v-if="vendorIcon(entry.family)"
+              viewBox="0 0 24 24"
+              role="img"
+              :aria-label="entry.family"
+            >
+              <path :d="vendorIcon(entry.family)!.path" :fill="vendorIcon(entry.family)!.color" />
+            </svg>
+            <template v-else>{{ familyInitials(entry.family) }}</template>
+          </span>
           <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
             <span class="name-text">
               <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
@@ -92,6 +109,7 @@ import {
   familyInitials,
   rowSparklineTone,
 } from '@/utils/modelList'
+import { vendorIcon } from '@/utils/vendorIcon'
 import { splitMiddle } from '@/utils/truncate'
 import type { OverviewEntry } from '@/api/types'
 
@@ -181,8 +199,7 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   min-width: 0;
 }
 /* Vendor chip (GH #131): a fixed neutral square — the control-grade radius,
-   hover surface ground, secondary ink. No vendor color board (registered
-   deviation); the initials alone carry the vendor hint. */
+   hover surface ground, secondary ink. */
 .vendor-chip {
   flex: none;
   display: inline-flex;
@@ -199,6 +216,19 @@ const emit = defineEmits<{ open: [entry: OverviewEntry] }>()
   font-size: var(--hs-text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+/* Mapped vendor (reference replica part 2): the soft ground drops away and
+   the 16px brand mark stands alone. The primary-ink color only reaches
+   currentColor monochrome marks (openai) — explicit brand fills ignore it;
+   text-primary keeps the near-black mark visible on both themes. */
+.vendor-chip.has-icon {
+  background: transparent;
+  color: var(--hs-text-primary);
+}
+.vendor-chip.has-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 .name-text {
   display: flex;

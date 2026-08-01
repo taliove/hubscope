@@ -55,6 +55,42 @@
         ],
         "createdAt": "2026-08-01T00:10:00.000Z",
         "reason": "BrandMark em 宿主字号(AppSidebar .brand-mark 24px,侧边栏品牌位),同 LoginView 40px/StatusCard 16/24/32px 既定豁免机制——图形标非文字字阶(GH #122 登记)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#D97757",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T00:30:00.000Z",
+        "reason": "Anthropic 官方品牌色,外部品牌资产豁免调色板纪律(BrandMark §2b 图形标识先例;票面已登记豁免)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#4E86F5",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T00:30:00.000Z",
+        "reason": "Google Gemini 参照稿品牌蓝,外部品牌资产豁免调色板纪律(BrandMark §2b 先例;票面已登记豁免)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#3C8CFF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T00:30:00.000Z",
+        "reason": "ByteDance 官方品牌蓝(doubao),外部品牌资产豁免调色板纪律(BrandMark §2b 先例;票面已登记豁免,取官方蓝弃参照稿红)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FF6A00",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T00:30:00.000Z",
+        "reason": "Alibaba Cloud 官方品牌橙(qwen),外部品牌资产豁免调色板纪律(BrandMark §2b 先例;票面已登记豁免)"
       }
     ]
   }
