@@ -26,6 +26,11 @@ export const SEVERITY_ORDER: EndpointStatus[] = ['failing', 'down', 'degraded', 
 // sinks below every enabled rank. A disabled endpoint is out of service by
 // admin choice; it must never compete for the first screen, and a disabled
 // down endpoint must never lift its group's rank.
+//
+// (GH #136: the model list's availability ordering moved to
+// utils/modelList.ts sortListEntries — multi-key, direction-aware. The
+// retired GH #131「weakest-first」fixed ordering became the rate-asc branch
+// there; this module keeps the severity rank table both consume.)
 export const DISABLED_RANK = 4
 
 // entryRank is the per-endpoint rank: disabled always DISABLED_RANK
@@ -59,33 +64,6 @@ export function sortEntriesBySeverity(entries: OverviewEntry[]): OverviewEntry[]
     const ra = entryRank(a)
     const rb = entryRank(b)
     if (ra !== rb) return ra - rb
-    return lex(a.model_id, b.model_id) || lex(a.protocol, b.protocol) || a.endpoint_id - b.endpoint_id
-  })
-}
-
-// sortEntriesByAvailability ranks the list LOWEST 24h availability first
-// (GH #131, reference-design list): the headline note 「(按可用率排序)」
-// must be literally true — a label the data does not honor is an anti-fake
-// violation. Buckets: rated enabled rows (ascending rate; ties fall back to
-// the severity rank so a failing 0% still leads a down 0%) → enabled rows
-// with a null rate (no probes in the window: no-data must never read as 0%
-// false alarm nor 100% false comfort) → disabled rows last (DISABLED_RANK
-// spirit). Final ties break by model_id → protocol → endpoint_id. Never
-// mutates the input.
-export function sortEntriesByAvailability(entries: OverviewEntry[]): OverviewEntry[] {
-  const bucket = (e: OverviewEntry) => (!e.enabled ? 2 : e.success_rate_24h === null ? 1 : 0)
-  return [...entries].sort((a, b) => {
-    const ba = bucket(a)
-    const bb = bucket(b)
-    if (ba !== bb) return ba - bb
-    if (ba === 0) {
-      const ra = a.success_rate_24h as number
-      const rb = b.success_rate_24h as number
-      if (ra !== rb) return ra - rb
-      const sa = entryRank(a)
-      const sb = entryRank(b)
-      if (sa !== sb) return sa - sb
-    }
     return lex(a.model_id, b.model_id) || lex(a.protocol, b.protocol) || a.endpoint_id - b.endpoint_id
   })
 }

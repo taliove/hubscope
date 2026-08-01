@@ -11,7 +11,6 @@ import {
   SEVERITY_RANK,
   entryRank,
   groupRank,
-  sortEntriesByAvailability,
   sortEntriesBySeverity,
   sortGroupSections,
   type GroupSection,
@@ -128,45 +127,6 @@ describe('sortEntriesBySeverity', () => {
     const entries = [makeEntry('b', 'healthy'), makeEntry('a', 'failing')]
     sortEntriesBySeverity(entries)
     expect(entries.map((e) => e.model_id)).toEqual(['b', 'a'])
-  })
-})
-
-describe('sortEntriesByAvailability', () => {
-  it('ranks the lowest 24h availability first', () => {
-    const sorted = sortEntriesByAvailability([
-      makeEntry('good', 'healthy', { success_rate_24h: 0.999 }),
-      makeEntry('bad', 'down', { success_rate_24h: 0.4 }),
-      makeEntry('mid', 'degraded', { success_rate_24h: 0.93 }),
-    ])
-    expect(sorted.map(e => e.model_id)).toEqual(['bad', 'mid', 'good'])
-  })
-
-  it('sinks a null rate below every rated row and disabled rows last', () => {
-    const sorted = sortEntriesByAvailability([
-      makeEntry('disabled', 'down', { enabled: false, success_rate_24h: 0 }),
-      makeEntry('nodata', 'healthy', { success_rate_24h: null }),
-      makeEntry('perfect', 'healthy', { success_rate_24h: 1 }),
-      makeEntry('zero', 'down', { success_rate_24h: 0 }),
-    ])
-    expect(sorted.map(e => e.model_id)).toEqual(['zero', 'perfect', 'nodata', 'disabled'])
-  })
-
-  it('breaks rate ties by the severity rank, then model_id', () => {
-    const sorted = sortEntriesByAvailability([
-      makeEntry('b-down', 'down', { success_rate_24h: 0 }),
-      makeEntry('a-failing', 'failing', { success_rate_24h: 0 }),
-      makeEntry('a-down', 'down', { success_rate_24h: 0 }),
-    ])
-    expect(sorted.map(e => e.model_id)).toEqual(['a-failing', 'a-down', 'b-down'])
-  })
-
-  it('never mutates the input array', () => {
-    const input = [
-      makeEntry('good', 'healthy', { success_rate_24h: 1 }),
-      makeEntry('bad', 'down', { success_rate_24h: 0.5 }),
-    ]
-    sortEntriesByAvailability(input)
-    expect(input.map(e => e.model_id)).toEqual(['good', 'bad'])
   })
 })
 
