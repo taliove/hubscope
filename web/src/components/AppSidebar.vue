@@ -58,7 +58,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
-import { Bell, Box, DataLine, Loading, Monitor, Setting, TrendCharts } from '@element-plus/icons-vue'
+import { Coin, CopyDocument, Document, Loading, Operation, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
@@ -74,14 +74,21 @@ const route = useRoute()
 const router = useRouter()
 
 // Line-icon per nav key (spec 0018: line icons + text); the key set mirrors
-// sidebarNav.ts one-to-one.
+// sidebarNav.ts one-to-one. Icon selection follows the reference design
+// (2026-08-01 user acceptance): dashboard = pulse/activity line (TrendCharts
+// is the closest EP zigzag — no true "Activity" icon exists in EP);
+// models = database cylinder (Coin); eval = stacked documents
+// (CopyDocument); benchmark = single document (Document); alerts = warning
+// triangle (Warning, line variant — never WarningFilled); settings =
+// sliders (Operation). Line weight and the low-presence secondary color /
+// active-brand mechanism are unchanged — only the glyphs change.
 const ICONS: Record<string, unknown> = {
-  dashboard: Monitor,
-  benchmark: TrendCharts,
-  eval: DataLine,
-  models: Box,
-  alerts: Bell,
-  settings: Setting,
+  dashboard: TrendCharts,
+  benchmark: Document,
+  eval: CopyDocument,
+  models: Coin,
+  alerts: Warning,
+  settings: Operation,
 }
 
 // Local session identity; `user` is null when unauthenticated and every

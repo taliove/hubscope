@@ -117,7 +117,10 @@ const metaText = computed(
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
-  flex: 0 0 auto;
+  /* Fixed narrow stats column (reference design ≈1:3): 320px of the
+     1200px content width (content-box, no global reset): 1200 − 320
+     − 64 (space-8 gap) = 816px ≈ 1:2.55; the trend chart takes the rest. */
+  flex: 0 0 320px;
   min-width: 0;
 }
 .hero-label {
@@ -196,11 +199,11 @@ const metaText = computed(
 .tone-neutral {
   color: var(--hs-text-secondary);
 }
-/* Right column: the trend chart takes the majority of the hero width
-   (reference design ≈ 55–60%); the refresh meta sits top-right above it. */
+/* Right column: the trend chart flex-fills everything the fixed 320px
+   stats column leaves (≈68% of the hero width at 1200px content); the
+   refresh meta sits top-right above it. */
 .hero-right {
   flex: 1 1 0;
-  max-width: 60%;
   min-width: 0;
   display: flex;
   flex-direction: column;

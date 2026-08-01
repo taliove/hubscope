@@ -1,8 +1,13 @@
 <template>
   <div class="dashboard">
-    <!-- Semantic page heading (a11y): screen readers get a real h1;
-         visually hidden — zero visual change. -->
-    <h1 class="visually-hidden">HubScope 服务状态总览</h1>
+    <!-- Visible page header (2026-08-01, reference-design replica): the h1
+         follows the 「页面 h1 = 侧边栏标签」 convention — the old sr-only
+         exception retires with this ticket; the visible heading carries the
+         a11y tree, no duplicate. -->
+    <header class="page-header">
+      <h1 class="page-title">状态概览</h1>
+      <p class="page-lede">全局视角，掌握 AI 服务运行健康状态</p>
+    </header>
 
     <!-- Hero (GH #115, spec 0018 §6; GH #129: reference-design composition —
          label above the figure, soft conclusion chip, arrowed delta, refresh
@@ -327,19 +332,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Visually hidden but present for assistive tech (standard sr-only pattern;
-   never display:none — that would drop it from the a11y tree). */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+/* Visible page header (reference design): h1 at the 3xl page-title tier +
+   a one-line lede (md secondary). Replaces the old sr-only h1 — the visible
+   heading serves the a11y tree directly. */
+.page-header {
+  margin-bottom: var(--hs-space-2);
+}
+.page-title {
+  margin: 0;
+  font-size: var(--hs-text-3xl);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+}
+.page-lede {
+  margin: var(--hs-space-1) 0 0;
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-secondary);
 }
 .dashboard {
   max-width: 1200px;

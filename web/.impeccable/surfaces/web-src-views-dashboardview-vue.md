@@ -15,7 +15,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - 全球约定见 PRODUCT.md(读者模型)与 DESIGN.md(令牌/轻容器/动效);业务语义(三态映射/防作假)见 ui-guidelines §3。
 
 ## 页面构成(自上而下)
-1. **视觉隐藏 h1**「HubScope 服务状态总览」(sr-only 模式,a11y 语义位;页面视觉层级由 Hero 承担——本页是「页面 h1 = 侧边栏标签」惯例的唯一例外,登记:Hero 大数字是第一视觉锚点,标题词会让位,隐藏 h1 保 a11y 树)。
+1. **可见页头(2026-08-01 参照稿复刻批):** h1「状态概览」(3xl 页面标题档,600 primary)+ lede 一行「全局视角,掌握 AI 服务运行健康状态」(md secondary)——「页面 h1 = 侧边栏标签」惯例的 sr-only 例外随本批退役,可见 h1 直接承担 a11y 树,不重复。
 2. **StatusHero**(健康指数 hero 区)
 3. **MetricWidgets**(四格指标区)
 4. **筛选工具条**(关键词 / 协议 / 状态(三态)/ 分组 + 「分享状态」主按钮)
@@ -26,6 +26,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 ## 组件规格
 
 ### StatusHero(健康指数区,GH #115)
+- **布局比例(2026-08-01 参照稿复刻批):** 左列(统计)定宽 320px 窄列(`flex: 0 0 320px`),右列(趋势图)`flex: 1 1 0` 占满余宽;级联算术(盒模型前提:本仓无全局 box-sizing reset,content-box):1200px 内容宽(max-width 1200,padding 不入内容宽)− 320 − 64(space-8 列距)→ 右列 816px,构造比例 320:816 ≈ 1:2.55(票面「约 1:3」容差内);meta「自动刷新」保持右上,列间距 space-8。
 - 构成:hero 72px/600 大数字(`--hs-text-hero`,tabular-nums,letter-spacing -0.02em)+ 次级「%」(2xl secondary)+ 右侧纵列:结论词(xl/600,tone *-text 阶)+ 日环比行(md,`较昨日 ±X.X%` / `较昨日持平`,tone 着色;null 整行不渲染)+ 统计范围(xs secondary,「统计范围:N 个启用端点」)。
 - 数据:`health_score_24h` / `health_score_delta` 后端聚合直渲(api-contract 健康指数节);结论词 `utils/healthConclusion.ts`(与物料同源):异常态「N 个端点异常」(down+failing 合并)、降级态「N 个端点降级」、全稳定「全部稳定运行」、空「暂无数据」(词表 GH #128)。
 - **防作假不变式:** null 健康指数 → 大数字位渲染中性「暂无数据」(3xl placeholder),永不显示 100%;null 折叠进 empty 分支,结论词与 tone 同归中性。
@@ -65,7 +66,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - **statusFilter 单一来源:** 状态下拉是唯一状态筛选入口(旧 hero 计数行双控随信号墙退役)。
 
 ## 可访问性
-- 视觉隐藏 h1(见页面构成);列表行键盘可达(Enter/Space + focus ring);面板 aria-modal + focus trap + 焦点归还;tooltip 不拦事件不进 tab 序。
+- 可见页头 h1 承担 a11y 语义位(见页面构成);列表行键盘可达(Enter/Space + focus ring);面板 aria-modal + focus trap + 焦点归还;tooltip 不拦事件不进 tab 序。
 - **reduced-motion:** 全局 transition 归零(semantics.css)+ 补间/图表 JS 门控(numberTween/chartMotion)+ 批次图标旋转组件级门控(AppSidebar)。
 
 ## 退役登记(旧世界组件,防复活)
