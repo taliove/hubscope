@@ -185,7 +185,7 @@ function scoreClass(score: number | null): string {
   word-break: break-word;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-primary);
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   border-radius: var(--hs-radius-sm);
   padding: 8px;
 }

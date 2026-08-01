@@ -14,8 +14,9 @@ colors:
   danger: "#ff3b30"
   danger-text: "#d70015"
   info: "#6e6e73"
-  page-bg: "#f5f5f7"
+  page-bg: "#ffffff"
   surface: "#ffffff"
+  surface-subtle: "#f5f5f7"
   surface-hover: "#e8e8ed"
   text-primary: "#1d1d1f"
   text-regular: "#3a3a3c"
@@ -139,7 +140,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 - **Gray-800**(#3A3A3C):常规正文(11.35:1)。
 - **Gray-500**(#86868B):次文字锚点(3.62:1,简报值,与品牌色同类登记);次要说明、标签、辅助。
 - **Gray-400**(#A1A1A6):占位/禁用(2.57:1,非正文用途)。
-- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):页面底锚点、hover/轨道、描边——表面三层(page↔card↔hover 两两可分辨)。**hairline(border-light)= #E5E5EA**:介于 page 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
+- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):浅底锚点(`--hs-bg-subtle`:白底之上的面板/轨道/预览衬底——2026-08-01 参照稿复刻批起页面底与卡面同为白色 #FFFFFF,原 gray-50 页面底语义由 bg-subtle 承接)、hover/轨道、描边——表面层由「page/card 白 + subtle 浅灰 + hover」构成,白面分层靠 1px 描边与浅灰面板。**hairline(border-light)= #E5E5EA**:介于 subtle 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
 - **Gray-600**(#6E6E73):info 中性(5.07:1 过 AA)。
 
 ### Functional(三态语义,文字/图形双阶分工)

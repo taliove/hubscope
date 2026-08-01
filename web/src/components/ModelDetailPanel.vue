@@ -341,7 +341,7 @@ function openFullDetail() {
   flex-direction: column;
   gap: var(--hs-space-1);
   padding: var(--hs-space-3);
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   border-radius: var(--hs-radius-lg);
 }
 .metric-label {

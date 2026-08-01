@@ -47,7 +47,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 
 ## 完整版构成(720,GH #121 现状)
 
-自上而下八区(沿置,字排按上节):① 品牌区(padding 16px 40px;BrandMark 32 / Wordmark xl 20 / 标题 3xl 32);② 范围行 chips(无筛选纯文本「全部端点」;有筛选逐项 chips,状态 chip 值 *-text 阶着色);③ hero panel(`--hs-bg-page` 中性浅底 + radius-lg + padding 16px 20px,左右两列 + 1px hairline 竖分隔:左列可用率 hero 72 大数字 + verdict + failing chip + 三段分布串,右列平均延迟 xl/600 墨色);④ 24h 分段可用率条(24 格填满式、格高 16px、radius-xs、2px 间距,三档着色 + 无数据灰,条下轴标「24 小时前 / 现在」);⑤ 异常明细(封顶 10 条,严重度排序,三段式行:状态词 *-text/600 + 模型·协议 + 单端点可用率;status_reason 两行截断;单端点 24h 打点条格高 8px 无轴标;overflow 收尾「另有 N 个异常端点未列出,详见状态板」);⑥ 正常端点名单区(GH #92 沿置,见下节);⑦ 一句话总结(`summaryText`/`singleModelSummaryText` 纯函数,优先级命中即止;不得掩盖异常);⑧ 页脚(hairline,左「生成于 YYYY-MM-DD HH:mm」+「另有 N 个已停用」,右 location.origin,xs placeholder)。空态:chips 保留、hero panel 中性灰底 + 可用率 `-`、分布串与 verdict 不渲染、不渲染总结与名单区。
+自上而下八区(沿置,字排按上节):① 品牌区(padding 16px 40px;BrandMark 32 / Wordmark xl 20 / 标题 3xl 32);② 范围行 chips(无筛选纯文本「全部端点」;有筛选逐项 chips,状态 chip 值 *-text 阶着色);③ hero panel(`--hs-bg-subtle` 中性浅底(2026-08-01 复刻批:原 `--hs-bg-page` 语义随页面底白化迁移,gray-50 值不变,物料渲染逐像素不变)+ radius-lg + padding 16px 20px,左右两列 + 1px hairline 竖分隔:左列可用率 hero 72 大数字 + verdict + failing chip + 三段分布串,右列平均延迟 xl/600 墨色);④ 24h 分段可用率条(24 格填满式、格高 16px、radius-xs、2px 间距,三档着色 + 无数据灰,条下轴标「24 小时前 / 现在」);⑤ 异常明细(封顶 10 条,严重度排序,三段式行:状态词 *-text/600 + 模型·协议 + 单端点可用率;status_reason 两行截断;单端点 24h 打点条格高 8px 无轴标;overflow 收尾「另有 N 个异常端点未列出,详见状态板」);⑥ 正常端点名单区(GH #92 沿置,见下节);⑦ 一句话总结(`summaryText`/`singleModelSummaryText` 纯函数,优先级命中即止;不得掩盖异常);⑧ 页脚(hairline,左「生成于 YYYY-MM-DD HH:mm」+「另有 N 个已停用」,右 location.origin,xs placeholder)。空态:chips 保留、hero panel 中性灰底 + 可用率 `-`、分布串与 verdict 不渲染、不渲染总结与名单区。
 
 **单模型模式(完整版):** 判定 `entries.length === 1 && hubName 非空`;范围区三枚 chips(模型/协议/Hub);hero panel 走 StatusCardSingleModelMetrics(可用率 hero 大数字 + 单状态陈述行 `singleModelStatement` + failing chip|评估区:总分 + suite tags 封顶 6);明细区单条三段式照常;名单区不渲染;全正常陈述「当前状态正常」。
 
@@ -80,7 +80,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 ## 分享弹窗响应式(GH #94/#95,沿置)
 
 - **断点:** 全站唯一 768px(`(max-width: 767px)`)。
-- **弹窗宽度:** `min(752px, 94vw)`;预览衬底 `--hs-bg-page` + space-4 内边距 + radius-lg;预览物料 `transform: scale(s)`,`s = min(1, 可用宽 / 外盒)`——可用宽 = dialog 内容宽 − 衬底 padding×2(`getComputedStyle` 实测扣除,GH #95 级联修复);容器显式高度 = 自然高 × s。
+- **弹窗宽度:** `min(752px, 94vw)`;预览衬底 `--hs-bg-subtle`(2026-08-01 复刻批:原 `--hs-bg-page` 语义随页面底白化迁移,值不变)+ space-4 内边距 + radius-lg;预览物料 `transform: scale(s)`,`s = min(1, 可用宽 / 外盒)`——可用宽 = dialog 内容宽 − 衬底 padding×2(`getComputedStyle` 实测扣除,GH #95 级联修复);容器显式高度 = 自然高 × s。
 - **捕获不受影响:** 导出走离屏双份 absolute -10000px,不吃 transform;恒亮主题(暗色后置期天然满足)。
 - **/report/:token 窄屏:** 榜单矩阵断点以下降级卡片式列表(算术证伪登记:最紧收敛 472 > 343;卡片式行保留前 3 名仪式、总分档色条、涨跌、ScoreCell `show-name` 维度格;排序入口收敛为工具条 el-select,降序唯一方向);进度网格模型列 96px、cell 词省略留点。打印不受断点影响。
 
