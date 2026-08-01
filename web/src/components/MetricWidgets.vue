@@ -3,19 +3,31 @@
        cells — title, core number, sub-line, light trendline. The scalars
        are backend aggregates rendered verbatim (the dashboard never
        derives); the sparklines are display-only trends from
-       utils/overviewMetrics. Core numbers tween between poll updates. -->
+       utils/overviewMetrics. Core numbers tween between poll updates.
+       Semantic lanes (GH #130, superseding the T5 neutral ruling):
+       availability=success / probes=brand / latency=warning / abnormal=
+       danger — carried by the sparkline tone and the top-right icon chip;
+       the core number itself stays ink. -->
   <section class="metric-widgets">
     <template v-if="!skeleton">
       <div v-for="w in widgets" :key="w.key" class="widget">
-        <span class="widget-title">{{ w.title }}</span>
+        <div class="widget-head">
+          <span class="widget-title">{{ w.title }}</span>
+          <span class="widget-chip" :class="`chip-${w.tone}`" aria-hidden="true">
+            <component :is="w.icon" class="widget-chip-icon" />
+          </span>
+        </div>
         <span class="widget-value" :class="{ 'is-null': w.value === null }">{{ w.display }}</span>
         <span class="widget-sub" :class="w.subTone ? `tone-${w.subTone}` : ''">{{ w.sub }}</span>
-        <TrendSparkline :values="w.series" />
+        <TrendSparkline :values="w.series" :tone="w.tone" />
       </div>
     </template>
     <template v-else>
       <div v-for="i in 4" :key="i" class="widget">
-        <span class="skel skel-title" />
+        <div class="widget-head">
+          <span class="skel skel-title" />
+          <span class="skel skel-chip" />
+        </div>
         <span class="skel skel-value" />
         <span class="skel skel-sub" />
         <span class="skel skel-spark" />
@@ -25,8 +37,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef, type Ref } from 'vue'
+import { computed, toRef, type Component, type Ref } from 'vue'
+import { Clock, Histogram, TrendCharts, Warning } from '@element-plus/icons-vue'
 import TrendSparkline from '@/components/TrendSparkline.vue'
+import type { SparklineTone } from '@/components/TrendSparkline.vue'
 import { useTweenedNumber } from '@/composables/useTweenedNumber'
 import { formatCount, formatMs, formatPercent } from '@/utils/format'
 import { healthDeltaText, healthDeltaTone } from '@/utils/overviewMetrics'
@@ -66,6 +80,10 @@ interface Widget {
   display: string
   sub: string
   subTone: 'success' | 'danger' | 'neutral' | null
+  // Semantic lane (GH #130): tints the sparkline and the icon chip; the core
+  // number itself always stays ink (coloring is carried by trend + icon).
+  tone: Exclude<SparklineTone, 'neutral'>
+  icon: Component
   series: (number | null)[]
 }
 
@@ -79,8 +97,10 @@ const widgets = computed<Widget[]>(() => {
       display: formatPercent(availabilityTween.value),
       // The availability delta IS the health delta (same backend caliber);
       // null hides the comparison rather than inventing a flat trend.
-      sub: delta || '较昨日暂无对比',
+      sub: delta || '相比昨日暂无对比',
       subTone: delta ? healthDeltaTone(props.delta) : null,
+      tone: 'success',
+      icon: TrendCharts,
       series: props.availabilitySeries,
     },
     {
@@ -90,6 +110,8 @@ const widgets = computed<Widget[]>(() => {
       display: formatCount(probesTween.value),
       sub: '探测总次数',
       subTone: null,
+      tone: 'brand',
+      icon: Histogram,
       series: props.probeSeries,
     },
     {
@@ -101,6 +123,8 @@ const widgets = computed<Widget[]>(() => {
       // mean (batch-59 registration) — never a second derivation.
       sub: '启用端点 P50 均值',
       subTone: null,
+      tone: 'warning',
+      icon: Clock,
       series: props.latencySeries,
     },
     {
@@ -113,6 +137,8 @@ const widgets = computed<Widget[]>(() => {
           ? `全部${statusLabel('stable')}`
           : `${statusLabel('incident')} ${props.abnormal.incident} · ${statusLabel('degraded')} ${props.abnormal.degraded}`,
       subTone: props.abnormal.total === 0 ? 'neutral' : props.abnormal.incident > 0 ? 'danger' : 'neutral',
+      tone: 'danger',
+      icon: Warning,
       series: props.failureSeries,
     },
   ]
@@ -147,6 +173,44 @@ const widgets = computed<Widget[]>(() => {
 .widget-title {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
+}
+/* Title row carries the semantic icon chip top-right (GH #130): a 36px
+   rounded square on the functional soft tint, icon in the functional base
+   color (graphic tier). Decorative only — aria-hidden. */
+.widget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hs-space-2);
+}
+.widget-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--hs-radius-sm);
+}
+.widget-chip-icon {
+  width: 18px;
+  height: 18px;
+}
+.chip-success {
+  background: var(--hs-success-soft);
+  color: var(--hs-success);
+}
+.chip-brand {
+  background: var(--hs-brand-soft);
+  color: var(--hs-brand);
+}
+.chip-warning {
+  background: var(--hs-warning-soft);
+  color: var(--hs-warning);
+}
+.chip-danger {
+  background: var(--hs-danger-soft);
+  color: var(--hs-danger);
 }
 .widget-value {
   font-size: var(--hs-text-3xl);
@@ -185,6 +249,11 @@ const widgets = computed<Widget[]>(() => {
 .skel-sub {
   width: 120px;
   height: 12px;
+}
+.skel-chip {
+  width: 36px;
+  height: 36px;
+  flex: none;
 }
 .skel-spark {
   width: 100%;

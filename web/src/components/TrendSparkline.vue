@@ -1,10 +1,15 @@
 <template>
   <!-- Trend sparkline (GH #115, spec 0018 图表纪律): a light auxiliary line
        for the metric widgets — monotone interpolation (never invents
-       extrema), null breaks, no axes, no grid. Neutral ink by design: the
-       trendline must never compete with the widget's core number. -->
+       extrema), null breaks, no axes, no grid. `tone` (GH #130, user ruling
+       2026-08-01, superseding the T5 neutral-ink ruling): neutral keeps the
+       original low-key ink; semantic tones tint line + area with the
+       functional color (area at low opacity) so each widget reads its own
+       semantic lane. The core number stays ink — the trendline must never
+       compete with it. -->
   <svg
     class="trend-sparkline"
+    :class="tone !== 'neutral' ? `tone-${tone}` : ''"
     :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
     preserveAspectRatio="none"
     aria-hidden="true"
@@ -33,7 +38,15 @@
 import { computed } from 'vue'
 import { smoothSeries } from '@/utils/monotoneSmooth'
 
-const props = withDefaults(defineProps<{ values: (number | null)[] }>(), {})
+// Semantic lane of the sparkline (GH #130): neutral (default, original ink)
+// keeps every other consumer unchanged; the four widget lanes consume the
+// functional-color base (graphic tier, 3:1 — never the *-text steps).
+export type SparklineTone = 'neutral' | 'success' | 'brand' | 'warning' | 'danger'
+
+const props = withDefaults(
+  defineProps<{ values: (number | null)[]; tone?: SparklineTone }>(),
+  { tone: 'neutral' },
+)
 
 // Fixed internal coordinate system; the host stretches the SVG via CSS.
 // Non-uniform scaling is acceptable here (no x-alignment invariant — the
@@ -108,6 +121,37 @@ const paths = computed<RunPath[]>(() => {
 .spark-area {
   fill: var(--hs-bg-hover);
   stroke: none;
+}
+/* Semantic tones (GH #130): the line takes the functional base color; the
+   area is the same color at low opacity (0.15, inside the 0.12–0.2 band)
+   via fill-opacity — no extra tint tokens needed. */
+.tone-success .spark-line {
+  stroke: var(--hs-success);
+}
+.tone-success .spark-area {
+  fill: var(--hs-success);
+  fill-opacity: 0.15;
+}
+.tone-brand .spark-line {
+  stroke: var(--hs-brand);
+}
+.tone-brand .spark-area {
+  fill: var(--hs-brand);
+  fill-opacity: 0.15;
+}
+.tone-warning .spark-line {
+  stroke: var(--hs-warning);
+}
+.tone-warning .spark-area {
+  fill: var(--hs-warning);
+  fill-opacity: 0.15;
+}
+.tone-danger .spark-line {
+  stroke: var(--hs-danger);
+}
+.tone-danger .spark-area {
+  fill: var(--hs-danger);
+  fill-opacity: 0.15;
 }
 .spark-empty {
   stroke: var(--hs-border);
