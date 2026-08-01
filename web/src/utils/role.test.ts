@@ -1,9 +1,10 @@
 // Unit tests for the role label + tag type mapping (ui-guidelines §5,
 // ticket 62; vitest coverage added GH #119). The mapping is the single
-// source of truth for the role-tag consumers (AppSidebar account line,
-// UserManager) — the load-bearing calibers pinned here: the four-word
-// vocabulary never grows synonyms, management tiers claim the brand color,
-// and unknown roles must never claim a management color.
+// source of truth for the role-tag consumers (AppTopbar user chip,
+// AppSidebar user card, UserManager) — the load-bearing calibers pinned
+// here: the four-word vocabulary never grows synonyms, management tiers
+// claim the brand color, and unknown roles must never claim a management
+// color.
 import { describe, expect, it } from 'vitest'
 import { roleLabel, roleTagType } from '@/utils/role'
 

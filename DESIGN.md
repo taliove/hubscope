@@ -122,7 +122,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 **Key Characteristics:**
 - 三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留(暗色后置,独立 spec 定稿)
 - 轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达「可点/浮层」
-- 220px macOS 设置风侧边栏外壳,签名面自造(侧边栏/Hero/指标区/列表行/详情面板/时间线),Element Plus 保留管理台复杂件
+- 全宽顶栏 + 220px macOS 设置风侧边栏外壳(GH #135 顶栏恢复),签名面自造(顶栏/侧边栏/Hero/指标区/列表行/详情面板/时间线),Element Plus 保留管理台复杂件
 - 状态三态:稳定运行 / 降级 / 异常(参照稿词表,GH #128),小圆点 + 状态词双编码,局部强调而非大面积色块
 - 动效成体系(v2.0 §15):数字补间、图表入场绘制、页面 Fade+Slight Move、hover 上浮;reduced-motion 全局归零
 
@@ -186,7 +186,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 
 ## Layout
 
-**外壳(决策 5/8):** 全站 220px macOS 设置风侧边栏(AppSidebar,自造签名面)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。
+**外壳(决策 5/8;GH #135 顶部 Header 恢复):** 全宽 56px 顶栏(AppTopbar,自造签名面——左品牌块、右铃铛 + 用户 chip/「管理登录」)+ 其下 220px macOS 设置风侧边栏(AppSidebar,自造签名面,品牌位已迁顶栏)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无顶栏无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。
 
 内容区 max-width 1200px 居中,桌面优先——不为手机做专门适配,窄屏不阻断即可。4px 基准网格,间距消费 space-1..9 刻度(space-9 96px 为 hero 区块与页面级呼吸预留);**公开页 32–48px 页面留白**(状态概览 padding 32px,spec 0018 IA),管理台页 24/16。
 
@@ -277,9 +277,10 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **Style:** 控件圆角、size small、effect light;语义色走 `type` 属性,不自着色。
 - **用途纪律:** 角色 tag(primary/info)、协议 tag(success/warning/info)、判定方式 tag(info)、告警事件 tag(按 kind 映射)各有集中映射函数;同一语义域内词表封闭(ui-guidelines §5/§7)。
 
-### Navigation(侧边栏外壳)
-- **Style:** 220px 自造侧边栏:顶部品牌块(BrandMark 24px + Wordmark lg,点击回首页)→ 导航项(线性图标 16px + 文字,radius-sm)→ 批次进度入口(登录态 + 存在未完成批次时)→ 底部(账号行:用户名 + 角色纯文本 + 退出;未登录为「管理登录」链接;版权行;版本号 mono xs)。
-- **激活态:** 轻量高亮——hover/激活均 `--hs-bg-hover` 浅底,激活项文字与图标品牌蓝;无强背景块(spec 0018 user story 2)。
+### Navigation(顶栏 + 侧边栏外壳)
+- **AppTopbar(GH #135):** 全宽 56px 顶栏,白面 + 底部 hairline,sticky;左 = BrandMark 24px + Wordmark lg(回 `/`);右 = 登录态铃铛图标按钮(lucide 18px → /alerts,纯导航无角标)+ 用户 chip(头像图标 + 名 + 角色纯文本,dropdown 单项「退出」),未登录 = 「管理登录」链接。
+- **AppSidebar Style:** 220px 自造侧边栏(顶栏下方,sticky top 56px 与顶栏高互指):导航项(Lucide 风格线性图标 18px + 文字,项高 48px、项间距 space-2、radius-lg)→ 批次进度入口(登录态 + 存在未完成批次时)→ 底部(登录态用户卡:36px 圆形头像位 + 8px success 在线点 + 用户名 md/600 + 角色 xs 纯文本;未登录无卡;版权行;版本号 mono xs)。
+- **激活态:** 软蓝 pill(brand-soft 底 + brand 词与图标);未激活 text-regular,hover bg-hover;无强背景块(GH #135 参照稿复刻,取代 spec 0018 user story 2 的 bg-hover 激活)。
 - **登录态过滤:** 未登录只见公开项(状态概览、Benchmark);过滤逻辑集中 `utils/sidebarNav.ts`(visibleSidebarItems / isSidebarItemActive 纯函数)。
 
 ### Signature: StatusBadge(唯一状态灯)
@@ -294,7 +295,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 ### Signature: BrandMark / Wordmark
 - **BrandMark 是唯一图形标:** 瞄准镜字形(圆环 + 十字准星刻度 + 中心脉冲点,监控隐喻),蓝渐变(blue-400 #549CFF → blue-700 #0062CC 两 stop,表现属性兜底纪律沿置——snapdom 对 SVG stop 不内联计算样式,`stop-color` 表现属性与 `var()` 令牌链双写,tokens.css 改色两处同步);em 尺寸宿主可控。**与 ProxyHub 的家族同源关系解除**(ADR 0015):渐变随品牌色重建,不再共享色板。
 - **Wordmark 是唯一字标:** 「HubScope」PascalCase + 品牌蓝脉冲小圆点(常亮),系统等宽字栈,字重 700,完全静止;em 基准宿主缩放。
-- BrandMark 永不裸用,永远与 Wordmark 同场出现(AppSidebar 品牌块、LoginView 品牌区、物料品牌区)。
+- BrandMark 永不裸用,永远与 Wordmark 同场出现(AppTopbar 品牌块、LoginView 品牌区、物料品牌区)。
 
 ## 暗色(后置登记,spec 0018 决策 10)
 

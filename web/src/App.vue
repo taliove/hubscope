@@ -1,31 +1,39 @@
 <template>
   <div id="app">
     <!-- Shell-out pages (route meta.bare: /login and /report/:token) render
-         without the sidebar — the check is the generic route meta flag, not
-         a per-page special case (GH #112, spec 0018 IA). -->
+         without the header and the sidebar — the check is the generic route
+         meta flag, not a per-page special case (GH #112, spec 0018 IA). -->
     <router-view v-if="isBare" />
     <div v-else class="app-shell">
-      <AppSidebar />
-      <main class="app-main">
-        <!-- Page transition (spec 0018 §15): fade + ≤10px shift, 300ms slow
-             token; reduced-motion is zeroed globally by semantics.css. The
-             key remounts only on path changes, never on query changes. -->
-        <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
-            <component :is="Component" :key="route.path" />
-          </transition>
-        </router-view>
-      </main>
+      <!-- Full-width header restored per the reference design (GH #135):
+           the sidebar starts below it and no longer carries the brand
+           seat. -->
+      <AppTopbar />
+      <div class="app-body">
+        <AppSidebar />
+        <main class="app-main">
+          <!-- Page transition (spec 0018 §15): fade + ≤10px shift, 300ms slow
+               token; reduced-motion is zeroed globally by semantics.css. The
+               key remounts only on path changes, never on query changes. -->
+          <router-view v-slot="{ Component }">
+            <transition name="page" mode="out-in">
+              <component :is="Component" :key="route.path" />
+            </transition>
+          </router-view>
+        </main>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// Root component (GH #112): the v2 macOS Settings-style shell — 220px
-// sidebar on the left, routed page on the right; bare routes (login, shared
-// report) render outside the shell.
+// Root component (GH #112; GH #135 header restore): the v2 shell — a
+// full-width top bar on top, then a row of the 220px sidebar and the routed
+// page; bare routes (login, shared report) render outside the shell with no
+// header and no sidebar.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import AppTopbar from '@/components/AppTopbar.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 
 const route = useRoute()
@@ -40,7 +48,14 @@ const isBare = computed(() => Boolean(route.meta.bare))
 
 .app-shell {
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 .app-main {

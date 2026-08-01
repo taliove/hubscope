@@ -2,6 +2,7 @@
 // testing decisions: login-state filtering is a listed pure-function seam).
 import { describe, expect, it } from 'vitest'
 import { SIDEBAR_NAV_ITEMS, isSidebarItemActive, visibleSidebarItems } from '@/utils/sidebarNav'
+import { ActivityIcon, AtomIcon, ClipboardListIcon, FileTextIcon, TriangleAlertIcon, SettingsIcon, SIDEBAR_ICONS } from '@/components/icons/lucide'
 import type { AuthUser } from '@/api/auth'
 
 const admin: AuthUser = { id: 1, username: 'devadmin', role: 'super_admin', hub_id: null, hub_name: null }
@@ -62,5 +63,24 @@ describe('isSidebarItemActive', () => {
     // "/benchmarks" (note the trailing s) is not the benchmark section.
     expect(isSidebarItemActive(byKey('benchmark'), '/benchmarks')).toBe(false)
     expect(isSidebarItemActive(byKey('models'), '/modelsx')).toBe(false)
+  })
+})
+
+describe('SIDEBAR_ICONS', () => {
+  // GH #135: the Lucide-style glyph map keys mirror the nav item keys
+  // one-to-one — this guard fails the moment either side drifts.
+  it('every nav item key has a glyph and no glyph is orphaned', () => {
+    expect(Object.keys(SIDEBAR_ICONS).sort()).toEqual(SIDEBAR_NAV_ITEMS.map((i) => i.key).sort())
+  })
+
+  // GH #135 check LOW-5: key-set equality alone would miss two glyphs being
+  // swapped — pin the assignments.
+  it('glyph assignments match the registered mapping', () => {
+    expect(SIDEBAR_ICONS.dashboard).toBe(ActivityIcon)
+    expect(SIDEBAR_ICONS.models).toBe(AtomIcon)
+    expect(SIDEBAR_ICONS.eval).toBe(ClipboardListIcon)
+    expect(SIDEBAR_ICONS.benchmark).toBe(FileTextIcon)
+    expect(SIDEBAR_ICONS.alerts).toBe(TriangleAlertIcon)
+    expect(SIDEBAR_ICONS.settings).toBe(SettingsIcon)
   })
 })

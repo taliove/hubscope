@@ -1,12 +1,8 @@
 <template>
   <aside class="app-sidebar">
-    <!-- Brand block: BrandMark + Wordmark, click goes home. BrandMark is
-         never used bare — it always appears alongside the Wordmark. -->
-    <router-link to="/" class="brand">
-      <BrandMark class="brand-mark" />
-      <Wordmark class="brand-wordmark" />
-    </router-link>
-
+    <!-- The brand seat moved to AppTopbar when the full-width header was
+         restored (GH #135) — the sidebar starts below the header with the
+         nav itself. -->
     <nav class="side-nav">
       <router-link
         v-for="item in visibleItems"
@@ -15,7 +11,7 @@
         class="nav-item"
         :class="{ 'nav-active': isSidebarItemActive(item, route.path) }"
       >
-        <component :is="ICONS[item.key]" class="nav-icon" />
+        <component :is="SIDEBAR_ICONS[item.key]" class="nav-icon" />
         <span class="nav-label">{{ item.label }}</span>
       </router-link>
     </nav>
@@ -29,17 +25,20 @@
     </button>
 
     <div class="side-footer">
-      <template v-if="user">
-        <div class="account-row">
-          <span class="account-name" :title="user.username">{{ user.username }}</span>
-          <span class="account-role">{{ roleLabel(user.role) }}</span>
-          <button type="button" class="logout-btn" :disabled="loggingOut" @click="onLogout">退出</button>
-        </div>
-      </template>
-      <!-- Anonymous readers get the quiet admin entry here (ticket 90 spirit,
-           relocated from PublicFooter): no public page renders a prominent
-           login button. -->
-      <router-link v-else to="/login" class="login-link">管理登录</router-link>
+      <!-- User card (GH #135, reference design): avatar placeholder with a
+           presence dot, name and role. The logout action moved to the
+           AppTopbar user chip; anonymous visitors see no card (the quiet
+           admin entry lives in the topbar, ticket 90 spirit). -->
+      <div v-if="user" class="user-card">
+        <span class="avatar">
+          <CircleUserRoundIcon class="avatar-icon" />
+          <span class="avatar-dot" aria-hidden="true"></span>
+        </span>
+        <span class="user-meta">
+          <span class="user-name" :title="user.username">{{ user.username }}</span>
+          <span class="user-role">{{ roleLabel(user.role) }}</span>
+        </span>
+      </div>
       <!-- Copyright line (GH #122, conservative restore): PublicFooter's
            retirement dropped the © line with it and spec 0018 does not
            record an intentional removal — the sidebar footer inherits it. -->
@@ -50,16 +49,17 @@
 </template>
 
 <script setup lang="ts">
-// AppSidebar (GH #112, spec 0018): the v2 macOS Settings-style 220px shell
-// sidebar, replacing the top AppHeader. Self-built signature surface — no
-// Element Plus layout components; only EP line icons are consumed. Session
-// state is checked locally on mount and re-checked on every route change —
-// deliberately no state store (AppHeader precedent).
+// AppSidebar (GH #112, spec 0018; GH #135 header restore): the v2 220px
+// shell sidebar, sitting below AppTopbar. Self-built signature surface — no
+// Element Plus layout components; the only EP consumption is the batch
+// entry's Loading spinner. Nav glyphs are the Lucide-style inline SVG set
+// (components/icons/lucide.ts). Session state is checked locally on mount
+// and re-checked on every route change — deliberately no state store
+// (AppHeader precedent).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus/es/components/message/index'
-import { Coin, CopyDocument, Document, Loading, Operation, TrendCharts, Warning } from '@element-plus/icons-vue'
-import { fetchAuthStatus, logout } from '@/api/auth'
+import { Loading } from '@element-plus/icons-vue'
+import { fetchAuthStatus } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
@@ -67,35 +67,15 @@ import { fetchVersion } from '@/api/version'
 import { roleLabel } from '@/utils/role'
 import { isSidebarItemActive, visibleSidebarItems } from '@/utils/sidebarNav'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
-import BrandMark from './BrandMark.vue'
-import Wordmark from './Wordmark.vue'
+import { CircleUserRoundIcon, SIDEBAR_ICONS } from './icons/lucide'
 
 const route = useRoute()
 const router = useRouter()
-
-// Line-icon per nav key (spec 0018: line icons + text); the key set mirrors
-// sidebarNav.ts one-to-one. Icon selection follows the reference design
-// (2026-08-01 user acceptance): dashboard = pulse/activity line (TrendCharts
-// is the closest EP zigzag — no true "Activity" icon exists in EP);
-// models = database cylinder (Coin); eval = stacked documents
-// (CopyDocument); benchmark = single document (Document); alerts = warning
-// triangle (Warning, line variant — never WarningFilled); settings =
-// sliders (Operation). Line weight and the low-presence secondary color /
-// active-brand mechanism are unchanged — only the glyphs change.
-const ICONS: Record<string, unknown> = {
-  dashboard: TrendCharts,
-  benchmark: Document,
-  eval: CopyDocument,
-  models: Coin,
-  alerts: Warning,
-  settings: Operation,
-}
 
 // Local session identity; `user` is null when unauthenticated and every
 // authed-only branch reads it. A failed status check is treated as
 // unauthenticated, same as the router guard.
 const user = ref<AuthUser | null>(null)
-const loggingOut = ref(false)
 
 const visibleItems = computed(() => visibleSidebarItems(user.value))
 
@@ -146,23 +126,6 @@ function goToActiveBatch() {
   void router.push({ path: '/eval', query: { batch: String(activeBatch.value.id) } })
 }
 
-async function onLogout() {
-  if (loggingOut.value) return
-  loggingOut.value = true
-  try {
-    await logout()
-  } catch (err) {
-    // Keep the session UI as-is on failure: the server session may still be
-    // alive, so only a successful logout clears state and redirects.
-    ElMessage.error((err as Error).message)
-    loggingOut.value = false
-    return
-  }
-  loggingOut.value = false
-  user.value = null
-  router.push('/')
-}
-
 // Build version (spec 0018 IA: the sidebar footer carries the version — the
 // single-binary deployment has no multi-environment concept, so the version
 // answers "which build is this"). Fetched once; failure stays silent.
@@ -199,43 +162,33 @@ onBeforeUnmount(stopBatchPolling)
 <style scoped>
 .app-sidebar {
   position: sticky;
-  top: 0;
+  /* The sticky seat starts right below AppTopbar — the 56px mirrors the
+     header height there; always change both places together. */
+  top: 56px;
   align-self: flex-start;
   width: 220px;
   flex: none;
-  height: 100vh;
+  height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;
   padding: var(--hs-space-4) var(--hs-space-3);
   background: var(--hs-bg-card);
-  border-right: 1px solid var(--hs-border);
+  border-right: 1px solid var(--hs-border-light);
   overflow-y: auto;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--hs-space-2);
-  padding: var(--hs-space-1) var(--hs-space-2);
-  text-decoration: none;
-}
-.brand-mark {
-  font-size: 24px;
-}
-.brand-wordmark {
-  font-size: var(--hs-text-lg);
 }
 .side-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--hs-space-1);
-  margin-top: var(--hs-space-5);
+  gap: var(--hs-space-2);
 }
 .nav-item {
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
-  padding: var(--hs-space-2) var(--hs-space-3);
-  border-radius: var(--hs-radius-sm);
+  /* GH #135 reference design: ~48px rows with an 18px glyph. */
+  min-height: 48px;
+  padding: 0 var(--hs-space-3);
+  border-radius: var(--hs-radius-lg);
   font-size: var(--hs-text-md);
   color: var(--hs-text-regular);
   text-decoration: none;
@@ -244,23 +197,25 @@ onBeforeUnmount(stopBatchPolling)
     color var(--hs-transition);
 }
 .nav-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex: none;
   color: var(--hs-text-secondary);
+  transition: color var(--hs-transition);
 }
-/* Lightweight highlight (spec 0018 user story 2): the soft hover ground
-   plus brand-colored text/icon — no strong background block. */
 .nav-item:hover {
   background: var(--hs-bg-hover);
 }
+/* Active = soft-blue pill (GH #135): brand-soft ground, brand word and
+   glyph — no strong background block. */
 .nav-active,
 .nav-active:hover {
-  background: var(--hs-bg-hover);
+  background: var(--hs-brand-soft);
   color: var(--hs-brand);
 }
-.nav-active .nav-icon {
-  color: var(--hs-brand);
+.nav-active .nav-icon,
+.nav-item:hover .nav-icon {
+  color: inherit;
 }
 .nav-item:focus-visible {
   outline: 2px solid var(--hs-brand);
@@ -271,9 +226,10 @@ onBeforeUnmount(stopBatchPolling)
   align-items: center;
   gap: var(--hs-space-2);
   margin-top: var(--hs-space-4);
-  padding: var(--hs-space-2) var(--hs-space-3);
+  min-height: 48px;
+  padding: 0 var(--hs-space-3);
   border: none;
-  border-radius: var(--hs-radius-sm);
+  border-radius: var(--hs-radius-lg);
   background: none;
   font-size: var(--hs-text-sm);
   color: var(--hs-brand);
@@ -309,44 +265,58 @@ onBeforeUnmount(stopBatchPolling)
   flex-direction: column;
   gap: var(--hs-space-2);
 }
-.account-row {
+.user-card {
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
   min-width: 0;
+  padding: var(--hs-space-1) var(--hs-space-2);
 }
-.account-name {
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--hs-radius-full);
+  background: var(--hs-bg-subtle);
+}
+.avatar-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--hs-text-secondary);
+}
+/* Presence dot (reference design): solid success green, ringed by the card
+   ground so it reads as a badge on the avatar edge. */
+.avatar-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--hs-radius-full);
+  background: var(--hs-success);
+  border: 2px solid var(--hs-bg-card);
+  box-sizing: content-box;
+}
+.user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.user-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-regular);
+  font-size: var(--hs-text-md);
+  font-weight: 600;
+  color: var(--hs-text-primary);
 }
-.account-role {
-  flex: none;
+.user-role {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
-}
-.logout-btn {
-  margin-left: auto;
-  flex: none;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-placeholder);
-  cursor: pointer;
-}
-.logout-btn:hover {
-  color: var(--hs-brand-hover);
-}
-.login-link {
-  font-size: var(--hs-text-xs);
-  color: var(--hs-text-placeholder);
-  text-decoration: none;
-}
-.login-link:hover {
-  color: var(--hs-brand-hover);
 }
 .copyright {
   font-size: var(--hs-text-xs);
