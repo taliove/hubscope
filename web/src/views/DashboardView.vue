@@ -4,17 +4,22 @@
          visually hidden — zero visual change. -->
     <h1 class="visually-hidden">HubScope 服务状态总览</h1>
 
-    <!-- Hero (GH #115, spec 0018 §6): health index + delta + conclusion +
-         scope. The conclusion math comes from the shared healthConclusion
-         module (same words as the share material); a null health index is
-         folded into the empty branch so no-probe windows never read as
-         全部稳定运行. -->
+    <!-- Hero (GH #115, spec 0018 §6; GH #129: reference-design composition —
+         label above the figure, soft conclusion chip, arrowed delta, refresh
+         meta top-right, 24h trend chart right). The conclusion math comes
+         from the shared healthConclusion module (same words as the share
+         material); a null health index is folded into the empty branch so
+         no-probe windows never read as 全部稳定运行. -->
     <StatusHero
       :health="healthScore24h"
       :delta="healthScoreDelta"
       :conclusion="heroConclusion"
       :conclusion-tone="heroTone"
       :scope="heroScope"
+      :trend-categories="heroTrend.categories"
+      :trend-values="heroTrend.values"
+      :updated-at="generatedAt"
+      :refresh-interval-ms="refreshIntervalMs"
       :skeleton="initialLoading"
     />
 
@@ -32,43 +37,48 @@
       :skeleton="initialLoading"
     />
 
-    <!-- Filters: model keyword, protocol, display status, grouping. -->
-    <div class="filter-row">
-      <el-input
-        v-model="keyword"
-        placeholder="按模型名过滤"
-        clearable
-        class="filter-keyword"
-      />
-      <span class="filter-label">协议：</span>
-      <el-select v-model="protocolFilter" placeholder="全部" clearable class="filter-select">
-        <!-- Options come from the single protocol vocabulary (utils/protocol.ts)
-             so new protocols appear here automatically. -->
-        <el-option v-for="p in PROTOCOLS" :key="p" :label="p" :value="p" />
-      </el-select>
-      <span class="filter-label">状态：</span>
-      <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
-        <!-- Options come from the single display-layer mapping (GH #113):
-             the three display states, light → heavy; down + failing filter
-             together under 异常. No status word literals here. -->
-        <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
-      </el-select>
-      <el-select v-model="grouping" class="filter-select">
-        <el-option label="按厂商分组" value="family" />
-        <el-option label="按能力分组" value="capability" />
-        <el-option label="按协议" value="protocol" />
-        <el-option label="不分组" value="none" />
-      </el-select>
-      <!-- Share the filtered picture as a Status Card PNG; disabled until the
-           first load lands (an empty board is not shareable). -->
-      <el-button
-        class="share-btn"
-        :disabled="loading && entries.length === 0"
-        @click="openShare"
-      >
-        <el-icon><Share /></el-icon>
-        分享状态
-      </el-button>
+    <!-- List toolbar (GH #131, reference design): the section title carries
+         the sort note (literally true — the rows are availability-ranked),
+         the filters right-align on the same row: keyword + vendor + display
+         status. The protocol filter and the grouping selector retire with
+         this ticket (the reference toolbar's composition); the list renders
+         the flat availability-ranked section. -->
+    <div class="list-toolbar">
+      <h2 class="list-heading">
+        模型状态
+        <span class="list-note">（按可用率排序）</span>
+      </h2>
+      <div class="filter-row">
+        <el-input
+          v-model="keyword"
+          placeholder="按模型名过滤"
+          clearable
+          class="filter-keyword"
+        />
+        <span class="filter-label">供应商：</span>
+        <el-select v-model="familyFilter" placeholder="全部" clearable class="filter-select">
+          <!-- Options derive from the unfiltered entry set (familyOptions) so
+               an active filter never collapses its own option list. -->
+          <el-option v-for="f in vendorOptions" :key="f" :label="f" :value="f" />
+        </el-select>
+        <span class="filter-label">状态：</span>
+        <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
+          <!-- Options come from the single display-layer mapping (GH #113):
+               the three display states, light → heavy; down + failing filter
+               together under 异常. No status word literals here. -->
+          <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
+        </el-select>
+        <!-- Share the filtered picture as a Status Card PNG; disabled until the
+             first load lands (an empty board is not shareable). -->
+        <el-button
+          class="share-btn"
+          :disabled="loading && entries.length === 0"
+          @click="openShare"
+        >
+          <el-icon><Share /></el-icon>
+          分享状态
+        </el-button>
+      </div>
     </div>
 
     <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
@@ -102,6 +112,12 @@
       />
       <el-empty v-else description="暂无监控端点，请先在模型管理中添加" />
     </template>
+
+    <!-- Recent events (GH #132, UI v2 O5): LOGIN-ONLY section — the
+         component gates both rendering and fetching on `authed`, so an
+         anonymous board issues zero alerts requests. It refetches on the
+         overview poll tick (generatedAt) instead of owning a timer. -->
+    <RecentEvents :authed="authed" :entries="entries" :refresh-tick="generatedAt" />
   </div>
 </template>
 
@@ -112,16 +128,18 @@
 // — is retired wholesale with this ticket.
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { Share } from '@element-plus/icons-vue'
-import { useOverview } from '@/composables/useOverview'
+import { useOverview, POLL_INTERVAL_MS } from '@/composables/useOverview'
+import { fetchAuthStatus } from '@/api/auth'
 import StatusHero from '@/components/StatusHero.vue'
 import MetricWidgets from '@/components/MetricWidgets.vue'
 import ModelStatusList, { type ListSection } from '@/components/ModelStatusList.vue'
 import ModelDetailPanel from '@/components/ModelDetailPanel.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
+import RecentEvents from '@/components/RecentEvents.vue'
 import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
-import { PROTOCOLS } from '@/utils/protocol'
-import { sortEntriesBySeverity, sortGroupSections } from '@/utils/severitySort'
+import { sortEntriesByAvailability } from '@/utils/severitySort'
 import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
+import { familyOptions } from '@/utils/modelList'
 import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
 import { aggregateDots24h } from '@/utils/overviewDots'
 import {
@@ -130,16 +148,15 @@ import {
   hourlyProbeSeries,
   hourlyLatencySeries,
   hourlyFailureSeries,
+  heroTrendSeries,
   abnormalModelCounts,
 } from '@/utils/overviewMetrics'
 import { meanP50Ms } from '@/utils/statusCardSummary'
-import type { Protocol, OverviewEntry } from '@/api/types'
+import type { OverviewEntry } from '@/api/types'
 
 const {
   entries,
-  byFamily,
-  byCapability,
-  byProtocol,
+  generatedAt,
   loading,
   error,
   enabledEndpoints,
@@ -150,8 +167,14 @@ const {
   start,
 } = useOverview()
 
+// The hero's refresh meta reads the poll cadence from the useOverview
+// constant (GH #129) — a single declaration, never a second literal.
+const refreshIntervalMs = POLL_INTERVAL_MS
+
 const keyword = ref('')
-const protocolFilter = ref<Protocol | ''>('')
+// Vendor (供应商) filter of the reference toolbar (GH #131): matches the
+// entry's family classification; the options derive from the unfiltered set.
+const familyFilter = ref('')
 // The status filter speaks DISPLAY states (GH #113): the domain status
 // machine keeps four states, but the board renders three — down and
 // failing filter together under 'incident' (异常).
@@ -159,8 +182,6 @@ const statusFilter = ref<DisplayStatus | ''>('')
 // Filter-select options: the three display states, light → heavy (the
 // severity order reversed), words from the single mapping.
 const statusOptions = [...DISPLAY_SEVERITY_ORDER].reverse()
-// Grouping dimension of the list; vendor family by default.
-const grouping = ref<'family' | 'capability' | 'protocol' | 'none'>('family')
 
 // First load only: hero/widgets/list render skeletons until the first
 // response lands. Poll failures keep the last good data (error alert on
@@ -193,6 +214,10 @@ const heroScope = computed(() => heroScopeText(enabledEndpoints.value))
 // sparklines (probe-weighted, overviewDots discipline); the latency
 // sparkline derives from the same entries (success-weighted hourly means).
 const aggregateDots = computed(() => aggregateDots24h(enabledEntries.value))
+// Hero 24h trend chart (GH #129): the same probe-weighted hourly
+// availability of the enabled set, derived by the single pure function
+// (labels + 0–100 display-scale values, nulls preserved as line breaks).
+const heroTrend = computed(() => heroTrendSeries(aggregateDots.value))
 const availabilitySeries = computed(() => hourlyAvailabilitySeries(aggregateDots.value))
 const probeSeries = computed(() => hourlyProbeSeries(aggregateDots.value))
 const failureSeries = computed(() => hourlyFailureSeries(aggregateDots.value))
@@ -212,7 +237,8 @@ function openShare() {
   shareSnapshot.value = {
     entries: [...filteredEntries.value],
     keyword: keyword.value.trim(),
-    protocol: protocolFilter.value,
+    protocol: '',
+    family: familyFilter.value || undefined,
     status: statusFilter.value,
     group: null,
     generatedAt: new Date().toISOString(),
@@ -222,52 +248,34 @@ function openShare() {
 
 // --- List ---------------------------------------------------------------------
 
+// Vendor-filter options come from the UNFILTERED set (familyOptions) so an
+// active vendor filter never collapses its own option list.
+const vendorOptions = computed(() => familyOptions(entries.value))
+
 // Apply the three filters; an empty filter matches everything. The status
 // filter matches by DISPLAY state (toDisplayStatus), so 'incident' catches
-// down and failing entries together. The result is severity-ranked
-// (GH #52) so abnormal models lead the first viewport.
+// down and failing entries together. The result is availability-ranked
+// (GH #131, sortEntriesByAvailability): the headline note 「(按可用率排序)」
+// is literally true — the weakest models lead the first viewport, a null
+// rate sinks below every rated row, disabled rows last.
 const filteredEntries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  return sortEntriesBySeverity(
+  return sortEntriesByAvailability(
     entries.value.filter(entry => {
       if (kw && !entry.model_id.toLowerCase().includes(kw)) return false
-      if (protocolFilter.value && entry.protocol !== protocolFilter.value) return false
+      if (familyFilter.value && entry.family !== familyFilter.value) return false
       if (statusFilter.value && toDisplayStatus(entry.status) !== statusFilter.value) return false
       return true
     }),
   )
 })
 
-// Grouped mode: one light list section per group, severity-ranked by the
-// group's most severe ENABLED entry (the board's single rank table). The
-// meta line counts by DISPLAY state (down + failing read together as
-// 异常) with words from the single mapping — never a literal.
-const listSections = computed<ListSection[]>(() => {
-  if (grouping.value === 'none') {
-    return [{ key: null, label: '', meta: '', entries: filteredEntries.value }]
-  }
-  const groups =
-    grouping.value === 'family'
-      ? byFamily.value
-      : grouping.value === 'capability'
-        ? byCapability.value
-        : byProtocol.value
-  const keyOf = (e: OverviewEntry) =>
-    grouping.value === 'family' ? e.family : grouping.value === 'capability' ? e.capability : e.protocol
-  return sortGroupSections(
-    groups.map(group => ({
-      group,
-      entries: filteredEntries.value.filter(e => keyOf(e) === group.key),
-    })),
-  ).map(section => {
-    const counts = abnormalModelCounts(section.entries)
-    const meta =
-      counts.total === 0
-        ? `${section.entries.length} 个端点`
-        : `${section.entries.length} 个端点 · ${statusLabel('incident')} ${counts.incident} · ${statusLabel('degraded')} ${counts.degraded}`
-    return { key: section.group.key, label: section.group.key, meta, entries: section.entries }
-  })
-})
+// The reference toolbar retires the grouping selector (GH #131): the list
+// renders one flat availability-ranked section. ModelStatusList keeps its
+// section contract intact — grouping returns as a view-level change only.
+const listSections = computed<ListSection[]>(() => [
+  { key: null, label: '', meta: '', entries: filteredEntries.value },
+])
 
 // --- Detail panel (GH #116) -------------------------------------------------
 
@@ -296,7 +304,26 @@ function closePanel() {
   }
 }
 
-onMounted(start)
+// --- Recent events auth gate (GH #132) ---------------------------------------
+
+// Session state for the 近期事件 section, checked locally on mount — the
+// AppSidebar precedent: deliberately no shared auth store. The view
+// remounts on every navigation to '/', so a fresh login is picked up by
+// the remount; a failed check reads as anonymous (the section stays off).
+const authed = ref(false)
+
+async function refreshAuth() {
+  try {
+    authed.value = (await fetchAuthStatus()).authenticated
+  } catch {
+    authed.value = false
+  }
+}
+
+onMounted(() => {
+  start()
+  void refreshAuth()
+})
 </script>
 
 <style scoped>
@@ -320,12 +347,35 @@ onMounted(start)
   /* Public-page breathing room (spec 0018 IA: 32–48px whitespace). */
   padding: var(--hs-space-6) var(--hs-space-6) var(--hs-space-8);
 }
+/* List toolbar (GH #131): the section title on the left, the filter
+   controls right-aligned on the same row; wraps on narrow widths. */
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--hs-space-4);
+}
+.list-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hs-space-2);
+  margin: 0;
+  font-size: var(--hs-text-xl);
+  font-weight: 600;
+  color: var(--hs-text-primary);
+}
+.list-note {
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+  color: var(--hs-text-secondary);
+}
 .filter-row {
   display: flex;
   align-items: center;
   gap: var(--hs-space-3);
-  margin-bottom: var(--hs-space-4);
   flex-wrap: wrap;
+  margin-left: auto;
 }
 .filter-keyword {
   width: 220px;
@@ -336,9 +386,6 @@ onMounted(start)
 }
 .filter-select {
   width: 140px;
-}
-.share-btn {
-  margin-left: auto;
 }
 .error-alert {
   margin-bottom: var(--hs-space-4);
