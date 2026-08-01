@@ -32,20 +32,20 @@
 ### 3.1 显示层三态(endpoint 状态域,核心)
 
 - **域模型四态保留(W5 不动):** healthy / degraded / down / failing 仍是后端状态机、Lark 告警与告警历史的语言。
-- **显示层三态(v2 决策 3):** **稳定**(绿)/ **性能下降**(黄)/ **服务异常**(红)——failing 在显示层并入服务异常,无独立显示身份;状态呈现统一为「小圆点 + 状态词」,局部强调而非大面积色块。Stable / Degraded / Incident 为英文译名档案(spec 0018 §11),界面中文主显。
-- **唯一映射点 = `utils/statusDisplay.ts`(接口登记,GH #113 裁决):** `statusDisplay(status, causes?) → { status, label, tone, causeSuffix }`、`statusLabel`、`statusTone`、`toDisplayStatus`、`displayStatusCounts`(down+failing 合并计数)、`DISPLAY_SEVERITY_ORDER`(重→轻:incident/degraded/stable)。色槽是抽象槽(success/warning/danger),组件按通道取令牌:**词 → `*-text` 阶,点 → 本体阶**。未知输入 → 「未知」+ warning 槽(中性回落:既不读作稳定也不读作异常)。组件内禁写状态词字面量;告警历史事件词表(§7)不经过本映射。
+- **显示层三态(v2 决策 3;词表经 GH #128 切参照稿,2026-08-01 用户裁决):** **稳定运行**(绿)/ **降级**(黄)/ **异常**(红)——failing 在显示层并入异常,无独立显示身份;状态呈现统一为「小圆点 + 状态词」,局部强调而非大面积色块。Stable / Degraded / Incident 为英文译名档案(spec 0018 §11),界面中文主显。
+- **唯一映射点 = `utils/statusDisplay.ts`(接口登记,GH #113 裁决):** `statusDisplay(status, causes?) → { status, label, tone, causeSuffix }`、`statusLabel`、`statusTone`、`toDisplayStatus`、`displayStatusCounts`(down+failing 合并计数)、`DISPLAY_SEVERITY_ORDER`(重→轻:incident/degraded/stable)。色槽是抽象槽(success/warning/danger),组件按通道取令牌:**词 → `*-text` 阶,点 → 本体阶**。未知输入 → 「未知」+ warning 槽(中性回落:既不读作稳定运行也不读作异常)。组件内禁写状态词字面量;告警历史事件词表(§7)不经过本映射。
 - **降级成因副标签保留(spec 0013):** degraded 显示态可挂「· 可用性」「· 延迟」副标签(causeSuffix;双命中「· 可用性 + 延迟」,顺序与后端 `degrade_causes` 一致);副标签是 Badge 文字的一部分,无独立圆点/底色,secondary 不随词着色;聚合场景(hero、分区头、计数)永不传 causes——成因是端点粒度信息。
-- **状态筛选跟显示词表走(GH #113 main 裁决):** 筛选器三选项(稳定/性能下降/服务异常),「服务异常」同筛 down+failing;UI 不提供 failing 单筛。
-- **物料分布串三段(GH #113 main 裁决):** 「稳定 N · 性能下降 N · 服务异常 N」恒列三段;failing 计数由「含 N 个告警」事件 chip 单独披露——异常不掩盖(防作假不回退),词表统一。
+- **状态筛选跟显示词表走(GH #113 main 裁决;词随 GH #128 更新):** 筛选器三选项(稳定运行/降级/异常),「异常」同筛 down+failing;UI 不提供 failing 单筛。
+- **物料分布串三段(GH #113 main 裁决;词随 GH #128 更新):** 「稳定运行 N · 降级 N · 异常 N」恒列三段;failing 计数由「含 N 个告警」事件 chip 单独披露——异常不掩盖(防作假不回退),词表统一。
 - **同一语义在公开侧与管理台必须同色同词**——管理台表格中的状态展示与状态概览同一三态。
 
 ### 3.2 状态色映射表
 
 | 业务语义 | 点/图形(本体阶) | 词/文字(*-text 阶) | 说明 |
 |---|---|---|---|
-| 稳定 | `--hs-success` #34C759 | `--hs-success-text` #1F7A33 | 显示态 |
-| 性能下降 | `--hs-warning` #FF9500 | `--hs-warning-text` #B35C00 | 显示态;成因副标签 secondary |
-| 服务异常 | `--hs-danger` #FF3B30 | `--hs-danger-text` #D70015 | 显示态(down+failing 合并) |
+| 稳定运行 | `--hs-success` #34C759 | `--hs-success-text` #1F7A33 | 显示态 |
+| 降级 | `--hs-warning` #FF9500 | `--hs-warning-text` #B35C00 | 显示态;成因副标签 secondary |
+| 异常 | `--hs-danger` #FF3B30 | `--hs-danger-text` #D70015 | 显示态(down+failing 合并) |
 | 评分/百分比档位 | 绿/黄/红阈值 | 同左文字阶 | 阈值以后端口径为准,前端不自定分界线 |
 
 - **failing 的显示层残留(仅两处,均为 danger 槽):** ① 物料「含 N 个告警」事件 chip(danger-text 描边 chip + danger 实心点,事件词非状态词);② 告警历史词表「厂商组告警」(§7 借字例外)。`--hs-status-failing` 令牌值为 danger 红,混合期兼容保留,新世界零消费,待物理删除。
@@ -56,7 +56,7 @@
 
 | 业务语义 | 词(*-text 阶) | 点(基色) | 说明 |
 |---|---|---|---|
-| 运行中 | `--hs-brand` | `--hs-brand` | 进行中强调;禁闪烁(闪烁语义已整体退役);禁用 warning 黄(黄 = 性能下降专属) |
+| 运行中 | `--hs-brand` | `--hs-brand` | 进行中强调;禁闪烁(闪烁语义已整体退役);禁用 warning 黄(黄 = 降级专属) |
 | 等待中 | `--hs-text-placeholder` | `--hs-text-placeholder` | 未开始,中性 |
 | 已完成 | `--hs-success-text` | `--hs-success` | 与 endpoint 域同向(好) |
 | 失败 | `--hs-danger-text` | `--hs-danger` | 与 endpoint 域同向(坏) |
@@ -99,8 +99,8 @@
 - **Element Plus 复杂件优先(管理台),签名面自造(决策 8);不引入新 UI 库,不自造表单/表格/分页。**
 - **StatusBadge 是唯一的状态展示组件(三态重建,GH #113):** 「小圆点 + 状态词」双编码——点 9px(sm)/11px(md)本体阶,词 `--hs-text-sm`(md 档 `--hs-text-md`/600)*-text 阶;词与色槽全部来自 `utils/statusDisplay.ts`,禁写状态词字面量;可选 prop `causes` 挂降级成因副标签(§3.1);可选 prop `reason` 经 `title` 提供判定依据;size 'sm'|'md'。**dotless prop 存续但当前零消费方**(v2 列表/物料场景均由「点 + 词」同场承担;旧 dotless 三处封闭清单随信号墙退役)——保留为可用变体,新增消费方须设计评审登记。零动画(闪烁退役);状态变化走 `--hs-transition` 颜色过渡。需要展示 endpoint 状态处一律复用,禁止第二个状态灯实现。
 - **AppSidebar 是全站外壳唯一组件(GH #112):** 220px 自造侧边栏,构成自上而下——品牌块(BrandMark 24 + Wordmark lg,router-link 回 `/`)→ 导航项(`utils/sidebarNav.ts` 集中:六项 IA 词表、登录态过滤 `visibleSidebarItems`、激活匹配 `isSidebarItemActive`,未登录只见公开两项;线性图标 + 文字,激活 = 浅底 + 品牌蓝文字,无强背景块)→ 批次进度入口(登录态 + 存在未完成批次时渲染,文案「批次运行中 X/Y」,点击深链 `/eval?batch=N`;3s visibilityPoll,settle 即停即隐,卸载清理;ticket 52 逻辑自 AppHeader 迁入)→ 底部(hairline 之上:登录态账号行 = 用户名截断 + `roleLabel` 纯文本角色 + 「退出」按钮;未登录 = 「管理登录」链接 → /login,**ticket 90 口径承接**——公开面不出现醒目登录按钮,登录入口统一在此;版权行「© 2026 HubScope」(GH #122 恢复登记:PublicFooter 退役时 spec 0018 未载有意去除,保守恢复);版本号 mono xs,title 全版本,获取失败静默)。会话状态 mount + 路由切换重检(refreshAuth watch 先例),无状态库。
-- **StatusHero 是状态概览健康指数区的唯一组件(GH #115):** hero 72px 大数字(健康指数,后端聚合直渲,`formatPercentDigits` + tabular-nums)+ 次级「%」(2xl)+ 结论词(xl/600,tone 着色走 *-text 阶,措辞与物料同源 `utils/healthConclusion.ts`)+ 日环比行(`healthDeltaText`,null 整行不渲染——不发明「持平」)+ 统计范围注记(`heroScopeText`「统计范围:N 个启用端点」,xs/secondary)。**防作假不变式:** 健康指数 null → 中性「暂无数据」(3xl placeholder,永不显示 100%);null 折叠进 empty 分支,结论词不读作「全部稳定」。数字补间 500–800ms(`useTweenedNumber`);skeleton 与加载态同高锚定(142px 下限,算术注释在组件内)。
-- **MetricWidgets 是指标区唯一组件(GH #115):** 四格 Apple Widget 风轻容器(白面 + 1px 描边 + radius-lg;hover 上浮 2px + shadow-md——卡片类可点感,非表格行)——24h 可用率(副行 = 日环比,与健康指数同口径同源;null 显「较昨日暂无对比」)/ 24h 请求量(探测总次数,后端聚合)/ 平均延迟(副行恒注口径「启用端点 P50 均值」,批 59 scope 恒一致口径)/ 异常模型数(副行 = 「服务异常 N · 性能下降 N」或「全部稳定」,模型级去重口径见 overview brief)。核心数字 3xl/600 tabular-nums 补间;每格配 `TrendSparkline` 轻趋势线(单调插值、null 断线、无轴无网格、中性墨色,永不与核心数字争层级);标量一律后端聚合直渲或登记口径纯函数,组件不推导。
+- **StatusHero 是状态概览健康指数区的唯一组件(GH #115):** hero 72px 大数字(健康指数,后端聚合直渲,`formatPercentDigits` + tabular-nums)+ 次级「%」(2xl)+ 结论词(xl/600,tone 着色走 *-text 阶,措辞与物料同源 `utils/healthConclusion.ts`)+ 日环比行(`healthDeltaText`,null 整行不渲染——不发明「持平」)+ 统计范围注记(`heroScopeText`「统计范围:N 个启用端点」,xs/secondary)。**防作假不变式:** 健康指数 null → 中性「暂无数据」(3xl placeholder,永不显示 100%);null 折叠进 empty 分支,结论词不读作「全部稳定运行」。数字补间 500–800ms(`useTweenedNumber`);skeleton 与加载态同高锚定(142px 下限,算术注释在组件内)。
+- **MetricWidgets 是指标区唯一组件(GH #115):** 四格 Apple Widget 风轻容器(白面 + 1px 描边 + radius-lg;hover 上浮 2px + shadow-md——卡片类可点感,非表格行)——24h 可用率(副行 = 日环比,与健康指数同口径同源;null 显「较昨日暂无对比」)/ 24h 请求量(探测总次数,后端聚合)/ 平均延迟(副行恒注口径「启用端点 P50 均值」,批 59 scope 恒一致口径)/ 风险模型数(副行 = 「异常 N · 降级 N」或「全部稳定运行」,模型级去重口径见 overview brief;伞状标题不撞状态词「异常」,GH #128)。核心数字 3xl/600 tabular-nums 补间;每格配 `TrendSparkline` 轻趋势线(单调插值、null 断线、无轴无网格、中性墨色,永不与核心数字争层级);标量一律后端聚合直渲或登记口径纯函数,组件不推导。
 - **ModelStatusList 是模型状态列表唯一组件(GH #115,取代 EndpointCard 卡片矩阵):** 高级列表,列 = 模型(第一层级 md/600 墨色,中间截断 tailKeep=12 + el-tooltip 快显 200ms 全显;已停用行弱化 + 「已停用」xs 注)/ 供应商(sm secondary)/ 状态(StatusBadge sm + causes)/ 24h 可用率(`availabilityRateTier` 文字阶着色)/ P95 延迟(sm regular)/ 24h 趋势(UptimeMicroStrip)/ 操作(「详情」text 按钮)。行 = 共享 grid 模板(表头与行同一模板,列 x 对齐是构造属性)+ 行间 hairline + radius-lg;**行 hover 上浮 2px + shadow-md + 卡面底**(本组件行为卡片类可点元素,非 hairline 表格行——与 Leaderboard 矩阵行的豁免相反,差异登记:本列表行自带 radius-lg 圆角盒与 12px padding,读作卡片;矩阵行共享 grid 基线,读作表格);行 role="button" + tabindex + Enter/Space + data-endpoint-id(焦点归还锚点)。分组模式渲染轻分区(section-header = 组名 lg/600 + meta 计数行,计数措辞由父级经显示层映射组句;**旧分组头折叠机械、协议收敛 tag、「本组」指标全部随 OverviewGroupSection 退役**);分区排序与行排序走 `utils/severitySort.ts` 单一秩表(异常模型领先首屏;已停用沉底)。
 - **UptimeMicroStrip 是行内 24h 微条唯一组件(GH #115):** 24 格填满式(格高 14px、flex 槽、2px 间距、radius-xs),tier 与 tooltip 措辞同源 `utils/overviewDots.ts`(与物料分段条构造性一致);纯展示不可点,下钻走整行点击。
 - **ModelDetailPanel 是模型详情面板的唯一组件(GH #116,取代 EndpointQuickViewDialog 与整行深链):** 自造右缘面板(teleport + scrim `--hs-overlay-bg` + 全高 sheet,**不用 el-dialog**——签名面自造,决策 8),五区自上而下:头部(模型名 h2 + StatusBadge md + causes + 已停用注 + status_reason)/ 三指标格(24h 可用率 tier 着色、平均延迟 P50 墨色 + P95 副注、错误率 tier 着色——全部快照推导 `utils/modelDetailPanel.ts`,null 显 `-` 不发明)/ 「24h 延迟趋势」(ProbeLatencyChart,180px)/ 「事件记录」(24h 失败事件:时间 + 流式/非流式 + 原因,空态「24h 内无失败记录」)/ 底部「打开完整详情」主按钮(→ /endpoints/:id)。**快照冻结:** entry prop 是行点击时冻结的快照,overview 10s 轮询不刷新已打开面板;异步区(延迟图 + 事件共享一次 24h 拉取)打开时一次性拉取,三态齐备,失败只污染该区。实时数据走完整详情页。**自造模态面三件套首例:** focus trap(utils/focusTrap.ts)+ ESC/scrim/按钮统一关闭 + 焦点归还触发行(父级承担)——规范条目见 DESIGN.md Signature 节。**不放分享入口**(分享弹窗只从筛选行与完整详情页开,弹窗不叠面板)。
@@ -116,7 +116,7 @@
 - **TrendChart 是趋势类折线图的唯一通用组件(沿置 + GH #114 轻量化):** 裸图表(不带卡片,布局由父级负责),默认在 null 点断线(未判分批次不得连成假分),支持竖向断点标注线(占位灰虚线,如「v2 起题目变更」);色板走 `utils/chartColors.ts` 单一来源;平滑走 `utils/monotoneSmooth.ts` 单调插值(§3.3;实测点保留 5px 极简点)。
 - **ModelTrendDialog 是报告页行下钻的唯一趋势弹窗(沿置):** 按模型按需拉取 `/api/campaigns/{id}/trends`,分数线(版本断点标注「vN 起题目变更」+ 判分口径断点标注「判分口径已变更」,同一位置双断点合并为一行标注,复用 TrendChart 灰虚线断点机制)+ 探测成功率/延迟并列;已删除模型带「已删除」tag;加载/空/错误三态齐全。
 - **EvalShareDialog 与 StatusShareDialog(分享弹窗,v2 沿置 + 物料重建 GH #121):** 结构机制不变——预览(限高 62vh 滚动)+ 离屏双份捕获(`position: absolute; left: -10000px`,snapdom 祖先 overflow 裁剪规避;**禁 `position: fixed`**——snapdom 按视口宽度重排舞台)+ 复制图片/下载 PNG + 复制降级(非安全上下文置灰 + 提示,下载永可用)+ **恒亮主题捕获**(暗色后置期天然满足;暗色 spec 落地时恢复 `withLightCapture` 级联)+ 失败不锁按钮。入口:状态概览筛选行「分享状态」主按钮(全局快照 = 筛选后 entries,打开即冻结)+ EndpointDetailView 单模型分享 + Leaderboard 工具条「分享图片」(控制台)/「保存图片」(公开分享页,`shared` 口径;仅 settle 批次渲染——半成品分数不外流)。**版式切换(沿置):** StatusShareDialog 预览上方「完整版/紧凑版」radio,默认档 = 打开时视口 <768 一次性判定;文件名紧凑版加 `-compact`。报告页「复制链接」(铸 token,ADR 0006)与图片分享并存消歧。
-- **StatusCard / EvalCard 物料(v2 新视觉重建,GH #121):** 构成与五形态规格见 share-materials surface brief;语义约定全部保留——外框三段(品牌区/范围行 chips/页脚)、**结论必须标注统计范围**(批 56:无筛选「全部端点」,有筛选逐项 chips 一个不漏,零匹配中性「暂无数据」永不读作「全部正常/全部稳定」)、数字与 chips 同源同快照、防作假水印与断点口径、空态不冒充。视觉变更 = 蓝品牌区(BrandMark 蓝渐变 + 品牌条)、三态词表、hero 72 档大数字(完整版)/ 3xl 锚点(480 族)、hairline 卡内分隔、文字场景 *-text 阶、小卡 av-* 类补登(GH #93 潜伏 bug 修复)。
+- **StatusCard / EvalCard 物料(v2 新视觉重建,GH #121):** 构成与五形态规格见 share-materials surface brief;语义约定全部保留——外框三段(品牌区/范围行 chips/页脚)、**结论必须标注统计范围**(批 56:无筛选「全部端点」,有筛选逐项 chips 一个不漏,零匹配中性「暂无数据」永不读作「全部正常/全部稳定运行」)、数字与 chips 同源同快照、防作假水印与断点口径、空态不冒充。视觉变更 = 蓝品牌区(BrandMark 蓝渐变 + 品牌条)、三态词表、hero 72 档大数字(完整版)/ 3xl 锚点(480 族)、hairline 卡内分隔、文字场景 *-text 阶、小卡 av-* 类补登(GH #93 潜伏 bug 修复)。
 - **角色 tag(v2 色板重登记,GH #119):** 词表四词不变(超级管理员/管理员/操作员/观察者);映射不变——super_admin/admin → `primary`(解析为品牌蓝 #007AFF)、operator/viewer → `info`(解析为 `--hs-info` 中性灰);语义 = 权限层级非健康度,禁借用状态色。**消费方变更:** AppHeader 已退役;AppSidebar 账号行以**纯文本 roleLabel** 呈现(未用 el-tag,secondary 中性——侧边栏底部密度下无 tag 容器,登记为新消费方口径);UserManager(系统设置页)保持 el-tag。实现集中 `utils/role.ts` 不变。
 - **协议 tag(v2 色板重登记,GH #119):** 词表 = 协议原值(anthropic/openai/images_generation/images_edit);映射不变——anthropic → `success`(解析为 #34C759)、openai → `warning`(解析为 #FF9500)、images_* → `info`;语义 = 契约家族区分非健康度(GH #34 裁决沿置:存量 chat 配色与状态色的张力登记为已知并接受)。实现集中 `utils/protocol.ts` 不变。**消费方变更:** EndpointCard 组内同值收敛例外随卡片退役;现存消费方 = EndpointDetailView 标题行、EndpointTable(模型管理)、StatusCard 范围 chips 与端点小卡模型行。ModelStatusList 行不展示协议列(按协议分组时组名即协议)。
 - **反馈三件套(不变):** 操作结果 → `ElMessage`;破坏性操作 → `ElMessageBox.confirm` 二次确认;表单校验失败 → 表单内联提示。
@@ -139,11 +139,11 @@
 
 - 界面一律简体中文;**词表分四套,互不混用:**
   - **域模型 endpoint 状态(后端域,界面不直接显示):** 正常 / 降级 / 宕机 / 告警(W5;出现于 API、告警管线、代码注释)。
-  - **显示层三态(界面唯一状态语言):** 稳定 / 性能下降 / 服务异常(§3.1,唯一映射 utils/statusDisplay.ts,不新增同义词)。
+  - **显示层三态(界面唯一状态语言):** 稳定运行 / 降级 / 异常(§3.1,唯一映射 utils/statusDisplay.ts,不新增同义词;词表 2026-08-01 自「稳定/性能下降/服务异常」切换,GH #128)。
   - **批次/运行状态:** 等待中 / 运行中 / 已完成 / 失败(campaignStatusLabel 既有口径)。
   - **告警事件类别:** 见下条。
 - **告警事件词表(十一 kind,GH #98 九词扩十一词;审计/历史域的类别词表,与状态词表并列、互不混用):** 中文标签集中 `web/src/utils/alertKind.ts`(集中原则先例,组件内禁写词字面量)——down「故障」/ recovered「恢复」/ score_drop「分数大跌」/ score_drop_skipped「对比跳过」/ test「测试」/ group_down「厂商组告警」/ group_recovered「厂商组恢复」/ batch「聚合发送」/ quiet_summary「静默摘要」/ **retire_pending「待退役」/ retired「已退役」**(GH #98,spec 0018·端点退役 T4——该 spec 与 UI v2 的 spec 0018 编号撞车,见附录第 12 项);未知 kind 回落「未知类型」。**语义边界:本词表描述「这条事件是什么」,不承载健康状态语义,§3 语义色映射不动。** tag type 映射:down→danger、recovered→success、score_drop/score_drop_skipped→warning、test→info、group_down→danger、group_recovered→success、batch/quiet_summary→info(投递形态记录,非健康信号)、**retire_pending→warning(需要注意)、retired→info(投递记录,非健康信号)**;未知 kind 回落 info。**借字例外(spec 0017 裁决沿置):** 「厂商组告警」的「告警」借自域模型状态词表,是「互不混用」纪律下的唯一具名例外——此处「告警」是事件类别词,语境限定故障记录页,与显示层状态域不相遇;`utils/alertKind.ts` 注释与本条互指,禁「修正」为其他词。
-- **降级成因副词表(ticket #7,spec 0013,不变):** **可用性**(24h 成功率低于 95%)/ **延迟**(24h P95 超过 2× 7 天 P50 基线);仅作「性能下降」的成因修饰出现(§3.1 副标签),**不是第四显示状态词**;批次/运行域不借用;评分域既有文案不受管辖。
+- **降级成因副词表(ticket #7,spec 0013,不变):** **可用性**(24h 成功率低于 95%)/ **延迟**(24h P95 超过 2× 7 天 P50 基线);仅作「降级」的成因修饰出现(§3.1 副标签),**不是第四显示状态词**;批次/运行域不借用;评分域既有文案不受管辖。
 - **分数展示统一 0–100 整数**(null → `-`),`formatScore` 集中于 `utils/format.ts`,组件内禁止自写 `toFixed` 分数格式;0~1 原始分只存在于 API 层。
 - 按钮用动词短语(「触发同步」「新建 Hub」);错误消息必须带原因,不只说「失败」。
 - 数字与时间格式统一走 `utils/format.ts`;评估成本格式同此集中(GH #42):题级耗时 `formatMs`、批次累计耗时 `formatDuration`、Token `formatTokens`(k/M 缩写一位小数),输入/输出分列标注;成本指标中性色不挂档色(§5 成本约定)。
@@ -161,7 +161,7 @@
 
 1. **ADR 0015 三推翻(2026-07-31,spec 0018):** 品牌色 teal → #007AFF(白底 4.02:1 不过 AA,用户已知并接受;品牌色文字从简、关键文本墨色);四态词表 → 显示层三态(failing 并入服务异常;域模型四态与告警管线不动);闪烁独占 → 禁闪烁 + §15 动效体系。替代方案(定向演进/深色蓝保 AA/英文主显)均经用户否决,记录在 ADR。
 2. **功能色图形档本体按简报原文执行:** #34C759 / #FF9500 白底 2.2:1 不过 3:1 图形门槛——处置 = 文字/图形分工(*-text 阶实测均过 AA 4.5),本体不改(改本体会推翻简报锚点);已知代价登记在 ADR 0015 与 tokens.css 注释。
-3. **三态映射接口(GH #113 main 裁决):** utils/statusDisplay.ts 唯一映射点,接口六件(statusDisplay/statusLabel/statusTone/toDisplayStatus/displayStatusCounts/DISPLAY_SEVERITY_ORDER);色槽抽象,文字 *-text 阶、图形本体阶;未知 →「未知」+ warning 槽。状态筛选跟显示词表走(「服务异常」同筛 down+failing);物料分布串四段→三段,failing 计数由「含 N 个告警」事件 chip 披露(防作假不回退)。
+3. **三态映射接口(GH #113 main 裁决;词表经 GH #128 更新,见第 14 项):** utils/statusDisplay.ts 唯一映射点,接口六件(statusDisplay/statusLabel/statusTone/toDisplayStatus/displayStatusCounts/DISPLAY_SEVERITY_ORDER);色槽抽象,文字 *-text 阶、图形本体阶;未知 →「未知」+ warning 槽。状态筛选跟显示词表走(incident 档同筛 down+failing);物料分布串四段→三段,failing 计数由「含 N 个告警」事件 chip 披露(防作假不回退)。
 4. **图表平滑与逐探测例外(GH #114):** 单调插值唯一来源 utils/monotoneSmooth.ts(否掉 ECharts smooth);ProbeLatencyChart 不平滑(tooltip 保真红线 + 尖峰是事故证据);样式口径与动画门控见 §3.3。
 5. **hover 上浮豁免表格行(GH #118 main 裁决):** §15 的 2–4px 上浮针对卡片类可点元素;hairline 分隔的矩阵行上浮破坏共享 grid 基线与仪式竖条几何,行可点性由 hover 填充 brand-soft + 指针承担。ModelStatusList 行(圆角盒卡片读感)与 Leaderboard 矩阵行(表格读感)分属两侧,差异登记。
 6. **页面 h1 = 侧边栏标签(GH #118 main 裁决):** 消除「评估榜单」vs「Benchmark」类漂移;描述性短语退居 lede。深链页 h1 为对象名,不受管辖。
@@ -172,3 +172,4 @@
 11. **:deep(.祖先类) 死选择器纪律(GH #121 check HIGH-1 沉淀):** 见 §4;跨组件变体只走「子组件 prop 绑自身类」或「父组件 .ancestor :deep(.child)」。
 12. **编号撞车登记:** 仓内存在两个「spec 0018」——UI v2.0 完全重构(docs/specs/0018-ui-v2-apple-rebuild.md,GH #109)与生成式端点 Ping 监测与端点退役机制(GH #96 母票,无独立 spec 文件落档)。引用时须带限定词(「spec 0018·UI v2」/「spec 0018·端点退役」);后续 spec 编号从 0019 起,撞车不重排(历史引用已散见各票)。
 13. **family 词表统一「厂商」(2026-08-01 main 裁决,GH #122):** Leaderboard 筛选 UI 与 EvalCard 范围 chip 的「系列」全部统一为「厂商」(与 GH #59 范围 chips 既定词表一致);评估域 family 数据字段名不动,仅 UI 文案。
+14. **显示层三态词表切参照稿(2026-08-01 用户裁决,GH #128):** 显示层三词自「稳定 / 性能下降 / 服务异常」切换为参照设计稿词「**稳定运行 / 降级 / 异常**」——「降级」与域模型四态词的「降级」同字不同域(显示层 degraded 档 vs 域模型 degraded 态,恰好同义,消歧无负担);「异常」同时是事件域通用词(异常明细等),状态词与事件措辞靠语境分层,不改事件文案。唯一映射点 utils/statusDisplay.ts 一处改全站生效;域模型四态(W5)、告警事件词表(§7 十一 kind)、降级成因副词表(可用性/延迟)全部不动。spec 0018 与 ADR 0015 中的旧词为历史决策记录,不回改。

@@ -36,7 +36,7 @@
       },
       "warning": {
         "role": "functional",
-        "displayName": "Warning 黄(性能下降,图形阶)",
+        "displayName": "Warning 黄(降级,图形阶)",
         "canonical": "#ff9500",
         "tonalRamp": [
           "#b35c00",
@@ -51,7 +51,7 @@
       },
       "danger": {
         "role": "functional",
-        "displayName": "Danger 红(服务异常,图形阶)",
+        "displayName": "Danger 红(异常,图形阶)",
         "canonical": "#ff3b30",
         "tonalRamp": [
           "#d70015",
@@ -138,7 +138,7 @@
       "name": "Status Badge",
       "kind": "chip",
       "description": "唯一状态灯:小圆点(图形阶)+ 状态词(文字阶),三态双编码。",
-      "html": "<span class=\"ds-badge ds-badge-stable\"><span class=\"ds-badge-dot\"></span><span>稳定</span></span> <span class=\"ds-badge ds-badge-degraded\"><span class=\"ds-badge-dot\"></span><span>性能下降</span></span> <span class=\"ds-badge ds-badge-incident\"><span class=\"ds-badge-dot\"></span><span>服务异常</span></span>",
+      "html": "<span class=\"ds-badge ds-badge-stable\"><span class=\"ds-badge-dot\"></span><span>稳定</span></span> <span class=\"ds-badge ds-badge-degraded\"><span class=\"ds-badge-dot\"></span><span>降级</span></span> <span class=\"ds-badge ds-badge-incident\"><span class=\"ds-badge-dot\"></span><span>异常</span></span>",
       "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; font-size: var(--hs-text-sm); } .ds-badge-dot { width: 9px; height: 9px; border-radius: 50%; } .ds-badge-stable { color: var(--hs-success-text); } .ds-badge-stable .ds-badge-dot { background: var(--hs-success); } .ds-badge-degraded { color: var(--hs-warning-text); } .ds-badge-degraded .ds-badge-dot { background: var(--hs-warning); } .ds-badge-incident { color: var(--hs-danger-text); } .ds-badge-incident .ds-badge-dot { background: var(--hs-danger); }"
     },
     {
@@ -172,7 +172,7 @@
       "三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留",
       "轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达可点/浮层",
       "220px macOS 设置风侧边栏外壳,签名面自造,Element Plus 保留管理台复杂件",
-      "状态三态:稳定 / 性能下降 / 服务异常,小圆点 + 状态词双编码",
+      "状态三态:稳定 / 降级 / 异常,小圆点 + 状态词双编码",
       "动效成体系(v2.0 §15):数字补间、图表入场绘制、页面 Fade+Slight Move、hover 上浮;reduced-motion 全局归零"
     ],
     "rules": [

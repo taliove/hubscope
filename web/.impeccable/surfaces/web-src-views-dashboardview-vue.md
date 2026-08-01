@@ -27,13 +27,13 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 
 ### StatusHero(健康指数区,GH #115)
 - 构成:hero 72px/600 大数字(`--hs-text-hero`,tabular-nums,letter-spacing -0.02em)+ 次级「%」(2xl secondary)+ 右侧纵列:结论词(xl/600,tone *-text 阶)+ 日环比行(md,`较昨日 ±X.X%` / `较昨日持平`,tone 着色;null 整行不渲染)+ 统计范围(xs secondary,「统计范围:N 个启用端点」)。
-- 数据:`health_score_24h` / `health_score_delta` 后端聚合直渲(api-contract 健康指数节);结论词 `utils/healthConclusion.ts`(与物料同源):异常态「N 个端点服务异常」(down+failing 合并)、降级态「N 个端点性能下降」、全稳定「全部稳定」、空「暂无数据」。
+- 数据:`health_score_24h` / `health_score_delta` 后端聚合直渲(api-contract 健康指数节);结论词 `utils/healthConclusion.ts`(与物料同源):异常态「N 个端点异常」(down+failing 合并)、降级态「N 个端点降级」、全稳定「全部稳定运行」、空「暂无数据」(词表 GH #128)。
 - **防作假不变式:** null 健康指数 → 大数字位渲染中性「暂无数据」(3xl placeholder),永不显示 100%;null 折叠进 empty 分支,结论词与 tone 同归中性。
 - 数字补间 500–800ms(useTweenedNumber/numberTween.ts,600ms 中值 easeOutCubic,reduced-motion 立即落终值);skeleton 与加载态同高锚定(min-height 142px,算术注释在组件内)。
 
 ### MetricWidgets(指标区,GH #115)
-- 四格轻容器(grid 4 列 `minmax(0,1fr)`,gap space-4;hover 上浮 2px + shadow-md——卡片类):**24h 可用率**(3xl 大数字 + 副行日环比,与健康指数同口径同源;null 副行「较昨日暂无对比」)/ **24h 请求量**(大数字 + 副行「探测总次数」)/ **平均延迟**(大数字 + 副行恒注「启用端点 P50 均值」——批 59 scope 恒一致口径,`meanP50Ms`)/ **异常模型数**(大数字 + 副行「服务异常 N · 性能下降 N」或「全部稳定」)。
-- **异常模型数去重口径(GH #115 裁决):** `abnormalModelCounts` 按**模型**去重(不是端点计数)——同模型多端点取最重显示态(incident > degraded),只计 enabled;一个双协议同时异常的模型只数一次,与「哪些模型有风险」的读者问题对齐。
+- 四格轻容器(grid 4 列 `minmax(0,1fr)`,gap space-4;hover 上浮 2px + shadow-md——卡片类):**24h 可用率**(3xl 大数字 + 副行日环比,与健康指数同口径同源;null 副行「较昨日暂无对比」)/ **24h 请求量**(大数字 + 副行「探测总次数」)/ **平均延迟**(大数字 + 副行恒注「启用端点 P50 均值」——批 59 scope 恒一致口径,`meanP50Ms`)/ **风险模型数**(大数字 + 副行「异常 N · 降级 N」或「全部稳定运行」;伞状标题不撞 incident 专属状态词「异常」,GH #128 裁决)。
+- **风险模型数(原「异常模型数」,GH #128 改题)去重口径(GH #115 裁决):** `abnormalModelCounts` 按**模型**去重(不是端点计数)——同模型多端点取最重显示态(incident > degraded),只计 enabled;一个双协议同时异常的模型只数一次,与「哪些模型有风险」的读者问题对齐。
 - 每格配 TrendSparkline(轻趋势线:单调插值、null 断线、无轴无网格、中性墨色 + bg-hover 面积填充,aria-hidden);可用率/请求量/失败格序列来自聚合 dots(探测加权,overviewDots 纪律),延迟格来自 enabled entries 小时均值。
 - 核心数字补间(同 Hero);null 值显 placeholder 色;skeleton 四格同形。
 
@@ -43,7 +43,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - 状态列 = StatusBadge sm + causes(唯一状态灯纪律不破);趋势列 = UptimeMicroStrip(24 格、格高 14px、2px 间距、radius-xs,tier/tooltip 同源 overviewDots);操作列 =「详情」text 按钮(@click.stop)。
 - **行交互:** 整行可点开 ModelDetailPanel(role="button" + tabindex="0" + Enter/Space + `data-endpoint-id` 焦点归还锚点);**行 hover 上浮 2px + shadow-md + 卡面底**(卡片类读感:radius-lg 圆角盒 + 12px padding;与 Leaderboard 矩阵行的表格读感豁免分属两侧,差异登记在 ui-guidelines 附录第 5 项);`:focus-visible` = 2px brand outline(offset 1px)。
 - **排序:** 行与分区都经 `utils/severitySort.ts` 单一秩表(异常领先首屏;已停用 DISABLED_RANK 沉底);轮询/筛选驱动的重排不做动画(GH #52 纪律)。
-- **分组模式(轻分区,取代 OverviewGroupSection):** section-header = 组名(lg/600)+ meta 行(xs secondary:「N 个端点」或「N 个端点 · 服务异常 N · 性能下降 N」,计数措辞由父级经显示层映射组句,禁字面量);分区排序 = 组内最重 enabled entry 秩,tie 组键字典序。**旧组头机械(折叠披露三件套、协议收敛 tag、「本组」指标、组级 UptimeStrip、组分享按钮)全部退役**——组分享入口退役后,分享只从筛选行全局入口与端点详情页进入(快照范围 = 当前筛选,分组 chip 由筛选条件承担)。
+- **分组模式(轻分区,取代 OverviewGroupSection):** section-header = 组名(lg/600)+ meta 行(xs secondary:「N 个端点」或「N 个端点 · 异常 N · 降级 N」,计数措辞由父级经显示层映射组句,禁字面量);分区排序 = 组内最重 enabled entry 秩,tie 组键字典序。**旧组头机械(折叠披露三件套、协议收敛 tag、「本组」指标、组级 UptimeStrip、组分享按钮)全部退役**——组分享入口退役后,分享只从筛选行全局入口与端点详情页进入(快照范围 = 当前筛选,分组 chip 由筛选条件承担)。
 
 ### ModelDetailPanel(右侧详情面板,GH #116;取代速览弹窗与整行深链)
 - 自造右缘全高 sheet + scrim(`--hs-overlay-bg`),**不用 el-dialog**;入场 panel-slide/panel-fade 双 Transition(reduced-motion 全局归零覆盖)。
@@ -54,7 +54,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - aria:`role="dialog" aria-modal="true" :aria-label="模型名"`;打开后焦点落关闭按钮。
 
 ### 筛选工具条
-- 关键词 el-input(220px)+ 协议 select(选项 = `PROTOCOLS` 单一来源)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「服务异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 分组 select(按厂商/按能力/按协议/不分组,默认按厂商)+ 「分享状态」主按钮(margin-left:auto;首载前禁用)。
+- 关键词 el-input(220px)+ 协议 select(选项 = `PROTOCOLS` 单一来源)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 分组 select(按厂商/按能力/按协议/不分组,默认按厂商)+ 「分享状态」主按钮(margin-left:auto;首载前禁用)。
 - 筛选语义(GH #113 main 裁决):状态筛选跟显示词表走,UI 不提供 failing 单筛;关键词小写子串匹配模型名。
 - 协议/状态 select 前置内联 label(sm secondary「协议:」「状态:」,GH #55 局部约定沿置)。
 

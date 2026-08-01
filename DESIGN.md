@@ -122,7 +122,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 - 三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留(暗色后置,独立 spec 定稿)
 - 轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达「可点/浮层」
 - 220px macOS 设置风侧边栏外壳,签名面自造(侧边栏/Hero/指标区/列表行/详情面板/时间线),Element Plus 保留管理台复杂件
-- 状态三态:稳定 / 性能下降 / 服务异常,小圆点 + 状态词双编码,局部强调而非大面积色块
+- 状态三态:稳定运行 / 降级 / 异常(参照稿词表,GH #128),小圆点 + 状态词双编码,局部强调而非大面积色块
 - 动效成体系(v2.0 §15):数字补间、图表入场绘制、页面 Fade+Slight Move、hover 上浮;reduced-motion 全局归零
 
 ## Colors
@@ -250,7 +250,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 
 **The Gate-The-Phases Rule.** reduced-motion 下 CSS 过渡由 semantics.css 全局 `transition: none !important` 归零兜底,但 JS 阶段时序(补间、图表绘制、旋转等 animation/rAF 驱动)必须单独门控:matchMedia 一次性判断(chartMotion.ts 模式),reduced-motion 时延迟归零、终态直呈——延迟不是装饰,是等待。
 
-**The No-Blink Rule.** 全站无任何闪烁动画。告警紧急度的显示层表达 = danger 双编码(红点 + 「服务异常」词)+ 物料「含 N 个告警」事件 chip;域模型 failing 档与 Lark 告警管线不动(W5)。(取代旧 Blink-Is-Failing Rule,ADR 0015。)
+**The No-Blink Rule.** 全站无任何闪烁动画。告警紧急度的显示层表达 = danger 双编码(红点 + 「异常」词)+ 物料「含 N 个告警」事件 chip;域模型 failing 档与 Lark 告警管线不动(W5)。(取代旧 Blink-Is-Failing Rule,ADR 0015;状态词经 GH #128 切参照稿。)
 
 ## Components
 
@@ -282,7 +282,7 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **登录态过滤:** 未登录只见公开项(状态概览、Benchmark);过滤逻辑集中 `utils/sidebarNav.ts`(visibleSidebarItems / isSidebarItemActive 纯函数)。
 
 ### Signature: StatusBadge(唯一状态灯)
-- 全站唯一的 endpoint 状态展示组件:**小圆点(图形阶)+ 状态词(文字阶)** 双编码,三态(稳定/性能下降/服务异常);词与色槽全部来自显示层映射 `utils/statusDisplay.ts`,组件内禁写状态词字面量;degraded 可挂成因副标签(「· 可用性」「· 延迟」,secondary,不随词着色);零动画(闪烁退役)。规格与消费纪律见 ui-guidelines §5 与 overview surface brief。
+- 全站唯一的 endpoint 状态展示组件:**小圆点(图形阶)+ 状态词(文字阶)** 双编码,三态(稳定运行/降级/异常);词与色槽全部来自显示层映射 `utils/statusDisplay.ts`,组件内禁写状态词字面量;degraded 可挂成因副标签(「· 可用性」「· 延迟」,secondary,不随词着色);零动画(闪烁退役)。规格与消费纪律见 ui-guidelines §5 与 overview surface brief。
 
 ### Signature: 24h 微条(UptimeMicroStrip)
 - 24 格填满式时间条(格高 14px、xs 圆角、2px 间距),格 = 一小时;三档着色(≥95% 绿 / <95% 黄 / 0% 红 / 无数据 border 灰),tier 与 tooltip 措辞集中 `utils/overviewDots.ts`(与分享物料同源,一致性由构造保证);聚合口径 = 按小时求和,禁止按端点简单平均。模型列表行内唯一时间形态;物料 24h 分段条保持独立实现(快照渲染契约)。
@@ -313,4 +313,4 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **Don't** 引入调色板外新色相——三态世界没有第四色,告警橙已整体退役。
 - **Don't** 引入任何闪烁动画;动效只走 Motion 节登记的词汇表。
 - **Don't** 用渐变装饰、大面积彩色背景块、营销物料(光斑/插画);BrandMark 渐变是唯一允许的渐变。
-- **Don't** 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性「暂无数据」,永不显示「全部正常/全部稳定」。
+- **Don't** 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性「暂无数据」,永不显示「全部正常/全部稳定运行」。
