@@ -19,7 +19,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 1. **可见页头(2026-08-01 参照稿复刻批):** h1「状态概览」(3xl 页面标题档,600 primary)+ lede 一行「全局视角,掌握 AI 服务运行健康状态」(md secondary)——「页面 h1 = 侧边栏标签」惯例的 sr-only 例外随本批退役,可见 h1 直接承担 a11y 树,不重复。
 2. **StatusHero**(健康指数 hero 区)
 3. **MetricWidgets**(四格指标区)
-4. **筛选工具条**(关键词 / 供应商 / 状态(三态)+ 「分享状态」主按钮;协议筛选与分组选择器随 GH #131 退役)
+4. **筛选工具条**(关键词 / 供应商 / 状态(三态)+ 「分享状态」主按钮;协议筛选随 GH #131 退役;分组选择器 GH #140 回归(默认不分组))
 5. **ModelStatusList**(高级列表,列头点击排序默认按可用率降序,GH #136)
 6. **ModelDetailPanel**(行点击开启的右侧详情面板,teleport)
 7. **RecentEvents**(近期事件区,GH #132;**登录态专属**——`authed=false` 整区不渲染零请求,匿名读者面不泄露运营事件)
@@ -42,11 +42,11 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - 核心数字补间(同 Hero);null 值显 placeholder 色;skeleton 四格同形。
 
 ### ModelStatusList(模型状态列表,GH #115;取代 EndpointCard 矩阵)
-- **容器(GH #139):** 分区 = 白 tile(bg-card + 1px 描边 + radius-lg + space-2 内 padding,灰骨架底上分层;8px 内 padding 让行 hover 上浮留在 tile 内、末行去 hairline 由容器边收口)。
+- **容器(GH #139):** 分区 = 白 tile(bg-card + 1px 描边 + radius-lg + space-2 内 padding,灰骨架底上分层;末行去 hairline 由容器边收口;行 hover 自 GH #140 改 bg-hover 填充,不再依赖上浮空间)。
 - 列构成(共享 grid 模板 `minmax(0,1.8fr) 100px 150px 150px 100px minmax(150px,1fr) 40px`,表头与行同一模板,GH #139 重排):模型 / 供应商 / 状态 / 24h 可用率 / P95 延迟 / 24h 趋势 / 操作。
 - **模型名第一层级:** md/600 墨色,中间截断(splitMiddle tailKeep=12,头 ellipsis 尾保区分度后缀)+ el-tooltip 快显(show-after 200ms)全显;已停用行名弱化(secondary/400)+「已停用」xs placeholder 注。指标全部辅助层级(P95 sm regular tabular-nums、可用率 md tabular-nums `availabilityRateTier` *-text 阶,数字左进度条右同行,GH #136);**供应商瓦片回名称格(GH #139,参照稿:名称格 = 瓦片 + 模型 ID,供应商列 = 文本):** 26×26 统一品牌色块瓦片(white glyph,未知回落字母瓦片,`utils/vendorIcon.ts` 单源)内联于模型 ID 左侧,`title` 兜底全名;**供应商列恢复 family 文本**(sm secondary,截断 + title)——取代 GH #136「供应商列图标化、名称格 chip 退役」的处置,「一行不重复两枚图标」纪律以语义位交换形态存续。
 - 状态列 = StatusBadge sm + causes(唯一状态灯纪律不破);趋势列(GH #136)= TrendSparkline 行内 20px 道(行级延迟序列,按显示态着色 rowSparklineTone;UptimeMicroStrip 已随 GH #131 退役);操作列(GH #136)= chevron-right 裸按钮(lucide 18px,aria-label「查看详情」,@click.stop)。
-- **行交互:** 整行可点开 ModelDetailPanel(role="button" + tabindex="0" + Enter/Space + `data-endpoint-id` 焦点归还锚点);**行 hover 上浮 2px + shadow-md + 卡面底**(卡片类读感:radius-lg 圆角盒 + 12px padding;与 Leaderboard 矩阵行的表格读感豁免分属两侧,差异登记在 ui-guidelines 附录第 5 项);`:focus-visible` = 2px brand outline(offset 1px)。
+- **行交互:** 整行可点开 ModelDetailPanel(role="button" + tabindex="0" + Enter/Space + `data-endpoint-id` 焦点归还锚点);**行 hover = `--hs-bg-hover` 填充**(GH #140 用户裁决:上浮 + 阴影在白 tile 内穿帮;可点性由 role/tabindex/focus-visible 承担);`:focus-visible` = 2px brand outline(offset 1px)。
 - **排序(GH #136 重写):** 列头点击排序(可排序键 = 名称/可用率/P95;`nextListSort` 状态机,新列首击优在前,再击翻向;`sortListEntries` 执行——桶序不随向:有值启用行 → 无数据启用行 → 已停用沉底,方向只作用桶内,同值 severity 秩回退);**默认 = 可用率降序(高在前,推翻 GH #131「差在前」)**;持久化 localStorage 键 `hs:list-sort`(坏值回落默认);副注动态化 `listSortNote`(如「(按可用率降序)」,标签与数据构造性一致);severitySort 仅余分区排序与 healthConclusion 消费;轮询/筛选驱动的重排不做动画(GH #52 纪律)。
 - **分组模式(轻分区,取代 OverviewGroupSection):** section-header = 组名(lg/600)+ meta 行(xs secondary:「N 个端点」或「N 个端点 · 异常 N · 降级 N」,计数措辞由父级经显示层映射组句,禁字面量);分区排序 = 组内最重 enabled entry 秩,tie 组键字典序。**旧组头机械(折叠披露三件套、协议收敛 tag、「本组」指标、组级 UptimeStrip、组分享按钮)全部退役**——组分享入口退役后,分享只从筛选行全局入口与端点详情页进入(快照范围 = 当前筛选,分组 chip 由筛选条件承担)。
 
@@ -59,7 +59,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 - aria:`role="dialog" aria-modal="true" :aria-label="模型名"`;打开后焦点落关闭按钮。
 
 ### 筛选工具条
-- 关键词 el-input(220px)+ 供应商 select(选项 = `familyOptions` 单一来源,GH #131 取代协议筛选)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 「分享状态」主按钮(margin-left:auto;首载前禁用);**分组选择器随 GH #131 退役**;副注动态化(GH #136,`listSortNote`)。
+- 关键词 el-input(220px)+ 供应商 select(选项 = `familyOptions` 单一来源,GH #131 取代协议筛选)+ 状态 select(**三显示态**,轻→重排列,词来自 statusLabel;「异常」同筛 down+failing,`toDisplayStatus` 匹配)+ 「分享状态」主按钮(margin-left:auto;首载前禁用);**分组选择器 GH #140 回归**(不分组默认/按厂商/按能力/按协议;组头厂商瓦片 + 计数 meta,组内跟随列头排序态,组间 severity 秩);副注动态化(GH #136,`listSortNote`)。
 - 筛选语义(GH #113 main 裁决):状态筛选跟显示词表走,UI 不提供 failing 单筛;关键词小写子串匹配模型名。
 - 供应商/状态 select 前置内联 label(sm secondary「供应商:」「状态:」,GH #55 局部约定沿置,GH #131 改词)。
 
