@@ -1,12 +1,14 @@
 // Model-status-list row derivations (GH #131, UI v2 optimization O4; GH #136
-// seven fixes): vendor-tile initials, availability progress-bar width,
-// per-row latency sparkline series and its semantic tone, the vendor-filter
-// option list, and the column-sort state machine + sorter + persistence —
-// centralized as pure functions so the list component never carries math
-// (role.ts / overviewMetrics.ts precedent).
+// seven fixes; GH #140 grouping regression): vendor-tile initials,
+// availability progress-bar width, per-row latency sparkline series and its
+// semantic tone, the vendor-filter option list, the column-sort state
+// machine + sorter + persistence, and the grouping bucketer + section meta
+// wording — centralized as pure functions so the list component never
+// carries math (role.ts / overviewMetrics.ts precedent).
 import type { OverviewDot, OverviewEntry } from '@/api/types'
-import { toDisplayStatus } from '@/utils/statusDisplay'
-import { entryRank } from '@/utils/severitySort'
+import { statusLabel, toDisplayStatus } from '@/utils/statusDisplay'
+import { abnormalModelCounts } from '@/utils/overviewMetrics'
+import { entryRank, groupRank } from '@/utils/severitySort'
 
 // --- Vendor tile initials ---------------------------------------------------
 
@@ -241,7 +243,9 @@ export function saveListSort(sort: ListSort, storage: SortStorage = defaultStora
 // The toolbar note restates the CURRENT ordering (GH #136): the GH #131
 // static「(按可用率排序)」note would lie the moment the user re-sorts — a
 // label the data does not honor is an anti-fake violation. The note is
-// dynamic so it stays literally true in every state.
+// dynamic so it stays literally true in every state. In grouped mode (GH
+// #140) the note describes the IN-GROUP ordering — the group ranking is
+// the severity rank, a separate caliber the note never claimed.
 export function listSortNote(sort: ListSort): string {
   const dirWord = sort.dir === 'desc' ? '降序' : '升序'
   switch (sort.key) {
@@ -252,4 +256,74 @@ export function listSortNote(sort: ListSort): string {
     default:
       return `（按可用率${dirWord}）`
   }
+}
+
+// --- Grouping (GH #140 regression) -------------------------------------------
+
+// Grouping dimension of the list toolbar select. Default none (flat list) —
+// the GH #131 reference-toolbar default was family grouping; GH #140
+// restores the selector with the flat list as the default.
+export type ListGrouping = 'none' | 'family' | 'capability' | 'protocol'
+
+// Option labels from ONE Record source (the enum single-source discipline,
+// protocol.ts precedent): the select renders Object.keys of this record, so
+// a new grouping value can never ship without its label.
+export const LIST_GROUPING_LABELS: Record<ListGrouping, string> = {
+  none: '不分组',
+  family: '按厂商',
+  capability: '按能力',
+  protocol: '按协议',
+}
+export const LIST_GROUPINGS = Object.keys(LIST_GROUPING_LABELS) as ListGrouping[]
+export const LIST_GROUPING_DEFAULT: ListGrouping = 'none'
+
+// One bucket of the grouped list: the group key plus its entries sorted by
+// the ACTIVE column sort.
+export interface ListGroup {
+  key: string
+  entries: OverviewEntry[]
+}
+
+// groupListSections buckets the (already filtered) entries by the grouping
+// dimension and returns the sections ranked by the group's most severe
+// ENABLED entry — groupRank, the severitySort single rank table (GH #140:
+// group ranking is the severity rank whatever the column sort says; the
+// severitySort.sortGroupSections helper itself is NOT reused because it
+// re-sorts entries by severity, while the in-group ordering here must
+// follow the active column sort — sortListEntries keeps the bucket rules:
+// rated enabled → no-data enabled → disabled, inside every group). Group
+// ties break by key lex (board determinism). Never mutates the input.
+export function groupListSections(
+  entries: OverviewEntry[],
+  grouping: Exclude<ListGrouping, 'none'>,
+  sort: ListSort,
+): ListGroup[] {
+  const keyOf =
+    grouping === 'family'
+      ? (e: OverviewEntry) => e.family
+      : grouping === 'capability'
+        ? (e: OverviewEntry) => e.capability
+        : (e: OverviewEntry) => e.protocol
+  const buckets = new Map<string, OverviewEntry[]>()
+  for (const e of entries) {
+    const key = keyOf(e)
+    const list = buckets.get(key)
+    if (list) list.push(e)
+    else buckets.set(key, [e])
+  }
+  return [...buckets.entries()]
+    .map(([key, list]) => ({ key, entries: sortListEntries(list, sort) }))
+    .sort((a, b) => groupRank(a.entries) - groupRank(b.entries) || lex(a.key, b.key))
+}
+
+// Section meta line of a group header (GH #140):「N 个端点」 when nothing
+// is abnormal, else「N 个端点 · 异常 N · 降级 N」. The count words come
+// from the display-layer single mapping (statusLabel — never a literal);
+// the counts dedupe BY MODEL at each model's worst display state
+// (abnormalModelCounts, the GH #115 caliber) so a model with two abnormal
+// protocols counts once; disabled endpoints never inflate the counts.
+export function listSectionMeta(entries: OverviewEntry[]): string {
+  const counts = abnormalModelCounts(entries)
+  if (counts.total === 0) return `${entries.length} 个端点`
+  return `${entries.length} 个端点 · ${statusLabel('incident')} ${counts.incident} · ${statusLabel('degraded')} ${counts.degraded}`
 }

@@ -100,6 +100,294 @@
         ],
         "createdAt": "2026-08-01T01:00:00.000Z",
         "reason": "Kimi/Moonshot 官方品牌蓝点(moonshot 双路径标的蓝点路径),外部品牌资产豁免调色板纪律(BrandMark §2b 先例;GH #136 票面已登记豁免)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#4D6BFE",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "DeepSeek 官方品牌蓝(lobe-icons),GH #140 图标包扩充,外部品牌资产豁免(BrandMark §2b 先例;票面已登记豁免)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#504AF4",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "GLM(智谱)渐变 stop(lobe-icons #504AF4→#3485FF),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#3485FF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "GLM(智谱)渐变 stop(lobe-icons #504AF4→#3485FF),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "gold",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Mistral 五行色块首行(lobe-icons gold),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FFAF00",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Mistral 五行色块(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FF8205",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Mistral 五行色块(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FA500F",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Mistral 五行色块(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#E10500",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Mistral 五行色块(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0055E9",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "腾讯混元整圆自底标品牌蓝(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#A8DFF5",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "腾讯混元标路径色(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#00BCFF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "腾讯混元标路径色(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#ECECEE",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "腾讯混元标路径色(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#E2167E",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "MiniMax 渐变 stop(lobe-icons #E2167E→#FE603C),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#FE603C",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "MiniMax 渐变 stop(lobe-icons #E2167E→#FE603C),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0A51C3",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "文心渐变 stop(lobe-icons #0A51C3→#23A4FB),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#23A4FB",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "文心渐变 stop(lobe-icons #0A51C3→#23A4FB),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#012F8D",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "文心内标实心色(lobe-icons),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0867DF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0668E1",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0064E0",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0064DF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0072EC",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#007CF6",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#007FF9",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0082FB",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop 与实心路径色(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#007FF8",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0081FA",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0080F9",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#027AF3",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0377EF",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0279F1",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0471E9",
+        "files": [
+          "web/src/utils/vendorIcon.ts"
+        ],
+        "createdAt": "2026-08-01T17:45:00.000Z",
+        "reason": "Meta 标渐变 stop(lobe-icons,llama 用),GH #140,外部品牌资产豁免(BrandMark §2b 先例)"
       }
     ]
   }

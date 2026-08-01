@@ -42,12 +42,14 @@
       :skeleton="initialLoading"
     />
 
-    <!-- List toolbar (GH #131, reference design; GH #136 sort rework): the
-         section title carries the sort note — DYNAMIC since GH #136, it
-         restates the current column ordering so the label stays literally
-         true after the user re-sorts (a label the data does not honor is
-         an anti-fake violation). The filters right-align on the same row:
-         keyword + vendor + display status. -->
+    <!-- List toolbar (GH #131, reference design; GH #136 sort rework; GH
+         #140 grouping regression): the section title carries the sort note
+         — DYNAMIC since GH #136, it restates the current column ordering
+         so the label stays literally true after the user re-sorts (a label
+         the data does not honor is an anti-fake violation; in grouped mode
+         it describes the IN-GROUP ordering, the group ranking being the
+         severity rank). The controls right-align on the same row: keyword
+         + vendor + display status + grouping. -->
     <div class="list-toolbar">
       <h2 class="list-heading">
         模型状态
@@ -72,6 +74,14 @@
                the three display states, light → heavy; down + failing filter
                together under 异常. No status word literals here. -->
           <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
+        </el-select>
+        <!-- Grouping selector (GH #140 regression, undoing the GH #131
+             retirement): flat / by vendor / by capability / by protocol,
+             default flat. Options from the modelList single Record source;
+             grouping is a VIEW organization — the share snapshot scope
+             (filter chips) does not change. -->
+        <el-select v-model="grouping" class="filter-select">
+          <el-option v-for="g in LIST_GROUPINGS" :key="g" :label="LIST_GROUPING_LABELS[g]" :value="g" />
         </el-select>
         <!-- Share the filtered picture as a Status Card PNG; disabled until the
              first load lands (an empty board is not shareable). -->
@@ -151,11 +161,17 @@ import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
 import {
   familyOptions,
+  groupListSections,
+  LIST_GROUPING_DEFAULT,
+  LIST_GROUPING_LABELS,
+  LIST_GROUPINGS,
+  listSectionMeta,
   listSortNote,
   loadListSort,
   nextListSort,
   saveListSort,
   sortListEntries,
+  type ListGrouping,
   type ListSort,
   type ListSortKey,
 } from '@/utils/modelList'
@@ -304,13 +320,34 @@ function onListSort(key: ListSortKey) {
   saveListSort(listSort.value)
 }
 
-// The reference toolbar retires the grouping selector (GH #131): the list
-// renders one flat section ranked by the active column sort. ModelStatusList
-// keeps its section contract intact — grouping returns as a view-level
-// change only.
-const listSections = computed<ListSection[]>(() => [
-  { key: null, label: '', meta: '', entries: filteredEntries.value },
-])
+// Grouping dimension of the list (GH #140 regression): the selector the
+// GH #131 reference toolbar retired returns with the FLAT list as the
+// default. View-level organization only — sorting/filtering/share all
+// keep their current calibers (the snapshot scope chips describe filters;
+// grouping is not a filter).
+const grouping = ref<ListGrouping>(LIST_GROUPING_DEFAULT)
+
+// The list sections: flat mode renders ONE section ranked by the active
+// column sort; grouped mode (GH #140) buckets the same filtered entries —
+// group ranking = the most severe enabled entry's severity rank
+// (severitySort single rank table via modelList.groupListSections),
+// in-group ordering = the active column sort (bucket rules kept), so the
+// toolbar sort note stays literally true inside every group. The meta
+// line's count words come from the display-layer single mapping
+// (listSectionMeta — never a literal); family groups carry tileFamily so
+// the header renders the group vendor tile.
+const listSections = computed<ListSection[]>(() => {
+  if (grouping.value === 'none') {
+    return [{ key: null, label: '', meta: '', entries: filteredEntries.value }]
+  }
+  return groupListSections(filteredEntries.value, grouping.value, listSort.value).map(group => ({
+    key: group.key,
+    label: group.key,
+    meta: listSectionMeta(group.entries),
+    entries: group.entries,
+    tileFamily: grouping.value === 'family' ? group.key : null,
+  }))
+})
 
 // --- Detail panel (GH #116) -------------------------------------------------
 

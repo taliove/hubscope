@@ -1,23 +1,79 @@
 <template>
   <!-- Model status list (GH #115, spec 0018 §8; GH #131 reference-design
        enhancements; GH #136 seven fixes; GH #139 gray-ground/white-tile
-       rework): the advanced list that replaced the EndpointCard matrix.
-       The model NAME is the first hierarchy (md/600 ink, middle-truncated,
-       hover shows the full name); every metric is auxiliary. GH #136: the
-       name/availability/p95 column headers are CLICKABLE sort buttons (the
-       parent owns the sort state, persisted to localStorage) — the active
-       column carries an ↑/↓ indicator; the availability cell is
-       number-left + bar-right inline; the action cell is a bare chevron.
-       GH #139: the vendor TILE moved back into the name cell (left of the
-       model id) and the vendor column renders the family TEXT again
-       (sm secondary, title carries the full name) — superseding GH #136's
+       rework; GH #140 hover fix + protocol tag + grouping regression): the
+       advanced list that replaced the EndpointCard matrix. The model NAME is
+       the first hierarchy (md/600 ink, middle-truncated, hover shows the
+       full name); every metric is auxiliary. GH #136: the name/availability/
+       p95 column headers are CLICKABLE sort buttons (the parent owns the
+       sort state, persisted to localStorage) — the active column carries an
+       ↑/↓ indicator; the availability cell is number-left + bar-right
+       inline; the action cell is a bare chevron. GH #139: the vendor TILE
+       moved back into the name cell (left of the model id) and the vendor
+       column renders the family TEXT again — superseding GH #136's
        tile-column layout; the sections themselves are white tiles on the
        gray skeleton ground. The default ordering is availability DESC —
        the GH #136 user ruling that overturned GH #131's「weakest first」
-       default. -->
+       default. GH #140: the name cell carries a PROTOCOL MINI-TAG after
+       the model id (same model_id on several protocols reads apart); the
+       grouping selector returns (flat / by vendor / by capability / by
+       protocol) and the section contract activates with real group
+       headers. -->
   <div class="model-list">
     <section v-for="section in sections" :key="section.key ?? '__flat__'" class="list-section">
       <header v-if="section.key !== null" class="section-header">
+        <!-- Group-header vendor tile (GH #140): only family-grouped sections
+             carry tileFamily — known vendors render the same uniform 26x26
+             tile as the rows (one silhouette everywhere), unknown vendors
+             the neutral initials tile. Capability/protocol groups render
+             the bare group name. -->
+        <span
+          v-if="section.tileFamily"
+          class="vendor-tile"
+          :class="{ 'has-icon': vendorIcon(section.tileFamily) }"
+          :style="
+            vendorIcon(section.tileFamily)
+              ? { background: vendorTileBackground(vendorIcon(section.tileFamily)!) }
+              : undefined
+          "
+          :title="section.tileFamily"
+        >
+          <svg
+            v-if="vendorIcon(section.tileFamily)"
+            viewBox="0 0 24 24"
+            role="img"
+            :aria-label="section.tileFamily"
+          >
+            <defs v-if="vendorIcon(section.tileFamily)!.gradients">
+              <linearGradient
+                v-for="g in vendorIcon(section.tileFamily)!.gradients"
+                :key="g.id"
+                :id="g.id"
+                :x1="g.x1"
+                :y1="g.y1"
+                :x2="g.x2"
+                :y2="g.y2"
+              >
+                <stop v-for="s in g.stops" :key="s.offset" :offset="s.offset" :stop-color="s.color" />
+              </linearGradient>
+            </defs>
+            <circle
+              v-for="(c, i) in vendorIcon(section.tileFamily)!.circles ?? []"
+              :key="`c${i}`"
+              :cx="c.cx"
+              :cy="c.cy"
+              :r="c.r"
+              :fill="c.fill"
+            />
+            <path
+              v-for="(p, i) in vendorIcon(section.tileFamily)!.paths"
+              :key="i"
+              :d="p.d"
+              :fill="p.fill"
+            />
+          </svg>
+          <template v-else>{{ familyInitials(section.tileFamily) }}</template>
+        </span>
         <span class="section-key">{{ section.label }}</span>
         <span class="section-meta">{{ section.meta }}</span>
       </header>
@@ -72,15 +128,19 @@
           <!-- Vendor tile (GH #139: moved back into the name cell, left of
                the model id — the reference design; GH #136's tile column
                is superseded and the vendor column returns to text). One
-               uniform 26x26 silhouette per vendor: solid brand ground +
-               white glyph (vendorIcon.ts single source, multi-path marks
-               like kimi carry per-path fills); unknown vendors fall back
-               to the neutral initials tile. The title carries the full
-               family name. -->
+               uniform 26x26 silhouette per vendor (vendorIcon.ts single
+               source, three variants GH #140: brand ground + white glyph /
+               subtle ground + original-color mark / self-grounded disc);
+               unknown vendors fall back to the neutral initials tile. The
+               title carries the full family name. -->
           <span
             class="vendor-tile"
             :class="{ 'has-icon': vendorIcon(entry.family) }"
-            :style="vendorIcon(entry.family) ? { background: vendorIcon(entry.family)!.tile } : undefined"
+            :style="
+              vendorIcon(entry.family)
+                ? { background: vendorTileBackground(vendorIcon(entry.family)!) }
+                : undefined
+            "
             :title="entry.family"
           >
             <svg
@@ -89,6 +149,27 @@
               role="img"
               :aria-label="entry.family"
             >
+              <defs v-if="vendorIcon(entry.family)!.gradients">
+                <linearGradient
+                  v-for="g in vendorIcon(entry.family)!.gradients"
+                  :key="g.id"
+                  :id="g.id"
+                  :x1="g.x1"
+                  :y1="g.y1"
+                  :x2="g.x2"
+                  :y2="g.y2"
+                >
+                  <stop v-for="s in g.stops" :key="s.offset" :offset="s.offset" :stop-color="s.color" />
+                </linearGradient>
+              </defs>
+              <circle
+                v-for="(c, i) in vendorIcon(entry.family)!.circles ?? []"
+                :key="`c${i}`"
+                :cx="c.cx"
+                :cy="c.cy"
+                :r="c.r"
+                :fill="c.fill"
+              />
               <path
                 v-for="(p, i) in vendorIcon(entry.family)!.paths"
                 :key="i"
@@ -104,6 +185,13 @@
               <span class="name-tail">{{ splitMiddle(entry.model_id).tail }}</span>
             </span>
           </el-tooltip>
+          <!-- Protocol mini-tag (GH #140): the same model_id on several
+               protocols reads apart inline (endpoint = model × protocol,
+               W3). A self-made light tag — NOT el-tag — consuming the
+               protocol.ts single mapping for the color slot; the word is
+               the protocol value itself (never translated, §5 protocol
+               vocabulary). -->
+          <span class="proto-tag" :class="`t-${protocolTagType(entry.protocol)}`">{{ entry.protocol }}</span>
           <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
         </span>
         <!-- Vendor column as TEXT (GH #139, reference design: name cell =
@@ -175,18 +263,23 @@ import {
   type ListSort,
   type ListSortKey,
 } from '@/utils/modelList'
-import { vendorIcon } from '@/utils/vendorIcon'
+import { vendorIcon, vendorTileBackground } from '@/utils/vendorIcon'
+import { protocolTagType } from '@/utils/protocol'
 import { splitMiddle } from '@/utils/truncate'
 import type { OverviewEntry } from '@/api/types'
 
 // One list section: key null = the flat list (no section header); grouped
-// mode passes the group key plus a pre-composed meta line (counts wording
-// is composed by the parent from the single display-layer mapping).
+// mode (GH #140) passes the group key plus a pre-composed meta line (counts
+// wording is composed by the parent from the single display-layer mapping).
+// tileFamily is set ONLY for family-grouped sections — the header renders
+// the group vendor tile then; capability/protocol groups render the bare
+// group name.
 export interface ListSection {
   key: string | null
   label: string
   meta: string
   entries: OverviewEntry[]
+  tileFamily?: string | null
 }
 
 // The parent owns the sort state (persistence + the toolbar note); this
@@ -206,8 +299,8 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   flex-direction: column;
   /* White region tile on the gray skeleton ground (GH #139): bg-card +
      1px border + radius-lg, same light-container syntax as the widgets.
-     The 8px inner padding keeps the row hover lift (translateY −2px,
-     GH #136) inside the tile and lets the last row drop its hairline
+     The 8px inner padding keeps the row hover FILL (GH #140: bg-hover,
+     no lift) inside the tile and lets the last row drop its hairline
      without touching the container edge. */
   padding: var(--hs-space-2);
   background: var(--hs-bg-card);
@@ -216,7 +309,7 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
 }
 .section-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--hs-space-3);
   padding: 0 var(--hs-space-2) var(--hs-space-2);
 }
@@ -238,7 +331,12 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
    − 72 = 546px splits name 1.8fr ≈ 351 / trend 1fr ≈ 195 (floor 150).
    GH #139: the vendor column grew 44 → 100 (family text returns; the
    26px tile + 8px gap now live inside the name cell, leaving ≈317px for
-   the model id); the GH #136 vendor tile column (44px) is superseded. */
+   the model id); the GH #136 vendor tile column (44px) is superseded.
+   GH #140: the name cell also carries the protocol mini-tag (xs, padding
+   4px×8px, ≈70px for chat protocols / ≈120px for images_generation at
+   most) after the model id — the model-id text lane absorbs it (≈200–
+   250px) and the middle truncation keeps the distinguishing tail visible;
+   the grid template itself does not change. */
 .list-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.8fr) 100px 150px 150px 100px minmax(150px, 1fr) 40px;
@@ -286,25 +384,23 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   border-bottom: 1px solid var(--hs-border-light);
   border-radius: var(--hs-radius-lg);
   cursor: pointer;
-  transition:
-    transform var(--hs-transition),
-    box-shadow var(--hs-transition),
-    background-color var(--hs-transition);
+  transition: background-color var(--hs-transition);
 }
 /* Inside the white section tile (GH #139) the last row drops its hairline
    — the container edge already closes the list. */
 .list-section .list-row:last-child {
   border-bottom: none;
 }
-/* Hover lift (spec 0018 §15: 2–4px + light shadow); semantics.css zeroes
-   the transition under reduced motion. */
-/* Known item (GH #139 check LOW-2): the hover fill is white-on-white
-   inside the white section tile — the -2px lift + shadow-md carry the
-   hover feedback; revisit if a design review wants a bg-hover fill. */
+/* Hover feedback (GH #140, user round-5 ruling): a plain bg-hover FILL —
+   the GH #136/spec-0018 hover lift (translateY −2px + shadow-md +
+   white-on-white fill) is RETIRED: on the white section tile the white
+   fill was invisible and the floating shadow broke through the vendor
+   tile (「穿帮」). The gray fill layers naturally inside the white tile
+   and around the brand tiles; semantics.css zeroes the transition under
+   reduced motion. This replaces the GH #139 check LOW-2 known item (the
+   white-on-white fill), which is now resolved by this caliber. */
 .list-row:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--hs-shadow-md);
-  background: var(--hs-bg-card);
+  background: var(--hs-bg-hover);
 }
 .list-row:focus-visible {
   outline: 2px solid var(--hs-brand);
@@ -339,6 +435,34 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   color: var(--hs-text-secondary);
   font-weight: 400;
 }
+/* Protocol mini-tag (GH #140): a self-made light tag — NOT el-tag (the
+   name cell needs a quieter, smaller unit than the el-tag geometry). The
+   color slot consumes the protocol.ts single mapping (protocolTagType):
+   success/warning/info read as CONTRACT-FAMILY distinction colors, never
+   as health signals (§5 protocol-tag semantics); the word is the raw
+   protocol value. Soft ground + text-grade ink; flex:none so the tag
+   survives and the model id truncates first. */
+.proto-tag {
+  flex: none;
+  font-size: var(--hs-text-xs);
+  line-height: 1;
+  padding: var(--hs-space-1) var(--hs-space-2);
+  border-radius: var(--hs-radius-sm);
+  background: var(--hs-info-soft);
+  color: var(--hs-info);
+}
+.proto-tag.t-success {
+  background: var(--hs-success-soft);
+  color: var(--hs-success-text);
+}
+.proto-tag.t-warning {
+  background: var(--hs-warning-soft);
+  color: var(--hs-warning-text);
+}
+.proto-tag.t-info {
+  background: var(--hs-info-soft);
+  color: var(--hs-info);
+}
 .disabled-tag {
   flex: none;
   font-size: var(--hs-text-xs);
@@ -353,10 +477,13 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   color: var(--hs-text-secondary);
 }
 /* Uniform vendor tile (GH #136; GH #139 render seat moved into the name
-   cell): one fixed 26x26 square for EVERY vendor — control-grade radius,
-   neutral hover-surface ground + secondary initials for unknown vendors.
-   A 3-char CJK family name (~36px) would otherwise spill past the fixed
-   box (GH #131 check LOW-1). */
+   cell; GH #140 three variants): one fixed 26x26 square for EVERY vendor —
+   control-grade radius, neutral hover-surface ground + secondary initials
+   for unknown vendors. The ground for KNOWN vendors is the inline
+   vendorTileBackground: brand hex (brand variant) / --hs-bg-subtle
+   (subtle variant, original-color marks) / transparent (none variant,
+   hunyuan's self-grounded disc). A 3-char CJK family name (~36px) would
+   otherwise spill past the fixed box (GH #131 check LOW-1). */
 .vendor-tile {
   display: inline-flex;
   align-items: center;
@@ -372,9 +499,9 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-/* Known vendor: the ground is the inline brand tile color (vendorIcon.ts);
-   the 16px white glyph centers inside — the GH #134 transparent-ground
-   form retired with the uniform tile. */
+/* Known vendor: the ground is the inline variant background
+   (vendorTileBackground, vendorIcon.ts); the 16px glyph centers inside —
+   the GH #134 transparent-ground form retired with the uniform tile. */
 .vendor-tile.has-icon {
   color: var(--hs-bg-card);
 }

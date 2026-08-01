@@ -4,8 +4,13 @@ import {
   entryLatencySeries,
   familyInitials,
   familyOptions,
+  groupListSections,
+  LIST_GROUPING_DEFAULT,
+  LIST_GROUPING_LABELS,
+  LIST_GROUPINGS,
   LIST_SORT_DEFAULT,
   LIST_SORT_STORAGE_KEY,
+  listSectionMeta,
   listSortNote,
   loadListSort,
   nextListSort,
@@ -287,5 +292,108 @@ describe('listSortNote', () => {
     expect(listSortNote({ key: 'name', dir: 'desc' })).toBe('（按名称降序）')
     expect(listSortNote({ key: 'p95', dir: 'asc' })).toBe('（按 P95 延迟升序）')
     expect(listSortNote({ key: 'p95', dir: 'desc' })).toBe('（按 P95 延迟降序）')
+  })
+})
+
+describe('LIST_GROUPINGS / LIST_GROUPING_LABELS (GH #140)', () => {
+  it('covers all four grouping values from one Record source', () => {
+    expect(LIST_GROUPINGS).toEqual(['none', 'family', 'capability', 'protocol'])
+    expect(LIST_GROUPING_LABELS.none).toBe('不分组')
+    expect(LIST_GROUPING_LABELS.family).toBe('按厂商')
+    expect(LIST_GROUPING_LABELS.capability).toBe('按能力')
+    expect(LIST_GROUPING_LABELS.protocol).toBe('按协议')
+    expect(LIST_GROUPING_DEFAULT).toBe('none')
+  })
+})
+
+describe('groupListSections (GH #140)', () => {
+  const rows = (): OverviewEntry[] => [
+    entry({ endpoint_id: 1, model_id: 'a-1', family: 'gpt', capability: 'chat', protocol: 'openai', status: 'healthy', success_rate_24h: 0.99 }),
+    entry({ endpoint_id: 2, model_id: 'b-1', family: 'claude', capability: 'chat', protocol: 'anthropic', status: 'failing', success_rate_24h: 0.5 }),
+    entry({ endpoint_id: 3, model_id: 'a-1', family: 'gpt', capability: 'chat', protocol: 'anthropic', status: 'healthy', success_rate_24h: 0.96 }),
+    entry({ endpoint_id: 4, model_id: 'c-1', family: 'glm', capability: 'image', protocol: 'images_generation', status: 'degraded', success_rate_24h: 0.8 }),
+  ]
+
+  it('buckets by the grouping dimension, one section per distinct key', () => {
+    expect(groupListSections(rows(), 'family', LIST_SORT_DEFAULT).map(g => g.key).sort()).toEqual(['claude', 'glm', 'gpt'])
+    expect(groupListSections(rows(), 'capability', LIST_SORT_DEFAULT).map(g => g.key).sort()).toEqual(['chat', 'image'])
+    expect(groupListSections(rows(), 'protocol', LIST_SORT_DEFAULT).map(g => g.key).sort()).toEqual(['anthropic', 'images_generation', 'openai'])
+    expect(groupListSections([], 'family', LIST_SORT_DEFAULT)).toEqual([])
+  })
+
+  it('ranks groups by the most severe ENABLED entry, ties by key lex', () => {
+    // claude group carries the failing entry → leads; glm degraded → second;
+    // gpt all-healthy → last, even under the default rate-desc column sort.
+    const sections = groupListSections(rows(), 'family', LIST_SORT_DEFAULT)
+    expect(sections.map(g => g.key)).toEqual(['claude', 'glm', 'gpt'])
+  })
+
+  it('sinks disabled-only groups below every enabled group', () => {
+    const disabled = rows().map(e => ({ ...e, enabled: false }))
+    const mixed = [...rows().filter(e => e.family !== 'glm'), entry({ endpoint_id: 9, model_id: 'z-1', family: 'zzz', status: 'down', enabled: false })]
+    const sections = groupListSections(mixed, 'family', LIST_SORT_DEFAULT)
+    expect(sections[sections.length - 1]!.key).toBe('zzz')
+    expect(groupListSections(disabled, 'family', LIST_SORT_DEFAULT).map(g => g.key)).toEqual(['claude', 'glm', 'gpt'])
+  })
+
+  it('sorts entries INSIDE each group by the active column sort (buckets kept)', () => {
+    // The gpt group has a rated 0.99 row, a rated 0.96 row: rate desc keeps
+    // 0.99 first; rate asc flips them; a disabled row sinks in every state.
+    const gptRows = [
+      entry({ endpoint_id: 1, model_id: 'a-1', family: 'gpt', success_rate_24h: 0.96 }),
+      entry({ endpoint_id: 2, model_id: 'a-2', family: 'gpt', success_rate_24h: 0.99 }),
+      entry({ endpoint_id: 3, model_id: 'a-3', family: 'gpt', success_rate_24h: 0.5, enabled: false }),
+    ]
+    const desc = groupListSections(gptRows, 'family', { key: 'rate', dir: 'desc' })[0]!
+    expect(desc.entries.map(e => e.endpoint_id)).toEqual([2, 1, 3])
+    const asc = groupListSections(gptRows, 'family', { key: 'rate', dir: 'asc' })[0]!
+    expect(asc.entries.map(e => e.endpoint_id)).toEqual([1, 2, 3])
+    const byName = groupListSections(gptRows, 'family', { key: 'name', dir: 'asc' })[0]!
+    expect(byName.entries.map(e => e.model_id)).toEqual(['a-1', 'a-2', 'a-3'])
+  })
+
+  it('never mutates the input array', () => {
+    const input = rows()
+    const snapshot = [...input]
+    groupListSections(input, 'family', LIST_SORT_DEFAULT)
+    expect(input).toEqual(snapshot)
+  })
+})
+
+describe('listSectionMeta (GH #140)', () => {
+  it('reads N 个端点 when nothing is abnormal', () => {
+    const healthy = [
+      entry({ endpoint_id: 1, model_id: 'a' }),
+      entry({ endpoint_id: 2, model_id: 'b' }),
+    ]
+    expect(listSectionMeta(healthy)).toBe('2 个端点')
+  })
+
+  it('appends display-state counts with words from the single mapping', () => {
+    const mixed = [
+      entry({ endpoint_id: 1, model_id: 'a', status: 'failing' }),
+      entry({ endpoint_id: 2, model_id: 'b', status: 'down' }),
+      entry({ endpoint_id: 3, model_id: 'c', status: 'degraded' }),
+      entry({ endpoint_id: 4, model_id: 'd', status: 'healthy' }),
+    ]
+    // down + failing read together as 异常 (display-layer mapping); the
+    // counts dedupe by model (abnormalModelCounts caliber).
+    expect(listSectionMeta(mixed)).toBe('4 个端点 · 异常 2 · 降级 1')
+  })
+
+  it('dedupes abnormal counts by model, never by endpoint row', () => {
+    const twoProtocols = [
+      entry({ endpoint_id: 1, model_id: 'a', protocol: 'openai', status: 'down' }),
+      entry({ endpoint_id: 2, model_id: 'a', protocol: 'anthropic', status: 'degraded' }),
+    ]
+    expect(listSectionMeta(twoProtocols)).toBe('2 个端点 · 异常 1 · 降级 0')
+  })
+
+  it('ignores disabled endpoints in the abnormal counts', () => {
+    const disabledDown = [
+      entry({ endpoint_id: 1, model_id: 'a', status: 'down', enabled: false }),
+      entry({ endpoint_id: 2, model_id: 'b', status: 'healthy' }),
+    ]
+    expect(listSectionMeta(disabledDown)).toBe('2 个端点')
   })
 })
