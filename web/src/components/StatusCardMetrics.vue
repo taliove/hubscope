@@ -3,7 +3,7 @@
     <!-- Hero panel: the 24h availability leads (the objective 3-second
          number, tier-colored), with the verdict and full three-state
          distribution riding underneath as a secondary line (down + failing
-         merge into 服务异常, GH #113). The top never foregrounds the
+         merge into 异常, GH #113). The top never foregrounds the
          abnormal endpoints — but the verdict and counts are still right
          there, so the anti-fake invariant (never paper over an abnormal
          state) holds. The alert count keeps its static event-worded chip. -->
@@ -99,7 +99,7 @@ const availability = computed(() => scopedAvailability(props.entries))
 const avgLatency = computed(() => meanP50Ms(props.entries))
 const dots = computed(() => aggregateDots24h(props.entries))
 // Verdict rides under the availability number; '' when empty so the panel
-// stays neutral on the no-data state (never reads as "全部稳定").
+// stays neutral on the no-data state (never reads as "全部稳定运行").
 const verdict = computed(() => (props.isEmpty ? '' : conclusionText(toneOf(counts.value), counts.value, false)))
 const hasFailing = computed(() => !props.isEmpty && counts.value.failing > 0)
 const distribution = computed(() => distributionSegments(counts.value))

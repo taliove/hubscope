@@ -8,7 +8,7 @@
          scope. The conclusion math comes from the shared healthConclusion
          module (same words as the share material); a null health index is
          folded into the empty branch so no-probe windows never read as
-         全部稳定. -->
+         全部稳定运行. -->
     <StatusHero
       :health="healthScore24h"
       :delta="healthScoreDelta"
@@ -50,7 +50,7 @@
       <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
         <!-- Options come from the single display-layer mapping (GH #113):
              the three display states, light → heavy; down + failing filter
-             together under 服务异常. No status word literals here. -->
+             together under 异常. No status word literals here. -->
         <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
       </el-select>
       <el-select v-model="grouping" class="filter-select">
@@ -154,7 +154,7 @@ const keyword = ref('')
 const protocolFilter = ref<Protocol | ''>('')
 // The status filter speaks DISPLAY states (GH #113): the domain status
 // machine keeps four states, but the board renders three — down and
-// failing filter together under 'incident' (服务异常).
+// failing filter together under 'incident' (异常).
 const statusFilter = ref<DisplayStatus | ''>('')
 // Filter-select options: the three display states, light → heavy (the
 // severity order reversed), words from the single mapping.
@@ -174,7 +174,7 @@ const enabledEntries = computed(() => entries.value.filter(e => e.enabled))
 const heroConclusion = computed(() => {
   const counts = countByStatus(enabledEntries.value)
   // A null health index (no probes in the window) folds into the empty
-  // branch: no data must never read as 全部稳定 (anti-fake).
+  // branch: no data must never read as 全部稳定运行 (anti-fake).
   const empty = enabledEntries.value.length === 0 || healthScore24h.value === null
   return conclusionText(toneOf(counts), counts, empty)
 })
@@ -241,7 +241,7 @@ const filteredEntries = computed(() => {
 // Grouped mode: one light list section per group, severity-ranked by the
 // group's most severe ENABLED entry (the board's single rank table). The
 // meta line counts by DISPLAY state (down + failing read together as
-// 服务异常) with words from the single mapping — never a literal.
+// 异常) with words from the single mapping — never a literal.
 const listSections = computed<ListSection[]>(() => {
   if (grouping.value === 'none') {
     return [{ key: null, label: '', meta: '', entries: filteredEntries.value }]

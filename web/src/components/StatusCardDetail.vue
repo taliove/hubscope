@@ -102,8 +102,8 @@ const props = defineProps<{
   emptyText: string // non-empty renders the empty state instead of the list
   summary: string | null
   // Single-model mode (design ruling): no healthy roster (there is no
-  // remainder), and the all-healthy line drops the count ("当前状态稳定",
-  // GH #113 three-state wording).
+  // remainder), and the all-healthy line drops the count ("当前状态稳定运行",
+  // GH #113 three-state wording, GH #128 vocabulary).
   singleModel?: boolean
 }>()
 
@@ -159,7 +159,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 }
 .row-status {
   flex: none;
-  /* Three-state words are up to 4 chars (性能下降/服务异常, GH #113) — the
+  /* Three-state words are up to 4 chars (稳定运行, GH #113 / GH #128) — the
      old 2-char 28px column widens; the reason/dots indent below tracks it. */
   width: 56px;
   font-size: var(--hs-text-sm);

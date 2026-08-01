@@ -105,7 +105,7 @@ const widgets = computed<Widget[]>(() => {
     },
     {
       key: 'abnormal',
-      title: '异常模型数',
+      title: '风险模型数',
       value: abnormalTween.value,
       display: abnormalTween.value === null ? '-' : String(Math.round(abnormalTween.value)),
       sub:

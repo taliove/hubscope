@@ -12,12 +12,13 @@ import type { DegradeCause, EndpointStatus } from '@/api/types'
 import { statusDisplay, type DisplayStatus } from '@/utils/statusDisplay'
 
 // StatusBadge (rebuilt for UI v2, spec 0018 / GH #113): a small dot plus the
-// Chinese status word — 稳定 / 性能下降 / 服务异常. The word and the color
+// Chinese status word — 稳定运行 / 降级 / 异常 (reference-design vocabulary,
+// GH #128). The word and the color
 // slot come from the single display-layer mapping (utils/statusDisplay.ts);
 // this component never writes a status word literal.
 //
 // Three-state display: the domain status machine keeps four states (W5),
-// but failing has no separate display identity — it renders as 服务异常 with
+// but failing has no separate display identity — it renders as 异常 with
 // the danger slot. Zero blink: the failing blink is retired wholesale (the
 // --hs-blink token stays none until the display-layer rebuild batch removes
 // the @keyframes), so nothing in this component animates on a timer.
