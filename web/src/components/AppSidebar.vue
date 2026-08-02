@@ -80,6 +80,7 @@ import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
 import { fetchVersion } from '@/api/version'
 import { roleLabel } from '@/utils/role'
+import { shortVersion as shortenVersion } from '@/utils/version'
 import { isSidebarItemActive, visibleSidebarItems } from '@/utils/sidebarNav'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import { createFocusTrap, type FocusTrapHandle } from '@/utils/focusTrap'
@@ -183,11 +184,9 @@ function goToActiveBatch() {
 // single-binary deployment has no multi-environment concept, so the version
 // answers "which build is this"). Fetched once; failure stays silent.
 const version = ref('')
-const shortVersion = computed(() => {
-  if (!version.value) return ''
-  const match = version.value.match(/^v\d+\.\d+\.\d+/)
-  return match ? match[0] : version.value
-})
+// Dev build stamps are shortened to dev-g<hash> for display; the full stamp
+// stays in the title attribute (GH #146, display-layer-only change).
+const shortVersion = computed(() => shortenVersion(version.value))
 
 async function loadVersion() {
   try {
