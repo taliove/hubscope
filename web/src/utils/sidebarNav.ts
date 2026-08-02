@@ -29,7 +29,9 @@ export const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   // Session-gated console board; the campaign report page is entered from it.
   { key: 'eval', label: '评估中心', to: '/eval', matchPrefixes: ['/campaigns'] },
   { key: 'models', label: '模型管理', to: '/models' },
-  { key: 'alerts', label: '故障记录', to: '/alerts' },
+  // Public since spec 0019 (GH #142): the anonymous payload carries only
+  // the four incident-narrative kinds; the boundary lives on the server.
+  { key: 'alerts', label: '故障记录', to: '/alerts', public: true },
   // The task center folds into the settings area (spec 0018 decision 63):
   // the legacy /tasks route stays alive and highlights this item.
   { key: 'settings', label: '系统设置', to: '/settings', matchPrefixes: ['/tasks'] },

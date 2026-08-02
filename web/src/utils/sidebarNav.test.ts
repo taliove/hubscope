@@ -8,9 +8,17 @@ import type { AuthUser } from '@/api/auth'
 const admin: AuthUser = { id: 1, username: 'devadmin', role: 'super_admin', hub_id: null, hub_name: null }
 
 describe('visibleSidebarItems', () => {
-  it('anonymous visitors only see the two public entries', () => {
+  it('anonymous visitors only see the three public entries (spec 0019: alerts went public)', () => {
     const items = visibleSidebarItems(null)
-    expect(items.map((i) => i.key)).toEqual(['dashboard', 'benchmark'])
+    expect(items.map((i) => i.key)).toEqual(['dashboard', 'benchmark', 'alerts'])
+  })
+
+  it('故障记录 is among the anonymous-visible entries (GH #142)', () => {
+    const items = visibleSidebarItems(null)
+    const alerts = items.find((i) => i.key === 'alerts')
+    expect(alerts).toBeDefined()
+    expect(alerts?.label).toBe('故障记录')
+    expect(alerts?.public).toBe(true)
   })
 
   it('logged-in users see the full IA in declaration order', () => {

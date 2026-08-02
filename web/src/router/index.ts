@@ -76,7 +76,13 @@ const router = createRouter({
       path: '/alerts',
       name: 'alerts',
       component: () => import('@/views/AlertsView.vue'),
-      // Session-gated alert history (GH #112); the timeline rebuild landed in GH #117.
+      // Public since spec 0019 (GH #142): anonymous readers get the
+      // four-kind incident narrative (down / recovered / group_down /
+      // group_recovered); the seven ops-pipeline kinds stay session-gated.
+      // The boundary is enforced server-side (ui-guidelines appendix item
+      // 16) — this flag only stops the guard from bouncing to /login. The
+      // timeline rebuild landed in GH #117.
+      meta: { public: true },
     },
     {
       path: '/settings',

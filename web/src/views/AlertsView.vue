@@ -22,7 +22,7 @@
         <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
       </el-select>
       <el-select v-model="kindFilter" class="filter-kind" placeholder="全部类型" clearable>
-        <el-option v-for="k in ALERT_KINDS" :key="k" :label="alertKindLabel(k)" :value="k" />
+        <el-option v-for="k in kindOptions" :key="k" :label="alertKindLabel(k)" :value="k" />
       </el-select>
       <el-select v-model="rangeFilter" class="filter-range">
         <el-option v-for="r in RANGE_OPTIONS" :key="r.value" :label="r.label" :value="r.value" />
@@ -101,9 +101,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { listAlerts, type AlertEvent, type AlertKind } from '@/api/settings'
+import { fetchAuthStatus } from '@/api/auth'
 import { fetchOverview } from '@/api/overview'
 import { formatClockMinute, formatDuration } from '@/utils/format'
-import { ALERT_KINDS, alertKindLabel, alertKindTagType } from '@/utils/alertKind'
+import { alertKindLabel, alertKindTagType, visibleKindOptions } from '@/utils/alertKind'
 import {
   filterEventsByTimeRange,
   pairIncidentDurations,
@@ -134,6 +135,22 @@ const limit = ref(INITIAL_LIMIT)
 const modelFilter = ref<string | null>(null)
 const kindFilter = ref<AlertKind | null>(null)
 const rangeFilter = ref<AlertTimeRange>('7d')
+
+// Session state forks the type filter's option set (spec 0019, GH #142):
+// anonymous visitors only see the four incident-narrative kinds their
+// payload can ever contain — the other seven would be unmatchable options,
+// i.e. dishonest UI. A failed status check is treated as anonymous
+// (AppSidebar / router guard precedent): failure never impersonates login.
+const authed = ref(false)
+const kindOptions = computed(() => visibleKindOptions(authed.value))
+
+async function refreshAuth() {
+  try {
+    authed.value = (await fetchAuthStatus()).authenticated
+  } catch {
+    authed.value = false
+  }
+}
 
 // endpoint_id → model_id resolution map from the overview payload. A deleted
 // endpoint drops out of the overview and falls back to its raw id label —
@@ -175,6 +192,7 @@ function loadMore() {
 
 onMounted(() => {
   void reload()
+  void refreshAuth()
 })
 
 // The model an event affects: the resolved model id for endpoint events,

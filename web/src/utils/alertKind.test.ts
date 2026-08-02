@@ -3,7 +3,7 @@
 // Chinese label plus the defensive fallback (unknown kinds must never
 // render as a bare English string nor claim a status color).
 import { describe, it, expect } from 'vitest'
-import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
+import { ALERT_KINDS, alertKindLabel, alertKindTagType, visibleKindOptions } from '@/utils/alertKind'
 
 describe('alertKindLabel', () => {
   it('keeps the five legacy kind labels unchanged', () => {
@@ -70,5 +70,21 @@ describe('alertKindTagType', () => {
   it('falls back to info for null/undefined', () => {
     expect(alertKindTagType(null)).toBe('info')
     expect(alertKindTagType(undefined)).toBe('info')
+  })
+})
+
+describe('visibleKindOptions (spec 0019, GH #142)', () => {
+  it('anonymous visitors only get the four incident-narrative kinds', () => {
+    expect(visibleKindOptions(false)).toEqual(['down', 'recovered', 'group_down', 'group_recovered'])
+  })
+
+  it('logged-in users get the full eleven-kind ALERT_KINDS list', () => {
+    expect(visibleKindOptions(true)).toEqual(ALERT_KINDS)
+    expect(visibleKindOptions(true)).toHaveLength(11)
+  })
+
+  it('the anonymous subset keeps ALERT_KINDS declaration order', () => {
+    const anonymous = visibleKindOptions(false)
+    expect(anonymous).toEqual(ALERT_KINDS.filter((k) => anonymous.includes(k)))
   })
 })
