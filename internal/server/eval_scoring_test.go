@@ -106,6 +106,9 @@ func TestEvalJudge(t *testing.T) {
 
 // TestEvalModelFailure points a model at a hub that 503s: every case yields
 // no answer and no score, the run still completes, and the aggregate is null.
+// The circuit breaker (GH #153) bounds the waste: the first five consecutive
+// failures burn real calls, the remaining cases are recorded with the
+// circuit reason instead.
 func TestEvalModelFailure(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	// Register while the hub is healthy (creation trial-probes), then break
@@ -125,6 +128,7 @@ func TestEvalModelFailure(t *testing.T) {
 	if len(results) != 100 {
 		t.Fatalf("got %d results, want 100", len(results))
 	}
+	var callFailed, circuit int
 	for _, r := range results {
 		if r["answer_text"] != nil {
 			t.Errorf("failed case answer_text = %v, want null", r["answer_text"])
@@ -133,9 +137,17 @@ func TestEvalModelFailure(t *testing.T) {
 			t.Errorf("failed case score = %v, want null", r["score"])
 		}
 		detail, _ := r["verdict_detail"].(string)
-		if !strings.Contains(detail, "answer call failed") {
-			t.Errorf("verdict_detail should record the call failure: %q", detail)
+		switch {
+		case strings.Contains(detail, "answer call failed"):
+			callFailed++
+		case strings.Contains(detail, "circuit open"):
+			circuit++
+		default:
+			t.Errorf("verdict_detail should record the call failure or the circuit reason: %q", detail)
 		}
+	}
+	if callFailed != 5 || circuit != 95 {
+		t.Errorf("failure records: %d call failures + %d circuit-skipped, want 5 + 95", callFailed, circuit)
 	}
 	if run["score"] != nil {
 		t.Errorf("run score = %v, want null (nothing scored)", run["score"])

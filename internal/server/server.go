@@ -241,6 +241,9 @@ func New(db *store.DB, opts ...Option) *Server {
 	for _, opt := range opts {
 		opt(s)
 	}
+	// The evaluator's campaign budget reads the same injectable clock as the
+	// rest of the server (GH #153), so tests can advance virtual time.
+	s.evaluator.Now = s.now
 	s.router = s.routes()
 	return s
 }

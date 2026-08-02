@@ -24,6 +24,11 @@ const (
 	// SettingEvalConcurrency bounds how many (suite × model) cells of an
 	// eval campaign execute at once (GH #26).
 	SettingEvalConcurrency = "eval_concurrency"
+	// SettingEvalCampaignBudgetMin is the campaign-level wall-clock budget
+	// in minutes (GH #153): once a batch outlives it, unstarted cells are
+	// dropped and their runs fail with the budget reason. 0 disables the
+	// budget.
+	SettingEvalCampaignBudgetMin = "eval_campaign_budget_minutes"
 	// SettingSuiteWeights maps suite keys to leaderboard total-score weights
 	// (JSON object, e.g. {"basic":2}); suites absent from the map weigh 1, so
 	// the default is equal weighting (ADR 0005).
@@ -64,6 +69,12 @@ const (
 	// MaxEvalConcurrency caps the eval worker pool; beyond this hub load and
 	// latency distortion grow without meaningful speedup.
 	MaxEvalConcurrency = 16
+	// DefaultEvalCampaignBudgetMin bounds a batch to two hours out of the
+	// box (GH #153): a half-dead Hub can no longer hold a campaign for
+	// hours through 120s-per-request stalls.
+	DefaultEvalCampaignBudgetMin = 120
+	// MaxEvalCampaignBudgetMin caps the campaign budget at one week.
+	MaxEvalCampaignBudgetMin = 10080
 	// DefaultQuietHoursEnabled keeps alerting loud out of the box: quiet
 	// hours are opt-in (spec 0017 story 26).
 	DefaultQuietHoursEnabled = false

@@ -20,6 +20,7 @@ type settingsDTO struct {
 	JudgeModel            string             `json:"judge_model"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
 	EvalConcurrency       int                `json:"eval_concurrency"`
+	EvalCampaignBudgetMin int                `json:"eval_campaign_budget_minutes"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 	// Quiet hours (spec 0017 ticket 4): integer hours 0–23, server-local
 	// timezone; start == end means "not enabled" even when the switch is on.
@@ -38,6 +39,7 @@ type settingsPatch struct {
 	JudgeModel            *string            `json:"judge_model"`
 	DefaultSampleCount    *int               `json:"default_sample_count"`
 	EvalConcurrency       *int               `json:"eval_concurrency"`
+	EvalCampaignBudgetMin *int               `json:"eval_campaign_budget_minutes"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 	QuietHoursEnabled     *bool              `json:"quiet_hours_enabled"`
 	QuietHoursStart       *int               `json:"quiet_hours_start"`
@@ -64,6 +66,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.EvalConcurrency, err = s.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency); err != nil {
+		return dto, err
+	}
+	if dto.EvalCampaignBudgetMin, err = s.db.GetSettingInt(store.SettingEvalCampaignBudgetMin, store.DefaultEvalCampaignBudgetMin); err != nil {
 		return dto, err
 	}
 	if dto.SuiteWeights, err = s.db.GetSuiteWeights(); err != nil {
@@ -115,6 +120,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patch.EvalCampaignBudgetMin != nil &&
+		(*patch.EvalCampaignBudgetMin < 0 || *patch.EvalCampaignBudgetMin > store.MaxEvalCampaignBudgetMin) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("eval_campaign_budget_minutes must be between 0 and %d", store.MaxEvalCampaignBudgetMin))
+		return
+	}
+
 	if patch.SuiteWeights != nil {
 		if err := s.validateSuiteWeights(patch.SuiteWeights); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -157,6 +169,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingEvalConcurrency, func() error {
 			return s.db.SetSettingInt(store.SettingEvalConcurrency, *patch.EvalConcurrency)
 		}},
+		{store.SettingEvalCampaignBudgetMin, func() error {
+			return s.db.SetSettingInt(store.SettingEvalCampaignBudgetMin, *patch.EvalCampaignBudgetMin)
+		}},
 		{store.SettingSuiteWeights, func() error {
 			return s.db.SetSuiteWeights(patch.SuiteWeights)
 		}},
@@ -177,6 +192,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.JudgeModel != nil,
 		patch.DefaultSampleCount != nil,
 		patch.EvalConcurrency != nil,
+		patch.EvalCampaignBudgetMin != nil,
 		patch.SuiteWeights != nil,
 		patch.QuietHoursEnabled != nil,
 		patch.QuietHoursStart != nil,

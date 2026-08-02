@@ -22,22 +22,47 @@ const evalMaxTokens = 1024
 // RequestTimeout bounds a single completion call during evaluation.
 const RequestTimeout = 120 * time.Second
 
+// circuitBreakerThreshold is the number of consecutive cases with failed
+// answer calls after which a model's remaining cases are skipped (GH #153):
+// a broken model burns ten calls per run (5 cases x 2 attempts) instead of
+// two per case.
+const circuitBreakerThreshold = 5
+
+// campaignAbortCells is the number of completed cells after which an
+// all-dead batch aborts (GH #153): when every completed cell produced zero
+// answers, the Hub side is hopeless and unstarted cells are dropped.
+const campaignAbortCells = 3
+
 // Evaluator executes eval runs and persists per-case results.
 //
 // AfterCampaign, when set, is invoked once after a campaign settles to
 // "done" (never for failed campaigns). The score-drop alerter hooks in here;
 // hook errors must be handled by the hook itself (the alerter logs instead
 // of failing).
+//
+// Now, when set, replaces time.Now for the campaign budget deadline
+// (GH #153); the server wires its own injectable clock here so tests can
+// advance virtual time.
 type Evaluator struct {
 	db     *store.DB
 	client *hubclient.Client
 
 	AfterCampaign func(ctx context.Context, campaignID int64)
+	Now           func() time.Time
 }
 
 // New creates an Evaluator backed by the given store and hub client.
 func New(db *store.DB, client *hubclient.Client) *Evaluator {
 	return &Evaluator{db: db, client: client}
+}
+
+// now returns the current time from the injected clock, defaulting to the
+// wall clock.
+func (e *Evaluator) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
+	}
+	return time.Now()
 }
 
 // RunEval executes every enabled case of the run's suite against each
@@ -108,7 +133,31 @@ type evalCell struct {
 func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) {
 	defaultSamples := e.resolveDefaultSampleCount()
 
+	// The GH #153 guards (campaign budget, all-dead abort) share the
+	// existing cancellation machinery: stopping means canceling, with an
+	// explicit reason carried to the runs whose cells never started.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var deadline time.Time
+	if budget := e.resolveCampaignBudgetMinutes(); budget > 0 {
+		deadline = e.now().Add(time.Duration(budget) * time.Minute)
+	}
+
 	var mu sync.Mutex
+	stopReason := ""
+	stop := func(reason string) {
+		mu.Lock()
+		if stopReason == "" {
+			stopReason = reason
+		}
+		mu.Unlock()
+		cancel()
+	}
+	budgetExceeded := func() bool {
+		return !deadline.IsZero() && !e.now().Before(deadline)
+	}
+
 	remaining := map[int64]int{}
 	var cells []evalCell
 	for _, prep := range prepared {
@@ -124,12 +173,35 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		}
 	}
 
-	e.runCellPool(ctx, cells, func(cctx context.Context, cell evalCell) {
-		e.evalModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+	var completed, dead int
+	e.runCellPool(ctx, cells, func() bool {
+		if budgetExceeded() {
+			stop("campaign budget exceeded")
+			return true
+		}
+		return false
+	}, func(cctx context.Context, cell evalCell) {
+		answered := e.evalModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
 		done := remaining[cell.prep.run.ID] == 0
+		completed++
+		if !answered {
+			dead++
+		}
+		abort := completed >= campaignAbortCells && dead == completed
+		expired := budgetExceeded()
+		external := ctx.Err() != nil
 		mu.Unlock()
+		// An external cancellation keeps its own reason: the guards only
+		// name a stop they caused, never blame the Hub for an operator's
+		// cancel.
+		if abort && !external {
+			stop("campaign aborted: every completed cell failed")
+		}
+		if expired && !external {
+			stop("campaign budget exceeded")
+		}
 		if done {
 			// All of the run's cells executed: the run is done regardless
 			// of a later cancellation (the serial executor finished a run
@@ -144,9 +216,12 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	defer mu.Unlock()
 	for _, prep := range prepared {
 		if remaining[prep.run.ID] > 0 {
-			reason := "execution incomplete"
-			if err := ctx.Err(); err != nil {
-				reason = err.Error()
+			reason := stopReason
+			if reason == "" {
+				reason = "execution incomplete"
+				if err := ctx.Err(); err != nil {
+					reason = err.Error()
+				}
 			}
 			e.failPreparedRun(prep, reason)
 		}
@@ -156,10 +231,12 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 // runCellPool executes job for every cell with at most eval_concurrency
 // workers at once (GH #26). A canceled context stops workers from taking new
 // cells and stops the feeder from offering them; cells already in flight run
-// to completion before runCellPool returns. Result persistence stays safe
-// under fan-out: the store's single SQLite connection serializes writes
-// (W2 — the pool never widens it).
-func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, job func(ctx context.Context, cell evalCell)) {
+// to completion before runCellPool returns. guard, when non-nil, is an
+// extra stop predicate evaluated at the same points (the campaign budget,
+// GH #153); it may cancel the context to carry its reason. Result
+// persistence stays safe under fan-out: the store's single SQLite
+// connection serializes writes (W2 — the pool never widens it).
+func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, guard func() bool, job func(ctx context.Context, cell evalCell)) {
 	if len(cells) == 0 {
 		return
 	}
@@ -167,10 +244,13 @@ func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, job func(
 	if workers > len(cells) {
 		workers = len(cells)
 	}
+	stopped := func() bool {
+		return ctx.Err() != nil || (guard != nil && guard())
+	}
 
 	jobs := make(chan evalCell)
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -178,7 +258,7 @@ func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, job func(
 				// Pre-check: once the context is canceled, no new cell is
 				// taken — without it a select with both branches ready
 				// (canceled ctx + pending cell) would randomly steal one.
-				if ctx.Err() != nil {
+				if stopped() {
 					return
 				}
 				select {
@@ -196,7 +276,7 @@ func (e *Evaluator) runCellPool(ctx context.Context, cells []evalCell, job func(
 
 feed:
 	for _, cell := range cells {
-		if ctx.Err() != nil {
+		if stopped() {
 			break feed
 		}
 		select {
@@ -321,41 +401,78 @@ func (e *Evaluator) resolveEvalConcurrency() int {
 	return n
 }
 
+// resolveCampaignBudgetMinutes reads the campaign wall-clock budget from
+// settings, clamped to [0, store.MaxEvalCampaignBudgetMin] (GH #153); 0
+// disables the budget. Read failures fall back to the built-in default.
+func (e *Evaluator) resolveCampaignBudgetMinutes() int {
+	n, err := e.db.GetSettingInt(store.SettingEvalCampaignBudgetMin, store.DefaultEvalCampaignBudgetMin)
+	if err != nil {
+		slog.Error("evaluator: read eval_campaign_budget_minutes setting, using default", "error", err)
+		return store.DefaultEvalCampaignBudgetMin
+	}
+	if n < 0 {
+		return 0
+	}
+	if n > store.MaxEvalCampaignBudgetMin {
+		return store.MaxEvalCampaignBudgetMin
+	}
+	return n
+}
+
 // evalModel runs all cases against one model. Any setup failure (model gone,
 // hub gone, no enabled endpoint) is recorded as failed results for every
 // case so the model x case grid stays complete, and logged to the task.
-func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) {
+// The per-model circuit breaker (GH #153): after circuitBreakerThreshold
+// consecutive cases whose answer calls all failed, the remaining cases are
+// recorded unscored with the circuit reason instead of burning two more Hub
+// calls each. The return reports whether any case got an answer at all —
+// the campaign-level abort reads it to detect an all-dead batch.
+func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, "", cases, "model not found")
 		task.log(store.TaskLogWarn, fmt.Sprintf("model db_id=%d skipped: model not found", modelDBID))
-		return
+		return false
 	}
 
 	hub, err := e.db.GetHub(model.HubID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "hub not found")
 		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: hub not found", model.ModelID))
-		return
+		return false
 	}
 
 	endpoints, err := e.db.ListEndpointsByModelID(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "failed to load endpoints")
 		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: failed to load endpoints", model.ModelID))
-		return
+		return false
 	}
 
 	protocol, ok := selectProtocol(endpoints)
 	if !ok {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "no enabled endpoint for this model")
 		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: no enabled endpoint for this model", model.ModelID))
-		return
+		return false
 	}
 
-	for _, c := range cases {
-		e.evalCase(ctx, run, hub, protocol, model, c, task, defaultSamples)
+	answered := false
+	consecutiveFailed := 0
+	for i, c := range cases {
+		if e.evalCase(ctx, run, hub, protocol, model, c, task, defaultSamples) {
+			answered = true
+			consecutiveFailed = 0
+			continue
+		}
+		consecutiveFailed++
+		if consecutiveFailed >= circuitBreakerThreshold && i+1 < len(cases) {
+			reason := fmt.Sprintf("circuit open: %d consecutive answer failures", circuitBreakerThreshold)
+			e.failAllCases(run, modelDBID, model.ModelID, cases[i+1:], reason)
+			task.log(store.TaskLogWarn, fmt.Sprintf("model %s: %s, skipping remaining %d cases", model.ModelID, reason, len(cases)-i-1))
+			break
+		}
 	}
+	return answered
 }
 
 // evalCase answers one case sampleCount times and stores a single result
@@ -363,8 +480,10 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 // judged (answer call failed, judge failed) contribute no score; when no
 // sample is judged at all the case stays unscored — the same convention as a
 // single unjudged answer. The outcome is logged to the task: scored
-// completions at info, answer/judge failures at warn.
-func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) {
+// completions at info, answer/judge failures at warn. The return reports
+// whether any sample got an answer (the circuit breaker counts consecutive
+// unanswered cases).
+func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) bool {
 	samples := defaultSamples
 	if c.SampleCount != nil && *c.SampleCount >= 1 {
 		samples = *c.SampleCount
@@ -380,14 +499,18 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 
 	var scoreSum float64
 	var scored int
+	answered := false
 	var details []string
 	for i := 1; i <= samples; i++ {
 		sample := e.evalSample(ctx, run, hub, protocol, model, c)
 		result.LatencyMs += sample.latencyMs
 		result.InputTokens = addIntPtr(result.InputTokens, sample.inputTokens)
 		result.OutputTokens = addIntPtr(result.OutputTokens, sample.outputTokens)
-		if sample.answer != nil && result.AnswerText == nil {
-			result.AnswerText = sample.answer
+		if sample.answer != nil {
+			answered = true
+			if result.AnswerText == nil {
+				result.AnswerText = sample.answer
+			}
 		}
 		if sample.score != nil {
 			scoreSum += *sample.score
@@ -412,6 +535,7 @@ func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store
 	default:
 		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
 	}
+	return answered
 }
 
 // sampleOutcome is one answer-and-verdict attempt for a case.

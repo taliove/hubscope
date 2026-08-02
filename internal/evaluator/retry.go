@@ -95,7 +95,7 @@ func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
 		}
 	}
 
-	e.runCellPool(ctx, cells, func(cctx context.Context, cell evalCell) {
+	e.runCellPool(ctx, cells, nil, func(cctx context.Context, cell evalCell) {
 		e.retryModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, defaultSamples)
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
