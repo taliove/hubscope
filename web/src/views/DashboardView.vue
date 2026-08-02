@@ -20,6 +20,7 @@
       :delta="healthScoreDelta"
       :conclusion="heroConclusion"
       :conclusion-tone="heroTone"
+      :unverified-note="heroUnverifiedNote"
       :scope="heroScope"
       :trend-categories="heroTrend.categories"
       :trend-values="heroTrend.values"
@@ -194,7 +195,7 @@ import {
   type ListSort,
   type ListSortKey,
 } from '@/utils/modelList'
-import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
+import { countByStatus, toneOf, conclusionText, unverifiedNote } from '@/utils/healthConclusion'
 import { aggregateDots24h } from '@/utils/overviewDots'
 import {
   heroScopeText,
@@ -272,6 +273,12 @@ const heroConclusion = computed(() => {
   const empty = enabledEntries.value.length === 0 || healthScore24h.value === null
   return conclusionText(toneOf(counts), counts, empty)
 })
+
+// Neutral unverified sub-note of the conclusion row (GH #160 ruling ⑦):
+// 「全部稳定」 must not swallow the no-evidence dimension — the note
+// discloses it beside the conclusion chip. Same endpoint-grained count
+// caliber as the conclusion itself.
+const heroUnverifiedNote = computed(() => unverifiedNote(countByStatus(enabledEntries.value)))
 
 const heroTone = computed<'success' | 'warning' | 'danger' | 'neutral'>(() => {
   if (enabledEntries.value.length === 0 || healthScore24h.value === null) return 'neutral'

@@ -39,11 +39,15 @@
            conclusion is the anti-fake counterpart of the abnormal list — kept
            WITHOUT the rate-range suffix (GH #92: the roster below carries the
            per-entry rates, a superset of the range text). The healthy word
-           itself comes from the display-layer mapping (GH #113). -->
-      <div v-else-if="singleModel" class="healthy-line detail-healthy">
+           itself comes from the display-layer mapping (GH #113). GH #160:
+           the statement belongs to the ALL-STABLE scope only — an unverified
+           endpoint has no health evidence, so a scope containing one never
+           reads 「全部 N 个端点稳定」; the distribution string's fourth
+           segment discloses the unverified count instead. -->
+      <div v-else-if="allStable && singleModel" class="healthy-line detail-healthy">
         当前状态<span class="healthy-word">{{ stableWord }}</span>{{ rangeText }}
       </div>
-      <div v-else class="healthy-line detail-healthy">
+      <div v-else-if="allStable" class="healthy-line detail-healthy">
         全部 <span class="healthy-num">{{ entries.length }}</span> 个端点<span class="healthy-word">{{ stableWord }}</span>
       </div>
 
@@ -93,7 +97,7 @@
 import { computed } from 'vue'
 import type { OverviewEntry } from '@/api/types'
 import { formatPercent } from '@/utils/format'
-import { statusLabel, statusTone } from '@/utils/statusDisplay'
+import { statusLabel, statusTone, toDisplayStatus } from '@/utils/statusDisplay'
 import { availabilityTier, dotTier, healthyRangeText, healthyRoster } from '@/utils/statusCardSummary'
 import { SEVERITY_RANK } from '@/utils/severitySort'
 
@@ -116,10 +120,17 @@ const stableWord = statusLabel('stable')
 const MAX_DETAIL_ROWS = 10
 
 // Severity table comes from the single source (utils/severitySort, GH #52);
-// the detail list keeps its own localeCompare name tie-break.
+// the detail list keeps its own localeCompare name tie-break. GH #160:
+// unverified endpoints are NOT abnormal (no evidence is not an alarm) — the
+// incident detail excludes them by the same display-state caliber; their
+// count is disclosed by the distribution string's fourth segment, never by
+// a second detail list.
 const abnormalEntries = computed(() =>
   props.entries
-    .filter(e => e.status !== 'healthy')
+    .filter(e => {
+      const display = toDisplayStatus(e.status)
+      return display === 'incident' || display === 'degraded'
+    })
     .sort(
       (a, b) =>
         SEVERITY_RANK[a.status] - SEVERITY_RANK[b.status] || a.model_id.localeCompare(b.model_id),
@@ -127,6 +138,13 @@ const abnormalEntries = computed(() =>
 )
 const topAbnormal = computed(() => abnormalEntries.value.slice(0, MAX_DETAIL_ROWS))
 const overflowCount = computed(() => abnormalEntries.value.length - topAbnormal.value.length)
+// All-stable gate (GH #160): the positive statement asserts every enabled
+// entry is healthy — a scope holding even one unverified endpoint must not
+// read 「全部稳定」 (no evidence ≠ stable). The roster below still lists the
+// genuinely healthy entries of a mixed scope under the 「稳定端点」 title.
+const allStable = computed(
+  () => props.entries.length > 0 && props.entries.every(e => e.status === 'healthy'),
+)
 // Healthy roster (GH #92): sort + cap live in the pure function so the
 // component stays presentational.
 const roster = computed(() => healthyRoster(props.entries))

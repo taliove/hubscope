@@ -1,7 +1,9 @@
-// Unit tests for the display-layer status mapping (spec 0018, GH #113):
-// four domain states in, three display states out — every combination
-// pinned, plus the degrade-cause passthrough, the unknown-input defense,
-// and the count merge (down + failing → incident).
+// Unit tests for the display-layer status mapping (spec 0018, GH #113;
+// unverified tier GH #160): five domain values in, 3+1 display states out —
+// every combination pinned, plus the degrade-cause passthrough, the
+// unknown-input defense (「未知」 stays the OUT-OF-DOMAIN fallback;
+// unverified is an in-domain formal identity), and the count merge
+// (down + failing → incident, unverified passthrough).
 import { describe, it, expect } from 'vitest'
 import type { EndpointStatus } from '@/api/types'
 import {
@@ -13,13 +15,14 @@ import {
   toDisplayStatus,
 } from '@/utils/statusDisplay'
 
-describe('statusDisplay: four domain states in, three display states out', () => {
+describe('statusDisplay: domain values in, 3+1 display states out', () => {
   it('maps every domain status to its display state, word and tone slot', () => {
     const cases: Array<[EndpointStatus, string, string, string]> = [
       ['healthy', 'stable', '稳定', 'success'],
       ['degraded', 'degraded', '降级', 'warning'],
       ['down', 'incident', '异常', 'danger'],
       ['failing', 'incident', '异常', 'danger'],
+      ['unverified', 'unverified', '未验证', 'neutral'],
     ]
     for (const [domain, display, label, tone] of cases) {
       const result = statusDisplay(domain)
@@ -38,6 +41,17 @@ describe('statusDisplay: four domain states in, three display states out', () =>
     expect(statusDisplay('stable').label).toBe('稳定')
     expect(statusDisplay('degraded').label).toBe('降级')
     expect(statusDisplay('incident').label).toBe('异常')
+    expect(statusDisplay('unverified').label).toBe('未验证')
+  })
+
+  // GH #160: unverified is an IN-DOMAIN formal identity (未验证, neutral
+  // slot) — never warning yellow (yellow = degraded only), never the
+  // out-of-domain 未知 fallback.
+  it('gives unverified its formal neutral identity, never warning yellow', () => {
+    const result = statusDisplay('unverified')
+    expect(result.label).toBe('未验证')
+    expect(result.tone).toBe('neutral')
+    expect(result.tone).not.toBe('warning')
   })
 })
 
@@ -83,6 +97,7 @@ describe('statusDisplay: unknown-input defense', () => {
     expect(toDisplayStatus('healthy')).toBe('stable')
     expect(toDisplayStatus('failing')).toBe('incident')
     expect(toDisplayStatus('incident')).toBe('incident')
+    expect(toDisplayStatus('unverified')).toBe('unverified')
   })
 })
 
@@ -92,10 +107,12 @@ describe('statusLabel / statusTone accessors', () => {
     expect(statusLabel('degraded')).toBe('降级')
     expect(statusLabel('down')).toBe('异常')
     expect(statusLabel('failing')).toBe('异常')
+    expect(statusLabel('unverified')).toBe('未验证')
     expect(statusTone('healthy')).toBe('success')
     expect(statusTone('degraded')).toBe('warning')
     expect(statusTone('down')).toBe('danger')
     expect(statusTone('failing')).toBe('danger')
+    expect(statusTone('unverified')).toBe('neutral')
   })
 })
 
@@ -104,18 +121,35 @@ describe('displayStatusCounts', () => {
     expect(displayStatusCounts({ healthy: 4, degraded: 2, down: 1, failing: 3 })).toEqual({
       stable: 4,
       degraded: 2,
+      unverified: 0,
       incident: 4,
     })
   })
 
+  it('passes unverified through unmerged (GH #160)', () => {
+    expect(displayStatusCounts({ healthy: 1, unverified: 2 })).toEqual({
+      stable: 1,
+      degraded: 0,
+      unverified: 2,
+      incident: 0,
+    })
+  })
+
   it('treats missing keys as zero (partial count records)', () => {
-    expect(displayStatusCounts({})).toEqual({ stable: 0, degraded: 0, incident: 0 })
-    expect(displayStatusCounts({ failing: 1 })).toEqual({ stable: 0, degraded: 0, incident: 1 })
+    expect(displayStatusCounts({})).toEqual({ stable: 0, degraded: 0, unverified: 0, incident: 0 })
+    expect(displayStatusCounts({ failing: 1 })).toEqual({ stable: 0, degraded: 0, unverified: 0, incident: 1 })
   })
 })
 
 describe('DISPLAY_SEVERITY_ORDER', () => {
-  it('lists display states heavy → light (mirrors SEVERITY_ORDER)', () => {
-    expect(DISPLAY_SEVERITY_ORDER).toEqual(['incident', 'degraded', 'stable'])
+  it('lists display states heavy → light, unverified between degraded and stable', () => {
+    expect(DISPLAY_SEVERITY_ORDER).toEqual(['incident', 'degraded', 'unverified', 'stable'])
+  })
+
+  // GH #160 ruling ⑤: the status filter's four options derive from the
+  // severity order reversed (single source, no second ordering) —
+  // 稳定/未验证/降级/异常, light → heavy.
+  it('derives the filter options light → heavy when reversed', () => {
+    expect([...DISPLAY_SEVERITY_ORDER].reverse()).toEqual(['stable', 'unverified', 'degraded', 'incident'])
   })
 })

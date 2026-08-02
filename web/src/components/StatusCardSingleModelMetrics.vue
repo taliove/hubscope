@@ -195,6 +195,11 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .vc-abnormal {
   color: var(--hs-danger-text);
 }
+/* Neutral tier (GH #160, unverified statement): placeholder grade — no
+   functional hue by design (no evidence reads as neither good nor bad). */
+.vc-neutral {
+  color: var(--hs-text-placeholder);
+}
 /* Alert chip + dot (event-worded "含告警"): failing has no separate display
    color in the three-state world — both take the danger slot. */
 .alert-dot {

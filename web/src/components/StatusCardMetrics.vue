@@ -22,6 +22,11 @@
         <div v-if="verdict || hasFailing" class="hero-verdict">
           <span v-if="hasFailing" class="alert-dot" />
           <span v-if="verdict" class="verdict-text" :class="`vc-${tone}`">{{ verdict }}</span>
+          <!-- Neutral unverified note (GH #160, main ruling 2026-08-03):
+               same wording source and same presentation as the hero's
+               hero-unverified span — 「全部稳定」 never swallows the
+               no-evidence dimension on the material face either. -->
+          <span v-if="verdictNote" class="verdict-note">{{ verdictNote }}</span>
           <span v-if="hasFailing" class="failing-chip">含 {{ counts.failing }} 个告警</span>
         </div>
         <div v-if="!isEmpty" class="distribution">
@@ -75,6 +80,7 @@ import {
   countByStatus,
   toneOf,
   conclusionText,
+  verdictUnverifiedNote,
   type HealthTone,
   type HealthCounts,
 } from '@/utils/healthConclusion'
@@ -101,6 +107,12 @@ const dots = computed(() => aggregateDots24h(props.entries))
 // Verdict rides under the availability number; '' when empty so the panel
 // stays neutral on the no-data state (never reads as "全部稳定").
 const verdict = computed(() => (props.isEmpty ? '' : conclusionText(toneOf(counts.value), counts.value, false)))
+// Neutral unverified note beside the verdict (GH #160, main ruling
+// 2026-08-03): stable line only — an abnormal verdict already points at the
+// worst problem (gating lives in the pure function).
+const verdictNote = computed(() =>
+  props.isEmpty ? null : verdictUnverifiedNote(toneOf(counts.value), counts.value),
+)
 const hasFailing = computed(() => !props.isEmpty && counts.value.failing > 0)
 const distribution = computed(() => distributionSegments(counts.value))
 </script>
@@ -198,6 +210,13 @@ const distribution = computed(() => distributionSegments(counts.value))
 .vc-abnormal {
   color: var(--hs-danger-text);
 }
+/* Verdict unverified note (GH #160): plain placeholder-grade text beside
+   the verdict — mirrors the hero's .hero-unverified (same wording source,
+   same neutral presentation; comment there cross-references this one). */
+.verdict-note {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+}
 .vc-empty {
   color: var(--hs-text-secondary);
 }
@@ -245,7 +264,8 @@ const distribution = computed(() => distributionSegments(counts.value))
   font-weight: 400;
 }
 /* Distribution words: text channel → *-text grades (GH #69 text/graphics
-   split; GH #113 tone slots success/warning/danger). */
+   split; GH #113 tone slots success/warning/danger; GH #160 neutral slot →
+   placeholder grade). */
 .st-success {
   color: var(--hs-success-text);
 }
@@ -254,6 +274,9 @@ const distribution = computed(() => distributionSegments(counts.value))
 }
 .st-danger {
   color: var(--hs-danger-text);
+}
+.st-neutral {
+  color: var(--hs-text-placeholder);
 }
 /* Availability tier of the hero number and the rate figures: text channel →
  * the *-text grade of each slot (GH #69 text/graphics split; on the v2

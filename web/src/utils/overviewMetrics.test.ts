@@ -165,7 +165,7 @@ describe('abnormalModelCounts', () => {
       entry({ endpoint_id: 4, model_id: 'm4', status: 'healthy' }),
       entry({ endpoint_id: 5, model_id: 'm5', status: 'down', enabled: false }),
     ]
-    expect(abnormalModelCounts(entries)).toEqual({ incident: 2, degraded: 1, total: 3 })
+    expect(abnormalModelCounts(entries)).toEqual({ incident: 2, degraded: 1, unverified: 0, total: 3 })
   })
   it('dedupes by model_id at the worst display state (GH #115 LOW-3 ruling)', () => {
     const entries = [
@@ -175,7 +175,21 @@ describe('abnormalModelCounts', () => {
       entry({ endpoint_id: 4, model_id: 'gpt-y', status: 'failing' }),
     ]
     // claude-x counts once (incident wins), gpt-y counts once (incident wins).
-    expect(abnormalModelCounts(entries)).toEqual({ incident: 2, degraded: 0, total: 2 })
+    expect(abnormalModelCounts(entries)).toEqual({ incident: 2, degraded: 0, unverified: 0, total: 2 })
+  })
+  // GH #160 ruling ⑦: unverified models count under their own key at the
+  // same model-deduped worst-state caliber — and stay OUT of total (the
+  // risk-model widget's caliber is unchanged: no evidence is not a risk).
+  it('counts unverified models under their own key, outside the risk total', () => {
+    const entries = [
+      entry({ endpoint_id: 1, model_id: 'img-a', status: 'unverified' }),
+      entry({ endpoint_id: 2, model_id: 'img-a', status: 'unverified' }), // same model, counts once
+      entry({ endpoint_id: 3, model_id: 'img-b', status: 'unverified', enabled: false }), // disabled skips
+      entry({ endpoint_id: 4, model_id: 'chat-c', status: 'down' }),
+      entry({ endpoint_id: 5, model_id: 'chat-c', status: 'unverified' }), // worst state wins: incident
+      entry({ endpoint_id: 6, model_id: 'ok-d', status: 'healthy' }),
+    ]
+    expect(abnormalModelCounts(entries)).toEqual({ incident: 1, degraded: 0, unverified: 1, total: 1 })
   })
   it('all-stable is zero', () => {
     expect(abnormalModelCounts([entry({})]).total).toBe(0)

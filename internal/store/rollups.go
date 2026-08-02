@@ -61,23 +61,30 @@ type bucketAgg struct {
 	ttftCount int
 }
 
-// add folds one probe into the accumulator.
+// add folds one probe into the accumulator. Latency enters only for
+// successful probes (GH #160, appendix 17③): a failed probe's latency is
+// time-to-failure and must never enter a presented percentile. The count
+// fields still track every probe. Historical probe_rollups rows written under
+// the old all-sample caliber are NOT backfilled (registered mixed period).
 func (a *bucketAgg) add(ok bool, latencyMs int, ttftMs *int) {
 	a.total++
 	if !ok {
 		a.failures++
+	} else {
+		a.latencies = append(a.latencies, latencyMs)
 	}
-	a.latencies = append(a.latencies, latencyMs)
 	if ttftMs != nil {
 		a.ttftSum += *ttftMs
 		a.ttftCount++
 	}
 }
 
-// build converts the accumulator into an immutable SeriesBucket.
+// build converts the accumulator into an immutable SeriesBucket. Percentiles
+// are null when the bucket has no SUCCESSFUL probe — an all-failed bucket
+// keeps its counts but presents no latency.
 func (a *bucketAgg) build(start time.Time) SeriesBucket {
 	b := SeriesBucket{BucketStart: start, Total: a.total, Failures: a.failures}
-	if a.total > 0 {
+	if len(a.latencies) > 0 {
 		p50 := status.Percentile(a.latencies, 50)
 		p95 := status.Percentile(a.latencies, 95)
 		b.P50Ms = &p50

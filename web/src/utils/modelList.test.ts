@@ -375,6 +375,47 @@ describe('listSectionMeta (GH #140)', () => {
     expect(listSectionMeta(twoProtocols)).toBe('2 个端点 · 异常 1 · 降级 0')
   })
 
+  // GH #160 ruling ⑦: the unverified dimension is never silently omitted —
+  // the group meta appends 「· 未验证 N」 when the group has unverified
+  // endpoints (model-deduped, same caliber as the abnormal counts; the word
+  // comes from statusLabel, never a literal).
+  it('appends the unverified count when the group has unverified endpoints', () => {
+    const mixed = [
+      entry({ endpoint_id: 1, model_id: 'a', status: 'unverified' }),
+      entry({ endpoint_id: 2, model_id: 'b', status: 'unverified' }),
+      entry({ endpoint_id: 3, model_id: 'c', status: 'healthy' }),
+    ]
+    expect(listSectionMeta(mixed)).toBe('3 个端点 · 未验证 2')
+  })
+
+  it('combines the unverified suffix with abnormal counts', () => {
+    const mixed = [
+      entry({ endpoint_id: 1, model_id: 'a', status: 'down' }),
+      entry({ endpoint_id: 2, model_id: 'b', status: 'unverified' }),
+    ]
+    expect(listSectionMeta(mixed)).toBe('2 个端点 · 异常 1 · 降级 0 · 未验证 1')
+  })
+
+  it('dedupes the unverified count by model at its worst display state', () => {
+    const mixed = [
+      entry({ endpoint_id: 1, model_id: 'a', protocol: 'openai', status: 'unverified' }),
+      entry({ endpoint_id: 2, model_id: 'a', protocol: 'images_generation', status: 'unverified' }),
+      // Model b has an unverified endpoint AND a down one — it counts once,
+      // at its worst state (incident), not again as unverified.
+      entry({ endpoint_id: 3, model_id: 'b', protocol: 'openai', status: 'down' }),
+      entry({ endpoint_id: 4, model_id: 'b', protocol: 'images_edit', status: 'unverified' }),
+    ]
+    expect(listSectionMeta(mixed)).toBe('4 个端点 · 异常 1 · 降级 0 · 未验证 1')
+  })
+
+  it('omits the unverified suffix when no enabled entry is unverified', () => {
+    const disabledUnverified = [
+      entry({ endpoint_id: 1, model_id: 'a', status: 'unverified', enabled: false }),
+      entry({ endpoint_id: 2, model_id: 'b', status: 'healthy' }),
+    ]
+    expect(listSectionMeta(disabledUnverified)).toBe('2 个端点')
+  })
+
   it('ignores disabled endpoints in the abnormal counts', () => {
     const disabledDown = [
       entry({ endpoint_id: 1, model_id: 'a', status: 'down', enabled: false }),

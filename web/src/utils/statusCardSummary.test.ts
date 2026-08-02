@@ -260,11 +260,11 @@ describe('longestDegradedStreak', () => {
 })
 
 describe('distributionSegments', () => {
-  it('always lists all three display states in display order', () => {
+  it('always lists all four display segments in display order (GH #160)', () => {
     const counts = { ...emptyHealthCounts(), degraded: 3 }
     const segs = distributionSegments(counts)
-    expect(segs.map(s => s.status)).toEqual(['stable', 'degraded', 'incident'])
-    expect(segs.map(s => s.count)).toEqual([0, 3, 0])
+    expect(segs.map(s => s.status)).toEqual(['stable', 'degraded', 'incident', 'unverified'])
+    expect(segs.map(s => s.count)).toEqual([0, 3, 0, 0])
   })
   it('merges down and failing into the incident segment (GH #113)', () => {
     const counts = { ...emptyHealthCounts(), down: 2, failing: 3 }
@@ -273,7 +273,17 @@ describe('distributionSegments', () => {
       ['stable', '稳定', 'success', 0],
       ['degraded', '降级', 'warning', 0],
       ['incident', '异常', 'danger', 5],
+      ['unverified', '未验证', 'neutral', 0],
     ])
+  })
+  // GH #160: the unverified dimension is never silently omitted — the
+  // fourth segment always lists, zero counts included (same disclosure
+  // philosophy as the failing alert chip).
+  it('discloses unverified in the fourth segment, never merged, never yellow', () => {
+    const counts = { ...emptyHealthCounts(), unverified: 2 }
+    const segs = distributionSegments(counts)
+    const seg = segs.find(s => s.status === 'unverified')
+    expect(seg).toEqual({ status: 'unverified', label: '未验证', tone: 'neutral', count: 2 })
   })
 })
 
@@ -321,6 +331,41 @@ describe('summaryText', () => {
   it('never claims 平稳 without probe data', () => {
     const entries = [makeEntry()]
     expect(summaryText(emptyHealthCounts(), entries, false)).toBe('当前全部稳定;暂无 24 小时探测数据')
+  })
+
+  // GH #160 (main ruling 2026-08-03): on a STABLE scope containing
+  // unverified endpoints the one-liner appends the same neutral note the
+  // hero shows (「全部稳定」 never swallows the no-evidence dimension);
+  // an abnormal scope's sentence already points at the worst problem, so
+  // no note is appended there (the distribution string discloses it).
+  it('appends the unverified note on an all-unverified stable scope', () => {
+    const entries = [makeEntry({ status: 'unverified' }), makeEntry({ endpoint_id: 2, status: 'unverified' })]
+    const counts = { ...emptyHealthCounts(), unverified: 2 }
+    expect(summaryText(counts, entries, false)).toBe('当前全部稳定 · 2 个未验证;暂无 24 小时探测数据')
+  })
+  it('appends the unverified note on a mixed stable scope with data', () => {
+    const entries = [
+      makeEntry({ dots_24h: dotsWith(100, 0, [23]) }),
+      makeEntry({ endpoint_id: 2, status: 'unverified' }),
+    ]
+    const counts = { ...emptyHealthCounts(), healthy: 1, unverified: 1 }
+    expect(summaryText(counts, entries, false)).toBe('近 24 小时运行平稳,无需处理 · 1 个未验证')
+  })
+  it('appends no note when the scope has abnormal endpoints', () => {
+    const entries = [
+      makeEntry({ status: 'down', model_id: 'gpt-5.5' }),
+      makeEntry({ endpoint_id: 2, status: 'unverified' }),
+    ]
+    const counts = { ...emptyHealthCounts(), down: 1, unverified: 1 }
+    expect(summaryText(counts, entries, false)).toBe('1 个端点异常,建议优先排查 gpt-5.5;暂无 24 小时探测数据')
+  })
+  it('appends no note when the scope has degraded endpoints', () => {
+    const entries = [
+      makeEntry({ status: 'degraded', dots_24h: dotsWith(10, 0, [23]) }),
+      makeEntry({ endpoint_id: 2, status: 'unverified' }),
+    ]
+    const counts = { ...emptyHealthCounts(), degraded: 1, unverified: 1 }
+    expect(summaryText(counts, entries, false)).toBe('1 个端点降级,建议关注,暂不紧急')
   })
 })
 
@@ -392,14 +437,37 @@ describe('singleModelStatement', () => {
       failingChip: null,
     })
   })
-  // Defensive fallback (GH #159): a runtime status outside the domain union
-  // (e.g. unverified, whose display identity is GH #160's business) crashed
-  // the share dialog — the switch had no default and the consumers
-  // dereferenced undefined. The neutral fallback mirrors statusDisplay's
-  // UNKNOWN_DISPLAY: the 未知 word, the middle tone — never stable, never
-  // abnormal.
+  // GH #160: unverified is an IN-DOMAIN formal identity — the single-model
+  // statement names 未验证 with the neutral tone (Ping endpoints never have
+  // probe data, so the no-data clause is the standing form).
+  it('gives unverified its formal neutral statement (GH #160)', () => {
+    const entry = makeEntry({ status: 'unverified' })
+    expect(singleModelStatement(entry, null)).toEqual({
+      text: '未验证 · 24h 内无探测数据',
+      tone: 'neutral',
+      failingChip: null,
+    })
+  })
+  it('keeps the rate clause for an unverified entry with data (defensive shape)', () => {
+    const entry = makeEntry({
+      status: 'unverified',
+      dots_24h: dotsWith(100, 10, [23]),
+    })
+    expect(singleModelStatement(entry, 0.9)).toEqual({
+      text: '未验证 · 24h 可用率 90.0%',
+      tone: 'neutral',
+      failingChip: null,
+    })
+  })
+  // Defensive fallback (GH #159; narrowed by GH #160): a runtime status
+  // OUTSIDE the domain union crashed the share dialog — the switch had no
+  // default and the consumers dereferenced undefined. The neutral fallback
+  // mirrors statusDisplay's UNKNOWN_DISPLAY: the 未知 word, the middle
+  // tone — never stable, never abnormal. unverified used to exercise this
+  // branch; post-GH #160 it has its formal identity above, so a made-up
+  // out-of-domain value keeps the defense pinned.
   it('returns a neutral statement for a status outside the domain union', () => {
-    const entry = makeEntry({ status: 'unverified' as EndpointStatus })
+    const entry = makeEntry({ status: 'mystery' as EndpointStatus })
     expect(singleModelStatement(entry, null)).toEqual({
       text: '未知 · 24h 内无探测数据',
       tone: 'degraded',
@@ -408,7 +476,7 @@ describe('singleModelStatement', () => {
   })
   it('keeps the rate clause for an unknown status with data', () => {
     const entry = makeEntry({
-      status: 'unverified' as EndpointStatus,
+      status: 'mystery' as EndpointStatus,
       dots_24h: dotsWith(100, 10, [23]),
     })
     expect(singleModelStatement(entry, 0.9)).toEqual({
@@ -447,16 +515,30 @@ describe('singleModelSummaryText', () => {
   it('healthy without probes states the fact and the gap', () => {
     expect(singleModelSummaryText(makeEntry(), null)).toBe('当前状态稳定;暂无 24 小时探测数据')
   })
+  // GH #160: unverified gets its formal single-model summary — states the
+  // Ping-monitoring fact without advice (no evidence is neither an alarm nor
+  // a comfort). The GH #159 「未知」 defense below stays for out-of-domain
+  // runtime values.
+  it('unverified states the Ping-monitoring fact, no verdict, no advice', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'unverified' }), null)).toBe(
+      '状态未验证:该端点走 Ping 监测,不产生探测记录,暂无健康证据',
+    )
+  })
+  it('unverified keeps the formal wording even with data (constructed case)', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'unverified' }), 0.9)).toBe(
+      '状态未验证:该端点走 Ping 监测,不产生探测记录,暂无健康证据',
+    )
+  })
   // GH #159: an out-of-union runtime status used to fall into the healthy
   // branches and claim "当前状态稳定" — false comfort. The defensive branch
   // states the fact neutrally and never reads as stable.
   it('unknown status without probes never claims stable', () => {
-    expect(singleModelSummaryText(makeEntry({ status: 'unverified' as EndpointStatus }), null)).toBe(
+    expect(singleModelSummaryText(makeEntry({ status: 'mystery' as EndpointStatus }), null)).toBe(
       '状态未知;暂无 24 小时探测数据',
     )
   })
   it('unknown status with data states the rate without a verdict', () => {
-    expect(singleModelSummaryText(makeEntry({ status: 'unverified' as EndpointStatus }), 0.9)).toBe(
+    expect(singleModelSummaryText(makeEntry({ status: 'mystery' as EndpointStatus }), 0.9)).toBe(
       '状态未知,24h 可用率 90.0%',
     )
   })

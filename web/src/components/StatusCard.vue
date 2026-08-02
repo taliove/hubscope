@@ -375,6 +375,11 @@ const emptyDetailText = computed(() => {
 .value-danger {
   color: var(--hs-danger-text);
 }
+/* GH #160: the fourth tone slot (unverified) resolves to the placeholder
+   grade per the neutral-caliber registration (check GH #160 LOW-1). */
+.value-neutral {
+  color: var(--hs-text-placeholder);
+}
 .scope-plain {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);

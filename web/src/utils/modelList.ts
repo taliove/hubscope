@@ -324,14 +324,23 @@ export function groupListSections(
     .sort((a, b) => groupRank(a.entries) - groupRank(b.entries) || lex(a.key, b.key))
 }
 
-// Section meta line of a group header (GH #140):「N 个端点」 when nothing
-// is abnormal, else「N 个端点 · 异常 N · 降级 N」. The count words come
-// from the display-layer single mapping (statusLabel — never a literal);
-// the counts dedupe BY MODEL at each model's worst display state
-// (abnormalModelCounts, the GH #115 caliber) so a model with two abnormal
-// protocols counts once; disabled endpoints never inflate the counts.
+// Section meta line of a group header (GH #140; unverified suffix GH #160
+// ruling ⑦):「N 个端点」 when nothing is abnormal and nothing unverified,
+// else「N 个端点 · 异常 N · 降级 N」 plus「· 未验证 N」when the group has
+// unverified endpoints — the no-evidence dimension is never silently
+// omitted (same disclosure philosophy as the material's four-segment
+// distribution string). The count words come from the display-layer single
+// mapping (statusLabel — never a literal); the counts dedupe BY MODEL at
+// each model's worst display state (abnormalModelCounts, the GH #115
+// caliber) so a model with two abnormal protocols counts once; disabled
+// endpoints never inflate the counts.
 export function listSectionMeta(entries: OverviewEntry[]): string {
   const counts = abnormalModelCounts(entries)
-  if (counts.total === 0) return `${entries.length} 个端点`
-  return `${entries.length} 个端点 · ${statusLabel('incident')} ${counts.incident} · ${statusLabel('degraded')} ${counts.degraded}`
+  const unverifiedSuffix = counts.unverified > 0 ? ` · ${statusLabel('unverified')} ${counts.unverified}` : ''
+  if (counts.total === 0) {
+    return counts.unverified > 0
+      ? `${entries.length} 个端点${unverifiedSuffix}`
+      : `${entries.length} 个端点`
+  }
+  return `${entries.length} 个端点 · ${statusLabel('incident')} ${counts.incident} · ${statusLabel('degraded')} ${counts.degraded}${unverifiedSuffix}`
 }

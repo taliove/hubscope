@@ -21,10 +21,15 @@
         </div>
         <div class="hero-side">
           <!-- Soft conclusion chip (GH #129): soft functional base + *-text
-               word; never rendered in the no-data state. -->
-          <span v-if="health !== null" class="hero-conclusion" :class="`tone-${conclusionTone}`">
-            {{ conclusion }}
-          </span>
+               word; never rendered in the no-data state. The neutral
+               unverified note (GH #160 ruling ⑦) sits beside it — 「全部稳定」
+               never swallows the no-evidence dimension. -->
+          <div v-if="health !== null" class="hero-conclusion-row">
+            <span class="hero-conclusion" :class="`tone-${conclusionTone}`">
+              {{ conclusion }}
+            </span>
+            <span v-if="unverifiedNote" class="hero-unverified">{{ unverifiedNote }}</span>
+          </div>
           <span v-if="deltaText" class="hero-delta" :class="`tone-${deltaTone}`">{{ deltaText }}</span>
           <span class="hero-scope">{{ scope }}</span>
         </div>
@@ -68,6 +73,10 @@ const props = withDefaults(
     delta: number | null
     conclusion: string
     conclusionTone: 'success' | 'warning' | 'danger' | 'neutral'
+    // Neutral unverified sub-note beside the conclusion chip (GH #160
+    // ruling ⑦, composed upstream by healthConclusion.unverifiedNote);
+    // null hides it.
+    unverifiedNote?: string | null
     scope: string
     // 24h trend inputs (derived upstream by overviewMetrics.heroTrendSeries):
     // local "HH:00" labels + hourly availability on the 0–100 display scale.
@@ -83,7 +92,7 @@ const props = withDefaults(
   // Optional-with-empty-defaults (GH #129 check CRITICAL-1): a consumer that
   // predates the trend wiring must stay green — no trend props renders the
   // chart's neutral placeholder, a null updatedAt hides the meta line.
-  { skeleton: false, trendCategories: () => [], trendValues: () => [], updatedAt: null, refreshIntervalMs: 0 },
+  { skeleton: false, trendCategories: () => [], trendValues: () => [], updatedAt: null, refreshIntervalMs: 0, unverifiedNote: null },
 )
 
 // The hero figure tweens between poll updates (spec 0018 §15: 500–800ms,
@@ -173,11 +182,25 @@ const metaText = computed(
 /* Conclusion chip: pill shape (radius-full), soft functional base with the
    *-text grade word (graphic/text division); the chip is self-sizing so the
    soft base hugs the word. */
+.hero-conclusion-row {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+}
 .hero-conclusion {
   font-size: var(--hs-text-sm);
   font-weight: 600;
   padding: var(--hs-space-1) var(--hs-space-3);
   border-radius: var(--hs-radius-full);
+}
+/* Unverified sub-note (GH #160): plain placeholder-grade text beside the
+   chip — neutral, never a second chip competing with the conclusion. The
+   StatusCard material mirrors this span (.verdict-note in
+   StatusCardMetrics, same wording source; summaryText appends the same
+   note inline on the 小结 line). */
+.hero-unverified {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
 }
 .hero-conclusion.tone-success {
   background: var(--hs-success-soft);

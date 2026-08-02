@@ -173,6 +173,11 @@ export function availabilityRateTier(rate: number | null): RateTier {
 export interface AbnormalCounts {
   incident: number
   degraded: number
+  // GH #160 ruling ⑦: unverified models count under their own key (same
+  // model-deduped worst-display-state caliber) so the group meta can
+  // disclose the no-evidence dimension — but they stay OUT of total: no
+  // evidence is not a risk, and the 风险模型数 widget's caliber is unchanged.
+  unverified: number
   total: number
 }
 
@@ -180,23 +185,30 @@ export interface AbnormalCounts {
 // model_id (main ruling, GH #115 check LOW-3): the widget answers "which
 // models are at risk", so a model with two abnormal protocols still counts
 // once, at its WORST display state (display-layer mapping: down + failing
-// count together as 异常). Disabled endpoints are out of service by
-// admin choice and never inflate the abnormal count.
+// count together as 异常; unverified is the lightest non-stable state).
+// Disabled endpoints are out of service by admin choice and never inflate
+// the counts.
 export function abnormalModelCounts(entries: OverviewEntry[]): AbnormalCounts {
-  const worstByModel = new Map<string, 'incident' | 'degraded'>()
+  const worstByModel = new Map<string, 'incident' | 'degraded' | 'unverified'>()
   for (const entry of entries) {
     if (!entry.enabled) continue
     const display = toDisplayStatus(entry.status)
-    if (display !== 'incident' && display !== 'degraded') continue
+    if (display !== 'incident' && display !== 'degraded' && display !== 'unverified') continue
     const current = worstByModel.get(entry.model_id)
     if (current === 'incident') continue
-    if (display === 'incident' || current === undefined) worstByModel.set(entry.model_id, display)
+    if (display === 'incident' || current === undefined) {
+      worstByModel.set(entry.model_id, display)
+    } else if (display === 'degraded' && current === 'unverified') {
+      worstByModel.set(entry.model_id, display)
+    }
   }
   let incident = 0
   let degraded = 0
+  let unverified = 0
   for (const display of worstByModel.values()) {
     if (display === 'incident') incident++
-    else degraded++
+    else if (display === 'degraded') degraded++
+    else unverified++
   }
-  return { incident, degraded, total: incident + degraded }
+  return { incident, degraded, unverified, total: incident + degraded }
 }

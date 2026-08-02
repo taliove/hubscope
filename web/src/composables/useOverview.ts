@@ -1,8 +1,9 @@
 // Composable backing the Dashboard: polls GET /api/overview on a fixed
-// interval and exposes the entries, group aggregates, and per-status counts.
-import { ref, computed, onBeforeUnmount, type Ref } from 'vue'
+// interval and exposes the entries, group aggregates, and the backend global
+// figures.
+import { ref, onBeforeUnmount, type Ref } from 'vue'
 import { fetchOverview } from '@/api/overview'
-import type { OverviewEntry, OverviewGroup, EndpointStatus } from '@/api/types'
+import type { OverviewEntry, OverviewGroup } from '@/api/types'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 
 // How often the dashboard refreshes, in milliseconds. Exported so the health
@@ -72,20 +73,6 @@ export function useOverview() {
 
   onBeforeUnmount(stop)
 
-  // Count entries per status for the summary row.
-  const statusCounts = computed<Record<EndpointStatus, number>>(() => {
-    const counts: Record<EndpointStatus, number> = {
-      healthy: 0,
-      degraded: 0,
-      down: 0,
-      failing: 0,
-    }
-    for (const entry of entries.value) {
-      counts[entry.status] += 1
-    }
-    return counts
-  })
-
   return {
     entries,
     byFamily,
@@ -94,7 +81,6 @@ export function useOverview() {
     generatedAt,
     loading,
     error,
-    statusCounts,
     enabledEndpoints,
     availability24h,
     healthScore24h,

@@ -12,7 +12,7 @@
 // internal/server/overview.go's groupAccumulator).
 import type { OverviewEntry } from '@/api/types'
 import { formatPercent, formatPercentDigits } from '@/utils/format'
-import { type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
+import { type HealthCounts, type HealthTone, unverifiedNote } from '@/utils/healthConclusion'
 import { dotTier, type AvailabilityTier } from '@/utils/overviewDots'
 import {
   displayStatusCounts,
@@ -165,6 +165,17 @@ export function summaryText(counts: HealthCounts, entries: OverviewEntry[], empt
     // do not have, so state the fact and the gap.
     text = `当前全部${statusLabel('stable')}`
   }
+  // GH #160 (main ruling 2026-08-03, same-source extension of the hero note
+  // — see healthConclusion.verdictUnverifiedNote): on a STABLE scope the
+  // one-liner must not swallow the no-evidence dimension, so the same
+  // neutral note the hero shows is appended inline (this line is already
+  // secondary gray — no separate span needed; the material has no hover).
+  // Only the stable tail appends: an abnormal/degraded sentence already
+  // points at the worst problem, and the distribution string's fourth
+  // segment discloses the unverified count there.
+  if (counts.failing === 0 && counts.down === 0 && counts.degraded === 0 && counts.unverified > 0) {
+    text += ` · ${unverifiedNote(counts)}`
+  }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text
 }
@@ -189,6 +200,9 @@ export interface SingleModelStatement {
 // distribution: "降级 · 24h 可用率 80.0%". The leading word comes from
 // the display-layer mapping (down and failing both render 异常); the
 // rate clause degrades to a no-data note when the window has no probes.
+// GH #160: unverified gets its formal neutral identity (Ping endpoints never
+// have probe data, so the no-data clause is the standing form) — never the
+// 未知 defensive fallback, which stays reserved for out-of-domain values.
 export function singleModelStatement(entry: OverviewEntry, availability: number | null): SingleModelStatement {
   const rate = availability !== null ? `24h 可用率 ${formatPercent(availability)}` : '24h 内无探测数据'
   const word = statusLabel(entry.status)
@@ -210,14 +224,17 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
       // The chip copy is alert-event wording (event category, untouched);
       // the status word itself has already merged into 异常.
       return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+    case 'unverified':
+      // Formal identity (GH #160): 未验证 with the neutral tone — no
+      // evidence reads as neither good nor bad; never warning yellow.
+      return { text: `${word} · ${rate}`, tone: 'neutral', failingChip: null }
     default:
       // Defensive fallback (GH #159): the wire is untyped, so a runtime
-      // status outside the domain union (e.g. unverified — its display
-      // identity is GH #160's ruling, not this ticket's) must not return
-      // undefined and crash the share dialog. Same family as statusDisplay's
-      // UNKNOWN_DISPLAY: statusLabel already yields 未知, and the middle
-      // tone never reads as stable (false comfort) nor abnormal (false
-      // alarm). No fourth status word is invented here.
+      // status outside the domain union must not return undefined and crash
+      // the share dialog. Same family as statusDisplay's UNKNOWN_DISPLAY:
+      // statusLabel already yields 未知, and the middle tone never reads as
+      // stable (false comfort) nor abnormal (false alarm). No fifth status
+      // word is invented here.
       return { text: `${word} · ${rate}`, tone: 'degraded', failingChip: null }
   }
 }
@@ -227,12 +244,19 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
 // chips already name the model).
 export function singleModelSummaryText(entry: OverviewEntry, availability: number | null): string {
   // Defensive branch (GH #159): an out-of-union runtime status must not fall
-  // into the healthy chain below — "当前状态稳定" for an unverified endpoint
+  // into the healthy chain below — "当前状态稳定" for an unknown endpoint
   // is false comfort. State the fact neutrally, no verdict, no advice.
   if (toDisplayStatus(entry.status) === null) {
     return availability !== null
       ? `状态未知,24h 可用率 ${formatPercent(availability)}`
       : '状态未知;暂无 24 小时探测数据'
+  }
+  // Formal unverified wording (GH #160, share-materials brief): states the
+  // Ping-monitoring fact — no verdict, no advice; no evidence is neither an
+  // alarm nor a comfort. Ping endpoints never have probe data, so the
+  // wording stands regardless of the availability argument.
+  if (entry.status === 'unverified') {
+    return '状态未验证:该端点走 Ping 监测,不产生探测记录,暂无健康证据'
   }
   let text: string
   if (entry.status === 'failing') {
@@ -255,12 +279,14 @@ export function singleModelSummaryText(entry: OverviewEntry, availability: numbe
   return text
 }
 
-// Distribution segments of the conclusion block (three-state display,
-// GH #113): the four domain counts merge into the three display states —
-// down + failing count together under 异常. All three segments are
-// always listed (zero counts included) so a clean dimension is confirmed at
-// a glance rather than inferred from absence; the alert count stays
-// disclosed by the event-worded "含 N 个告警" chip when failing > 0.
+// Distribution segments of the conclusion block (3+1 display, GH #113;
+// fourth segment GH #160): the domain counts merge into the display states —
+// down + failing count together under 异常; unverified passes through
+// unmerged. All four segments are always listed (zero counts included) so a
+// clean dimension is confirmed at a glance rather than inferred from
+// absence — the unverified dimension is never silently omitted, and the
+// alert count stays disclosed by the event-worded "含 N 个告警" chip when
+// failing > 0.
 export interface DistributionSegment {
   status: DisplayStatus
   label: string
@@ -270,7 +296,7 @@ export interface DistributionSegment {
 
 export function distributionSegments(counts: HealthCounts): DistributionSegment[] {
   const merged = displayStatusCounts(counts)
-  return (['stable', 'degraded', 'incident'] as const).map(status => ({
+  return (['stable', 'degraded', 'incident', 'unverified'] as const).map(status => ({
     status,
     label: statusLabel(status),
     tone: statusTone(status),

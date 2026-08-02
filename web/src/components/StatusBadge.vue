@@ -11,17 +11,21 @@ import { computed } from 'vue'
 import type { DegradeCause, EndpointStatus } from '@/api/types'
 import { statusDisplay, type DisplayStatus } from '@/utils/statusDisplay'
 
-// StatusBadge (rebuilt for UI v2, spec 0018 / GH #113): a small dot plus the
-// Chinese status word — 稳定 / 降级 / 异常 (reference-design vocabulary,
-// GH #128). The word and the color
+// StatusBadge (rebuilt for UI v2, spec 0018 / GH #113; 3+1 extension
+// GH #160): a small dot plus the Chinese status word — 稳定 / 降级 / 异常 /
+// 未验证 (reference-design vocabulary, GH #128; unverified tier GH #160).
+// The word and the color
 // slot come from the single display-layer mapping (utils/statusDisplay.ts);
 // this component never writes a status word literal.
 //
-// Three-state display: the domain status machine keeps four states (W5),
-// but failing has no separate display identity — it renders as 异常 with
-// the danger slot. Zero blink: the failing blink is retired wholesale (the
-// --hs-blink token stays none until the display-layer rebuild batch removes
-// the @keyframes), so nothing in this component animates on a timer.
+// 3+1 display: the domain status machine keeps four states (W5), but
+// failing has no separate display identity — it renders as 异常 with the
+// danger slot; unverified (Ping-monitoring endpoints, no health evidence)
+// renders as 未验证 with the NEUTRAL slot — the fourth presentation, not a
+// fourth hue: the word consumes --hs-text-placeholder, the dot --hs-info
+// gray, never warning yellow (yellow = degraded only). Zero blink: the
+// failing blink is retired wholesale, so nothing in this component animates
+// on a timer.
 //
 // Color channels (graphic/text division): the WORD consumes the *-text
 // grade of its slot (--hs-success-text etc. — the body grades fail AA in
@@ -88,6 +92,11 @@ const reason = computed(() => props.reason ?? '')
 .tone-danger {
   color: var(--hs-danger-text);
 }
+/* Neutral tier (GH #160, unverified only): the word consumes the
+   placeholder grade — no *-text functional hue exists for it by design. */
+.tone-neutral {
+  color: var(--hs-text-placeholder);
+}
 .dot {
   width: 9px;
   height: 9px;
@@ -104,6 +113,11 @@ const reason = computed(() => props.reason ?? '')
 }
 .tone-danger .dot {
   background: var(--hs-danger);
+}
+/* Neutral dot: the info gray body grade (the fourth presentation reuses the
+   existing info token — no new functional hue, GH #160). */
+.tone-neutral .dot {
+  background: var(--hs-info);
 }
 /* md stop (GH #54): the status word steps up to the card-primary scale; the
    dot grows to match. The cause sub-label stays sm/secondary — it is

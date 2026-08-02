@@ -400,12 +400,16 @@ func buildOverviewEntryFromStats(ep store.Endpoint, model store.Model, stats win
 
 	stats24h := stats.statusSamples()
 
-	// 24h summary fields: null when the window has no data.
+	// 24h summary fields: null when the window has no data. The latency
+	// percentiles follow the success-only DISPLAY caliber (GH #160, appendix
+	// 17③) — a failed probe's latency is time-to-failure and never enters a
+	// presented percentile, so an all-failed window reports null. The status
+	// machine's degradation judgment below keeps its own all-sample caliber
+	// (W5, appendix 17⑧) via stats.evaluate().
 	if rate, ok := status.SuccessRate(stats24h); ok {
 		entry.SuccessRate24h = &rate
 	}
-	if len(stats24h) > 0 {
-		latencies := status.Latencies(stats24h)
+	if latencies := status.SuccessLatencies(stats24h); len(latencies) > 0 {
 		p50 := status.Percentile(latencies, 50)
 		p95 := status.Percentile(latencies, 95)
 		entry.P50Ms = &p50
