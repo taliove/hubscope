@@ -61,6 +61,18 @@
             >
               重跑失败项
             </el-button>
+            <!-- Cancel (GH #152): stop a running batch; unstarted cells are
+                 dropped and the batch settles failed. -->
+            <el-button
+              v-if="cancelVisible"
+              size="small"
+              type="danger"
+              plain
+              :loading="canceling"
+              @click="onCancel"
+            >
+              取消批次
+            </el-button>
           </template>
         </div>
       </el-card>
@@ -143,7 +155,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
+import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -220,6 +232,36 @@ async function onRetryFailed() {
     ElMessage.error((err as Error).message)
   } finally {
     retrying.value = false
+  }
+}
+
+// Cancel entry (GH #152): visible while the selected batch is unfinished;
+// the confirm states the consequences (unstarted cells dropped, batch
+// settles failed, judged results kept).
+const canceling = ref(false)
+const cancelVisible = computed(() => report.value !== null && isUnfinished(report.value.status))
+
+async function onCancel() {
+  if (!report.value) return
+  const campaignID = report.value.id
+  try {
+    await ElMessageBox.confirm(
+      `将停止批次 #${campaignID}:未开始的评估单元放弃,在飞的跑完后批次判失败;已判分结果保留。`,
+      '取消批次',
+      { confirmButtonText: '停止批次', cancelButtonText: '返回', type: 'warning' },
+    )
+  } catch {
+    return // dismissed — no feedback needed
+  }
+  canceling.value = true
+  try {
+    await cancelCampaign(campaignID)
+    ElMessage.success(`已发起批次 #${campaignID} 的取消`)
+    await reload()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    canceling.value = false
   }
 }
 

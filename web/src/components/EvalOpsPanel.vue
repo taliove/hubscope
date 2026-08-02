@@ -24,7 +24,12 @@
       :type="trackedCampaign.status === 'failed' ? 'error' : trackedCampaign.status === 'done' ? 'success' : 'info'"
       :title="trackingTitle"
       @close="trackedCampaign = null"
-    />
+    >
+      <!-- Cancel (GH #152): stop the tracked batch while it runs. -->
+      <el-button v-if="tracking" size="small" type="danger" plain :loading="canceling" @click="onCancelTracked">
+        取消批次
+      </el-button>
+    </el-alert>
 
     <EvalCampaignList
       :suites="suites"
@@ -46,8 +51,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { listEvalRuns, listSuites } from '@/api/evals'
-import { getCampaign, listCampaigns } from '@/api/campaigns'
+import { cancelCampaign, getCampaign, listCampaigns } from '@/api/campaigns'
 import { listModels } from '@/api/models'
 import EvalCampaignList from '@/components/EvalCampaignList.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
@@ -144,6 +150,32 @@ function stopPolling() {
   if (pollHandle !== null) {
     pollHandle.clear()
     pollHandle = null
+  }
+}
+
+// Cancel the tracked batch (GH #152): unstarted cells are dropped and the
+// batch settles failed; the poll loop observes the settle as usual.
+const canceling = ref(false)
+async function onCancelTracked() {
+  const campaign = trackedCampaign.value
+  if (!campaign) return
+  try {
+    await ElMessageBox.confirm(
+      `将停止批次 #${campaign.id}:未开始的评估单元放弃,在飞的跑完后批次判失败;已判分结果保留。`,
+      '取消批次',
+      { confirmButtonText: '停止批次', cancelButtonText: '返回', type: 'warning' },
+    )
+  } catch {
+    return // dismissed — no feedback needed
+  }
+  canceling.value = true
+  try {
+    await cancelCampaign(campaign.id)
+    ElMessage.success(`已发起批次 #${campaign.id} 的取消`)
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    canceling.value = false
   }
 }
 

@@ -66,3 +66,10 @@ export async function getCampaignLiveFeedResult(campaignId: number, resultId: nu
 export async function retryCampaignFailed(id: number): Promise<CampaignDetail> {
   return http.post<CampaignDetail>(`/campaigns/${id}/retry-failed`)
 }
+
+// Cancel (GH #152): stop a running batch — in-flight cells run to
+// completion, unstarted cells are dropped, and the batch settles failed.
+// Already-judged results are kept.
+export async function cancelCampaign(id: number): Promise<void> {
+  return http.post<void>(`/campaigns/${id}/cancel`)
+}
