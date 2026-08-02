@@ -140,7 +140,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 - **Gray-800**(#3A3A3C):常规正文(11.35:1)。
 - **Gray-500**(#86868B):次文字锚点(3.62:1,简报值,与品牌色同类登记);次要说明、标签、辅助。
 - **Gray-400**(#A1A1A6):占位/禁用(2.57:1,非正文用途)。
-- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):浅底锚点(`--hs-bg-subtle`:**页面骨架底**(GH #139,2026-08-01 第四轮实机反馈:骨架底自白色回灰——App.vue main 区与 AppSidebar 同底灰,各区域 = bg-card 白 tile + 1px 描边分层,AppTopbar 保持白面 + hairline;参照稿复刻批「页面底与卡面同白」的 P1 白化由本票在骨架层反转,白化仅在卡面层存续)+ 白底之上的面板/轨道/预览衬底——物料 hero panel/预览衬底/详情面板指标格的衬底语义不变)、hover/轨道、描边——表面层由「subtle 灰骨架 + card 白 tile + hover」构成,白面分层靠 1px 描边与浅灰骨架。**hairline(border-light)= #E5E5EA**:介于 subtle 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
+- **Gray-50/100/200**(#F5F5F7 / #E8E8ED / #D2D2D7):浅底锚点(`--hs-bg-subtle`:**页面骨架底**(GH #139,2026-08-01 第四轮实机反馈:骨架底自白色回灰——App.vue main 区灰,各区域 = bg-card 白 tile + 1px 描边分层,AppTopbar 保持白面 + hairline;**AppSidebar 2026-08-02 起为 bg-card 白(用户裁决,推翻 GH #139「侧栏与 main 同底灰」——同底无分栏感:侧栏与顶栏连成白色轨道,灰内容区承白 tile)**;参照稿复刻批「页面底与卡面同白」的 P1 白化由 GH #139 在骨架层反转,白化仅在卡面层存续)+ 白底之上的面板/轨道/预览衬底——物料 hero panel/预览衬底/详情面板指标格的衬底语义不变)、hover/轨道、描边——表面层由「subtle 灰骨架 + card 白 tile + hover」构成,白面分层靠 1px 描边与浅灰骨架。**hairline(border-light)= #E5E5EA**:介于 subtle 与 hover 之间的发丝线,白卡上可辨不抢;卡内分隔一律用 hairline,不用 loud border。
 - **Gray-600**(#6E6E73):info 中性(5.07:1 过 AA)。
 
 ### Functional(三态语义,文字/图形双阶分工)
@@ -186,7 +186,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 
 ## Layout
 
-**外壳(决策 5/8;GH #135 顶部 Header 恢复):** 全宽 56px 顶栏(AppTopbar,自造签名面——左品牌块、右铃铛 + 用户 chip/「管理登录」)+ 其下 220px macOS 设置风侧边栏(AppSidebar,自造签名面,品牌位已迁顶栏)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无顶栏无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。**窄屏外壳形态(2026-08-01 外壳抽屉批;断点第九轮上移):** <1024px 侧栏退出 flex 行变 overlay 抽屉——顶栏左端汉堡按钮(menu/x 图标互换,aria-expanded)开合;抽屉 fixed 于顶栏之下(top 56px,宽 260px,`--hs-z-drawer` 档 + shadow-lg 浮层影),scrim 覆盖顶栏以下视口(`--hs-z-overlay` + `--hs-overlay-bg`),关闭走三路统一(ESC / scrim / 导航选择经路由切换自动关)+ focus trap + 焦点归还汉堡(data-drawer-toggle 锚点,自造模态面三件套沿置);桌面形态逐像素不变。
+**外壳(决策 5/8;GH #135 顶部 Header 恢复):** 全宽 56px 顶栏(AppTopbar,自造签名面——左品牌块、右登录态铃铛 + 用户 chip,未登录留白「管理登录」已迁侧栏底部)+ 其下 220px macOS 设置风侧边栏(AppSidebar,自造签名面,品牌位已迁顶栏)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无顶栏无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。**窄屏外壳形态(2026-08-01 外壳抽屉批;断点第九轮上移):** <1024px 侧栏退出 flex 行变 overlay 抽屉——顶栏左端汉堡按钮(menu/x 图标互换,aria-expanded)开合;抽屉 fixed 于顶栏之下(top 56px,宽 260px,`--hs-z-drawer` 档 + shadow-lg 浮层影),scrim 覆盖顶栏以下视口(`--hs-z-overlay` + `--hs-overlay-bg`),关闭走三路统一(ESC / scrim / 导航选择经路由切换自动关)+ focus trap + 焦点归还汉堡(data-drawer-toggle 锚点,自造模态面三件套沿置);桌面形态逐像素不变。
 
 内容区 max-width 1200px 居中,桌面优先——不为手机做专门适配,窄屏不阻断即可。4px 基准网格,间距消费 space-1..9 刻度(space-9 96px 为 hero 区块与页面级呼吸预留);**公开页 32–48px 页面留白**(状态概览 padding 32px,spec 0018 IA),管理台页 24/16。
 
@@ -278,10 +278,10 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **用途纪律:** 角色 tag(primary/info)、协议 tag(success/warning/info)、判定方式 tag(info)、告警事件 tag(按 kind 映射)各有集中映射函数;同一语义域内词表封闭(ui-guidelines §5/§7)。
 
 ### Navigation(顶栏 + 侧边栏外壳)
-- **AppTopbar(GH #135):** 全宽 56px 顶栏,白面 + 底部 hairline,sticky;左 = BrandMark 24px + Wordmark lg(回 `/`);右 = 登录态铃铛图标按钮(lucide 18px → /alerts,纯导航无角标)+ 用户 chip(头像图标 + 名 + 角色纯文本,dropdown 单项「退出」),未登录 = 「管理登录」链接。
-- **AppSidebar Style:** 220px 自造侧边栏(顶栏下方,sticky top 56px 与顶栏高互指):导航项(Lucide 风格线性图标 18px + 文字,项高 48px、项间距 space-2、radius-lg)→ 批次进度入口(登录态 + 存在未完成批次时)→ 底部(登录态用户卡:36px 圆形头像位 + 8px success 在线点 + 用户名 md/600 + 角色 xs 纯文本;未登录无卡;版权行;版本号 mono xs)。
+- **AppTopbar(GH #135):** 全宽 56px 顶栏,白面 + 底部 hairline,sticky;左 = BrandMark 24px + Wordmark lg(回 `/`);右 = 登录态铃铛图标按钮(lucide 18px → /alerts,纯导航无角标)+ 用户 chip(头像图标 + 名 + 角色纯文本,dropdown 单项「退出」),未登录右侧留白(「管理登录」2026-08-02 迁侧栏底部,推翻 ticket 90 口径)。
+- **AppSidebar Style:** 220px 自造侧边栏(顶栏下方,sticky top 56px 与顶栏高互指),**底色 bg-card 白(2026-08-02,与顶栏连成白色轨道,与灰内容区分栏)**:导航项(Lucide 风格线性图标 18px + 文字,项高 48px、项间距 space-2、radius-lg)→ 批次进度入口(登录态 + 存在未完成批次时)→ **钉底 footer(导航区自滚动,footer 不随滚出,2026-08-02)**——登录态用户卡(灰 tile:36px 圆形头像位 + 8px success 在线点 + 用户名 md/600 + 角色 xs 纯文本)、**未登录 = 同槽位登录入口**(灰 tile + 图标 +「管理登录」→ /login)、版权行、版本号 mono xs。
 - **激活态:** 软蓝 pill(brand-soft 底 + brand 词与图标);未激活 text-regular,hover bg-hover;无强背景块(GH #135 参照稿复刻,取代 spec 0018 user story 2 的 bg-hover 激活)。
-- **登录态过滤:** 未登录只见公开项(状态概览、Benchmark);过滤逻辑集中 `utils/sidebarNav.ts`(visibleSidebarItems / isSidebarItemActive 纯函数)。
+- **登录态过滤:** 未登录只见公开三项(状态概览、Benchmark、故障记录——spec 0019);过滤逻辑集中 `utils/sidebarNav.ts`(visibleSidebarItems / isSidebarItemActive 纯函数);**会话刷新通道 = mount + 路由切换重检 + `hs:auth-changed` 窗口事件**(2026-08-02:登录/退出成功 dispatch,外壳与消费方监听重检,无状态库)。
 
 ### Signature: StatusBadge(唯一状态灯)
 - 全站唯一的 endpoint 状态展示组件:**小圆点(图形阶)+ 状态词(文字阶)** 双编码,三态(稳定/降级/异常);词与色槽全部来自显示层映射 `utils/statusDisplay.ts`,组件内禁写状态词字面量;degraded 可挂成因副标签(「· 可用性」「· 延迟」,secondary,不随词着色);零动画(闪烁退役)。规格与消费纪律见 ui-guidelines §5 与 overview surface brief。

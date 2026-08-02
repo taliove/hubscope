@@ -157,6 +157,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview, POLL_INTERVAL_MS } from '@/composables/useOverview'
 import { fetchAuthStatus } from '@/api/auth'
+import { AUTH_CHANGED_EVENT } from '@/utils/authEvents'
 import StatusHero from '@/components/StatusHero.vue'
 import MetricWidgets from '@/components/MetricWidgets.vue'
 import ModelStatusList, { type ListSection } from '@/components/ModelStatusList.vue'
@@ -472,9 +473,23 @@ async function refreshAuth() {
   }
 }
 
+// Second refresh channel (GH #148, owner-side mechanism): logging out via
+// the topbar while already on '/' changes no route and remounts nothing,
+// so the mount-only check above would leave `authed` stale-true. This view
+// owns the authed state — it listens for hs:auth-changed and re-checks,
+// and RecentEvents converges through the prop (no second session source
+// inside the child). Paired cleanup on unmount.
+function onAuthChanged() {
+  void refreshAuth()
+}
+
 onMounted(() => {
   start()
   void refreshAuth()
+  window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
 })
 </script>
 

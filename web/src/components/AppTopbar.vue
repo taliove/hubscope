@@ -52,25 +52,27 @@
           </template>
         </el-dropdown>
       </template>
-      <!-- Anonymous readers get the quiet admin entry here (ticket 90
-           spirit, relocated from the sidebar footer in GH #135): no public
-           page renders a prominent login button. -->
-      <router-link v-else to="/login" class="login-link">管理登录</router-link>
+      <!-- Anonymous right side stays blank (GH #148, 2026-08-02 user ruling):
+           the 管理登录 entry moved to the sidebar footer's user slot,
+           overturning the ticket 90 "login entry lives in the topbar"
+           caliber. -->
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
 // AppTopbar (GH #135, reference-design replica): the restored full-width
-// header — brand on the left, alerts bell + user chip on the right. The
-// sidebar starts below it and no longer carries the brand seat. Session
-// state is checked locally on mount and re-checked on every route change —
-// deliberately no state store (AppSidebar precedent).
+// header — brand on the left, alerts bell + user chip on the right (the
+// anonymous right side is blank since GH #148 moved the login entry to the
+// sidebar footer). The sidebar starts below it and no longer carries the
+// brand seat. Session state is checked locally on mount and re-checked on
+// every route change — deliberately no state store (AppSidebar precedent).
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { fetchAuthStatus, logout } from '@/api/auth'
 import type { AuthUser } from '@/api/auth'
+import { dispatchAuthChanged } from '@/utils/authEvents'
 import { roleLabel } from '@/utils/role'
 import BrandMark from './BrandMark.vue'
 import Wordmark from './Wordmark.vue'
@@ -117,6 +119,12 @@ async function onUserCommand(command: string) {
   }
   loggingOut.value = false
   user.value = null
+  // Notify the shell's auth listeners (GH #148): pushing '/' changes no
+  // route when the user is already there, so without this event the
+  // sidebar menu, user card, and RecentEvents gate would stay logged-in.
+  // Emitted only after a successful logout — a listener's re-check must
+  // observe the dead session.
+  dispatchAuthChanged()
   router.push('/')
 }
 
@@ -235,8 +243,7 @@ watch(() => route.fullPath, refreshAuth)
   color: var(--hs-text-secondary);
 }
 .icon-btn:focus-visible,
-.user-chip:focus-visible,
-.login-link:focus-visible {
+.user-chip:focus-visible {
   outline: 2px solid var(--hs-brand);
   outline-offset: 1px;
 }
@@ -245,13 +252,5 @@ watch(() => route.fullPath, refreshAuth)
   height: 16px;
   margin-right: var(--hs-space-2);
   vertical-align: -3px;
-}
-.login-link {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-secondary);
-  text-decoration: none;
-}
-.login-link:hover {
-  color: var(--hs-brand-hover);
 }
 </style>

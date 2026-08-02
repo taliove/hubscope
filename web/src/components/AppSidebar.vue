@@ -22,22 +22,26 @@
         <component :is="SIDEBAR_ICONS[item.key]" class="nav-icon" />
         <span class="nav-label">{{ item.label }}</span>
       </router-link>
+
+      <!-- Batch progress entry (ticket 52, migrated from AppHeader in
+           GH #112): rendered only for logged-in users while an unfinished
+           batch exists; the click deep-links to that very batch
+           (issue #16). It lives INSIDE the scrolling nav region
+           (GH #148 pinned footer) so an over-tall nav scrolls it away with
+           the items while the footer stays put. -->
+      <button v-if="user && activeBatch" type="button" class="batch-entry" @click="goToActiveBatch">
+        <Loading class="batch-icon" />
+        <span>批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}</span>
+      </button>
     </nav>
 
-    <!-- Batch progress entry (ticket 52, migrated from AppHeader in GH #112):
-         rendered only for logged-in users while an unfinished batch exists;
-         the click deep-links to that very batch (issue #16). -->
-    <button v-if="user && activeBatch" type="button" class="batch-entry" @click="goToActiveBatch">
-      <Loading class="batch-icon" />
-      <span>批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}</span>
-    </button>
-
     <div class="side-footer">
-      <!-- User card (GH #135, reference design; GH #139: white tile on the
-           gray sidebar ground): avatar placeholder with a presence dot,
+      <!-- User card (GH #135, reference design; GH #148: gray tile on the
+           white sidebar ground): avatar placeholder with a presence dot,
            name and role. The logout action moved to the AppTopbar user
-           chip; anonymous visitors see no card (the quiet admin entry
-           lives in the topbar, ticket 90 spirit). -->
+           chip. Anonymous visitors get the 管理登录 entry in the same slot
+           (GH #148, 2026-08-02 user ruling — the entry moved here from the
+           topbar, overturning the ticket 90 caliber). -->
       <div v-if="user" class="user-card">
         <span class="avatar">
           <CircleUserRoundIcon class="avatar-icon" />
@@ -48,6 +52,12 @@
           <span class="user-role">{{ roleLabel(user.role) }}</span>
         </span>
       </div>
+      <!-- Login entry (GH #148): the same tile geometry as the user card, so
+           the slot reads identically across session states. -->
+      <router-link v-else to="/login" class="login-entry">
+        <CircleUserRoundIcon class="login-entry-icon" />
+        <span class="login-entry-label">管理登录</span>
+      </router-link>
       <!-- Legal line (GH #122 conservative restore; GH #139 single-line
            layout): a hairline separates it from the user card above, and
            the copyright and the version share ONE line — the version's
@@ -68,9 +78,11 @@
 // shell sidebar, sitting below AppTopbar. Self-built signature surface — no
 // Element Plus layout components; the only EP consumption is the batch
 // entry's Loading spinner. Nav glyphs are the Lucide-style inline SVG set
-// (components/icons/lucide.ts). Session state is checked locally on mount
-// and re-checked on every route change — deliberately no state store
-// (AppHeader precedent).
+// (components/icons/lucide.ts). Session state is checked locally on mount,
+// re-checked on every route change, AND re-checked on the hs:auth-changed
+// window event (GH #148 — logging out while already on `/` changes no
+// route, so the route watch alone left the menu and user card logged-in).
+// Deliberately no state store (AppHeader precedent).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Loading } from '@element-plus/icons-vue'
@@ -79,6 +91,7 @@ import type { AuthUser } from '@/api/auth'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign } from '@/api/types'
 import { fetchVersion } from '@/api/version'
+import { AUTH_CHANGED_EVENT } from '@/utils/authEvents'
 import { roleLabel } from '@/utils/role'
 import { shortVersion as shortenVersion } from '@/utils/version'
 import { isSidebarItemActive, visibleSidebarItems } from '@/utils/sidebarNav'
@@ -206,10 +219,20 @@ async function refreshShellState() {
 onMounted(() => {
   void refreshShellState()
   void loadVersion()
+  // Second refresh channel (GH #148): login/logout elsewhere in the shell
+  // re-checks the session even when no route change fires. The route watch
+  // below stays — the two channels overlap, neither is redundant.
+  window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
 })
 watch(() => route.fullPath, refreshShellState)
+
+function onAuthChanged() {
+  void refreshShellState()
+}
+
 onBeforeUnmount(() => {
   stopBatchPolling()
+  window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
   document.removeEventListener('keydown', onDrawerKeydown)
   drawerTrap?.deactivate()
 })
@@ -228,13 +251,22 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   padding: var(--hs-space-4) var(--hs-space-3);
-  /* GH #139: the sidebar shares the subtle gray skeleton ground with the
-     main lane; the white layering is carried by the user card tile. */
-  background: var(--hs-bg-subtle);
+  /* GH #148 (2026-08-02 user ruling, overturning the GH #139 shared gray
+     ground): the sidebar is white so it reads as one white track with the
+     topbar; the main lane keeps the subtle gray skeleton ground. */
+  background: var(--hs-bg-card);
   border-right: 1px solid var(--hs-border-light);
-  overflow-y: auto;
+  /* Pinned footer (GH #148): the aside itself never scrolls — the nav
+     region below is the single scroll container, so the user card / login
+     entry and the legal line stay visible no matter how tall the nav
+     grows. The same holds in the narrow-viewport drawer form (this is the
+     same aside element). */
+  overflow: hidden;
 }
 .side-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
@@ -316,22 +348,62 @@ onBeforeUnmount(() => {
   }
 }
 .side-footer {
+  /* flex none + the nav region's flex 1 above pin the footer to the bottom
+     (GH #148); margin-top auto is kept as belt-and-suspenders. */
+  flex: none;
   margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
 }
-/* White tile on the gray sidebar ground (GH #139): the same light-container
-   syntax as the content regions — bg-card + 1px border + radius-lg. */
+/* Gray tile on the white sidebar ground (GH #148, overturning the GH #139
+   white-on-gray layering): the tile keeps its layer contrast now that the
+   sidebar itself is white — bg-subtle + 1px border + radius-lg. */
 .user-card {
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
   min-width: 0;
   padding: var(--hs-space-2) var(--hs-space-3);
-  background: var(--hs-bg-card);
+  background: var(--hs-bg-subtle);
   border: 1px solid var(--hs-border);
   border-radius: var(--hs-radius-lg);
+}
+/* Login entry (GH #148): the identical tile geometry as the user card, so
+   the footer slot reads the same across session states. min-height matches
+   the user card (36px avatar + space-2 vertical padding ≈ 52px) so the
+   slot does not shrink when logout swaps the card for this entry (check
+   GH #148 LOW-1). */
+.login-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+  min-width: 0;
+  min-height: 52px;
+  padding: var(--hs-space-2) var(--hs-space-3);
+  box-sizing: border-box;
+  background: var(--hs-bg-subtle);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  text-decoration: none;
+  transition: background-color var(--hs-transition);
+}
+.login-entry:hover {
+  background: var(--hs-bg-hover);
+}
+.login-entry:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
+}
+.login-entry-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--hs-text-secondary);
+}
+.login-entry-label {
+  font-size: var(--hs-text-md);
+  color: var(--hs-text-regular);
 }
 .avatar {
   position: relative;
@@ -342,16 +414,18 @@ onBeforeUnmount(() => {
   height: 36px;
   flex: none;
   border-radius: var(--hs-radius-full);
-  background: var(--hs-bg-subtle);
+  /* GH #148: the circle sits on bg-card so it stays visible inside the
+     now-gray user tile. */
+  background: var(--hs-bg-card);
 }
 .avatar-icon {
   width: 20px;
   height: 20px;
   color: var(--hs-text-secondary);
 }
-/* Presence dot (reference design): solid success green, ringed by the card
+/* Presence dot (reference design): solid success green, ringed by the tile
    ground so it reads as a badge on the avatar edge — the user card is a
-   white tile (GH #139), so the bg-card ring matches its surface. */
+   gray tile (GH #148), so the bg-subtle ring matches its surface. */
 .avatar-dot {
   position: absolute;
   right: 0;
@@ -360,7 +434,7 @@ onBeforeUnmount(() => {
   height: 8px;
   border-radius: var(--hs-radius-full);
   background: var(--hs-success);
-  border: 2px solid var(--hs-bg-card);
+  border: 2px solid var(--hs-bg-subtle);
   box-sizing: content-box;
 }
 .user-meta {
@@ -381,7 +455,7 @@ onBeforeUnmount(() => {
   color: var(--hs-text-secondary);
 }
 /* Legal line (GH #139): the hairline moved here from the footer box — it
-   now separates the white user card from the single copyright · version
+   now separates the user/login tile from the single copyright · version
    line below it. */
 .footer-legal {
   display: flex;
@@ -412,7 +486,9 @@ onBeforeUnmount(() => {
     top: 56px;
     z-index: var(--hs-z-drawer);
     /* 260px: slightly wider than the 220px desktop rail — touch targets
-       read better with the extra breathing room. */
+       read better with the extra breathing room. The drawer face is the
+       same bg-card white as the desktop rail since GH #148 (the explicit
+       declaration stays so the drawer form is self-contained). */
     width: 260px;
     background: var(--hs-bg-card);
     transform: translateX(-105%);

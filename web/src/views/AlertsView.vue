@@ -215,6 +215,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { listAlerts, type AlertEvent, type AlertKind } from '@/api/settings'
 import { fetchAuthStatus } from '@/api/auth'
 import { fetchOverview } from '@/api/overview'
+import { AUTH_CHANGED_EVENT } from '@/utils/authEvents'
 import { formatClockMinute, formatDuration } from '@/utils/format'
 import { alertKindLabel, alertKindTagType, visibleKindOptions } from '@/utils/alertKind'
 import {
@@ -309,6 +310,19 @@ async function refreshAuth() {
 // self-trigger a redundant /api/auth/status on every filter change
 // (check GH #143 LOW-2).
 watch(() => route.path, refreshAuth)
+
+// Second re-check channel (GH #148): the hs:auth-changed event covers
+// login/logout that changes no route (e.g. logout while already on
+// /alerts), forking the kind options without a remount.
+function onAuthChanged() {
+  void refreshAuth()
+}
+onMounted(() => {
+  window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged)
+})
 
 // endpoint_id → model_id resolution map from the overview payload. A deleted
 // endpoint drops out of the overview and falls back to its raw id label —
