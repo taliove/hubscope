@@ -57,17 +57,15 @@ func mintShareToken() (string, error) {
 
 // handleCreateShareLink handles POST /api/campaigns/{id}/share-links: mints a
 // token-gated read-only link onto the campaign's report (session required,
-// audited per ADR 0006).
+// audited per ADR 0006). Hub-isolated per loadVisibleCampaign (GH #149) —
+// minting a public token onto an invisible campaign would punch it through
+// the session boundary.
 func (s *Server) handleCreateShareLink(w http.ResponseWriter, r *http.Request) {
-	id, err := parseIDParam(r, "id")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid campaign id")
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
 		return
 	}
-	if _, err := s.db.GetCampaign(id); err != nil {
-		writeError(w, http.StatusNotFound, "campaign not found")
-		return
-	}
+	id := campaign.ID
 
 	token, err := mintShareToken()
 	if err != nil {

@@ -109,15 +109,8 @@ type campaignReportDTO struct {
 // settled board ("total" by default, or a covered suite key), always
 // descending with unscored models last.
 func (s *Server) handleGetCampaignReport(w http.ResponseWriter, r *http.Request) {
-	id, err := parseIDParam(r, "id")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid campaign id")
-		return
-	}
-
-	campaign, err := s.db.GetCampaign(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "campaign not found")
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
 		return
 	}
 

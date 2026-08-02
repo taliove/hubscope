@@ -57,14 +57,8 @@ type campaignTrendsDTO struct {
 // The trend is fetched on demand per model (the report page's drill-down),
 // so the model is a required query parameter.
 func (s *Server) handleGetCampaignTrends(w http.ResponseWriter, r *http.Request) {
-	id, err := parseIDParam(r, "id")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid campaign id")
-		return
-	}
-	campaign, err := s.db.GetCampaign(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "campaign not found")
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
 		return
 	}
 	modelDBID, err := parseTrendModelParam(r.URL.Query().Get("model"))

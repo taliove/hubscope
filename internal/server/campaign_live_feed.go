@@ -44,12 +44,14 @@ func toLiveFeedEntryDTO(e store.LiveFeedEntry) liveFeedEntryDTO {
 }
 
 // loadVisibleCampaign resolves the campaign of the {id} path param and
-// enforces the console-side visibility rule shared by the campaign read
-// endpoints: session-gated (the routes never enter publicReadPattern) and
-// hub-isolated with the campaigns list reachability rule — a hub-scoped
-// session only sees campaigns whose membership includes one of its hub's
-// models, and anything else answers the same 404 as an unknown campaign (no
-// enumeration oracle). On failure it writes the error and returns false.
+// enforces the console-side visibility rule shared by every by-ID campaign
+// and eval-run endpoint (GH #149: detail, report, trends, live-feed,
+// share-link creation and eval-run detail): session-gated (the routes never
+// enter publicReadPattern) and hub-isolated with the campaigns list
+// reachability rule — a hub-scoped session only sees campaigns whose
+// membership includes one of its hub's models, and anything else answers
+// the same 404 as an unknown campaign (no enumeration oracle). On failure
+// it writes the error and returns false.
 func (s *Server) loadVisibleCampaign(w http.ResponseWriter, r *http.Request) (*store.Campaign, bool) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -61,27 +63,38 @@ func (s *Server) loadVisibleCampaign(w http.ResponseWriter, r *http.Request) (*s
 		writeError(w, http.StatusNotFound, "campaign not found")
 		return nil, false
 	}
-
-	u := sessionUser(r)
-	if u != nil && u.Role != store.RoleSuperAdmin {
-		// A hub-scoped role without a hub_id is a data inconsistency; treat
-		// it as "not visible" rather than leaking the stream (same fallback
-		// as the campaigns list's empty result).
-		if u.HubID == nil {
-			writeError(w, http.StatusNotFound, "campaign not found")
-			return nil, false
-		}
-		visible, err := s.db.CampaignVisibleToHub(id, *u.HubID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to check campaign scope")
-			return nil, false
-		}
-		if !visible {
-			writeError(w, http.StatusNotFound, "campaign not found")
-			return nil, false
-		}
+	if !s.campaignVisibleToSession(w, r, id) {
+		return nil, false
 	}
 	return campaign, true
+}
+
+// campaignVisibleToSession enforces the hub-isolation half of the campaign
+// visibility rule for an already-resolved campaign id (see
+// loadVisibleCampaign): super_admin sees everything; a hub-scoped session
+// only sees campaigns reachable from its hub's models; a hub-scoped role
+// without hub_id is a data inconsistency and sees nothing (same fallback as
+// the campaigns list's empty result). Invisible means the same 404 as an
+// unknown campaign. On failure it writes the error and returns false.
+func (s *Server) campaignVisibleToSession(w http.ResponseWriter, r *http.Request, campaignID int64) bool {
+	u := sessionUser(r)
+	if u == nil || u.Role == store.RoleSuperAdmin {
+		return true
+	}
+	if u.HubID == nil {
+		writeError(w, http.StatusNotFound, "campaign not found")
+		return false
+	}
+	visible, err := s.db.CampaignVisibleToHub(campaignID, *u.HubID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check campaign scope")
+		return false
+	}
+	if !visible {
+		writeError(w, http.StatusNotFound, "campaign not found")
+		return false
+	}
+	return true
 }
 
 // handleGetCampaignLiveFeed handles GET /api/campaigns/{id}/live-feed: the

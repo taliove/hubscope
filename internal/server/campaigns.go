@@ -103,18 +103,13 @@ func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
 
 // handleGetCampaign handles GET /api/campaigns/{id}: the campaign, its
 // progress aggregate, and its member runs with per-run aggregate scores.
+// Hub-isolated per loadVisibleCampaign (GH #149).
 func (s *Server) handleGetCampaign(w http.ResponseWriter, r *http.Request) {
-	id, err := parseIDParam(r, "id")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid campaign id")
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
 		return
 	}
-
-	campaign, err := s.db.GetCampaign(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "campaign not found")
-		return
-	}
+	id := campaign.ID
 
 	runs, err := s.db.ListEvalRunsByCampaign(id)
 	if err != nil {

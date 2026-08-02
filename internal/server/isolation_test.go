@@ -48,9 +48,12 @@ var isolatedListPaths = []isolatedListPath{
 // (TestCampaignLiveFeedHubIsolation in campaign_live_feed_test.go): the path
 // carries a campaign id, and its 404-without-oracle semantics (cross-hub and
 // unknown campaign answer identically) need assertions this path-less sweep
-// cannot express. Path-parameterized isolated list endpoints may use a
-// dedicated test instead of sweep registration, provided the two files
-// cross-reference each other like this one.
+// cannot express. The remaining by-ID campaign/eval endpoints (campaign
+// detail, report, trends, eval-run detail, share-link creation) share those
+// semantics and are pinned by TestCampaignDetailHubIsolation
+// (campaign_detail_isolation_test.go, GH #149). Path-parameterized isolated
+// list endpoints may use a dedicated test instead of sweep registration,
+// provided the two files cross-reference each other like this one.
 //
 // Leak-signal markers. markerA/markerB are model_id strings unique to each
 // hub; their presence in a response body is the leak signal. The remaining

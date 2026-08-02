@@ -489,6 +489,12 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The run inherits its campaign's hub visibility (GH #149): cross-hub
+	// and hub-less sessions get the same 404 as an unknown run.
+	if !s.campaignVisibleToSession(w, r, run.CampaignID) {
+		return
+	}
+
 	results, err := s.db.ListEvalResults(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load eval results")
