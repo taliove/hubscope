@@ -36,7 +36,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ReportCell } from '@/api/types'
 import { formatScore } from '@/utils/format'
-import { cellStatusText, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
+import { cellStatusText, liveCellTooltip, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
 
 // Watermark threshold (finalized in ticket 79 and registered in
 // ui-guidelines §5): the score label ('100.0' at md/600, tabular, ~38px)
@@ -111,7 +111,7 @@ const showWatermark = computed(() => watermark.value !== '' && cellWidth.value >
 const tooltip = computed(() => {
   if (props.staticMode) return undefined
   if (props.score !== null) return tooltipOf(props.name, props.score, props.cell)
-  return `${props.name} · ${cellStatusText(props.cell)}`
+  return liveCellTooltip(props.name, props.cell)
 })
 </script>
 

@@ -67,9 +67,19 @@ export function liveRankText(total: number | null, index: number): string {
 export function cellStatusText(cell: ReportCell | undefined): string {
   if (!cell) return '未判分'
   if (cell.status === 'pending') return '等待中'
-  if (cell.status === 'running') return '进行中'
+  if (cell.status === 'running') return '运行中'
   if (cell.status === 'failed') return '失败'
   return '未判分'
+}
+
+// Live unscored-cell tooltip (GH #157): the status word plus the judged-case
+// coverage once the run has started — the §5 confidence fallback ("full
+// confidence info reachable via hover") must hold on live cells too, not
+// only on scored ones.
+export function liveCellTooltip(name: string, cell: ReportCell | undefined): string {
+  const head = `${name} · ${cellStatusText(cell)}`
+  if (!cell || cell.expected_cases <= 0) return head
+  return `${head} · 判分 ${cell.judged_cases}/${cell.expected_cases} 题`
 }
 
 // Live-mode annotation counts (spec 0007/0009): suites still waiting/running

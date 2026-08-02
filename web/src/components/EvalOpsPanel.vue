@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ApiError } from '@/api/client'
 import { listEvalRuns, listSuites } from '@/api/evals'
 import { cancelCampaign, getCampaign, listCampaigns } from '@/api/campaigns'
 import { listModels } from '@/api/models'
@@ -138,8 +139,15 @@ function startTracking(campaign: Campaign) {
           // try/catch is needed here.
           await reload()
         }
-      } catch {
-        // Transient poll failures keep the loop alive; the next tick retries.
+      } catch (err) {
+        // Permanent failures (GH #157: batch deleted, session expired)
+        // stop the loop — otherwise the "批次运行中" alert would hang
+        // forever with no way out. Transient failures keep it alive.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 404)) {
+          stopPolling()
+          tracking.value = false
+          error.value = `批次 #${campaign.id} 追踪中断:${err.message}`
+        }
       }
     },
     { intervalMs: pollIntervalMs },

@@ -4,7 +4,7 @@
 // pinned here — they mirror the backend score badge and never move.
 import { describe, it, expect } from 'vitest'
 import type { ReportCell } from '@/api/types'
-import { cellCostText, cellStatusText, liveCounts, liveRankText, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
+import { cellCostText, cellStatusText, liveCellTooltip, liveCounts, liveRankText, scoreBand, tooltipOf, watermarkOf } from '@/utils/scoreTier'
 
 function makeCell(suiteKey: string, overrides: Partial<ReportCell> = {}): ReportCell {
   return {
@@ -87,13 +87,28 @@ describe('liveRankText', () => {
 describe('cellStatusText', () => {
   it('uses the batch/run vocabulary for live cells', () => {
     expect(cellStatusText(makeCell('a', { status: 'pending' }))).toBe('等待中')
-    expect(cellStatusText(makeCell('a', { status: 'running' }))).toBe('进行中')
+    expect(cellStatusText(makeCell('a', { status: 'running' }))).toBe('运行中')
     expect(cellStatusText(makeCell('a', { status: 'failed' }))).toBe('失败')
   })
 
   it('falls back to a neutral wording for done cells and absent cells', () => {
     expect(cellStatusText(makeCell('a'))).toBe('未判分')
     expect(cellStatusText(undefined)).toBe('未判分')
+  })
+})
+
+describe('liveCellTooltip', () => {
+  it('carries the judged-case coverage once the run has started (GH #157)', () => {
+    expect(liveCellTooltip('推理', makeCell('a', { status: 'running', judged_cases: 12, expected_cases: 100 }))).toBe(
+      '推理 · 运行中 · 判分 12/100 题',
+    )
+  })
+
+  it('keeps the bare status word for pending cells and absent cells', () => {
+    expect(liveCellTooltip('推理', makeCell('a', { status: 'pending', judged_cases: 0 }))).toBe(
+      '推理 · 等待中 · 判分 0/10 题',
+    )
+    expect(liveCellTooltip('推理', undefined)).toBe('推理 · 未判分')
   })
 })
 

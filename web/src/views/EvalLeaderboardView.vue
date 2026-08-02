@@ -15,9 +15,12 @@
       <el-skeleton :rows="6" animated />
     </el-card>
 
-    <!-- Batch switcher empty state: no campaign has ever run. -->
+    <!-- Batch switcher empty state: no campaign has ever run. A hub-scoped
+         account without a hub binding gets the honest reason instead of a
+         trigger entry pointing at a console it cannot use (GH #157). -->
     <el-card v-else-if="campaigns.length === 0" shadow="never" class="state-block">
-      <el-empty description="暂无评估批次">
+      <el-empty v-if="hublessAccount" description="当前账号未绑定 Hub,暂无可见的评估批次" />
+      <el-empty v-else description="暂无评估批次">
         <el-button type="primary" @click="router.push('/admin')">去管理台触发评估</el-button>
       </el-empty>
     </el-card>
@@ -156,6 +159,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
+import { fetchAuthStatus, type AuthUser } from '@/api/auth'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -201,6 +205,14 @@ const query = ref<{ family?: string; sort: string }>({ sort: 'total' })
 const familyOptions = ref<string[]>([])
 
 const selected = computed(() => campaigns.value.find((c) => c.id === selectedId.value) ?? null)
+
+// Hub-less hub-scoped account (GH #157): the empty state must say why no
+// batch is visible instead of offering a trigger entry the role cannot
+// use. Loaded once; failures leave the default empty state.
+const authUser = ref<AuthUser | null>(null)
+const hublessAccount = computed(
+  () => authUser.value !== null && authUser.value.role !== 'super_admin' && authUser.value.hub_id === null,
+)
 
 // Retry-failed entry (GH #28): settled selected batch with failed
 // (null-score) results. Lives in the switcher row so it is visible in every
@@ -458,7 +470,14 @@ function onQuery(q: { family?: string; sort: string }) {
   void loadReport()
 }
 
-onMounted(reload)
+onMounted(() => {
+  void reload()
+  fetchAuthStatus()
+    .then((s) => {
+      authUser.value = s.user ?? null
+    })
+    .catch(() => {})
+})
 </script>
 
 <style scoped>

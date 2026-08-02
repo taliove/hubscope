@@ -16,7 +16,7 @@
         <el-radio-button value="scores">实时分数</el-radio-button>
       </el-radio-group>
       <span class="batch-note">
-        批次{{ statusWord }}:已完成 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行
+        批次{{ statusWord }}:已结束 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行<template v-if="report.progress.failed > 0">(失败 {{ report.progress.failed }})</template>
       </span>
       <!-- Batch cost summary (GH #42, console-only): judging time and
            wall-clock side by side plus the token split; accumulates with

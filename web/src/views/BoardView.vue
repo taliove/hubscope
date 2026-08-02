@@ -25,6 +25,11 @@
            under the title, only on the loaded-report branch; the failed
            batch must read 失败于 (anti-fake caliber). -->
       <p class="batch-meta">{{ batchMeta }}</p>
+      <!-- Scope note (GH #157): the public board always shows the global
+           caliber (every Hub), unlike the hub-filtered console /eval —
+           logged-in users landing here must not read it as their hub's
+           slice. -->
+      <p class="batch-meta">统计范围:全部 Hub</p>
       <p v-if="running" class="running-note">新一批评估进行中,当前展示已完成批次</p>
       <Leaderboard
         v-if="boardReport"

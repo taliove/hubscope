@@ -15,18 +15,24 @@
     <span class="copyright">
       © 2026 HubScope<span v-if="version" class="version" :title="`HubScope ${version}`"> · {{ shortVersion }}</span>
     </span>
-    <router-link to="/login" class="admin-link">管理登录</router-link>
+    <!-- An authenticated session gets the console entry; anonymous keeps
+         the quiet login entry (GH #157 — “管理登录” made no sense for a
+         user already logged in). -->
+    <router-link v-if="authed" to="/admin" class="admin-link">进入管理台</router-link>
+    <router-link v-else to="/login" class="admin-link">管理登录</router-link>
   </footer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { fetchAuthStatus } from '@/api/auth'
 import { fetchVersion } from '@/api/version'
 
 // Build version, fetched once on mount; it never changes during a session.
 // Failure stays silent (empty string hides the span) — the version display
 // is non-critical, same policy as the AppHeader original.
 const version = ref<string>('')
+const authed = ref(false)
 
 // Short version: extract only the tag part (e.g., "v0.2.3" from
 // "v0.2.3-4-g1adea03-dirty"); dev builds without a vX.Y.Z prefix show the
@@ -48,6 +54,11 @@ async function loadVersion() {
 
 onMounted(() => {
   void loadVersion()
+  fetchAuthStatus()
+    .then((s) => {
+      authed.value = s.authenticated
+    })
+    .catch(() => {})
 })
 </script>
 
