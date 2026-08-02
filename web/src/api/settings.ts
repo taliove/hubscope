@@ -57,6 +57,9 @@ export interface AlertEvent {
   // Vendor family name; non-null only on group_down / group_recovered
   // (spec 0017 ticket 3). Null on every endpoint- or hub-scoped event.
   group_key: string | null
+  // Reported batch; non-null only on score_drop / score_drop_skipped
+  // (GH #156), where it deep-links /campaigns/{id}/report.
+  campaign_id: number | null
 }
 
 // Result of POST /api/settings/test-lark (ticket 100): error carries the

@@ -66,6 +66,19 @@
             <span v-else :class="row.sent_ok ? 'sent-ok' : 'sent-fail'">{{ row.sent_ok ? '成功' : '失败' }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="批次" width="100">
+          <template #default="{ row }">
+            <!-- GH #156: eval-batch alerts deep-link straight to the batch
+                 report; every other kind has no batch to link. -->
+            <router-link
+              v-if="row.campaign_id !== null && (row.kind === 'score_drop' || row.kind === 'score_drop_skipped')"
+              :to="`/campaigns/${row.campaign_id}/report`"
+              class="batch-link"
+            >
+              查看批次
+            </router-link>
+          </template>
+        </el-table-column>
         <el-table-column label="时间" width="170">
           <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
@@ -365,6 +378,12 @@ onMounted(async () => {
 /* A recorded-but-unsent event (skipped comparison) reads neutral. */
 .sent-skip {
   color: var(--hs-text-secondary);
+}
+/* Batch deep link (GH #156): the brand action color, same as every other
+   console router-link. */
+.batch-link {
+  color: var(--hs-brand);
+  text-decoration: none;
 }
 /* Vendor family name (spec 0017 group alerts): long names truncate with
    title hover carrying the full string (§6). */

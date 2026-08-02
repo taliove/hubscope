@@ -13,7 +13,17 @@
        material (registered information gap, ui-guidelines §5). GH #94:
        show-name prop renders the dimension name above the score for the
        narrow-viewport card-style list (the唯一组件纪律 stays intact). -->
-  <div ref="rootRef" class="score-cell" :class="{ 'show-name': showName }" :title="tooltip">
+  <div
+    ref="rootRef"
+    class="score-cell"
+    :class="{ 'show-name': showName, clickable: isClickable }"
+    :title="tooltip"
+    :role="isClickable ? 'button' : undefined"
+    :tabindex="isClickable ? 0 : undefined"
+    @click="onCellClick"
+    @keydown.enter.stop="onActivate"
+    @keydown.space.prevent.stop="onActivate"
+  >
     <span v-if="showName" class="cell-name">{{ name }}</span>
     <!-- Live-mode unscored cell (GH #40, ui-guidelines §5 运行中半成品模式
          ④): the batch status word inline instead of a bare dash — plain text
@@ -64,9 +74,31 @@ const props = withDefaults(
     staticMode?: boolean
     live?: boolean
     showName?: boolean
+    // GH #156 block 4: a clickable cell emits `activate` (cell drill-down to
+    // the per-case run detail) with the click stopped, so the leaderboard
+    // row's own select (trend dialog) never fires from a cell click. Never
+    // clickable in staticMode — the exported material has no interaction.
+    clickable?: boolean
   }>(),
-  { staticMode: false, live: false, showName: false },
+  { staticMode: false, live: false, showName: false, clickable: false },
 )
+
+const emit = defineEmits<{ (e: 'activate'): void }>()
+
+const isClickable = computed(() => props.clickable && !props.staticMode)
+
+function onActivate() {
+  if (!isClickable.value) return
+  emit('activate')
+}
+
+// Non-clickable cells let the click bubble to the row (its own drill-down);
+// clickable cells own the click.
+function onCellClick(event: MouseEvent) {
+  if (!isClickable.value) return
+  event.stopPropagation()
+  onActivate()
+}
 
 const isLiveUnscored = computed(() => props.live && props.score === null && props.cell !== undefined)
 const liveStatusWord = computed(() => cellStatusText(props.cell))
@@ -118,6 +150,19 @@ const tooltip = computed(() => {
 <style scoped>
 .score-cell {
   min-width: 0;
+}
+/* Clickable cell (GH #156 block 4): pointer + hover fill out of the existing
+   surface tokens; focus ring mirrors the leaderboard row's treatment. */
+.score-cell.clickable {
+  cursor: pointer;
+  border-radius: var(--hs-radius-sm);
+}
+.score-cell.clickable:hover {
+  background: var(--hs-bg-hover);
+}
+.score-cell.clickable:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: -2px;
 }
 /* GH #94: show-name mode (narrow-viewport card-style list) stacks the
    dimension name above the score + bar. */

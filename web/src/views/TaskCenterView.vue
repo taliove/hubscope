@@ -43,6 +43,11 @@
         <el-table-column label="结束时间" width="165">
           <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <router-link :to="`/campaigns/${row.id}/report`" class="entity-link">查看报告</router-link>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -88,14 +93,25 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+            <!-- Live unit completion (GH #156): running eval_run tasks only;
+                 the fraction arrives from the server, never computed here. -->
+            <span v-if="row.status === 'running' && row.progress !== null" class="progress-text">
+              {{ Math.round(row.progress * 100) }}%
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="关联实体" width="140">
           <template #default="{ row }">
-            <router-link v-if="row.entity_type === 'eval_run'" to="/eval" class="entity-link">
+            <!-- GH #156: deep-link straight into the batch the run belongs
+                 to instead of the bare leaderboard. -->
+            <router-link
+              v-if="row.entity_type === 'eval_run'"
+              :to="row.campaign_id !== null ? `/eval?batch=${row.campaign_id}` : '/eval'"
+              class="entity-link"
+            >
               eval_run #{{ row.entity_id }}
             </router-link>
             <router-link v-else-if="row.entity_type === 'hub'" to="/admin" class="entity-link">

@@ -522,6 +522,9 @@ export type TaskStatus = 'pending' | 'running' | 'success' | 'failed'
 export type TaskLogLevel = 'info' | 'warn' | 'error'
 
 // One background job. duration_ms is null until the task finishes.
+// campaign_id is set on eval_run tasks only (the /eval?batch= deep link,
+// GH #156); progress is the run's (model, case) unit completion in 0~1,
+// set on running eval_run tasks only and null everywhere else.
 export interface TaskItem {
   id: number
   type: TaskType
@@ -532,6 +535,8 @@ export interface TaskItem {
   started_at: string | null // RFC3339
   finished_at: string | null // RFC3339
   duration_ms: number | null
+  campaign_id: number | null
+  progress: number | null // 0~1, running eval_run tasks only
   created_at: string // RFC3339
 }
 

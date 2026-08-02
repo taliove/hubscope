@@ -55,6 +55,12 @@
             </el-tag>
           </div>
           <div class="eval-time">评估于 {{ formatTime(evalSummary.campaign_created_at) }}</div>
+          <!-- GH #156: straight to the batch this score came from. /eval is
+               session-gated, so anonymous visitors bounce to /login — same
+               caliber as the header's batch entry (issue #16). -->
+          <router-link :to="`/eval?batch=${evalSummary.campaign_id}`" class="eval-link">
+            查看评估榜单 →
+          </router-link>
         </template>
         <template v-else>
           <div class="metric-label empty">暂无评估数据</div>
@@ -432,6 +438,11 @@ onMounted(async () => {
 .eval-time {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+}
+.eval-link {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-brand);
+  text-decoration: none;
 }
 .controls {
   display: flex;
