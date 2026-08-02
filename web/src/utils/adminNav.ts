@@ -39,6 +39,7 @@ export const SETTINGS_ITEMS = [
   'judge_model',
   'default_sample_count',
   'eval_concurrency',
+  'eval_campaign_budget_minutes',
   'suite_weights',
 ] as const
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number]

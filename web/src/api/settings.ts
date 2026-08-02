@@ -10,6 +10,9 @@ export interface AppSettings {
   // Eval worker-pool size: how many (suite × model) cells run at once
   // (GH #26); 1-16, default 4.
   eval_concurrency: number
+  // Campaign wall-clock budget in minutes (GH #153): a batch outliving it
+  // drops unstarted cells and settles failed; 0 disables. Default 120.
+  eval_campaign_budget_minutes: number
   // Leaderboard total-score weight per suite key (ticket 31); suites absent
   // from the map weigh 1 (equal weighting is the default).
   suite_weights: Record<string, number>

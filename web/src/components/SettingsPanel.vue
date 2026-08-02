@@ -89,6 +89,10 @@
           <el-input-number v-model="form.eval_concurrency" :min="1" :max="16" />
           <span class="field-hint">同时执行的评估单元(评估集 × 模型)数;调大可缩短批次时长,但会增加 Hub 压力</span>
         </el-form-item>
+        <el-form-item label="批次时间预算" data-item="eval_campaign_budget_minutes">
+          <el-input-number v-model="form.eval_campaign_budget_minutes" :min="0" :max="10080" :step="10" />
+          <span class="field-hint">分钟;超时后未开始的评估单元放弃、批次判失败,0 为不限;防 Hub 半死拖住批次</span>
+        </el-form-item>
         <el-form-item label="每周计划">
           <span class="field-static">每周日凌晨自动发起全量评估(内置计划,无需配置)</span>
         </el-form-item>
@@ -185,6 +189,7 @@ const form = reactive<AppSettings>({
   judge_model: 'claude-opus-4-8',
   default_sample_count: 1,
   eval_concurrency: 4,
+  eval_campaign_budget_minutes: 120,
   suite_weights: {},
   quiet_hours_enabled: false,
   quiet_hours_start: 23,
