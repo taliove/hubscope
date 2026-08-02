@@ -142,12 +142,21 @@
             :family-options="familyOptions"
             @query="onQuery"
             @select="openTrend"
+            @cell-select="onCellSelect"
           />
         </template>
 
         <!-- Row drill-down (ticket 32 pattern, same as the report page): the
              trend dialog fetches per model on demand. -->
         <ModelTrendDialog :campaign-id="selectedId ?? 0" :model="trendModel" @close="trendModel = null" />
+        <!-- Cell drill-down (GH #156 block 4): the run detail of the clicked
+             model x suite cell, filtered to that model. -->
+        <EvalRunDetailDialog
+          :run-id="drilldownRunId"
+          :model-id="drilldownModelId"
+          :suites="drilldownSuites"
+          @close="drilldownRunId = null"
+        />
       </template>
     </template>
   </div>
@@ -158,18 +167,21 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { listCampaigns, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
+import { listCampaigns, getCampaign, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
+import { listSuites } from '@/api/evals'
 import { fetchAuthStatus, type AuthUser } from '@/api/auth'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
+import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
 import { failedBatchWarning } from '@/utils/evalWording'
+import { resolveSuiteRunId } from '@/utils/reportDrilldown'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 import { liveFeedCursor, mergeLiveFeed } from '@/utils/liveFeed'
 import { parseBatchQuery, resolveInitialBatchId } from '@/utils/batchSelect'
-import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, LiveFeedEntry, ReportRow } from '@/api/types'
+import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, EvalRun, LiveFeedEntry, ReportRow, Suite } from '@/api/types'
 
 // Eval leaderboard page (ticket 45): a pure consumption page. The batch
 // switcher defaults to the newest done campaign; unfinished batches render
@@ -239,6 +251,8 @@ async function onRetryFailed() {
   try {
     await retryCampaignFailed(campaignID)
     ElMessage.success(`已发起批次 #${campaignID} 的失败项重跑`)
+    // The re-run may replace runs — drop the cell drill-down's cache.
+    runsCache = null
     await reload()
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -281,6 +295,37 @@ async function onCancel() {
 const trendModel = ref<ReportRow | null>(null)
 function openTrend(row: ReportRow) {
   trendModel.value = row
+}
+
+// Cell drill-down (GH #156 block 4): a settled-board score cell opens the
+// per-case run detail of that model x suite. The campaign's runs and the
+// suite list (for case prompts) load lazily on the first cell click and are
+// cached — runs per campaign, suites once (library content).
+const drilldownRunId = ref<number | null>(null)
+const drilldownModelId = ref<string | null>(null)
+const drilldownSuites = ref<Suite[]>([])
+let runsCache: { campaignId: number; runs: EvalRun[] } | null = null
+let suitesCache: Suite[] | null = null
+
+async function onCellSelect({ row, suiteKey }: { row: ReportRow; suiteKey: string }) {
+  if (selectedId.value === null || !report.value) return
+  try {
+    if (runsCache === null || runsCache.campaignId !== selectedId.value) {
+      runsCache = { campaignId: selectedId.value, runs: (await getCampaign(selectedId.value)).runs }
+    }
+    if (suitesCache === null) suitesCache = await listSuites()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+    return
+  }
+  const runId = resolveSuiteRunId(runsCache.runs, report.value.suites, suiteKey)
+  if (runId === null) {
+    ElMessage.info('该评估集在本批次中没有对应的评估运行')
+    return
+  }
+  drilldownModelId.value = row.model_id
+  drilldownSuites.value = suitesCache
+  drilldownRunId.value = runId
 }
 
 // Live feed (issue #17): accumulated judged-case events of the selected
@@ -443,6 +488,7 @@ function switchBatch(id: number) {
   familyOptions.value = []
   viewMode.value = 'grid'
   trendModel.value = null
+  drilldownRunId.value = null
   resetLiveFeed()
   void Promise.all([loadReport(), loadLiveFeed()]).then(armPolling)
 }

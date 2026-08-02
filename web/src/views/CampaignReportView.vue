@@ -88,6 +88,7 @@
           :selectable="rowDrilldownEnabled(shared)"
           @query="onQuery"
           @select="openTrend"
+          @cell-select="onCellSelect"
         />
 
         <!-- Cost detail table (GH #42, console-only): one row per model x
@@ -125,6 +126,16 @@
            live-mode drill-down works and no stale selection pops up on settle;
            the shared unfinished view never sets trendModel. -->
       <ModelTrendDialog :campaign-id="campaignId" :model="trendModel" @close="trendModel = null" />
+      <!-- Cell drill-down (GH #156 block 4, console-only): the run detail of
+           the clicked model x suite cell, filtered to that model. The shared
+           view never sets drilldownRunId. -->
+      <EvalRunDetailDialog
+        v-if="!shared"
+        :run-id="drilldownRunId"
+        :model-id="drilldownModelId"
+        :suites="drilldownSuites"
+        @close="drilldownRunId = null"
+      />
     </template>
   </div>
 </template>
@@ -135,9 +146,11 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { ApiError } from '@/api/client'
-import { getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
+import { getCampaign, getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
+import { listSuites } from '@/api/evals'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
+import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatDuration, formatTime, formatTokens } from '@/utils/format'
@@ -145,8 +158,8 @@ import { copyText } from '@/utils/clipboard'
 import { batchCostSummary } from '@/utils/evalCost'
 import { failedBatchWarning } from '@/utils/evalWording'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
-import { rowDrilldownEnabled } from '@/utils/reportDrilldown'
-import type { CampaignReport, CampaignStatus, EvalBoardView, ReportRow } from '@/api/types'
+import { rowDrilldownEnabled, resolveSuiteRunId } from '@/utils/reportDrilldown'
+import type { CampaignReport, CampaignStatus, EvalBoardView, EvalRun, ReportRow, Suite } from '@/api/types'
 
 // Campaign report page (ticket 31): the leaderboard over one campaign's done
 // runs, reusing the shared Leaderboard component (ticket 45). Deleted models
@@ -204,6 +217,8 @@ async function onRetryFailed() {
   try {
     await retryCampaignFailed(campaignID)
     ElMessage.success(`已发起批次 #${campaignID} 的失败项重跑`)
+    // The re-run may replace runs — drop the cell drill-down's cache.
+    runsCache = null
     await reload()
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -261,6 +276,39 @@ const trendModel = ref<ReportRow | null>(null)
 function openTrend(row: ReportRow) {
   if (!rowDrilldownEnabled(shared)) return
   trendModel.value = row
+}
+
+// Cell drill-down (GH #156 block 4): a settled-board score cell opens the
+// per-case run detail of that model x suite. Console-only — the shared
+// view's grant is "this batch's report", and both prerequisite endpoints
+// (campaign runs, suites) sit in the authenticated route group, so the
+// shared view stays fully read-only. Runs and suites load lazily on the
+// first cell click and are cached.
+const drilldownRunId = ref<number | null>(null)
+const drilldownModelId = ref<string | null>(null)
+const drilldownSuites = ref<Suite[]>([])
+let runsCache: { campaignId: number; runs: EvalRun[] } | null = null
+let suitesCache: Suite[] | null = null
+
+async function onCellSelect({ row, suiteKey }: { row: ReportRow; suiteKey: string }) {
+  if (!rowDrilldownEnabled(shared) || !report.value) return
+  try {
+    if (runsCache === null || runsCache.campaignId !== campaignId.value) {
+      runsCache = { campaignId: campaignId.value, runs: (await getCampaign(campaignId.value)).runs }
+    }
+    if (suitesCache === null) suitesCache = await listSuites()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+    return
+  }
+  const runId = resolveSuiteRunId(runsCache.runs, report.value.suites, suiteKey)
+  if (runId === null) {
+    ElMessage.info('该评估集在本批次中没有对应的评估运行')
+    return
+  }
+  drilldownModelId.value = row.model_id
+  drilldownSuites.value = suitesCache
+  drilldownRunId.value = runId
 }
 
 function statusLabel(status: CampaignStatus): string {

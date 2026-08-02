@@ -173,6 +173,8 @@
             :score="row.suite_scores[s.key] ?? null"
             :cell="cellOf(row, s.key)"
             :live="live"
+            :clickable="cellDrilldown"
+            @activate="emit('cellSelect', { row, suiteKey: s.key })"
           />
           <span v-if="live" class="live-note">
             <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
@@ -249,6 +251,8 @@
             :cell="cellOf(row, s.key)"
             :live="live"
             :show-name="true"
+            :clickable="cellDrilldown"
+            @activate="emit('cellSelect', { row, suiteKey: s.key })"
           />
         </div>
 
@@ -279,6 +283,7 @@ import { scoreBand, liveCounts, liveRankText } from '@/utils/scoreTier'
 import { nextSortKey } from '@/utils/sortHeader'
 import { buildEvalCardSnapshot, type EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import { baselineNoteText, incompleteWatermark } from '@/utils/evalWording'
+import { cellDrilldownEnabled } from '@/utils/reportDrilldown'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 
 // Leaderboard is the single ranking display of the eval board (registered in
@@ -326,6 +331,10 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'query', query: { family?: string; sort: string }): void
   (e: 'select', row: ReportRow): void
+  // GH #156 block 4: a score cell activates the per-case drill-down for
+  // that model x suite; the cell stops the click, so `select` never fires
+  // from a cell click.
+  (e: 'cellSelect', payload: { row: ReportRow; suiteKey: string }): void
   (e: 'update:view', view: EvalBoardView): void
 }>()
 
@@ -334,6 +343,11 @@ const sortKey = ref('total')
 
 // GH #94: Responsive breakpoint for narrow-viewport card-style list.
 const { isNarrow } = useBreakpoint()
+
+// Cell drill-down (GH #156 block 4): settled console boards only — never
+// the shared report page, never the live half-scored board, never the
+// public /board (same gating caliber as the row drill-down).
+const cellDrilldown = computed(() => cellDrilldownEnabled(props.shared, props.live, props.selectable))
 
 // Share-image state (ticket 76): the snapshot freezes the currently
 // displayed batch + filters at open time; a report prop refresh never

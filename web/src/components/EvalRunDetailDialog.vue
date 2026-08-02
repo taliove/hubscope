@@ -20,7 +20,7 @@
           <span>结束:{{ formatTime(detail.finished_at) }}</span>
           <span>聚合分:{{ formatScore(detail.score === null ? null : detail.score * 100) }}</span>
         </div>
-        <el-table :data="detail.results" row-key="id" max-height="480">
+        <el-table :data="visibleResults" row-key="id" max-height="480">
           <el-table-column type="expand">
             <template #default="{ row }">
               <div class="expand-panel">
@@ -72,10 +72,14 @@ import { formatMs, formatScore, formatTime } from '@/utils/format'
 import type { EvalRunDetail, Suite } from '@/api/types'
 
 // Run detail dialog: per-case prompt, model answer, score, and the judge's
-// reasoning, grouped in an expandable table.
+// reasoning, grouped in an expandable table. The optional modelId filter
+// (GH #156 block 4) narrows the table to one model — the leaderboard cell
+// drill-down's shape; omitted, the dialog shows every model of the run
+// (EvalOpsPanel usage, unchanged).
 const props = defineProps<{
   runId: number | null
   suites: Suite[]
+  modelId?: string | null
 }>()
 
 defineEmits<{ close: [] }>()
@@ -87,7 +91,16 @@ const error = ref<string | null>(null)
 const dialogTitle = computed(() => {
   if (!detail.value) return '评估运行详情'
   const suite = props.suites.find(s => s.id === detail.value!.suite_id)
-  return `评估运行 #${detail.value.id} · ${suite?.name ?? ''}`
+  const base = `评估运行 #${detail.value.id} · ${suite?.name ?? ''}`
+  return props.modelId ? `${base} · ${props.modelId}` : base
+})
+
+// The cell drill-down narrows the run to the clicked model; without a
+// modelId the full run table renders (backward compatible).
+const visibleResults = computed(() => {
+  if (!detail.value) return []
+  if (!props.modelId) return detail.value.results
+  return detail.value.results.filter(r => r.model_id === props.modelId)
 })
 
 // Monotonic token invalidating stale responses: when runId switches quickly,
