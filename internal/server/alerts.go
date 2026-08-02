@@ -9,7 +9,9 @@ import (
 
 // alertEventDTO is the API representation of an AlertEvent. GroupKey is
 // non-null only on vendor group alerts (group_down / group_recovered,
-// spec 0017 ticket 3), where it carries the family name.
+// spec 0017 ticket 3), where it carries the family name. CampaignID is
+// non-null only on eval-batch alerts (score_drop / score_drop_skipped,
+// GH #156), where it deep-links the reported batch.
 type alertEventDTO struct {
 	ID         int64   `json:"id"`
 	EndpointID *int64  `json:"endpoint_id"`
@@ -18,6 +20,7 @@ type alertEventDTO struct {
 	SentOK     bool    `json:"sent_ok"`
 	CreatedAt  string  `json:"created_at"`
 	GroupKey   *string `json:"group_key"`
+	CampaignID *int64  `json:"campaign_id"`
 }
 
 // toAlertEventDTO maps a store.AlertEvent to its API representation.
@@ -30,6 +33,7 @@ func toAlertEventDTO(e store.AlertEvent) alertEventDTO {
 		SentOK:     e.SentOK,
 		CreatedAt:  e.CreatedAt.UTC().Format(time.RFC3339),
 		GroupKey:   e.GroupKey,
+		CampaignID: e.CampaignID,
 	}
 }
 

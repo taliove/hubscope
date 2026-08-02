@@ -128,6 +128,57 @@ func (db *DB) GetEvalRun(id int64) (*EvalRun, error) {
 	return &r, nil
 }
 
+// RunUnitProgress pairs a run's campaign linkage with its (model, case)
+// unit completion, powering the task center's batch deep link and live
+// progress (GH #156): DoneUnits counts the units with at least one result
+// row, TotalUnits is the campaign's member models x the suite's enabled
+// cases.
+type RunUnitProgress struct {
+	CampaignID int64
+	DoneUnits  int
+	TotalUnits int
+}
+
+// GetRunUnitProgress resolves campaign linkage and unit completion for a
+// batch of run ids in one aggregate query — the task center calls it once
+// per listed page, never per row (no N+1). Unknown ids are simply absent
+// from the result.
+func (db *DB) GetRunUnitProgress(ids []int64) (map[int64]RunUnitProgress, error) {
+	out := make(map[int64]RunUnitProgress, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := db.conn.Query(`
+		SELECT r.id, r.campaign_id,
+			(SELECT COUNT(*) FROM (
+				SELECT DISTINCT model_db_id, case_id FROM eval_results WHERE eval_run_id = r.id
+			)) AS done_units,
+			(SELECT COUNT(*) FROM campaign_models cm WHERE cm.campaign_id = r.campaign_id)
+				* (SELECT COUNT(*) FROM cases c WHERE c.suite_id = r.suite_id AND c.enabled = 1) AS total_units
+		FROM eval_runs r
+		WHERE r.id IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var p RunUnitProgress
+		if err := rows.Scan(&id, &p.CampaignID, &p.DoneUnits, &p.TotalUnits); err != nil {
+			return nil, err
+		}
+		out[id] = p
+	}
+	return out, rows.Err()
+}
+
 // ListEvalRunsAll returns every run, newest first. It is the super_admin /
 // store-internal counterpart of ListEvalRunsByHub; HTTP handlers must pick
 // the form based on the session's hub scope.

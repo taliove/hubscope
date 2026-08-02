@@ -148,7 +148,7 @@ func (e *Evaluator) HandleCampaign(ctx context.Context, campaignID int64) {
 	for _, modelDBID := range order {
 		message := buildModelAlertMessage(campaign, alerts[modelDBID])
 		if quiet {
-			e.deferScoreDropLocked(message)
+			e.deferScoreDropLocked(campaign.ID, message)
 			continue
 		}
 		e.sendModelAlert(ctx, webhook, campaign, alerts[modelDBID], message)
@@ -158,12 +158,14 @@ func (e *Evaluator) HandleCampaign(ctx context.Context, campaignID int64) {
 // deferScoreDropLocked records a score_drop alert decided inside quiet
 // hours without sending it: the event lands with sent_ok=false ("delivery
 // unconfirmed") and the frozen message text queues for the end-of-window
-// summary, which confirms it. Called with e.mu held.
-func (e *Evaluator) deferScoreDropLocked(message Message) {
+// summary, which confirms it. campaignID deep-links the event to its batch
+// (GH #156). Called with e.mu held.
+func (e *Evaluator) deferScoreDropLocked(campaignID int64, message Message) {
 	event, err := e.db.CreateAlertEvent(store.AlertEvent{
-		Kind:    store.AlertKindScoreDrop,
-		Message: message.Text,
-		SentOK:  false, // delivery unconfirmed until the quiet summary
+		Kind:       store.AlertKindScoreDrop,
+		Message:    message.Text,
+		SentOK:     false, // delivery unconfirmed until the quiet summary
+		CampaignID: &campaignID,
 	})
 	if err != nil {
 		slog.Error("alerter: record deferred score_drop event", "error", err)
@@ -292,9 +294,10 @@ func (e *Evaluator) suiteName(suiteID int64) string {
 // the webhook — the annotation replaces the alert.
 func (e *Evaluator) annotateSkip(campaign *store.Campaign, run *store.EvalRun, message, logLine string) {
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
-		Kind:    store.AlertKindScoreDropSkipped,
-		Message: message,
-		SentOK:  false,
+		Kind:       store.AlertKindScoreDropSkipped,
+		Message:    message,
+		SentOK:     false,
+		CampaignID: &campaign.ID,
 	}); err != nil {
 		slog.Error("alerter: record score_drop_skipped event", "campaign_id", campaign.ID, "run_id", run.ID, "error", err)
 	}
@@ -337,9 +340,10 @@ func (e *Evaluator) sendModelAlert(ctx context.Context, webhook string, campaign
 		sentOK = false
 	}
 	if _, err := e.db.CreateAlertEvent(store.AlertEvent{
-		Kind:    store.AlertKindScoreDrop,
-		Message: message.Text,
-		SentOK:  sentOK,
+		Kind:       store.AlertKindScoreDrop,
+		Message:    message.Text,
+		SentOK:     sentOK,
+		CampaignID: &campaign.ID,
 	}); err != nil {
 		slog.Error("alerter: record score_drop event", "campaign_id", campaign.ID, "model", alert.modelID, "error", err)
 	}

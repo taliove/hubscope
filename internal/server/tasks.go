@@ -9,18 +9,23 @@ import (
 
 // taskDTO is the API representation of a Task. duration_ms is the wall-clock
 // execution time in milliseconds, null until the task reaches a terminal
-// state (or when it never started).
+// state (or when it never started). campaign_id is set on eval_run tasks
+// only (the /eval?batch= deep link, GH #156); progress is the run's (model,
+// case) unit completion in 0~1, set on RUNNING eval_run tasks only and null
+// everywhere else.
 type taskDTO struct {
-	ID         int64   `json:"id"`
-	Type       string  `json:"type"`
-	Source     string  `json:"source"`
-	Status     string  `json:"status"`
-	EntityType string  `json:"entity_type"`
-	EntityID   int64   `json:"entity_id"`
-	StartedAt  *string `json:"started_at"`
-	FinishedAt *string `json:"finished_at"`
-	DurationMs *int64  `json:"duration_ms"`
-	CreatedAt  string  `json:"created_at"`
+	ID         int64    `json:"id"`
+	Type       string   `json:"type"`
+	Source     string   `json:"source"`
+	Status     string   `json:"status"`
+	EntityType string   `json:"entity_type"`
+	EntityID   int64    `json:"entity_id"`
+	StartedAt  *string  `json:"started_at"`
+	FinishedAt *string  `json:"finished_at"`
+	DurationMs *int64   `json:"duration_ms"`
+	CampaignID *int64   `json:"campaign_id"`
+	Progress   *float64 `json:"progress"`
+	CreatedAt  string   `json:"created_at"`
 }
 
 // taskLogDTO is the API representation of one task log line.
@@ -111,8 +116,40 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := make([]taskDTO, 0, len(tasks))
+	runIDs := make([]int64, 0, len(tasks))
 	for _, t := range tasks {
+		if t.EntityType == store.TaskEntityEvalRun {
+			runIDs = append(runIDs, t.EntityID)
+		}
 		items = append(items, toTaskDTO(t))
+	}
+	// Batch-resolve the eval_run deep link + live progress in one aggregate
+	// query (GH #156, no N+1): campaign_id rides every eval_run task,
+	// progress only the running ones.
+	if len(runIDs) > 0 {
+		units, err := s.db.GetRunUnitProgress(runIDs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve task progress")
+			return
+		}
+		for i := range items {
+			if items[i].EntityType != store.TaskEntityEvalRun {
+				continue
+			}
+			u, ok := units[items[i].EntityID]
+			if !ok {
+				continue
+			}
+			campaignID := u.CampaignID
+			items[i].CampaignID = &campaignID
+			if items[i].Status == store.TaskStatusRunning && u.TotalUnits > 0 {
+				p := float64(u.DoneUnits) / float64(u.TotalUnits)
+				if p > 1 {
+					p = 1 // units done for since-disabled cases must not overflow
+				}
+				items[i].Progress = &p
+			}
+		}
 	}
 	writeData(w, http.StatusOK, taskPageResponse{
 		Items:    items,

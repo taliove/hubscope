@@ -421,6 +421,12 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("alert_events", "group_key", "TEXT NULL"); err != nil {
 		return err
 	}
+	// GH #156: score_drop / score_drop_skipped events carry the campaign
+	// they report on, so the alert history can deep-link to the batch
+	// report. NULL on every pre-existing row and on endpoint-bound kinds.
+	if err := db.ensureColumn("alert_events", "campaign_id", "INTEGER NULL"); err != nil {
+		return err
+	}
 
 	// A hub left 'syncing' means the process died mid-sync (the in-flight
 	// guard is in-memory only); mark it failed so the UI does not show a

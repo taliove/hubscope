@@ -282,9 +282,14 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 	}
 
 	// The skip is also recorded as an alert event; nothing hit the webhook.
+	// GH #156: the event carries its campaign so the alert history can link
+	// straight to the batch report.
 	skipped := alertEventsOfKind(t, ts, "score_drop_skipped")
 	if len(skipped) != 1 {
 		t.Fatalf("expected 1 score_drop_skipped event, got %d", len(skipped))
+	}
+	if got, want := skipped[0]["campaign_id"], float64(campaignOfRun(t, ts.URL, run2)); got != want {
+		t.Errorf("score_drop_skipped event campaign_id = %v, want %v", got, want)
 	}
 	skipMsg, _ := skipped[0]["message"].(string)
 	for _, want := range []string{"题目已变更", "分数不可比"} {
@@ -313,6 +318,40 @@ func TestScoreDropSkippedAcrossSuiteVersions(t *testing.T) {
 	})
 	if !strings.Contains(lark.messages()[0], "ver-model") {
 		t.Errorf("post-skip alert should name the model, got: %s", lark.messages()[0])
+	}
+}
+
+// TestScoreDropEventCampaignLink pins the GH #156 deep-link contract: a
+// score_drop event carries the campaign whose drop it reports, so the alert
+// history table can render a "view batch" link straight to the report.
+func TestScoreDropEventCampaignLink(t *testing.T) {
+	ts, stub, db := setupEvalEnv(t)
+	lark := newStubLarkServer(t)
+	enableScoreDropAlerts(t, ts, lark)
+
+	modelID := createEvalModel(t, ts.URL, stub.URL, "drop-model")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	// One custom exact-rule case (seeded cases retired): campaign 1 scores
+	// 1.0, campaign 2 with the model gone bad scores 0.0 — past the 0.2 bar.
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "LINK-A:请作答", "好的", nil)
+
+	run1 := triggerEval(t, ts.URL, suiteID, modelID)
+	waitEvalDone(t, ts.URL, run1)
+	waitCampaignStatus(t, ts.URL, campaignOfRun(t, ts.URL, run1), "done")
+
+	stub.markBad("drop-model", true)
+	run2 := triggerEval(t, ts.URL, suiteID, modelID)
+	waitEvalDone(t, ts.URL, run2)
+	campaign2 := campaignOfRun(t, ts.URL, run2)
+	waitCampaignStatus(t, ts.URL, campaign2, "done")
+
+	waitFor(t, "score_drop event persisted", func() bool {
+		return len(scoreDropEvents(t, ts)) == 1
+	})
+	event := scoreDropEvents(t, ts)[0]
+	if got := event["campaign_id"]; got != float64(campaign2) {
+		t.Errorf("score_drop event campaign_id = %v, want %d", got, campaign2)
 	}
 }
 

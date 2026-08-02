@@ -50,7 +50,9 @@ const defaultAlertLimit = 50
 // AlertEvent is one recorded alert: an attempted (or completed) notification.
 // EndpointID is nil for events not tied to a single endpoint; GroupKey is
 // non-nil only on vendor group alerts (group_down / group_recovered), where
-// it carries the family name.
+// it carries the family name. CampaignID is non-nil only on eval-batch
+// alerts (score_drop / score_drop_skipped, GH #156), where it links the
+// reported batch.
 type AlertEvent struct {
 	ID         int64
 	EndpointID *int64
@@ -59,17 +61,19 @@ type AlertEvent struct {
 	SentOK     bool
 	CreatedAt  time.Time
 	GroupKey   *string
+	CampaignID *int64
 }
 
-// scanAlertEvent scans one alert_events row. EndpointID and GroupKey may be
-// NULL.
+// scanAlertEvent scans one alert_events row. EndpointID, GroupKey and
+// CampaignID may be NULL.
 func scanAlertEvent(s rowScanner) (AlertEvent, error) {
 	var e AlertEvent
 	var endpointID sql.NullInt64
 	var groupKey sql.NullString
+	var campaignID sql.NullInt64
 	var sentOK int
 	var createdAt string
-	if err := s.Scan(&e.ID, &endpointID, &e.Kind, &e.Message, &sentOK, &createdAt, &groupKey); err != nil {
+	if err := s.Scan(&e.ID, &endpointID, &e.Kind, &e.Message, &sentOK, &createdAt, &groupKey, &campaignID); err != nil {
 		return AlertEvent{}, err
 	}
 	if endpointID.Valid {
@@ -79,6 +83,10 @@ func scanAlertEvent(s rowScanner) (AlertEvent, error) {
 	if groupKey.Valid {
 		key := groupKey.String
 		e.GroupKey = &key
+	}
+	if campaignID.Valid {
+		id := campaignID.Int64
+		e.CampaignID = &id
 	}
 	e.SentOK = sentOK == 1
 	e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -99,9 +107,9 @@ func (db *DB) CreateAlertEvent(e AlertEvent) (AlertEvent, error) {
 	}
 
 	result, err := db.conn.Exec(`
-		INSERT INTO alert_events (endpoint_id, kind, message, sent_ok, created_at, group_key)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, e.EndpointID, e.Kind, e.Message, sentOK, createdAt.Format(time.RFC3339), e.GroupKey)
+		INSERT INTO alert_events (endpoint_id, kind, message, sent_ok, created_at, group_key, campaign_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, e.EndpointID, e.Kind, e.Message, sentOK, createdAt.Format(time.RFC3339), e.GroupKey, e.CampaignID)
 	if err != nil {
 		return AlertEvent{}, err
 	}
@@ -160,7 +168,7 @@ func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 	args = append(args, limit)
 
 	rows, err := db.conn.Query(`
-		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key, campaign_id
 		FROM alert_events
 		`+hubFilter+`
 		ORDER BY created_at DESC, id DESC
@@ -248,7 +256,7 @@ func (db *DB) ConfirmedAlertEvents(ids []int64) (map[int64]bool, error) {
 // their endpoint_id is NULL and their kinds sit outside the whitelist.
 func (db *DB) LatestDownRecoveryEvent(endpointID int64) (*AlertEvent, error) {
 	e, err := scanAlertEvent(db.conn.QueryRow(`
-		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key, campaign_id
 		FROM alert_events
 		WHERE endpoint_id = ? AND kind IN (?, ?)
 		ORDER BY created_at DESC, id DESC
@@ -270,7 +278,7 @@ func (db *DB) LatestDownRecoveryEvent(endpointID int64) (*AlertEvent, error) {
 // separate so the two state machines never pollute each other.
 func (db *DB) LatestGroupEvent(groupKey string) (*AlertEvent, error) {
 	e, err := scanAlertEvent(db.conn.QueryRow(`
-		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key
+		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key, campaign_id
 		FROM alert_events
 		WHERE group_key = ? AND kind IN (?, ?)
 		ORDER BY created_at DESC, id DESC
