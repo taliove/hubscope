@@ -52,85 +52,144 @@
       <!-- Empty state: never reads as "no incidents ever" — the copy names
            the active range so a narrow filter is not mistaken for a clean
            record. -->
-      <div v-else-if="visibleGroups.length === 0" class="state-block">
+      <div v-else-if="visibleMonths.length === 0" class="state-block">
         <p class="state-text">所选范围内暂无告警事件</p>
         <p class="state-hint">可放宽时间范围或清除筛选条件</p>
       </div>
 
       <template v-else>
-        <section v-for="group in visibleGroups" :key="group.key" class="day-section">
-          <h2 class="day-label">{{ group.label }}</h2>
-          <ol class="day-events">
-            <!-- Inline expansion (GH #144, spec 0019 裁决 4, EvalLiveFeed
-                 precedent — no dialog, no panel): the summary is the toggle
-                 (role/tabindex/Enter/Space, aria-expanded); the expansion set
-                 is keyed by event id so filter changes and load-earlier
-                 prepends never collapse an open row; multi-open unlimited.
-                 The row stays self-contained (time / rail / body incl.
-                 expansion in one li) so the month>week>day nesting (GH #145)
-                 can lift it whole. -->
-            <li v-for="ev in group.events" :key="ev.id" class="event-row">
-              <span class="event-time">{{ formatClockMinute(ev.created_at) }}</span>
-              <span class="rail"><span class="node" :class="`node--${alertKindTagType(ev.kind)}`" /></span>
-              <div class="event-body">
-                <div
-                  class="event-summary"
+        <!-- Month > week > day nesting (GH #145, spec 0019 ruling 3): month
+             and week headers are collapse toggles (chevron + count, the
+             event-row expansion language — role/tabindex/Enter/Space,
+             aria-expanded). Collapsing is pure view organization: hidden
+             subtrees are v-if'd, no event is lost and nothing refetches. -->
+        <section v-for="month in visibleMonths" :key="month.key" class="month-section">
+          <h2
+            class="month-label group-toggle"
+            role="button"
+            tabindex="0"
+            :aria-expanded="!isGroupCollapsed(`m:${month.key}`)"
+            @click="toggleGroup(`m:${month.key}`)"
+            @keydown.enter.prevent="toggleGroup(`m:${month.key}`)"
+            @keydown.space.prevent="toggleGroup(`m:${month.key}`)"
+          >
+            <span class="group-chevron" aria-hidden="true">{{
+              isGroupCollapsed(`m:${month.key}`) ? '▸' : '▾'
+            }}</span>
+            {{ month.label }}
+            <span class="group-count">{{ monthEventCount(month) }} 条</span>
+          </h2>
+          <ol v-if="!isGroupCollapsed(`m:${month.key}`)" class="month-events">
+            <!-- The month content is one FLAT row list (week header / day
+                 header / event rows share the 44/24/1fr grid) so the rail
+                 line paints through every header without a gap — the v1
+                 per-day :first-child/:last-child clipping is gone; the line
+                 clips only at the month's first/last VISIBLE node (a
+                 collapsed week moves the visible ends). -->
+            <li v-for="row in monthRows(month)" :key="row.key" :class="rowClass(row)">
+              <template v-if="row.type === 'week'">
+                <span class="rail" :class="row.rail" aria-hidden="true" />
+                <h3
+                  class="group-label week-label group-toggle"
                   role="button"
                   tabindex="0"
-                  :aria-expanded="isExpanded(ev.id)"
-                  :aria-controls="`event-detail-${ev.id}`"
-                  @click="toggleExpand(ev.id)"
-                  @keydown.enter.prevent="toggleExpand(ev.id)"
-                  @keydown.space.prevent="toggleExpand(ev.id)"
+                  :aria-expanded="!row.collapsed"
+                  @click="toggleGroup(row.toggleKey)"
+                  @keydown.enter.prevent="toggleGroup(row.toggleKey)"
+                  @keydown.space.prevent="toggleGroup(row.toggleKey)"
                 >
-                  <div class="event-head">
-                    <el-tag :type="alertKindTagType(ev.kind)" size="small" class="event-kind">
-                      {{ alertKindLabel(ev.kind) }}
-                    </el-tag>
-                    <span v-if="targetOf(ev)" class="event-target" :title="targetOf(ev) ?? undefined">
-                      {{ targetOf(ev) }}
-                    </span>
-                    <span v-if="durationText(ev)" class="event-duration" :class="{ ongoing: isOngoing(ev) }">
-                      {{ durationText(ev) }}
-                    </span>
-                    <span class="event-sent" :class="sentClass(ev)">{{ alertSentLabel(ev) }}</span>
-                    <span class="event-expand" aria-hidden="true">{{ isExpanded(ev.id) ? '▾' : '▸' }}</span>
+                  <span class="group-chevron" aria-hidden="true">{{ row.collapsed ? '▸' : '▾' }}</span>
+                  {{ row.label }}
+                  <span class="group-count">{{ row.count }} 条</span>
+                </h3>
+              </template>
+
+              <template v-else-if="row.type === 'day'">
+                <span class="rail" :class="row.rail" aria-hidden="true" />
+                <h4 class="group-label day-label">{{ row.label }}</h4>
+              </template>
+
+              <!-- Inline expansion (GH #144, spec 0019 裁决 4, EvalLiveFeed
+                   precedent — no dialog, no panel): the summary is the toggle
+                   (role/tabindex/Enter/Space, aria-expanded); the expansion
+                   set is keyed by event id so filter changes and load-earlier
+                   prepends never collapse an open row; multi-open unlimited.
+                   The row is self-contained (time / rail / body incl.
+                   expansion in one li) — the month>week>day nesting lifts it
+                   whole. -->
+              <template v-else>
+                <span class="event-time">{{ formatClockMinute(row.event.created_at) }}</span>
+                <span class="rail" :class="row.rail"
+                  ><span class="node" :class="`node--${alertKindTagType(row.event.kind)}`"
+                /></span>
+                <div class="event-body">
+                  <div
+                    class="event-summary"
+                    role="button"
+                    tabindex="0"
+                    :aria-expanded="isExpanded(row.event.id)"
+                    :aria-controls="`event-detail-${row.event.id}`"
+                    @click="toggleExpand(row.event.id)"
+                    @keydown.enter.prevent="toggleExpand(row.event.id)"
+                    @keydown.space.prevent="toggleExpand(row.event.id)"
+                  >
+                    <div class="event-head">
+                      <el-tag :type="alertKindTagType(row.event.kind)" size="small" class="event-kind">
+                        {{ alertKindLabel(row.event.kind) }}
+                      </el-tag>
+                      <span
+                        v-if="targetOf(row.event)"
+                        class="event-target"
+                        :title="targetOf(row.event) ?? undefined"
+                      >
+                        {{ targetOf(row.event) }}
+                      </span>
+                      <span
+                        v-if="durationText(row.event)"
+                        class="event-duration"
+                        :class="{ ongoing: isOngoing(row.event) }"
+                      >
+                        {{ durationText(row.event) }}
+                      </span>
+                      <span class="event-sent" :class="sentClass(row.event)">{{ alertSentLabel(row.event) }}</span>
+                      <span class="event-expand" aria-hidden="true">{{ isExpanded(row.event.id) ? '▾' : '▸' }}</span>
+                    </div>
+                    <p class="event-message" :title="row.event.message">{{ row.event.message }}</p>
                   </div>
-                  <p class="event-message" :title="ev.message">{{ ev.message }}</p>
+                  <!-- Expansion: five stacked items — full message / full
+                       timestamp / ids / paired recovery + duration / delivery
+                       detail — plus the endpoint deep link (the page's only
+                       outbound interaction). Deleted endpoints stay linkable
+                       by raw id. -->
+                  <div v-if="isExpanded(row.event.id)" :id="`event-detail-${row.event.id}`" class="event-detail">
+                    <p class="detail-message">{{ detailOf(row.event).message }}</p>
+                    <div class="detail-row">
+                      <span class="detail-label">时间</span>
+                      <span class="detail-value">{{ detailOf(row.event).timestamp }}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">标识</span>
+                      <span class="detail-value">{{ detailOf(row.event).idText }}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">配对</span>
+                      <span
+                        class="detail-value"
+                        :class="{ ongoing: detailOf(row.event).pairing.state === 'ongoing' }"
+                      >{{ detailOf(row.event).pairing.text }}</span>
+                    </div>
+                    <div class="detail-row">
+                      <span class="detail-label">投递</span>
+                      <span class="detail-value">{{ detailOf(row.event).sentText }}</span>
+                    </div>
+                    <router-link
+                      v-if="detailOf(row.event).endpointId !== null"
+                      class="detail-link"
+                      :to="`/endpoints/${detailOf(row.event).endpointId}`"
+                    >查看端点详情</router-link>
+                  </div>
                 </div>
-                <!-- Expansion: five stacked items — full message / full
-                     timestamp / ids / paired recovery + duration / delivery
-                     detail — plus the endpoint deep link (the page's only
-                     outbound interaction). Deleted endpoints stay linkable
-                     by raw id. -->
-                <div v-if="isExpanded(ev.id)" :id="`event-detail-${ev.id}`" class="event-detail">
-                  <p class="detail-message">{{ detailOf(ev).message }}</p>
-                  <div class="detail-row">
-                    <span class="detail-label">时间</span>
-                    <span class="detail-value">{{ detailOf(ev).timestamp }}</span>
-                  </div>
-                  <div class="detail-row">
-                    <span class="detail-label">标识</span>
-                    <span class="detail-value">{{ detailOf(ev).idText }}</span>
-                  </div>
-                  <div class="detail-row">
-                    <span class="detail-label">配对</span>
-                    <span
-                      class="detail-value"
-                      :class="{ ongoing: detailOf(ev).pairing.state === 'ongoing' }"
-                    >{{ detailOf(ev).pairing.text }}</span>
-                  </div>
-                  <div class="detail-row">
-                    <span class="detail-label">投递</span>
-                    <span class="detail-value">{{ detailOf(ev).sentText }}</span>
-                  </div>
-                  <router-link
-                    v-if="detailOf(ev).endpointId !== null"
-                    class="detail-link"
-                    :to="`/endpoints/${detailOf(ev).endpointId}`"
-                  >查看端点详情</router-link>
-                </div>
-              </div>
+              </template>
             </li>
           </ol>
         </section>
@@ -161,7 +220,7 @@ import { alertKindLabel, alertKindTagType, visibleKindOptions } from '@/utils/al
 import {
   filterEventsByTimeRange,
   pairIncidentDurations,
-  groupEventsByDate,
+  groupEventsByMonthWeekDay,
   alertsFilterToQuery,
   parseAlertsFilterQuery,
   alertSentLabel,
@@ -169,6 +228,8 @@ import {
   type AlertTimeRange,
   type IncidentDuration,
   type AlertEventDetail,
+  type AlertMonthGroup,
+  type AlertWeekGroup,
 } from '@/utils/alertTimeline'
 
 // Time-range presets (今天 = local calendar day; the rest are rolling).
@@ -366,7 +427,7 @@ function detailOf(ev: AlertEvent): AlertEventDetail {
   return buildEventDetail(ev, events.value, durations.value)
 }
 
-const visibleGroups = computed(() => {
+const visibleMonths = computed(() => {
   const now = new Date()
   let filtered = filterEventsByTimeRange(events.value, rangeFilter.value, now)
   if (kindFilter.value !== null) {
@@ -377,8 +438,120 @@ const visibleGroups = computed(() => {
     const model = modelFilter.value
     filtered = filtered.filter((ev) => modelOf(ev) === model)
   }
-  return groupEventsByDate(filtered, now)
+  return groupEventsByMonthWeekDay(filtered, now)
 })
+
+// --- Group collapse state (GH #145, spec 0019 ruling 3) --------------------
+// Session-only (no localStorage — the ruling explicitly rejects persistence).
+// The Map stores user OVERRIDES keyed by group key (`m:YYYY-MM` /
+// `w:YYYY-MM:YYYY-MM-DD`), so filter changes keep a toggled group's state
+// for as long as its key survives. Default (2026-08-02 main ruling): the
+// current month and every week are expanded; earlier months are collapsed.
+// Every update replaces the Map to stay reactive.
+const groupOverrides = ref<Map<string, boolean>>(new Map())
+
+// Local calendar month key of right now — the same caliber the grouping
+// function buckets by (local YYYY-MM).
+function currentMonthKey(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function isGroupCollapsed(key: string): boolean {
+  const override = groupOverrides.value.get(key)
+  if (override !== undefined) return override
+  return key.startsWith('m:') && key.slice(2) !== currentMonthKey()
+}
+
+function toggleGroup(key: string) {
+  const next = new Map(groupOverrides.value)
+  next.set(key, !isGroupCollapsed(key))
+  groupOverrides.value = next
+}
+
+function weekEventCount(week: AlertWeekGroup): number {
+  let n = 0
+  for (const day of week.days) n += day.events.length
+  return n
+}
+
+function monthEventCount(month: AlertMonthGroup): number {
+  let n = 0
+  for (const week of month.weeks) n += weekEventCount(week)
+  return n
+}
+
+// One flattened render row of a month section: week-header / day-header /
+// event rows share the 44/24/1fr grid so the rail column lines up.
+type RailClass = 'rail--none' | 'rail--start' | 'rail--end' | 'rail--full'
+type TimelineRow =
+  | {
+      type: 'week'
+      key: string
+      rail: RailClass
+      label: string
+      count: number
+      collapsed: boolean
+      toggleKey: string
+    }
+  | { type: 'day'; key: string; rail: RailClass; label: string }
+  | { type: 'event'; key: string; rail: RailClass; event: AlertEvent }
+
+function rowClass(row: TimelineRow): string {
+  return row.type === 'event' ? 'event-row' : `group-row group-row--${row.type}`
+}
+
+// monthRows flattens a month section into render rows, honoring the collapse
+// state (a collapsed week renders only its header row — its events are
+// hidden, never dropped). Rail continuity (ruling 3): the line is ONE
+// continuous stroke through days and weeks — every header paints its own
+// segment, so the stroke never breaks at a group boundary; it starts at the
+// first VISIBLE node and ends at the last (rows outside that span paint
+// nothing, and a lone visible node paints no line either — the v1
+// :only-child caliber). A collapsed week therefore moves the visible ends
+// and the clipping follows.
+function monthRows(month: AlertMonthGroup): TimelineRow[] {
+  const rows: TimelineRow[] = []
+  for (const week of month.weeks) {
+    const toggleKey = `w:${month.key}:${week.key}`
+    const collapsed = isGroupCollapsed(toggleKey)
+    rows.push({
+      type: 'week',
+      key: toggleKey,
+      rail: 'rail--full',
+      label: week.label,
+      count: weekEventCount(week),
+      collapsed,
+      toggleKey,
+    })
+    if (collapsed) continue
+    for (const day of week.days) {
+      rows.push({ type: 'day', key: `d:${day.key}`, rail: 'rail--full', label: day.label })
+      for (const ev of day.events) {
+        rows.push({ type: 'event', key: `e:${ev.id}`, rail: 'rail--full', event: ev })
+      }
+    }
+  }
+
+  let firstIdx = -1
+  let lastIdx = -1
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].type !== 'event') continue
+    if (firstIdx === -1) firstIdx = i
+    lastIdx = i
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (firstIdx === -1 || i < firstIdx || i > lastIdx) {
+      row.rail = 'rail--none'
+    } else if (row.type === 'event') {
+      if (firstIdx === lastIdx) row.rail = 'rail--none'
+      else if (i === firstIdx) row.rail = 'rail--start'
+      else if (i === lastIdx) row.rail = 'rail--end'
+    }
+  }
+  return rows
+}
 
 // "Load earlier" stays available while the last fetch returned a full page
 // (shorter page = the backend has no more) and the server cap is unreached.
@@ -429,24 +602,80 @@ const atServerCap = computed(
   padding: var(--hs-space-5) var(--hs-space-6);
 }
 
-/* Day sections */
-.day-section + .day-section {
+/* Month sections (GH #145): the inter-month gap is the ONE place the rail
+   line breaks — clipping happens only at month boundaries and the panel
+   top/bottom (ruling 3). */
+.month-section + .month-section {
   margin-top: var(--hs-space-6);
 }
-.day-label {
-  margin: 0 0 var(--hs-space-3);
+.month-label {
+  margin: 0 0 var(--hs-space-2);
   font-size: var(--hs-text-md);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
 
-/* Event rows: [time | rail | body]. The rail column carries the continuous
-   vertical line; each event is a node on it. */
-.day-events {
+/* Month content: one flat row list. Week/day header rows share the event
+   rows' grid (44px time gutter / 24px rail / body) so every label aligns
+   with the event bodies and the rail column paints its segment straight
+   through each header — the line reads as a single stroke. */
+.month-events {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+.group-row {
+  display: grid;
+  grid-template-columns: 44px 24px minmax(0, 1fr);
+  column-gap: var(--hs-space-2);
+  padding: var(--hs-space-1) var(--hs-space-2);
+}
+.group-row .rail {
+  grid-column: 2;
+}
+.group-label {
+  grid-column: 3;
+  margin: 0;
+  align-self: center;
+}
+.week-label {
+  font-size: var(--hs-text-sm);
+  font-weight: 600;
+  color: var(--hs-text-regular);
+}
+.day-label {
+  font-size: var(--hs-text-sm);
+  font-weight: 600;
+  color: var(--hs-text-secondary);
+}
+
+/* Collapse toggles (month/week headers): the event-row expansion language —
+   pointer + chevron carry affordance, focus-visible speaks the shell's
+   single focus language (2px brand outline). */
+.group-toggle {
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--hs-radius-sm);
+}
+.group-toggle:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 2px;
+}
+.group-chevron {
+  display: inline-block;
+  width: 14px;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+}
+.group-count {
+  margin-left: var(--hs-space-2);
+  font-size: var(--hs-text-xs);
+  font-weight: 400;
+  color: var(--hs-text-placeholder);
+}
+
+/* Event rows: [time | rail | body]. The rail column carries the continuous
+   vertical line; each event is a node on it. */
 .event-row {
   display: grid;
   grid-template-columns: 44px 24px minmax(0, 1fr);
@@ -467,8 +696,10 @@ const atServerCap = computed(
 .rail {
   position: relative;
 }
-/* The continuous line: every row paints its own segment; the first and
-   last rows of a day clip theirs so the line starts and ends at a node. */
+/* The continuous line (GH #145): every row paints its own full-height
+   segment; modifier classes assigned from the month's VISIBLE ends clip the
+   stroke so it starts at the first node and ends at the last. The v1
+   per-day :first-child/:last-child clipping is gone. */
 .rail::before {
   content: '';
   position: absolute;
@@ -479,15 +710,15 @@ const atServerCap = computed(
   margin-left: -1px;
   background: var(--hs-border-light);
 }
-.event-row:first-child .rail::before {
+.rail--none::before {
+  display: none;
+}
+.rail--start::before {
   top: 10px;
 }
-.event-row:last-child .rail::before {
+.rail--end::before {
   bottom: auto;
   height: 10px;
-}
-.event-row:only-child .rail::before {
-  display: none;
 }
 .node {
   position: absolute;

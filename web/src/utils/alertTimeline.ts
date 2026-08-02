@@ -148,6 +148,91 @@ export function groupEventsByDate(events: AlertEvent[], now: Date): AlertDayGrou
   return [...groups.values()].sort((a, b) => (a.key < b.key ? 1 : -1))
 }
 
+// --- Month > week > day nesting (GH #145, spec 0019 T5 / ruling 3) ----------
+
+// One Monday-start local calendar week inside a month section. A week that
+// straddles a month boundary is SPLIT: each month holds its own days under
+// the same Monday key (the month is the outermost grouping, brief line 22).
+export interface AlertWeekGroup {
+  key: string // Monday's local day key YYYY-MM-DD — stable across filter changes
+  label: string // M/D–M/D; both ends carry YYYY/ when the range crosses a year
+  days: AlertDayGroup[]
+}
+
+// One local calendar month — the timeline's outermost section. No separate
+// year level: the label spells the year only across years (ruling 3).
+export interface AlertMonthGroup {
+  key: string // YYYY-MM (local), also namespaces the collapse-state keys
+  label: string // N 月 (same year as now) / YYYY 年 N 月 (across years)
+  weeks: AlertWeekGroup[]
+}
+
+// Monday of the local calendar week containing `d` (Monday-start, brief
+// line 23 — never the Sunday-start convention).
+function mondayOf(d: Date): Date {
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return monday
+}
+
+// Week label = the Monday-start date range "M/D–M/D" (2026-08-02 main
+// ruling, rejecting "第 N 周" — a date range is self-explaining and carries
+// no week-numbering ambiguity). The year is added to BOTH ends only when
+// the range itself crosses a year ("2025/12/29–2026/1/4"); otherwise the
+// month label already carries the year caliber (brief line 23).
+function weekLabel(monday: Date): string {
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
+  const crossYear = monday.getFullYear() !== sunday.getFullYear()
+  const fmt = (d: Date) =>
+    `${crossYear ? `${d.getFullYear()}/` : ''}${d.getMonth() + 1}/${d.getDate()}`
+  return `${fmt(monday)}–${fmt(sunday)}`
+}
+
+// groupEventsByMonthWeekDay buckets events into month > week > day sections.
+// The day step (local calendar days, 今天/昨天 anchors, input order inside a
+// day) is the v1 groupEventsByDate caliber consumed here — one source, and
+// the brief's "日标签口径沿置" reference stays literal. Every level is
+// ordered newest first regardless of input order.
+export function groupEventsByMonthWeekDay(events: AlertEvent[], now: Date): AlertMonthGroup[] {
+  const dayGroups = groupEventsByDate(events, now)
+
+  const monthMap = new Map<string, AlertMonthGroup>()
+  const weekMaps = new Map<string, Map<string, AlertWeekGroup>>()
+  for (const day of dayGroups) {
+    // day.key is the local YYYY-MM-DD — parsing it back through the local
+    // constructor keeps every downstream derivation in local time.
+    const [y, m, dd] = day.key.split('-').map(Number)
+    const monthKey = `${y}-${String(m).padStart(2, '0')}`
+    let month = monthMap.get(monthKey)
+    if (!month) {
+      month = {
+        key: monthKey,
+        label: y === now.getFullYear() ? `${m} 月` : `${y} 年 ${m} 月`,
+        weeks: [],
+      }
+      monthMap.set(monthKey, month)
+      weekMaps.set(monthKey, new Map())
+    }
+    const monday = mondayOf(new Date(y, m - 1, dd))
+    const weekKey = localDayKey(monday)
+    const weekMap = weekMaps.get(monthKey)!
+    let week = weekMap.get(weekKey)
+    if (!week) {
+      week = { key: weekKey, label: weekLabel(monday), days: [] }
+      weekMap.set(weekKey, week)
+    }
+    week.days.push(day)
+  }
+
+  const months = [...monthMap.values()]
+  for (const month of months) {
+    // Sort defensively (groupEventsByDate precedent): key order IS
+    // chronological order for both YYYY-MM and Monday YYYY-MM-DD keys.
+    month.weeks = [...weekMaps.get(month.key)!.values()].sort((a, b) => (a.key < b.key ? 1 : -1))
+  }
+  return months.sort((a, b) => (a.key < b.key ? 1 : -1))
+}
+
 // --- Inline event detail (GH #144, spec 0019 裁决 4) -------------------------
 
 // Delivery-state vocabulary — the words (成功/失败/未发送) are carried over

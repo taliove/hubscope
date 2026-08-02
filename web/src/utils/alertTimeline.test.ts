@@ -7,6 +7,7 @@ import {
   filterEventsByTimeRange,
   pairIncidentDurations,
   groupEventsByDate,
+  groupEventsByMonthWeekDay,
   alertsFilterToQuery,
   parseAlertsFilterQuery,
   alertSentLabel,
@@ -173,6 +174,85 @@ describe('groupEventsByDate', () => {
   it('skips unparseable timestamps', () => {
     const broken = { ...event('down', now, { endpointId: 1 }), created_at: 'garbage' }
     expect(groupEventsByDate([broken], now)).toEqual([])
+  })
+})
+
+describe('groupEventsByMonthWeekDay (GH #145, spec 0019 T5 — month>week>day nesting)', () => {
+  // Fixed "now" for this suite: 2026-08-02 15:00 local — a Sunday, so the
+  // current Monday-start week is 7/27–8/2 and straddles the month boundary.
+  const now = new Date(2026, 7, 2, 15, 0, 0)
+
+  it('nests events month > week > day, newest first at every level, splitting a straddling week across months', () => {
+    const a = event('down', new Date(2026, 7, 2, 10, 0, 0), { endpointId: 1 }) // Sun — today
+    const b = event('down', new Date(2026, 6, 30, 9, 0, 0), { endpointId: 1 }) // Thu
+    const c = event('down', new Date(2026, 6, 26, 9, 0, 0), { endpointId: 1 }) // Sun — prior week
+    const d = event('down', new Date(2026, 6, 20, 9, 0, 0), { endpointId: 1 }) // Mon — prior week
+    const months = groupEventsByMonthWeekDay([d, c, b, a], now) // shuffled input
+
+    expect(months.map((m) => m.key)).toEqual(['2026-08', '2026-07'])
+    expect(months.map((m) => m.label)).toEqual(['8 月', '7 月'])
+
+    // August holds only Sunday 8/2 of the straddling week 7/27–8/2; July
+    // holds its 7/30 day under the SAME Monday key — the week is split, not
+    // duplicated into a second label caliber.
+    expect(months[0].weeks.map((w) => w.key)).toEqual(['2026-07-27'])
+    expect(months[0].weeks[0].label).toBe('7/27–8/2')
+    expect(months[0].weeks[0].days.map((g) => g.key)).toEqual(['2026-08-02'])
+    expect(months[0].weeks[0].days[0].events).toEqual([a])
+
+    expect(months[1].weeks.map((w) => w.key)).toEqual(['2026-07-27', '2026-07-20'])
+    expect(months[1].weeks[0].label).toBe('7/27–8/2')
+    expect(months[1].weeks[0].days.map((g) => g.key)).toEqual(['2026-07-30'])
+    expect(months[1].weeks[1].label).toBe('7/20–7/26')
+    expect(months[1].weeks[1].days.map((g) => g.key)).toEqual(['2026-07-26', '2026-07-20'])
+  })
+
+  it('weeks are Monday-start: a Sunday belongs to the week that began the prior Monday', () => {
+    // 2026-07-26 is a Sunday; a Sunday-start convention would open a new
+    // week 7/26–8/1 instead.
+    const sunday = event('down', new Date(2026, 6, 26, 9, 0, 0), { endpointId: 1 })
+    const months = groupEventsByMonthWeekDay([sunday], now)
+    expect(months[0].weeks[0].key).toBe('2026-07-20')
+    expect(months[0].weeks[0].label).toBe('7/20–7/26')
+  })
+
+  it('spells the year in the month label only across years', () => {
+    const old = event('down', new Date(2025, 11, 30, 9, 0, 0), { endpointId: 1 })
+    const sameYear = event('down', new Date(2026, 6, 15, 9, 0, 0), { endpointId: 1 })
+    const months = groupEventsByMonthWeekDay([sameYear, old], now)
+    expect(months.map((m) => [m.key, m.label])).toEqual([
+      ['2026-07', '7 月'],
+      ['2025-12', '2025 年 12 月'],
+    ])
+  })
+
+  it('adds the year to both ends of the week label when the range crosses a year', () => {
+    // Monday 2025-12-29 → Sunday 2026-01-04.
+    const ev = event('down', new Date(2025, 11, 30, 9, 0, 0), { endpointId: 1 })
+    const months = groupEventsByMonthWeekDay([ev], now)
+    expect(months[0].weeks[0].key).toBe('2025-12-29')
+    expect(months[0].weeks[0].label).toBe('2025/12/29–2026/1/4')
+  })
+
+  it('keeps the 今天/昨天 day anchors inside the nested structure (v1 label caliber)', () => {
+    const today = event('down', new Date(2026, 7, 2, 9, 0, 0), { endpointId: 1 })
+    const yesterday = event('down', new Date(2026, 7, 1, 9, 0, 0), { endpointId: 1 })
+    const months = groupEventsByMonthWeekDay([today, yesterday], now)
+    const week = months[0].weeks[0]
+    expect(week.days.map((g) => g.label)).toEqual(['今天 · 8 月 2 日', '昨天 · 8 月 1 日'])
+  })
+
+  it('a single event produces exactly one group at each level', () => {
+    const ev = event('down', new Date(2026, 6, 29, 9, 0, 0), { endpointId: 1 })
+    const months = groupEventsByMonthWeekDay([ev], now)
+    expect(months.length).toBe(1)
+    expect(months[0].weeks.length).toBe(1)
+    expect(months[0].weeks[0].days.length).toBe(1)
+    expect(months[0].weeks[0].days[0].events).toEqual([ev])
+  })
+
+  it('returns [] for empty input', () => {
+    expect(groupEventsByMonthWeekDay([], now)).toEqual([])
   })
 })
 
