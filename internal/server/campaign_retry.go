@@ -48,6 +48,18 @@ func (s *Server) handleRetryCampaignFailed(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Cross-campaign mutex (GH #153): retrying on top of another active
+	// campaign would stack a second cell pool on the Hub.
+	active, err := s.db.HasUnfinishedCampaign()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check active campaigns")
+		return
+	}
+	if active {
+		writeError(w, http.StatusConflict, "an evaluation campaign is already running")
+		return
+	}
+
 	reopened, err := s.db.ReopenCampaignForRetry(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to reopen campaign")

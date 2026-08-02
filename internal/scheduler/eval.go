@@ -126,6 +126,19 @@ func (w *EvalWorker) tick(ctx context.Context) {
 // sequentially (the batch is weekly and small, and serial execution keeps
 // hub load predictable); a failed suite does not block the remaining ones.
 func (w *EvalWorker) runBatch(ctx context.Context) {
+	// Cross-campaign mutex (GH #153): never stack the weekly batch on top of
+	// an active campaign (manual or a still-running previous schedule) — the
+	// cell pool would double the configured hub pressure.
+	active, err := w.db.HasUnfinishedCampaign()
+	if err != nil {
+		slog.Error("eval worker: check active campaigns", "error", err)
+		return
+	}
+	if active {
+		slog.Info("eval worker: skipping weekly batch, a campaign is already running")
+		return
+	}
+
 	modelIDs, err := w.db.ListActiveChatModelIDs()
 	if err != nil {
 		slog.Error("eval worker: list models", "error", err)

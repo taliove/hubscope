@@ -371,6 +371,19 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cross-campaign mutex (GH #153): a second batch on top of an active
+	// one would stack another cell pool on the Hub (2x the configured
+	// concurrency) and pollute both batches' latency data.
+	active, err := s.db.HasUnfinishedCampaign()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check active campaigns")
+		return
+	}
+	if active {
+		writeError(w, http.StatusConflict, "an evaluation campaign is already running")
+		return
+	}
+
 	// Snapshot the configured judge model at creation; the evaluator re-reads
 	// settings at run start and updates the record if it changed in between.
 	judgeModel, err := s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
