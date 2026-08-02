@@ -77,6 +77,13 @@ func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
 				slog.Error("evaluator: retry skips missing case", "case_id", n.CaseID, "error", err)
 				continue
 			}
+			// Disabled since the original run (GH #154): out of the
+			// rotation — its null result stays as history, like a purged
+			// case.
+			if !c.Enabled {
+				slog.Info("evaluator: retry skips disabled case", "case_id", n.CaseID)
+				continue
+			}
 			if _, seen := byModel[n.ModelDBID]; !seen {
 				order = append(order, n.ModelDBID)
 			}
@@ -143,6 +150,12 @@ func (e *Evaluator) retryModel(ctx context.Context, run *store.EvalRun, modelDBI
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		slog.Error("evaluator: retry skips model", "model_db_id", modelDBID, "error", err)
+		return
+	}
+	// Retired since the original run (GH #154): keep the null rows as
+	// history — re-asking a retired model is pure waste.
+	if model.Status == "retired" {
+		slog.Info("evaluator: retry skips retired model", "model", model.ModelID)
 		return
 	}
 	hub, err := e.db.GetHub(model.HubID)

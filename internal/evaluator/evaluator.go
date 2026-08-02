@@ -477,6 +477,13 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 		task.log(store.TaskLogWarn, fmt.Sprintf("model db_id=%d skipped: model not found", modelDBID))
 		return false
 	}
+	// Retired between trigger and cell start (GH #154): skip without
+	// calls and without stamping dead rows every view must filter out —
+	// the retirement was an operator decision, not a failure.
+	if model.Status == "retired" {
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: retired", model.ModelID))
+		return false
+	}
 
 	hub, err := e.db.GetHub(model.HubID)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -72,10 +73,17 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 	return scorePtr(0), fmt.Sprintf("rule %s not matched (expected %q)", mode, expected)
 }
 
+// judgeTimeout bounds a single judge call (GH #154): tighter than the
+// 120s answer budget — a hung judge should not hold a cell as long as a
+// legitimate long answer may.
+const judgeTimeout = 60 * time.Second
+
 // judgeVerdict calls the judge model through the same hub/protocol as the
 // evaluated model and parses its JSON verdict. A judge call failure or an
 // unparseable judge response yields a nil score (unjudged), never a 0.
 func (e *Evaluator) judgeVerdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string) {
+	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
+	defer cancel()
 	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, judgeModel, buildJudgePrompt(c, answer), evalMaxTokens)
 	if !res.OK {
 		detail := "judge call failed"
@@ -124,12 +132,11 @@ func parseJudgeResponse(text string) (float64, string, error) {
 		return 0, "", fmt.Errorf("invalid judge JSON: %w", err)
 	}
 
-	// Clamp to the documented 0~1 range; judges sometimes overshoot.
-	if parsed.Score < 0 {
-		parsed.Score = 0
-	}
-	if parsed.Score > 1 {
-		parsed.Score = 1
+	// A score outside the documented 0~1 range is a breached judge
+	// contract (GH #154): the verdict is untrustworthy and recorded as
+	// unjudged — never clamped into a fake full/zero mark.
+	if parsed.Score < 0 || parsed.Score > 1 {
+		return 0, "", fmt.Errorf("judge score out of range: %v", parsed.Score)
 	}
 	return parsed.Score, parsed.Reason, nil
 }

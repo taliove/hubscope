@@ -407,6 +407,12 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "suite not found")
 		return
 	}
+	// Out-of-rotation suites reject manual triggers too (GH #154) — the
+	// full sweep already skips them via ListEnabledSuites.
+	if !suite.Enabled {
+		writeError(w, http.StatusBadRequest, "suite is disabled")
+		return
+	}
 
 	for _, id := range req.ModelIDs {
 		model, err := s.db.GetModel(id)
