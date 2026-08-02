@@ -7,19 +7,119 @@
        full name); every metric is auxiliary. GH #136: the name/availability/
        p95 column headers are CLICKABLE sort buttons (the parent owns the
        sort state, persisted to localStorage) — the active column carries an
-       ↑/↓ indicator; the availability cell is number-left + bar-right
-       inline; the action cell is a bare chevron. GH #139: the vendor TILE
+       ↑/↓ indicator; the availability cell is number-left + the 24-cell
+       UptimeMicroStrip right (2026-08-02, the continuous bar retired);
+       the action cell is a bare chevron. GH #139: the vendor TILE
        moved back into the name cell (left of the model id) and the vendor
        column renders the family TEXT again — superseding GH #136's
        tile-column layout; the sections themselves are white tiles on the
        gray skeleton ground. The default ordering is availability DESC —
        the GH #136 user ruling that overturned GH #131's「weakest first」
-       default. GH #140: the name cell carries a PROTOCOL MINI-TAG after
-       the model id (same model_id on several protocols reads apart); the
-       grouping selector returns (flat / by vendor / by capability / by
-       protocol) and the section contract activates with real group
-       headers. -->
-  <div class="model-list">
+       default. GH #140: the grouping selector returns (flat / by vendor /
+       by capability / by protocol) and the section contract activates with
+       real group headers. 2026-08-02 (user ruling): the vendor TEXT column
+       becomes the PROTOCOL column (plain text, widened 100 → 130 so
+       images_generation renders in full) and the GH #140 name-cell
+       protocol mini-tag retires with it; the model id is click-to-copy
+       (tooltip keeps the full id on hover, ElMessage confirms). -->
+  <!-- Narrow card form (2026-08-01 shell drawer batch, useBreakpoint):
+       below the 1024px breakpoint the 7-column grid cannot compress, so the
+       list switches its FORM (the registered narrow-screen principle —
+       form switch, never horizontal-scroll exemption) to stacked cards:
+       top line = vendor tile + model id (click-to-copy) + chevron, mid line
+       = StatusBadge + protocol word + 已停用 note, stats line = availability
+       number+bar and P95. The 24h trend sparkline is the one omission
+       (registered in the dashboard surface brief); the column header row
+       is not rendered (sorting stays a desktop interaction — the persisted
+       sort state still orders the cards). Cards keep the round-7 pure-
+       rectangle language: straight hairlines, hover fill, no radius. -->
+  <div v-if="isNarrow" class="model-list">
+    <section v-for="section in sections" :key="section.key ?? '__flat__'" class="list-section">
+      <header v-if="section.key !== null" class="section-header">
+        <VendorTile v-if="section.tileFamily" :family="section.tileFamily" />
+        <span class="section-key">{{ section.label }}</span>
+        <span class="section-meta">{{ section.meta }}</span>
+        <!-- Group signal strip + share (2026-08-02 user ruling): the header
+             carries the group's probe-weighted 24h aggregate strip (same
+             UptimeMicroStrip as the rows) and a share entry that opens the
+             StatusCard dialog scoped to this group (parent composes the
+             snapshot — the ticket-59 group field leads the scope chips). -->
+        <UptimeMicroStrip v-if="section.dots" class="section-strip" :dots="section.dots" />
+        <button
+          type="button"
+          class="section-share"
+          aria-label="分享该组状态"
+          @click="emit('share-group', section)"
+        >
+          <el-icon><Share /></el-icon>
+        </button>
+      </header>
+
+      <div
+        v-for="entry in section.entries"
+        :key="entry.endpoint_id"
+        class="m-card"
+        :class="{ 'is-disabled': !entry.enabled }"
+        role="button"
+        tabindex="0"
+        :data-endpoint-id="entry.endpoint_id"
+        @click="emit('open', entry)"
+        @keydown.enter.prevent="emit('open', entry)"
+        @keydown.space.prevent="emit('open', entry)"
+      >
+        <div class="m-card-top">
+          <VendorTile :family="entry.family" />
+          <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
+            <button
+              type="button"
+              class="name-text name-copy"
+              @click.stop="copyModelId(entry)"
+              @keydown.enter.stop
+              @keydown.space.stop
+            >
+              <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
+              <span class="name-tail">{{ splitMiddle(entry.model_id).tail }}</span>
+            </button>
+          </el-tooltip>
+          <button
+            type="button"
+            class="detail-chevron"
+            aria-label="查看详情"
+            @click.stop="emit('open', entry)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+        <div class="m-card-mid">
+          <StatusBadge :status="entry.status" :reason="entry.status_reason" />
+          <span class="m-proto" :title="entry.protocol">{{ entry.protocol }}</span>
+          <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
+        </div>
+        <div class="m-card-stats">
+          <span class="cell-rate" :class="`tier-${availabilityRateTier(entry.success_rate_24h)}`">
+            <span class="rate-value">{{ formatPercent(entry.success_rate_24h) }}</span>
+            <UptimeMicroStrip :dots="entry.dots_24h" />
+          </span>
+          <span class="m-p95">P95&nbsp;<span class="cell-p95">{{ formatMs(entry.p95_ms) }}</span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Desktop grid form. -->
+  <div v-else class="model-list">
     <section v-for="section in sections" :key="section.key ?? '__flat__'" class="list-section">
       <header v-if="section.key !== null" class="section-header">
         <!-- Group-header vendor tile (GH #140): only family-grouped sections
@@ -27,55 +127,18 @@
              tile as the rows (one silhouette everywhere), unknown vendors
              the neutral initials tile. Capability/protocol groups render
              the bare group name. -->
-        <span
-          v-if="section.tileFamily"
-          class="vendor-tile"
-          :class="{ 'has-icon': vendorIcon(section.tileFamily) }"
-          :style="
-            vendorIcon(section.tileFamily)
-              ? { background: vendorTileBackground(vendorIcon(section.tileFamily)!) }
-              : undefined
-          "
-          :title="section.tileFamily"
-        >
-          <svg
-            v-if="vendorIcon(section.tileFamily)"
-            viewBox="0 0 24 24"
-            role="img"
-            :aria-label="section.tileFamily"
-          >
-            <defs v-if="vendorIcon(section.tileFamily)!.gradients">
-              <linearGradient
-                v-for="g in vendorIcon(section.tileFamily)!.gradients"
-                :key="g.id"
-                :id="g.id"
-                :x1="g.x1"
-                :y1="g.y1"
-                :x2="g.x2"
-                :y2="g.y2"
-              >
-                <stop v-for="s in g.stops" :key="s.offset" :offset="s.offset" :stop-color="s.color" />
-              </linearGradient>
-            </defs>
-            <circle
-              v-for="(c, i) in vendorIcon(section.tileFamily)!.circles ?? []"
-              :key="`c${i}`"
-              :cx="c.cx"
-              :cy="c.cy"
-              :r="c.r"
-              :fill="c.fill"
-            />
-            <path
-              v-for="(p, i) in vendorIcon(section.tileFamily)!.paths"
-              :key="i"
-              :d="p.d"
-              :fill="p.fill"
-            />
-          </svg>
-          <template v-else>{{ familyInitials(section.tileFamily) }}</template>
-        </span>
+        <VendorTile v-if="section.tileFamily" :family="section.tileFamily" />
         <span class="section-key">{{ section.label }}</span>
         <span class="section-meta">{{ section.meta }}</span>
+        <UptimeMicroStrip v-if="section.dots" class="section-strip" :dots="section.dots" />
+        <button
+          type="button"
+          class="section-share"
+          aria-label="分享该组状态"
+          @click="emit('share-group', section)"
+        >
+          <el-icon><Share /></el-icon>
+        </button>
       </header>
 
       <div class="list-head list-grid">
@@ -88,7 +151,7 @@
         >
           模型<span v-if="sort.key === 'name'" class="sort-arrow" aria-hidden="true">{{ sort.dir === 'desc' ? '↓' : '↑' }}</span>
         </button>
-        <span class="col-vendor">供应商</span>
+        <span class="col-proto">协议</span>
         <span>状态</span>
         <button
           type="button"
@@ -127,91 +190,58 @@
         <span class="cell-name">
           <!-- Vendor tile (GH #139: moved back into the name cell, left of
                the model id — the reference design; GH #136's tile column
-               is superseded and the vendor column returns to text). One
-               uniform 26x26 silhouette per vendor (vendorIcon.ts single
-               source, three variants GH #140: brand ground + white glyph /
-               subtle ground + original-color mark / self-grounded disc);
-               unknown vendors fall back to the neutral initials tile. The
-               title carries the full family name. -->
-          <span
-            class="vendor-tile"
-            :class="{ 'has-icon': vendorIcon(entry.family) }"
-            :style="
-              vendorIcon(entry.family)
-                ? { background: vendorTileBackground(vendorIcon(entry.family)!) }
-                : undefined
-            "
-            :title="entry.family"
-          >
-            <svg
-              v-if="vendorIcon(entry.family)"
-              viewBox="0 0 24 24"
-              role="img"
-              :aria-label="entry.family"
-            >
-              <defs v-if="vendorIcon(entry.family)!.gradients">
-                <linearGradient
-                  v-for="g in vendorIcon(entry.family)!.gradients"
-                  :key="g.id"
-                  :id="g.id"
-                  :x1="g.x1"
-                  :y1="g.y1"
-                  :x2="g.x2"
-                  :y2="g.y2"
-                >
-                  <stop v-for="s in g.stops" :key="s.offset" :offset="s.offset" :stop-color="s.color" />
-                </linearGradient>
-              </defs>
-              <circle
-                v-for="(c, i) in vendorIcon(entry.family)!.circles ?? []"
-                :key="`c${i}`"
-                :cx="c.cx"
-                :cy="c.cy"
-                :r="c.r"
-                :fill="c.fill"
-              />
-              <path
-                v-for="(p, i) in vendorIcon(entry.family)!.paths"
-                :key="i"
-                :d="p.d"
-                :fill="p.fill"
-              />
-            </svg>
-            <template v-else>{{ familyInitials(entry.family) }}</template>
-          </span>
+               is superseded). One uniform 26x26 silhouette per vendor
+               (vendorIcon.ts single source, three variants GH #140: brand
+               ground + white glyph / subtle ground + original-color mark /
+               self-grounded disc); unknown vendors fall back to the neutral
+               initials tile. The title carries the full family name — the
+               tile is now the ONLY vendor seat in the row (2026-08-02: the
+               vendor text column became the protocol column). -->
+          <VendorTile :family="entry.family" />
+          <!-- Model id: tooltip shows the full id on hover; a CLICK copies
+               it (2026-08-02 user ruling) — copyText carries the non-secure-
+               context fallback (the test line is plain http). The button is
+               a nested interactive element inside the row's role=button, so
+               click AND keydown stop here: Enter/Space must copy, never
+               trigger the row's open-panel handler. -->
           <el-tooltip :content="entry.model_id" :show-after="200" placement="top">
-            <span class="name-text">
+            <button
+              type="button"
+              class="name-text name-copy"
+              @click.stop="copyModelId(entry)"
+              @keydown.enter.stop
+              @keydown.space.stop
+            >
               <span class="name-head">{{ splitMiddle(entry.model_id).head }}</span>
               <span class="name-tail">{{ splitMiddle(entry.model_id).tail }}</span>
-            </span>
+            </button>
           </el-tooltip>
-          <!-- Protocol mini-tag (GH #140): the same model_id on several
-               protocols reads apart inline (endpoint = model × protocol,
-               W3). A self-made light tag — NOT el-tag — consuming the
-               protocol.ts single mapping for the color slot; the word is
-               the protocol value itself (never translated, §5 protocol
-               vocabulary). -->
-          <span class="proto-tag" :class="`t-${protocolTagType(entry.protocol)}`">{{ entry.protocol }}</span>
           <span v-if="!entry.enabled" class="disabled-tag">已停用</span>
         </span>
-        <!-- Vendor column as TEXT (GH #139, reference design: name cell =
-             tile + model id, vendor column = family word): sm secondary,
-             truncated with the full name on the title. -->
-        <span class="cell-vendor" :title="entry.family">{{ entry.family }}</span>
+        <!-- Protocol column (2026-08-02 user ruling: replaces the vendor
+             text column — endpoint = model × protocol (W3), and the protocol
+             distinguishes same-id rows better than the family word, which
+             the name-cell tile already carries). Plain text in the column
+             language (sm secondary, truncation + title), NOT the GH #140
+             colored mini-tag — the tag form retired with this change. -->
+        <span class="cell-proto" :title="entry.protocol">{{ entry.protocol }}</span>
         <span class="cell-status">
-          <StatusBadge :status="entry.status" :causes="entry.degrade_causes" :reason="entry.status_reason" />
+          <!-- No causes in the list (2026-08-02 user ruling): the「· 可用
+               性 / · 延迟」suffixes retire from the ROW so the status column
+               slims to the word itself (150 → 100); the cause detail lives
+               one click away in the detail panel (badge there keeps them). -->
+          <StatusBadge :status="entry.status" :reason="entry.status_reason" />
         </span>
         <span class="cell-rate" :class="`tier-${availabilityRateTier(entry.success_rate_24h)}`">
-          <!-- Number LEFT + bar RIGHT (GH #136): the tier-colored number
-               leads, the constant-scale (0–100) bar fills the remaining
-               column width on the same line. Track bg-hover, fill the
-               tier's GRAPHIC-grade token (text keeps the *-text grade —
-               the graphic/text division). No data = empty gray track
-               +「-」. No animation (GH #131: bars stay still). -->
+          <!-- Number LEFT + 24-cell signal strip RIGHT (2026-08-02 user
+               ruling, reviving UptimeMicroStrip): the continuous 0–100 bar
+               retires — the strip shows the past 24 hours cell by cell
+               (one cell = one hour, tier-colored by the overviewDots single
+               mapping, per-cell tooltip with the hour's exact success
+               count). The number keeps the *-text grade and the at-a-glance
+               reading. -->
           <span class="rate-value">{{ formatPercent(entry.success_rate_24h) }}</span>
-          <span class="rate-bar" aria-hidden="true">
-            <span class="rate-fill" :style="{ width: `${availabilityBarWidth(entry.success_rate_24h)}%` }" />
-          </span>
+          <UptimeMicroStrip :dots="entry.dots_24h" />
         </span>
         <span class="cell-p95">{{ formatMs(entry.p95_ms) }}</span>
         <span class="cell-trend">
@@ -253,39 +283,65 @@
 <script setup lang="ts">
 import StatusBadge from '@/components/StatusBadge.vue'
 import TrendSparkline from '@/components/TrendSparkline.vue'
+import UptimeMicroStrip from '@/components/UptimeMicroStrip.vue'
+import VendorTile from '@/components/VendorTile.vue'
+import { Share } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { formatMs, formatPercent } from '@/utils/format'
 import { availabilityRateTier } from '@/utils/overviewMetrics'
 import {
-  availabilityBarWidth,
   entryLatencySeries,
-  familyInitials,
   rowSparklineTone,
   type ListSort,
   type ListSortKey,
 } from '@/utils/modelList'
-import { vendorIcon, vendorTileBackground } from '@/utils/vendorIcon'
-import { protocolTagType } from '@/utils/protocol'
 import { splitMiddle } from '@/utils/truncate'
-import type { OverviewEntry } from '@/api/types'
+import { copyText } from '@/utils/clipboard'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import type { OverviewDot, OverviewEntry } from '@/api/types'
 
 // One list section: key null = the flat list (no section header); grouped
 // mode (GH #140) passes the group key plus a pre-composed meta line (counts
 // wording is composed by the parent from the single display-layer mapping).
 // tileFamily is set ONLY for family-grouped sections — the header renders
 // the group vendor tile then; capability/protocol groups render the bare
-// group name.
+// group name. dots (2026-08-02) is the group's probe-weighted 24h
+// aggregate for the header signal strip (flat mode has no header and
+// leaves it undefined).
 export interface ListSection {
   key: string | null
   label: string
   meta: string
   entries: OverviewEntry[]
   tileFamily?: string | null
+  dots?: OverviewDot[]
 }
 
 // The parent owns the sort state (persistence + the toolbar note); this
 // component only renders the indicator and reports header clicks.
 withDefaults(defineProps<{ sections: ListSection[]; sort: ListSort }>(), {})
-const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey] }>()
+const emit = defineEmits<{
+  open: [entry: OverviewEntry]
+  sort: [key: ListSortKey]
+  'share-group': [section: ListSection]
+}>()
+
+// Narrow form switch (2026-08-01 shell drawer batch): the shared 1024px
+// breakpoint drives the card/grid dual render.
+const { isNarrow } = useBreakpoint()
+
+// Click-to-copy on the model id (2026-08-02 user ruling): the result walks
+// the registered feedback trio (ElMessage for operation results); copyText
+// degrades to a hidden-textarea copy on non-secure contexts (plain-http
+// test line), and a hard failure says so instead of staying silent.
+async function copyModelId(entry: OverviewEntry) {
+  const ok = await copyText(entry.model_id)
+  if (ok) {
+    ElMessage.success(`已复制模型 ID:${entry.model_id}`)
+  } else {
+    ElMessage.warning('复制失败,请手动选择复制')
+  }
+}
 </script>
 
 <style scoped>
@@ -301,7 +357,14 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
      1px border + radius-lg, same light-container syntax as the widgets.
      The 8px inner padding keeps the row hover FILL (GH #140: bg-hover,
      no lift) inside the tile and lets the last row drop its hairline
-     without touching the container edge. */
+     without touching the container edge.
+     overflow: hidden (2026-08-01 squeeze-band hardening): between the
+     1024px breakpoint and ~1280px the shared grid's fixed minimum (fixed
+     columns 540 + name floor 140 + gaps 72) can exceed the lane, and the
+     overflow used to paint past the tile edge and over neighbouring cells;
+     now the right edge clips progressively at the tile boundary (the trend
+     column absorbs first — its floor is 0, see .list-grid). */
+  overflow: hidden;
   padding: var(--hs-space-2);
   background: var(--hs-bg-card);
   border: 1px solid var(--hs-border);
@@ -322,24 +385,69 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
+/* Group signal strip (2026-08-02): margin-left:auto pins the strip+share
+   pair to the header's right side; a max-width keeps the 24 cells from
+   turning into sausages on wide tiles. */
+.section-strip {
+  flex: 1 1 0;
+  max-width: 320px;
+  margin-left: auto;
+}
+/* Group share entry: same quiet-icon-button language as the row chevron
+   (secondary ink, brand on hover). */
+.section-share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: var(--hs-space-1);
+  border: none;
+  border-radius: var(--hs-radius-sm);
+  background: none;
+  color: var(--hs-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color var(--hs-transition);
+}
+.section-share:hover {
+  color: var(--hs-brand);
+}
+.section-share:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
+}
 /* Column template shared by the head and every row — alignment is a
    construction property of the list, never per-row luck. GH #139 cascade
    (content-box, 1200px content lane; section tile = border 1px×2 +
    padding 8px×2 → inner lane 1182px; row padding 12px×2 → grid lane
-   1158px): fixed = vendor 100 + status 150 + rate 150 + p95 100 + action
-   40 = 540px; gaps = 6 × 12px (space-3) = 72px; flex remainder 1158 − 540
-   − 72 = 546px splits name 1.8fr ≈ 351 / trend 1fr ≈ 195 (floor 150).
+   1158px): fixed = protocol 130 + status 100 + rate 210 + p95 100 + action
+   40 = 580px; gaps = 6 × 12px (space-3) = 72px; flex remainder 1158 − 580
+   − 72 = 506px splits name 1.8fr ≈ 325 / trend 1fr ≈ 181.
    GH #139: the vendor column grew 44 → 100 (family text returns; the
    26px tile + 8px gap now live inside the name cell, leaving ≈317px for
    the model id); the GH #136 vendor tile column (44px) is superseded.
-   GH #140: the name cell also carries the protocol mini-tag (xs, padding
-   4px×8px, ≈70px for chat protocols / ≈120px for images_generation at
-   most) after the model id — the model-id text lane absorbs it (≈200–
-   250px) and the middle truncation keeps the distinguishing tail visible;
-   the grid template itself does not change. */
+   2026-08-02: the vendor TEXT column becomes the PROTOCOL column (user
+   ruling — endpoint = model × protocol, W3; the protocol word
+   distinguishes same-id rows, the family word was redundant with the
+   name-cell tile) and widens 100 → 130 so images_generation renders in
+   full; the GH #140 protocol mini-tag inside the name cell retires (the
+   column carries the protocol now). Same round: the STATUS column slims
+   150 → 100 (the「· 可用性 / · 延迟」cause suffixes leave the list — the
+   badge shows the bare word; causes stay in the detail panel), and the
+   RATE column grows 150 → 210: the continuous 0–100 bar is replaced by
+   the 24-cell signal strip (number ≈55 + gap 8 + strip ≈147 → cell ≈4px).
+   2026-08-01 squeeze-band hardening (round-9, breakpoint moved to 1024):
+   the NAME floor is 140 (tile + a truncated id stay readable — the model
+   identity is the first hierarchy and must never clip away) and the trend
+   floor is 0 (was 150): between 1024px and ~1280px the fixed minimum
+   (580 + 140 + 72 = 792px) can exceed the lane, and the trend track is
+   the designated shock absorber — it shrinks toward 0 first so the P95 /
+   availability numbers stay legible longest; whatever still overflows
+   clips at the section tile edge (.list-section overflow), never paints
+   over neighbouring cells. */
 .list-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) 100px 150px 150px 100px minmax(150px, 1fr) 40px;
+  grid-template-columns: minmax(140px, 1.8fr) 130px 100px 210px 100px minmax(0, 1fr) 40px;
   align-items: center;
   gap: var(--hs-space-3);
 }
@@ -348,6 +456,13 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
   border-bottom: 1px solid var(--hs-border);
+}
+/* Squeeze-band hardening (2026-08-01): header labels never wrap (「模型」
+   used to stack into two lines when its track collapsed) — they clip
+   inline instead, mirroring the rows' progressive-clip behavior. */
+.list-head > * {
+  overflow: hidden;
+  white-space: nowrap;
 }
 /* Sortable column header (GH #136): a button reset onto the header text
    style — the head spans and the buttons share one typographic lane. The
@@ -372,19 +487,28 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   color: var(--hs-brand);
   font-weight: 600;
 }
-.col-vendor {
+.col-proto {
   overflow: hidden;
   white-space: nowrap;
 }
 .col-action {
   text-align: right;
 }
+/* Row geometry (2026-08-01 round-6 device feedback): the list is a pure
+   RECTANGLE language — no radius anywhere on the row. A border-bottom
+   painted on a box with radius-lg curls upward at both corners, tracing a
+   U-shaped outline that made every row read as a bordered mini-card, and
+   the first row's curled arms collided with the column-header rule; the
+   round-6 first cut scoped the radius to the hover fill, and the round-7
+   ruling retired it there too — the sharp fill matches the Leaderboard
+   brand-soft row fill exactly. */
 .list-row {
   padding: var(--hs-space-3);
   border-bottom: 1px solid var(--hs-border-light);
-  border-radius: var(--hs-radius-lg);
   cursor: pointer;
-  transition: background-color var(--hs-transition);
+  transition:
+    background-color var(--hs-transition),
+    border-color var(--hs-transition);
 }
 /* Inside the white section tile (GH #139) the last row drops its hairline
    — the container edge already closes the list. */
@@ -398,9 +522,13 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
    tile (「穿帮」). The gray fill layers naturally inside the white tile
    and around the brand tiles; semantics.css zeroes the transition under
    reduced motion. This replaces the GH #139 check LOW-2 known item (the
-   white-on-white fill), which is now resolved by this caliber. */
+   white-on-white fill), which is now resolved by this caliber.
+   Round-7 refinement: the fill is a SHARP rectangle (no radius — user
+   ruling) and the row's own hairline fades while hovered, so the fill
+   reads clean between the two straight separators of its neighbors. */
 .list-row:hover {
   background: var(--hs-bg-hover);
+  border-bottom-color: transparent;
 }
 .list-row:focus-visible {
   outline: 2px solid var(--hs-brand);
@@ -411,6 +539,17 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   align-items: center;
   gap: var(--hs-space-2);
   min-width: 0;
+  /* Squeeze-band hardening (2026-08-01): overflow used to paint the model
+     id and the protocol tag OVER the vendor/status columns when the name
+     track collapsed below the content minimum (tile 26 + tag ≈70–120 are
+     flex:none). Now the cell clips at its track edge and its content wraps
+     before it ever clips — the desktop inline layout is untouched
+     (everything fits, so nothing wraps there). The tag itself retired on
+     2026-08-02 (protocol column), the wrap guard stays for the 已停用
+     note. */
+  overflow: hidden;
+  flex-wrap: wrap;
+  row-gap: var(--hs-space-1);
 }
 .name-text {
   display: flex;
@@ -418,6 +557,27 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-size: var(--hs-text-md);
   font-weight: 600;
   color: var(--hs-text-primary);
+}
+/* Click-to-copy (2026-08-02): the model id is a real button (keyboard
+   operable) reset onto the name typography — a nested interactive inside
+   the row's role=button, its click/keydown stop at itself. Hover shifts
+   the ink toward brand as the copy affordance; focus walks the single
+   focus language. */
+.name-copy {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--hs-radius-xs);
+  transition: color var(--hs-transition);
+}
+.name-copy:hover {
+  color: var(--hs-brand);
+}
+.name-copy:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
 }
 /* Middle truncation (truncate.ts): the head ellipsizes, the fixed tail
    keeps the distinguishing suffix visible. */
@@ -435,40 +595,17 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   color: var(--hs-text-secondary);
   font-weight: 400;
 }
-/* Protocol mini-tag (GH #140): a self-made light tag — NOT el-tag (the
-   name cell needs a quieter, smaller unit than the el-tag geometry). The
-   color slot consumes the protocol.ts single mapping (protocolTagType):
-   success/warning/info read as CONTRACT-FAMILY distinction colors, never
-   as health signals (§5 protocol-tag semantics); the word is the raw
-   protocol value. Soft ground + text-grade ink; flex:none so the tag
-   survives and the model id truncates first. */
-.proto-tag {
-  flex: none;
-  font-size: var(--hs-text-xs);
-  line-height: 1;
-  padding: var(--hs-space-1) var(--hs-space-2);
-  border-radius: var(--hs-radius-sm);
-  background: var(--hs-info-soft);
-  color: var(--hs-info);
-}
-.proto-tag.t-success {
-  background: var(--hs-success-soft);
-  color: var(--hs-success-text);
-}
-.proto-tag.t-warning {
-  background: var(--hs-warning-soft);
-  color: var(--hs-warning-text);
-}
-.proto-tag.t-info {
-  background: var(--hs-info-soft);
-  color: var(--hs-info);
-}
+/* The GH #140 protocol mini-tag inside the name cell RETIRED on
+   2026-08-02 (user ruling): the protocol now has its own column, so the
+   name cell is tile + id + 已停用 note only. The colored tag form lives
+   on in the other protocol.ts consumers (detail page, EndpointTable,
+   StatusCard chips). */
 .disabled-tag {
   flex: none;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
-.cell-vendor {
+.cell-proto {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -476,40 +613,9 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
 }
-/* Uniform vendor tile (GH #136; GH #139 render seat moved into the name
-   cell; GH #140 three variants): one fixed 26x26 square for EVERY vendor —
-   control-grade radius, neutral hover-surface ground + secondary initials
-   for unknown vendors. The ground for KNOWN vendors is the inline
-   vendorTileBackground: brand hex (brand variant) / --hs-bg-subtle
-   (subtle variant, original-color marks) / transparent (none variant,
-   hunyuan's self-grounded disc). A 3-char CJK family name (~36px) would
-   otherwise spill past the fixed box (GH #131 check LOW-1). */
-.vendor-tile {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  overflow: hidden;
-  border-radius: var(--hs-radius-sm);
-  background: var(--hs-bg-hover);
-  color: var(--hs-text-secondary);
-  font-size: var(--hs-text-xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-/* Known vendor: the ground is the inline variant background
-   (vendorTileBackground, vendorIcon.ts); the 16px glyph centers inside —
-   the GH #134 transparent-ground form retired with the uniform tile. */
-.vendor-tile.has-icon {
-  color: var(--hs-bg-card);
-}
-.vendor-tile.has-icon svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
+/* The uniform vendor tile (GH #136/#139/#140) lives in VendorTile.vue —
+   extracted in the 2026-08-01 narrow-card batch; the group header, the
+   desktop row, and the narrow card share that single implementation. */
 .cell-rate {
   display: flex;
   flex-direction: row;
@@ -522,44 +628,19 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
   font-size: var(--hs-text-md);
   font-variant-numeric: tabular-nums;
 }
-/* Inline tier bar (GH #131; GH #136 number-left + bar-right): 0–100
-   constant scale, 4px fill over a bg-hover track; the segmented-strip
-   radius (radius-xs) marks it as a time/scale bar element. The bar takes
-   the column width left over by the number (24px floor keeps it a bar,
-   not a dot). The fill never transitions (GH #131: no bar animation). */
-.rate-bar {
-  flex: 1 1 0;
-  min-width: 24px;
-  display: block;
-  height: 4px;
-  border-radius: var(--hs-radius-xs);
-  background: var(--hs-bg-hover);
-  overflow: hidden;
-}
-.rate-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--hs-radius-xs);
-}
-/* Rate words consume the *-text grade; the bar fill consumes the tier's
-   graphic-grade body token (graphic/text division, GH #131). */
+/* The continuous 0–100 inline bar (GH #131/#136) RETIRED on 2026-08-02 —
+   the availability visual is the 24-cell UptimeMicroStrip now (one cell =
+   one hour, tier-colored by the overviewDots single mapping). The number
+   keeps its tier *-text grade; the strip carries the graphic-grade tier
+   colors per cell (graphic/text division). */
 .cell-rate.tier-success .rate-value {
   color: var(--hs-success-text);
-}
-.cell-rate.tier-success .rate-fill {
-  background: var(--hs-success);
 }
 .cell-rate.tier-warning .rate-value {
   color: var(--hs-warning-text);
 }
-.cell-rate.tier-warning .rate-fill {
-  background: var(--hs-warning);
-}
 .cell-rate.tier-danger .rate-value {
   color: var(--hs-danger-text);
-}
-.cell-rate.tier-danger .rate-fill {
-  background: var(--hs-danger);
 }
 .cell-rate.tier-none .rate-value {
   color: var(--hs-text-placeholder);
@@ -571,6 +652,9 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
 }
 .cell-trend {
   min-width: 0;
+  /* The trend track is the squeeze-band shock absorber (floor 0) — clip
+     the sparkline at the track edge rather than letting it paint out. */
+  overflow: hidden;
 }
 /* Row density: the sparkline's default 32px widget height compresses to a
    20px row lane (the child root takes the parent's scope, no :deep). */
@@ -595,5 +679,76 @@ const emit = defineEmits<{ open: [entry: OverviewEntry]; sort: [key: ListSortKey
 }
 .detail-chevron:hover {
   color: var(--hs-brand);
+}
+
+/* --- Narrow card form (2026-08-01 shell drawer batch) ----------------------
+   Stacked cards inside the same white section tile. The geometry mirrors
+   the desktop rows one-to-one: straight hairlines between cards, the last
+   card drops its line, hover = plain fill with its own hairline faded —
+   the round-7 pure-rectangle language, no radius anywhere. */
+.m-card {
+  padding: var(--hs-space-3);
+  border-bottom: 1px solid var(--hs-border-light);
+  cursor: pointer;
+  transition:
+    background-color var(--hs-transition),
+    border-color var(--hs-transition);
+}
+.list-section .m-card:last-child {
+  border-bottom: none;
+}
+.m-card:hover {
+  background: var(--hs-bg-hover);
+  border-bottom-color: transparent;
+}
+.m-card:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
+}
+.m-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+  min-width: 0;
+}
+/* The name lane flex-fills so the chevron pins right. */
+.m-card-top .name-text {
+  flex: 1 1 auto;
+}
+.m-card-top .detail-chevron {
+  margin-left: auto;
+  flex: none;
+}
+.m-card-mid {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+  margin-top: var(--hs-space-2);
+  min-width: 0;
+}
+/* Protocol word on the card's mid line (xs secondary): mirrors the
+   desktop protocol column (2026-08-02 — it was the family word before
+   that column became the protocol column; vendor identity on the card is
+   carried by the top-line tile). */
+.m-proto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.m-card-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-3);
+  margin-top: var(--hs-space-2);
+}
+.m-card-stats .cell-rate {
+  flex: 1 1 0;
+}
+.m-p95 {
+  flex: none;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
 }
 </style>

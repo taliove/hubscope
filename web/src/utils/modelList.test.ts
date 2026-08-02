@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  availabilityBarWidth,
   entryLatencySeries,
   familyInitials,
   familyOptions,
@@ -12,6 +11,8 @@ import {
   LIST_SORT_STORAGE_KEY,
   listSectionMeta,
   listSortNote,
+  listSortToQuery,
+  parseListSortQuery,
   loadListSort,
   nextListSort,
   rowSparklineTone,
@@ -59,21 +60,6 @@ describe('familyInitials', () => {
     expect(familyInitials('')).toBe('—')
     expect(familyInitials('   ')).toBe('—')
     expect(familyInitials('---')).toBe('—')
-  })
-})
-
-describe('availabilityBarWidth', () => {
-  it('maps the rate onto the constant 0–100 scale', () => {
-    expect(availabilityBarWidth(1)).toBe(100)
-    expect(availabilityBarWidth(0.955)).toBeCloseTo(95.5)
-    expect(availabilityBarWidth(0)).toBe(0)
-  })
-  it('renders null (no data) as an empty track', () => {
-    expect(availabilityBarWidth(null)).toBe(0)
-  })
-  it('clamps out-of-range input defensively', () => {
-    expect(availabilityBarWidth(1.2)).toBe(100)
-    expect(availabilityBarWidth(-0.5)).toBe(0)
   })
 })
 
@@ -395,5 +381,32 @@ describe('listSectionMeta (GH #140)', () => {
       entry({ endpoint_id: 2, model_id: 'b', status: 'healthy' }),
     ]
     expect(listSectionMeta(disabledDown)).toBe('2 个端点')
+  })
+})
+
+describe('list sort URL query codec (2026-08-02)', () => {
+  it('encodes key:dir', () => {
+    expect(listSortToQuery({ key: 'rate', dir: 'desc' })).toBe('rate:desc')
+    expect(listSortToQuery({ key: 'name', dir: 'asc' })).toBe('name:asc')
+  })
+
+  it('roundtrips every sortable key/dir', () => {
+    for (const sort of [
+      { key: 'name', dir: 'asc' },
+      { key: 'rate', dir: 'desc' },
+      { key: 'p95', dir: 'asc' },
+    ] as const) {
+      expect(parseListSortQuery(listSortToQuery(sort))).toEqual(sort)
+    }
+  })
+
+  it('rejects garbage so the caller falls back to localStorage', () => {
+    expect(parseListSortQuery(undefined)).toBeNull()
+    expect(parseListSortQuery(null)).toBeNull()
+    expect(parseListSortQuery('')).toBeNull()
+    expect(parseListSortQuery('rate')).toBeNull()
+    expect(parseListSortQuery('rate:sideways')).toBeNull()
+    expect(parseListSortQuery('vendor:asc')).toBeNull()
+    expect(parseListSortQuery(['rate:desc'])).toBeNull()
   })
 })

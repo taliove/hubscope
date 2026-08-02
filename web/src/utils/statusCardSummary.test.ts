@@ -270,7 +270,7 @@ describe('distributionSegments', () => {
     const counts = { ...emptyHealthCounts(), down: 2, failing: 3 }
     const segs = distributionSegments(counts)
     expect(segs.map(s => [s.status, s.label, s.tone, s.count])).toEqual([
-      ['stable', '稳定运行', 'success', 0],
+      ['stable', '稳定', 'success', 0],
       ['degraded', '降级', 'warning', 0],
       ['incident', '异常', 'danger', 5],
     ])
@@ -311,7 +311,7 @@ describe('summaryText', () => {
   it('warns when all green but availability is below 95%', () => {
     const entries = [makeEntry({ dots_24h: dotsWith(100, 10, [23]) })]
     expect(summaryText(emptyHealthCounts(), entries, false)).toBe(
-      '状态全部稳定运行,但 24h 可用率仅 90.0%,建议持续观察',
+      '状态全部稳定,但 24h 可用率仅 90.0%,建议持续观察',
     )
   })
   it('declares steady operation only with data backing it', () => {
@@ -320,7 +320,7 @@ describe('summaryText', () => {
   })
   it('never claims 平稳 without probe data', () => {
     const entries = [makeEntry()]
-    expect(summaryText(emptyHealthCounts(), entries, false)).toBe('当前全部稳定运行;暂无 24 小时探测数据')
+    expect(summaryText(emptyHealthCounts(), entries, false)).toBe('当前全部稳定;暂无 24 小时探测数据')
   })
 })
 
@@ -332,7 +332,7 @@ describe('singleModelStatement', () => {
   it('healthy at or above 95% states the plain rate', () => {
     const entry = makeEntry({ dots_24h: dotsWith(100, 0, [23]) })
     expect(singleModelStatement(entry, 1)).toEqual({
-      text: '稳定运行 · 24h 可用率 100.0%',
+      text: '稳定 · 24h 可用率 100.0%',
       tone: 'healthy',
       failingChip: null,
     })
@@ -340,7 +340,7 @@ describe('singleModelStatement', () => {
   it('healthy below 95% flags the shortfall', () => {
     const entry = makeEntry({ dots_24h: dotsWith(100, 10, [23]) })
     expect(singleModelStatement(entry, 0.9)).toEqual({
-      text: '稳定运行 · 24h 可用率仅 90.0%,低于 95%',
+      text: '稳定 · 24h 可用率仅 90.0%,低于 95%',
       tone: 'healthy',
       failingChip: null,
     })
@@ -348,14 +348,14 @@ describe('singleModelStatement', () => {
   it('healthy at exactly 95% uses the plain wording', () => {
     const entry = makeEntry({ dots_24h: dotsWith(100, 5, [23]) })
     expect(singleModelStatement(entry, 0.95)).toEqual({
-      text: '稳定运行 · 24h 可用率 95.0%',
+      text: '稳定 · 24h 可用率 95.0%',
       tone: 'healthy',
       failingChip: null,
     })
   })
   it('healthy without probes omits the rate clause', () => {
     expect(singleModelStatement(makeEntry(), null)).toEqual({
-      text: '稳定运行 · 24h 内无探测数据',
+      text: '稳定 · 24h 内无探测数据',
       tone: 'healthy',
       failingChip: null,
     })
@@ -413,13 +413,13 @@ describe('singleModelSummaryText', () => {
   })
   it('healthy below 95% suggests watching', () => {
     expect(singleModelSummaryText(makeEntry(), 0.9)).toBe(
-      '状态稳定运行,但 24h 可用率仅 90.0%,建议持续观察',
+      '状态稳定,但 24h 可用率仅 90.0%,建议持续观察',
     )
   })
   it('healthy at or above 95% declares steady operation', () => {
     expect(singleModelSummaryText(makeEntry(), 1)).toBe('近 24 小时运行平稳,无需处理')
   })
   it('healthy without probes states the fact and the gap', () => {
-    expect(singleModelSummaryText(makeEntry(), null)).toBe('当前状态稳定运行;暂无 24 小时探测数据')
+    expect(singleModelSummaryText(makeEntry(), null)).toBe('当前状态稳定;暂无 24 小时探测数据')
   })
 })

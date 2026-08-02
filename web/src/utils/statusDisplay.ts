@@ -1,7 +1,8 @@
 // Display-layer status mapping (spec 0018 「显示层状态映射」, GH #113; word
-// list switched to the reference-design vocabulary 2026-08-01, GH #128): the
+// list switched to the reference-design vocabulary 2026-08-01, GH #128;
+// stable shortened 稳定运行 → 稳定 on 2026-08-02 by user ruling): the
 // SINGLE point where the backend's four-state domain model collapses into
-// the three display states of UI v2 — healthy → 稳定运行 (success), degraded
+// the three display states of UI v2 — healthy → 稳定 (success), degraded
 // → 降级 (warning, degrade-cause sub-label preserved), down → 异常 (danger),
 // failing → 异常 (danger; failing survives only in the domain model, the
 // Lark pipeline and the alert-history event vocabulary, never on a status
@@ -30,7 +31,7 @@ export type DisplayTone = 'success' | 'warning' | 'danger'
 
 export interface StatusDisplay {
   status: DisplayStatus
-  label: string // 稳定运行 / 降级 / 异常
+  label: string // 稳定 / 降级 / 异常
   tone: DisplayTone
   // Degrade-cause sub-label suffix ('· 可用性' etc.); non-empty ONLY for the
   // degraded display state with causes passed in — defense in depth so a
@@ -39,7 +40,7 @@ export interface StatusDisplay {
 }
 
 const DISPLAY_INFO: Record<DisplayStatus, { label: string; tone: DisplayTone }> = {
-  stable: { label: '稳定运行', tone: 'success' },
+  stable: { label: '稳定', tone: 'success' },
   degraded: { label: '降级', tone: 'warning' },
   incident: { label: '异常', tone: 'danger' },
 }

@@ -12,7 +12,7 @@ import type { DegradeCause, EndpointStatus } from '@/api/types'
 import { statusDisplay, type DisplayStatus } from '@/utils/statusDisplay'
 
 // StatusBadge (rebuilt for UI v2, spec 0018 / GH #113): a small dot plus the
-// Chinese status word — 稳定运行 / 降级 / 异常 (reference-design vocabulary,
+// Chinese status word — 稳定 / 降级 / 异常 (reference-design vocabulary,
 // GH #128). The word and the color
 // slot come from the single display-layer mapping (utils/statusDisplay.ts);
 // this component never writes a status word literal.

@@ -39,17 +39,6 @@ export function familyInitials(family: string): string {
   return /^[a-zA-Z0-9]/.test(chars[0]) ? (chars[0] + chars[1]).toUpperCase() : chars[0]
 }
 
-// --- Availability progress bar ----------------------------------------------
-
-// Bar fill width as a 0–100 percentage of the constant-scale track: the bar
-// is the same 0–100 absolute scale as the score bars (W7 visual mirror
-// spirit) — never normalized per row. Null (no probes in the window) yields
-// 0: the empty gray track pairs with the「-」number and never reads as data.
-export function availabilityBarWidth(rate: number | null): number {
-  if (rate === null || rate === undefined) return 0
-  return Math.min(100, Math.max(0, rate * 100))
-}
-
 // --- Row trend sparkline ----------------------------------------------------
 
 // Per-row 24h latency series for the trend column: the entry's own hourly
@@ -238,6 +227,25 @@ export function saveListSort(sort: ListSort, storage: SortStorage = defaultStora
   } catch {
     // best effort — see above
   }
+}
+
+// --- URL query codec (2026-08-02, filter/sort deep-link) ---------------------
+
+// Query form of the sort state: `sort=rate:desc`. The URL is the shareable
+// form of the whole list view (keyword + vendor + status + grouping + sort)
+// — a pasted link must reproduce the exact view, so on open the URL WINS
+// over the localStorage persistence (which stays the no-param fallback).
+export function listSortToQuery(sort: ListSort): string {
+  return `${sort.key}:${sort.dir}`
+}
+
+// Reads the query value back; anything unrecognized (missing, wrong key,
+// wrong dir) yields null so the caller falls back to localStorage.
+export function parseListSortQuery(raw: unknown): ListSort | null {
+  if (typeof raw !== 'string') return null
+  const [key, dir] = raw.split(':')
+  if (!SORT_KEYS.includes(key) || !SORT_DIRS.includes(dir)) return null
+  return { key: key as ListSortKey, dir: dir as SortDir }
 }
 
 // The toolbar note restates the CURRENT ordering (GH #136): the GH #131

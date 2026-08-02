@@ -34,7 +34,7 @@ export function toneOf(counts: HealthCounts): HealthTone {
 }
 
 // One-sentence conclusion shared by banner and card. `empty` renders the
-// neutral wording so zero data never reads as a misleading "全部稳定运行".
+// neutral wording so zero data never reads as a misleading "全部稳定".
 // The status words compose from the display-layer mapping (three-state
 // language, GH #113; reference-design vocabulary GH #128): abnormal covers
 // down+failing — both display as 异常 — so the conclusion names the display

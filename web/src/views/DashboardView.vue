@@ -14,7 +14,7 @@
          meta top-right, 24h trend chart right). The conclusion math comes
          from the shared healthConclusion module (same words as the share
          material); a null health index is folded into the empty branch so
-         no-probe windows never read as 全部稳定运行. -->
+         no-probe windows never read as 全部稳定. -->
     <StatusHero
       :health="healthScore24h"
       :delta="healthScoreDelta"
@@ -62,19 +62,23 @@
           clearable
           class="filter-keyword"
         />
-        <span class="filter-label">供应商：</span>
-        <el-select v-model="familyFilter" placeholder="全部" clearable class="filter-select">
-          <!-- Options derive from the unfiltered entry set (familyOptions) so
-               an active filter never collapses its own option list. -->
-          <el-option v-for="f in vendorOptions" :key="f" :label="f" :value="f" />
-        </el-select>
-        <span class="filter-label">状态：</span>
-        <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
-          <!-- Options come from the single display-layer mapping (GH #113):
-               the three display states, light → heavy; down + failing filter
-               together under 异常. No status word literals here. -->
-          <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
-        </el-select>
+        <span class="filter-field">
+          <span class="filter-label">供应商：</span>
+          <el-select v-model="familyFilter" placeholder="全部" clearable class="filter-select">
+            <!-- Options derive from the unfiltered entry set (familyOptions) so
+                 an active filter never collapses its own option list. -->
+            <el-option v-for="f in vendorOptions" :key="f" :label="f" :value="f" />
+          </el-select>
+        </span>
+        <span class="filter-field">
+          <span class="filter-label">状态：</span>
+          <el-select v-model="statusFilter" placeholder="全部" clearable class="filter-select">
+            <!-- Options come from the single display-layer mapping (GH #113):
+                 the three display states, light → heavy; down + failing filter
+                 together under 异常. No status word literals here. -->
+            <el-option v-for="s in statusOptions" :key="s" :label="statusLabel(s)" :value="s" />
+          </el-select>
+        </span>
         <!-- Grouping selector (GH #140 regression, undoing the GH #131
              retirement): flat / by vendor / by capability / by protocol,
              default flat. Options from the modelList single Record source;
@@ -126,6 +130,7 @@
         :sort="listSort"
         @open="openDetail"
         @sort="onListSort"
+        @share-group="openGroupShare"
       />
       <el-empty
         v-else-if="entries.length > 0"
@@ -147,7 +152,8 @@
 // metric widgets + model status list. The old world — HealthBanner,
 // EndpointCard matrix, OverviewGroupSection, UptimeStrip, quick-view dialog
 // — is retired wholesale with this ticket.
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Share } from '@element-plus/icons-vue'
 import { useOverview, POLL_INTERVAL_MS } from '@/composables/useOverview'
 import { fetchAuthStatus } from '@/api/auth'
@@ -157,7 +163,7 @@ import ModelStatusList, { type ListSection } from '@/components/ModelStatusList.
 import ModelDetailPanel from '@/components/ModelDetailPanel.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import RecentEvents from '@/components/RecentEvents.vue'
-import type { StatusCardSnapshot } from '@/utils/statusCardSnapshot'
+import type { StatusCardSnapshot, GroupDimension } from '@/utils/statusCardSnapshot'
 import { DISPLAY_SEVERITY_ORDER, statusLabel, toDisplayStatus, type DisplayStatus } from '@/utils/statusDisplay'
 import {
   familyOptions,
@@ -165,10 +171,13 @@ import {
   LIST_GROUPING_DEFAULT,
   LIST_GROUPING_LABELS,
   LIST_GROUPINGS,
+  LIST_SORT_DEFAULT,
   listSectionMeta,
   listSortNote,
+  listSortToQuery,
   loadListSort,
   nextListSort,
+  parseListSortQuery,
   saveListSort,
   sortListEntries,
   type ListGrouping,
@@ -206,14 +215,27 @@ const {
 // constant (GH #129) — a single declaration, never a second literal.
 const refreshIntervalMs = POLL_INTERVAL_MS
 
-const keyword = ref('')
+// --- URL deep-link state (2026-08-02) -----------------------------------------
+// Every toolbar condition + the grouping + the active sort mirrors into the
+// query string, so any board view is shareable/bookmarkable by copying the
+// address bar. On mount the URL WINS (a pasted link must reproduce the exact
+// view); the sort falls back to localStorage when the URL carries no param.
+const route = useRoute()
+const router = useRouter()
+const initialQuery = route.query
+
+const keyword = ref(typeof initialQuery.q === 'string' ? initialQuery.q : '')
 // Vendor (供应商) filter of the reference toolbar (GH #131): matches the
 // entry's family classification; the options derive from the unfiltered set.
-const familyFilter = ref('')
+const familyFilter = ref(typeof initialQuery.family === 'string' ? initialQuery.family : '')
 // The status filter speaks DISPLAY states (GH #113): the domain status
 // machine keeps four states, but the board renders three — down and
 // failing filter together under 'incident' (异常).
-const statusFilter = ref<DisplayStatus | ''>('')
+const statusFilter = ref<DisplayStatus | ''>(
+  DISPLAY_SEVERITY_ORDER.includes(initialQuery.status as DisplayStatus)
+    ? (initialQuery.status as DisplayStatus)
+    : '',
+)
 // Filter-select options: the three display states, light → heavy (the
 // severity order reversed), words from the single mapping.
 const statusOptions = [...DISPLAY_SEVERITY_ORDER].reverse()
@@ -230,7 +252,7 @@ const enabledEntries = computed(() => entries.value.filter(e => e.enabled))
 const heroConclusion = computed(() => {
   const counts = countByStatus(enabledEntries.value)
   // A null health index (no probes in the window) folds into the empty
-  // branch: no data must never read as 全部稳定运行 (anti-fake).
+  // branch: no data must never read as 全部稳定 (anti-fake).
   const empty = enabledEntries.value.length === 0 || healthScore24h.value === null
   return conclusionText(toneOf(counts), counts, empty)
 })
@@ -281,6 +303,27 @@ function openShare() {
   shareVisible.value = true
 }
 
+// Group share (2026-08-02): the group header's share button opens the same
+// dialog with the snapshot scoped to THAT group — entries are the group's
+// (already filter-scoped) rows, and the group chip leads the scope chips
+// so a subset never reads as the global picture (the ticket-59 `group`
+// snapshot field, revived with real group headers).
+function openGroupShare(section: ListSection) {
+  shareSnapshot.value = {
+    entries: [...section.entries],
+    keyword: keyword.value.trim(),
+    protocol: '',
+    family: familyFilter.value || undefined,
+    status: statusFilter.value,
+    group:
+      grouping.value !== LIST_GROUPING_DEFAULT && section.key !== null
+        ? { dimension: grouping.value as GroupDimension, key: section.key }
+        : null,
+    generatedAt: new Date().toISOString(),
+  }
+  shareVisible.value = true
+}
+
 // --- List ---------------------------------------------------------------------
 
 // Vendor-filter options come from the UNFILTERED set (familyOptions) so an
@@ -310,9 +353,11 @@ const filteredEntries = computed(() => {
 // Column sort state (GH #136): owned HERE, not inside the list — the
 // toolbar note must restate the current ordering, so the note owner holds
 // the state (the list stays presentational: sort prop in, click event
-// out). Initialized from localStorage (`hs:list-sort`, the `hs:dark`
-// family); every change persists best-effort.
-const listSort = ref<ListSort>(loadListSort())
+// out). Initialized from the URL `sort` param when present (a pasted link
+// reproduces the exact view, 2026-08-02), else localStorage
+// (`hs:list-sort`, the `hs:dark` family); every change persists
+// best-effort.
+const listSort = ref<ListSort>(parseListSortQuery(initialQuery.sort) ?? loadListSort())
 const listSortNoteText = computed(() => listSortNote(listSort.value))
 
 function onListSort(key: ListSortKey) {
@@ -324,8 +369,39 @@ function onListSort(key: ListSortKey) {
 // GH #131 reference toolbar retired returns with the FLAT list as the
 // default. View-level organization only — sorting/filtering/share all
 // keep their current calibers (the snapshot scope chips describe filters;
-// grouping is not a filter).
-const grouping = ref<ListGrouping>(LIST_GROUPING_DEFAULT)
+// grouping is not a filter). Initialized from the URL `group` param
+// (2026-08-02 deep-link).
+const grouping = ref<ListGrouping>(
+  LIST_GROUPINGS.includes(initialQuery.group as ListGrouping)
+    ? (initialQuery.group as ListGrouping)
+    : LIST_GROUPING_DEFAULT,
+)
+
+// Mirror the view state into the query string (router.replace — no history
+// spam; query changes never remount the page, App.vue keys on path).
+// Defaults stay OUT of the query so a clean URL is the default view. A
+// 200ms debounce keeps keyword typing to one replace per pause.
+let querySyncTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  [keyword, familyFilter, statusFilter, grouping, listSort],
+  () => {
+    if (querySyncTimer) clearTimeout(querySyncTimer)
+    querySyncTimer = setTimeout(() => {
+      const query: Record<string, string> = {}
+      const kw = keyword.value.trim()
+      if (kw) query.q = kw
+      if (familyFilter.value) query.family = familyFilter.value
+      if (statusFilter.value) query.status = statusFilter.value
+      if (grouping.value !== LIST_GROUPING_DEFAULT) query.group = grouping.value
+      const sortQuery = listSortToQuery(listSort.value)
+      if (sortQuery !== listSortToQuery(LIST_SORT_DEFAULT)) query.sort = sortQuery
+      void router.replace({ query })
+    }, 200)
+  },
+)
+onBeforeUnmount(() => {
+  if (querySyncTimer) clearTimeout(querySyncTimer)
+})
 
 // The list sections: flat mode renders ONE section ranked by the active
 // column sort; grouped mode (GH #140) buckets the same filtered entries —
@@ -335,7 +411,10 @@ const grouping = ref<ListGrouping>(LIST_GROUPING_DEFAULT)
 // toolbar sort note stays literally true inside every group. The meta
 // line's count words come from the display-layer single mapping
 // (listSectionMeta — never a literal); family groups carry tileFamily so
-// the header renders the group vendor tile.
+// the header renders the group vendor tile. Each group header also carries
+// the group's 24h signal strip (2026-08-02): the probe-weighted aggregate
+// of the group's ENABLED entries (aggregateDots24h — never a per-endpoint
+// average, overviewDots discipline).
 const listSections = computed<ListSection[]>(() => {
   if (grouping.value === 'none') {
     return [{ key: null, label: '', meta: '', entries: filteredEntries.value }]
@@ -346,6 +425,7 @@ const listSections = computed<ListSection[]>(() => {
     meta: listSectionMeta(group.entries),
     entries: group.entries,
     tileFamily: grouping.value === 'family' ? group.key : null,
+    dots: aggregateDots24h(group.entries.filter(e => e.enabled)),
   }))
 })
 
@@ -458,6 +538,15 @@ onMounted(() => {
 .filter-keyword {
   width: 220px;
 }
+/* Label + select wrap as one unit (2026-08-01 narrow batch): without the
+   pairing wrapper a wrapped toolbar can orphan the label at the end of one
+   row while its select lands on the next. Desktop rendering is unchanged —
+   the wrapper is a plain inline-flex with the same gap rhythm. */
+.filter-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+}
 .filter-label {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
@@ -477,5 +566,41 @@ onMounted(() => {
   height: 46px;
   border-radius: var(--hs-radius-lg);
   background: var(--hs-bg-hover);
+}
+
+/* Narrow form (2026-08-01 shell drawer batch): below the 1024px breakpoint
+   the page padding tightens to space-4 (the registered narrow container
+   padding) and the toolbar reflows — the keyword field takes a full row,
+   the selects share the next rows evenly, and the share button keeps its
+   trailing seat. The desktop layout above is pixel-untouched. */
+@media (max-width: 1023px) {
+  .dashboard {
+    padding: var(--hs-space-4) var(--hs-space-4) var(--hs-space-6);
+  }
+  .filter-row {
+    width: 100%;
+    margin-left: 0;
+  }
+  .filter-keyword {
+    width: 100%;
+  }
+  /* Paired fields share a row evenly; the share button goes full-width on
+     its own row — thumb-sized and unambiguous. */
+  .filter-field {
+    flex: 1 1 150px;
+  }
+  .filter-field .filter-select {
+    flex: 1 1 0;
+    width: auto;
+  }
+  /* The grouping select has no label pair — it takes the same even share. */
+  .filter-row > .filter-select {
+    flex: 1 1 150px;
+    width: auto;
+  }
+  .share-btn {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

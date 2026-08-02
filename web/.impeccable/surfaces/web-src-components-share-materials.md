@@ -13,7 +13,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 ## 范围与读者
 
 - 读者:外部接收者(隔着一条分享链接/一张转发图,PRODUCT.md 第三受众)与转发者(状态板/管理台读者)。
-- 物料纪律(ui-guidelines §5/§2):恒亮主题导出、2x 导出、离屏捕获 `position: absolute; left: -10000px`(**禁 fixed**——snapdom 视口重排)、数字与范围 chips 同源、空态永不读作「全部正常/全部稳定运行」。
+- 物料纪律(ui-guidelines §5/§2):恒亮主题导出、2x 导出、离屏捕获 `position: absolute; left: -10000px`(**禁 fixed**——snapdom 视口重排)、数字与范围 chips 同源、空态永不读作「全部正常/全部稳定」。
 - **盒模型事实登记:** 本仓无全局 `box-sizing` reset,物料卡根元素均为 content-box——`width: 720px` 是**内容盒**宽,外盒 = 722(1px×2 描边在盒外);「720 画布内容宽 640」即由此而来(720 − 40×2 padding)。480 族同(内容盒 480,body padding 20×2 → 内容 440)。弹窗预览缩放一律按**外盒**(722 / 482)计算。
 
 ## 版式体系(GH #93,沿置)
@@ -40,7 +40,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 - **hero 大数字:** 完整版可用率大数字取 **hero 72 档**(`--hs-text-hero`,600,tracking -0.02em,tabular-nums——与状态概览 StatusHero 同字排;旧 display 28 档在物料同步退役);**480 族锚点降 3xl**(480 hero panel 左列容不下 72px——仍是全卡最大数字);次级「%」完整版 xl / 紧凑版 md。
 - **卡内分隔全部 hairline:** hero panel 竖分隔、明细区行分隔、页脚分隔一律 `--hs-border-light`(hairline 层级,不用 loud border;GH #121 line-lightening,与 GH #118 页面同口径)。
 - **文字场景一律 *-text 阶:** 状态词、分布串非零段、可用率三档着色数字、failed 警示行(warning-text)、chips 状态值、涨跌箭头;图形(分段格、alert-dot、条形)仍本体阶(ui-guidelines §3 文字/图形分工)。
-- **分布串三段(GH #113;词表 GH #128):** 「稳定运行 N · 降级 N · 异常 N」恒列,零计数段整段 placeholder;failing 由「含 N 个告警」事件 chip 披露(danger-text 描边 chip + danger 实心点——显示层无第四色,ui-guidelines §3.2)。
+- **分布串三段(GH #113;词表 GH #128):** 「稳定 N · 降级 N · 异常 N」恒列,零计数段整段 placeholder;failing 由「含 N 个告警」事件 chip 披露(danger-text 描边 chip + danger 实心点——显示层无第四色,ui-guidelines §3.2)。
 - **小卡 av-* 类补登(GH #121,GH #93 潜伏 bug 修复):** 端点小卡指标行大数字的 `av-ok / av-partial / av-fail / av-none` 类在 GH #93 落地时从未定义(数字静默落默认墨色),GH #121 补登于 StatusCard.vue(*-text 阶三档 + none placeholder);`av-*` 着色类自此是物料族登记类名,StatusCardDetail 名单区同源消费。
 - **compact override 落点(GH #121 check HIGH-1):** 紧凑版对子组件 hero panel 的覆写全部在 **StatusCard.vue 以 `.compact :deep(.hero-panel / .metric-divider / .hero-big / .metric-unit)`** 书写——scoped 作用域 ID 只父→子,子组件内 `:deep(.compact)` 是构造性死选择器(ui-guidelines §4 纪律;GH #93 时代两条死规则同批清除)。
 - **EvalCard 同构重建:** 轻容器语法(白面 + 1px 描边 + radius-lg + 无阴影)、hairline 行列分隔、档色数字 *-text 阶、模型名 md/600 墨色、前 3 名仪式(3px brand 竖条 + 名次大字)重译蓝品牌;failed 警示行 warning-text;范围 chips / 判分不完整水印 / 涨跌基准口径全不变。
@@ -56,7 +56,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 - 位置 = 异常明细区之下、总结行之上;区头「正常端点」同 detail-title 规格(sm/600 secondary)。
 - 2 列网格(720 列宽 312 / 480 列宽 212),条目 = 模型名(sm 截断)+ 24h 可用率(sm/600,`av-*` 三档 *-text 阶,null → `-` av-none);不带协议、不带点条。
 - 排序 = `success_rate_24h` 升序(最脆弱在前),null 沉底,同率 model_id 字典序,纯函数集中 `utils/statusCardSummary.ts`(vitest 覆盖);封顶 20 条,overflow 收尾「另有 N 个正常端点未列出,详见状态板」。
-- 边界:全异常不渲染区与区头;全正常保留「全部 N 个端点稳定运行」陈述行(词走显示层映射);单模型模式不渲染。
+- 边界:全异常不渲染区与区头;全正常保留「全部 N 个端点稳定」陈述行(词走显示层映射);单模型模式不渲染。
 
 ## 480 窄版构成(全局/分组,GH #93 沿置 + GH #121 字排)
 
