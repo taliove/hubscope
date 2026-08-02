@@ -26,7 +26,7 @@ web
 
 ## Capabilities and Constraints
 
-- 监控最小单位 Endpoint = Model × Protocol;状态机四态(正常/降级/宕机/failing 告警,W5 域模型不动),显示层三态映射(稳定/降级/异常,failing 显示层并入异常,ADR 0015;词表经 GH #128 切参照稿,2026-08-02「稳定运行」简化为「稳定」)。
+- 监控最小单位 Endpoint = Model × Protocol;状态机四态(正常/降级/宕机/failing 告警,W5 域模型不动)+ unverified 第五域值(Ping 监测端点无健康证据,spec 0018·端点退役),显示层 3+1 映射(稳定/降级/异常 + 未验证,failing 显示层并入异常,ADR 0015;词表经 GH #128 切参照稿,2026-08-02「稳定运行」简化为「稳定」、「未验证」第四呈现 GH #160)。
 - 评估域词汇:Suite / Case / Verdict / Eval Run / Eval Campaign / Leaderboard / Report / Share Link(权威定义见 CONTEXT.md)。
 - 单二进制、无运行时 node 依赖;SQLite 单连接;界面一律简体中文;桌面优先,窄屏不阻断即可。
 - 未决:无障碍(a11y)基线未建立,已立批次后排(2026-07-29 记录为开放事实)。

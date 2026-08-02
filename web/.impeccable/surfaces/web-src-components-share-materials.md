@@ -7,7 +7,7 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 
 # 分享物料与分享弹窗 — 表面简报
 
-> 组件族 brief:StatusCard 族 / EvalCard / 两个分享弹窗是跨视图消费的品牌物料组件族,「一张物料一处规格」。业务语义(防作假同源口径、三态词表、静态物料双编码、*-text 分工)以 ui-guidelines §3/§5 为准,本 brief 不重复。
+> 组件族 brief:StatusCard 族 / EvalCard / 两个分享弹窗是跨视图消费的品牌物料组件族,「一张物料一处规格」。业务语义(防作假同源口径、3+1 词表、静态物料双编码、*-text 分工)以 ui-guidelines §3/§5 为准,本 brief 不重复。
 > **v2 更新(2026-08-01,GH #122):** 物料新视觉重建(GH #121)与三态措辞(GH #113)落地后的定稿规格;旧世界(teal 品牌区、四态、display 28 档)规格作废。
 
 ## 范围与读者
@@ -40,23 +40,23 @@ related_targets: ["web/src/components/StatusCardDetail.vue","web/src/components/
 - **hero 大数字:** 完整版可用率大数字取 **hero 72 档**(`--hs-text-hero`,600,tracking -0.02em,tabular-nums——与状态概览 StatusHero 同字排;旧 display 28 档在物料同步退役);**480 族锚点降 3xl**(480 hero panel 左列容不下 72px——仍是全卡最大数字);次级「%」完整版 xl / 紧凑版 md。
 - **卡内分隔全部 hairline:** hero panel 竖分隔、明细区行分隔、页脚分隔一律 `--hs-border-light`(hairline 层级,不用 loud border;GH #121 line-lightening,与 GH #118 页面同口径)。
 - **文字场景一律 *-text 阶:** 状态词、分布串非零段、可用率三档着色数字、failed 警示行(warning-text)、chips 状态值、涨跌箭头;图形(分段格、alert-dot、条形)仍本体阶(ui-guidelines §3 文字/图形分工)。
-- **分布串三段(GH #113;词表 GH #128):** 「稳定 N · 降级 N · 异常 N」恒列,零计数段整段 placeholder;failing 由「含 N 个告警」事件 chip 披露(danger-text 描边 chip + danger 实心点——显示层无第四色,ui-guidelines §3.2)。
+- **分布串四段(GH #113 三段;第四段 2026-08-02 裁决,GH #160;词表 GH #128):** 「稳定 N · 降级 N · 异常 N · 未验证 N」恒列,零计数段整段 placeholder;未验证段词 placeholder 阶、段色中性(不借 warning 黄);failing 由「含 N 个告警」事件 chip 披露(danger-text 描边 chip + danger 实心点——显示层无第四功能色,ui-guidelines §3.2)。
 - **小卡 av-* 类补登(GH #121,GH #93 潜伏 bug 修复):** 端点小卡指标行大数字的 `av-ok / av-partial / av-fail / av-none` 类在 GH #93 落地时从未定义(数字静默落默认墨色),GH #121 补登于 StatusCard.vue(*-text 阶三档 + none placeholder);`av-*` 着色类自此是物料族登记类名,StatusCardDetail 名单区同源消费。
 - **compact override 落点(GH #121 check HIGH-1):** 紧凑版对子组件 hero panel 的覆写全部在 **StatusCard.vue 以 `.compact :deep(.hero-panel / .metric-divider / .hero-big / .metric-unit)`** 书写——scoped 作用域 ID 只父→子,子组件内 `:deep(.compact)` 是构造性死选择器(ui-guidelines §4 纪律;GH #93 时代两条死规则同批清除)。
 - **EvalCard 同构重建:** 轻容器语法(白面 + 1px 描边 + radius-lg + 无阴影)、hairline 行列分隔、档色数字 *-text 阶、模型名 md/600 墨色、前 3 名仪式(3px brand 竖条 + 名次大字)重译蓝品牌;failed 警示行 warning-text;范围 chips / 判分不完整水印 / 涨跌基准口径全不变。
 
 ## 完整版构成(720,GH #121 现状)
 
-自上而下八区(沿置,字排按上节):① 品牌区(padding 16px 40px;BrandMark 32 / Wordmark xl 20 / 标题 3xl 32);② 范围行 chips(无筛选纯文本「全部端点」;有筛选逐项 chips,状态 chip 值 *-text 阶着色);③ hero panel(`--hs-bg-subtle` 中性浅底(2026-08-01 复刻批:原 `--hs-bg-page` 语义随页面底白化迁移,gray-50 值不变,物料渲染逐像素不变)+ radius-lg + padding 16px 20px,左右两列 + 1px hairline 竖分隔:左列可用率 hero 72 大数字 + verdict + failing chip + 三段分布串,右列平均延迟 xl/600 墨色);④ 24h 分段可用率条(24 格填满式、格高 16px、radius-xs、2px 间距,三档着色 + 无数据灰,条下轴标「24 小时前 / 现在」);⑤ 异常明细(封顶 10 条,严重度排序,三段式行:状态词 *-text/600 + 模型·协议 + 单端点可用率;status_reason 两行截断;单端点 24h 打点条格高 8px 无轴标;overflow 收尾「另有 N 个异常端点未列出,详见状态板」);⑥ 正常端点名单区(GH #92 沿置,见下节);⑦ 一句话总结(`summaryText`/`singleModelSummaryText` 纯函数,优先级命中即止;不得掩盖异常);⑧ 页脚(hairline,左「生成于 YYYY-MM-DD HH:mm」+「另有 N 个已停用」,右 location.origin,xs placeholder)。空态:chips 保留、hero panel 中性灰底 + 可用率 `-`、分布串与 verdict 不渲染、不渲染总结与名单区。
+自上而下八区(沿置,字排按上节):① 品牌区(padding 16px 40px;BrandMark 32 / Wordmark xl 20 / 标题 3xl 32);② 范围行 chips(无筛选纯文本「全部端点」;有筛选逐项 chips,状态 chip 值 *-text 阶着色);③ hero panel(`--hs-bg-subtle` 中性浅底(2026-08-01 复刻批:原 `--hs-bg-page` 语义随页面底白化迁移,gray-50 值不变,物料渲染逐像素不变)+ radius-lg + padding 16px 20px,左右两列 + 1px hairline 竖分隔:左列可用率 hero 72 大数字 + verdict + failing chip + 三段分布串,右列平均延迟 xl/600 墨色);④ 24h 分段可用率条(24 格填满式、格高 16px、radius-xs、2px 间距,三档着色 + 无数据灰,条下轴标「24 小时前 / 现在」);⑤ 异常明细(封顶 10 条,严重度排序,三段式行:状态词 *-text/600 + 模型·协议 + 单端点可用率;status_reason 两行截断;单端点 24h 打点条格高 8px 无轴标;overflow 收尾「另有 N 个异常端点未列出,详见状态板」;**口径 GH #160:不含 unverified 端点——未验证不是异常,计数由分布串第四段披露,不另立「未验证明细」;明细与名单均 enabled-only,已停用由页脚披露**);⑥ 正常端点名单区(GH #92 沿置,见下节);⑦ 一句话总结(`summaryText`/`singleModelSummaryText` 纯函数,优先级命中即止;不得掩盖异常);⑧ 页脚(hairline,左「生成于 YYYY-MM-DD HH:mm」+「另有 N 个已停用」,右 location.origin,xs placeholder)。空态:chips 保留、hero panel 中性灰底 + 可用率 `-`、分布串与 verdict 不渲染、不渲染总结与名单区。
 
-**单模型模式(完整版):** 判定 `entries.length === 1 && hubName 非空`;范围区三枚 chips(模型/协议/Hub);hero panel 走 StatusCardSingleModelMetrics(可用率 hero 大数字 + 单状态陈述行 `singleModelStatement` + failing chip|评估区:总分 + suite tags 封顶 6);明细区单条三段式照常;名单区不渲染;全正常陈述「当前状态正常」。
+**单模型模式(完整版):** 判定 `entries.length === 1 && hubName 非空`;范围区三枚 chips(模型/协议/Hub);hero panel 走 StatusCardSingleModelMetrics(可用率 hero 大数字 + 单状态陈述行 `singleModelStatement` + failing chip|评估区:总分 + suite tags 封顶 6);明细区单条三段式照常;名单区不渲染;全正常陈述「当前状态正常」。**unverified 单模型(GH #160 正式口径,GH #159 止血升级):** 陈述行 =「未验证 · 24h 内无探测数据」(Ping 端点恒无数据;词 placeholder 阶,不借 warning 黄),一句话总结 =「状态未验证:该端点走 Ping 监测,不产生探测记录,暂无健康证据」(陈述事实无建议);「未知」防御回落保留给域外运行时值(ui-guidelines §3.1 分工)。
 
 ## 正常端点名单区(GH #92,沿置)
 
 - 位置 = 异常明细区之下、总结行之上;区头「正常端点」同 detail-title 规格(sm/600 secondary)。
 - 2 列网格(720 列宽 312 / 480 列宽 212),条目 = 模型名(sm 截断)+ 24h 可用率(sm/600,`av-*` 三档 *-text 阶,null → `-` av-none);不带协议、不带点条。
 - 排序 = `success_rate_24h` 升序(最脆弱在前),null 沉底,同率 model_id 字典序,纯函数集中 `utils/statusCardSummary.ts`(vitest 覆盖);封顶 20 条,overflow 收尾「另有 N 个正常端点未列出,详见状态板」。
-- 边界:全异常不渲染区与区头;全正常保留「全部 N 个端点稳定」陈述行(词走显示层映射);单模型模式不渲染。
+- 边界:全异常不渲染区与区头;全正常保留「全部 N 个端点稳定」陈述行(词走显示层映射);单模型模式不渲染;**unverified 端点不入名单(GH #160——「正常端点」标题不覆盖无证据端点,计数由分布串第四段披露;构造上 roster 过滤 `status === 'healthy'` 已自然排除)**。
 
 ## 480 窄版构成(全局/分组,GH #93 沿置 + GH #121 字排)
 

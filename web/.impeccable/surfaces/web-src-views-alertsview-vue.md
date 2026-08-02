@@ -37,7 +37,7 @@ related_targets: ["web/src/utils/alertTimeline.ts","web/src/utils/alertKind.ts"]
 - **模型名解析(沿置):** endpoint_id → model_id 映射来自 overview 载荷(公开 API,匿名可用);map 缺失回退裸 id(「审计面不丢行」)。
 
 ## 语义边界(沿置,不得回退)
-- **告警事件词表 = 类别词表(十一 kind),非健康状态**——词表与 tag type 映射集中 `utils/alertKind.ts`(ui-guidelines §7),组件内禁写词字面量;本页不经过显示层三态映射。
+- **告警事件词表 = 类别词表(十一 kind),非健康状态**——词表与 tag type 映射集中 `utils/alertKind.ts`(ui-guidelines §7),组件内禁写词字面量;本页不经过显示层 3+1 映射。
 - **借字例外:** 「厂商组告警」的「告警」借自域模型状态词表,语境限定本页,禁「修」字。
 - **公开四类 / 登录七类的分叉在服务端**(ui-guidelines 附录第 16 项):前端不做 kind 隐藏式过滤;匿名面类型筛选器只列四类是「选项诚实」,不是信息边界本身。
 - W5 告警管线零改动:本页只是既有 `GET /api/alerts` 数据的新呈现;告警生命周期(防抖/聚合窗口/分组告警/静默时段)测试保持绿是「后端告警逻辑不动」的回归证据(公开化改动仅限 API 读取分叉)。

@@ -15,10 +15,10 @@ related_targets: ["web/src/components/TimeSeriesChart.vue","web/src/components/P
 
 ## 页面构成(自上而下)
 1. **标题行:** h1 模型名(对象名 h1——「页面 h1 = 侧边栏标签」惯例不管辖深链页)+ 协议 tag(`protocolTagType` 集中映射)+ Hub 名 + 登录态「分享」按钮(StatusShareDialog 单模型入口,含完整版/紧凑版切换,紧凑版 = 端点小卡,规格见 share-materials 简报)
-2. **状态行:** StatusBadge(显示层三态,`reason` 经 title 提供判定依据——detail 契约不提供 `degrade_causes` 字段,本页不显示成因副标签,与列表/面板同映射不同字段集)+ 已停用 tag + status_reason
+2. **状态行:** StatusBadge(显示层 3+1,`reason` 经 title 提供判定依据——detail 契约不提供 `degrade_causes` 字段,本页不显示成因副标签,与列表/面板同映射不同字段集;**Ping 监测端点 GH #160 裁决②:detail API 与 overview 对齐 override 为 unverified,本页显示「未验证」中性档,不再返回 healthy**)+ 已停用 tag + status_reason
 3. **指标卡区:** 24h 可用率 KPI(固定 24h 口径,GH #56——复用 overview entry dots_24h 聚合,**不随窗口控件漂移**;`availabilityRateTier` *-text 阶着色;null 注「24h 内无探测数据」)+ 评估总分卡(最近 settle 批次;suite tags 封顶展示)
 4. **窗口/mode 控件行:** 24h/7天/30天 × 合并/流式/非流式(只驱动图表)+ 登录态「评估此模型」主按钮
-5. **时序图表区(TimeSeriesChart × 3):** 延迟(P50/P95)/ TTFT(非流式模式隐藏)/ 成功率
+5. **时序图表区(TimeSeriesChart × 3):** 延迟(P50/P95——**仅成功口径,GH #160**:series 桶只统计成功探测,全失败桶 p50/p95 = null,随 null 断线纪律断线不插值;ui-guidelines §3.3 四出口统一)/ TTFT(非流式模式隐藏)/ 成功率
 6. **近期失败表(ProbeRecordTable,最近 20 条)**
 
 ## 组件规格
