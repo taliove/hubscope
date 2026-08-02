@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+
+	"github.com/taliove/hubscope/internal/store"
 )
 
 // handleRetryCampaignFailed handles POST /api/campaigns/{id}/retry-failed
@@ -83,4 +85,28 @@ func (s *Server) handleRetryCampaignFailed(w http.ResponseWriter, r *http.Reques
 	s.audit(r, "eval.retry_failed", "campaign", strconv.FormatInt(id, 10),
 		"", "accepted")
 	s.writeCampaignCreated(w, id)
+}
+
+// handleCancelCampaign handles POST /api/campaigns/{id}/cancel (GH #152):
+// stops the locally executing batch — in-flight cells run to completion,
+// unstarted cells are dropped, their runs fail and the campaign settles
+// failed through the normal machinery. Hub-isolated per
+// loadVisibleCampaign; a settled campaign conflicts, a campaign not
+// executing on this process (already canceled, or a stale running row from
+// a crashed process) conflicts too.
+func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
+		return
+	}
+	if campaign.Status == store.CampaignStatusDone || campaign.Status == store.CampaignStatusFailed {
+		writeError(w, http.StatusConflict, "campaign is already settled")
+		return
+	}
+	if !s.evaluator.CancelCampaign(campaign.ID) {
+		writeError(w, http.StatusConflict, "campaign is not actively executing")
+		return
+	}
+	s.audit(r, "eval.cancel", "campaign", strconv.FormatInt(campaign.ID, 10), "", "accepted")
+	writeData(w, http.StatusAccepted, map[string]bool{"canceled": true})
 }

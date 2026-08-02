@@ -20,6 +20,11 @@ import (
 // trigger is stamped onto every run so runs and their campaign always agree
 // on provenance.
 func (e *Evaluator) RunCampaign(ctx context.Context, campaignID int64, trigger string, suites []store.Suite, modelDBIDs []int64, judgeModel string) {
+	// Registered for operator cancel (GH #152); unregistered when the
+	// campaign's execution (including settle) returns.
+	ctx = e.registerCancel(ctx, campaignID)
+	defer e.unregisterCancel(campaignID)
+
 	// Zero suites in the rotation (the cutover's empty-rotation window,
 	// ticket 99 risk 3): degrade to an empty done batch instead of letting
 	// the aggregate rule settle the campaign as failed.

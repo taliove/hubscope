@@ -31,6 +31,10 @@ import (
 // (W7). Cases not yet attempted keep their null rows, so an interrupted
 // retry stays retryable.
 func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
+	// Registered for operator cancel (GH #152), same as a fresh batch.
+	ctx = e.registerCancel(ctx, campaignID)
+	defer e.unregisterCancel(campaignID)
+
 	runs, err := e.db.ListEvalRunsByCampaign(campaignID)
 	if err != nil {
 		slog.Error("evaluator: load campaign runs for retry", "campaign_id", campaignID, "error", err)

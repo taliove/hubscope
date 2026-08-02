@@ -49,11 +49,51 @@ type Evaluator struct {
 
 	AfterCampaign func(ctx context.Context, campaignID int64)
 	Now           func() time.Time
+
+	// cancels tracks the locally executing campaigns' cancel functions
+	// (GH #152): every entry point (full sweep, single-suite run, retry,
+	// weekly schedule) registers here, so POST /campaigns/{id}/cancel can
+	// stop any of them.
+	cancelMu sync.Mutex
+	cancels  map[int64]context.CancelFunc
 }
 
 // New creates an Evaluator backed by the given store and hub client.
 func New(db *store.DB, client *hubclient.Client) *Evaluator {
-	return &Evaluator{db: db, client: client}
+	return &Evaluator{db: db, client: client, cancels: map[int64]context.CancelFunc{}}
+}
+
+// registerCancel derives a cancelable context for one campaign's execution
+// and records it until unregisterCancel (deferred by the caller).
+func (e *Evaluator) registerCancel(ctx context.Context, campaignID int64) context.Context {
+	ctx, cancel := context.WithCancel(ctx)
+	e.cancelMu.Lock()
+	e.cancels[campaignID] = cancel
+	e.cancelMu.Unlock()
+	return ctx
+}
+
+// unregisterCancel drops a campaign's cancel entry at execution end.
+func (e *Evaluator) unregisterCancel(campaignID int64) {
+	e.cancelMu.Lock()
+	delete(e.cancels, campaignID)
+	e.cancelMu.Unlock()
+}
+
+// CancelCampaign stops the locally executing campaign (GH #152): in-flight
+// cells run to completion, unstarted cells are dropped and their runs fail,
+// so the campaign settles failed through the normal machinery. It reports
+// false when the campaign is not executing on this process (already
+// canceled, settled, or a stale running row from a crashed process).
+func (e *Evaluator) CancelCampaign(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	cancel, ok := e.cancels[campaignID]
+	if ok {
+		delete(e.cancels, campaignID)
+		cancel()
+	}
+	return ok
 }
 
 // now returns the current time from the injected clock, defaulting to the
@@ -81,6 +121,9 @@ func (e *Evaluator) RunEval(ctx context.Context, runID int64, modelDBIDs []int64
 	if err != nil {
 		return err
 	}
+	// Registered for operator cancel under the run's campaign (GH #152).
+	ctx = e.registerCancel(ctx, prep.run.CampaignID)
+	defer e.unregisterCancel(prep.run.CampaignID)
 	e.executePrepared(ctx, []*preparedRun{prep}, modelDBIDs)
 	return ctx.Err()
 }
