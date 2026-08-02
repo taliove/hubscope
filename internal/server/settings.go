@@ -81,7 +81,8 @@ func (s *Server) readSettings() (settingsDTO, error) {
 	return dto, nil
 }
 
-// handleGetSettings handles GET /api/settings. Public (read).
+// handleGetSettings handles GET /api/settings. Session-gated: the route
+// is not in publicReadPattern, so anonymous callers get 401.
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	dto, err := s.readSettings()
 	if err != nil {

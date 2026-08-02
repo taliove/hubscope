@@ -43,6 +43,23 @@ func TestReadAuthTiers(t *testing.T) {
 		}
 	}
 
+	// Public but content-filtered (spec 0019, ui-guidelines appendix item
+	// 16): /api/alerts answers anonymous with 200, but the payload is a
+	// four-kind whitelist view (down / recovered / group_down /
+	// group_recovered) at global scope. The content assertions live in
+	// alerts_public_test.go (TestAnonymousAlertsSeesOnlyIncidentNarrative
+	// and friends).
+	publicFilteredPaths := []string{
+		"/api/alerts",
+	}
+	for _, p := range publicFilteredPaths {
+		resp := plainGet(t, ts.URL+p)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("public-filtered read %s: expected 200, got %d", p, resp.StatusCode)
+		}
+	}
+
 	protectedPaths := []string{
 		"/api/hubs",
 		"/api/classification-rules",
@@ -51,7 +68,6 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/campaigns",
 		"/api/share-links",
 		"/api/settings",
-		"/api/alerts",
 		"/api/audit-logs",
 		"/api/audit-logs/actions",
 		"/api/tasks",
@@ -81,6 +97,8 @@ func TestReadAuthTiers(t *testing.T) {
 		"/api/endpoints/1/probesx",
 		"/api/models/abc/eval-summary",
 		"/api/models/1/eval-summaryx",
+		"/api/alertsx",
+		"/api/alerts/",
 	}
 	for _, p := range lookalikes {
 		resp := plainGet(t, ts.URL+p)

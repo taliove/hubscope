@@ -33,20 +33,27 @@ func toAlertEventDTO(e store.AlertEvent) alertEventDTO {
 	}
 }
 
-// handleListAlerts handles GET /api/alerts?limit=N. Public (read), scoped to
-// the session's hub for non-super_admin. Hub-less events (score_drop, batch;
-// no endpoint) are visible only to super_admin via the *All store variant.
+// handleListAlerts handles GET /api/alerts?limit=N. Anonymous callers get
+// the public four-kind whitelist view (publicAlertKinds, spec 0019 —
+// incident narrative only, global scope, filtered in the store query so the
+// limit window is not diluted by hidden kinds). Authenticated callers:
+// super_admin sees everything including hub-less events (score_drop, batch;
+// no endpoint) via the *All store variant, a hub-scoped user sees their
+// hub's endpoint-bound events, and a user with no hub sees an empty list.
 func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"))
 
 	u := sessionUser(r)
 	var events []store.AlertEvent
 	var err error
-	if u == nil || u.Role == store.RoleSuperAdmin {
+	switch {
+	case u == nil:
+		events, err = s.db.ListAlertEventsByKinds(limit, publicAlertKinds)
+	case u.Role == store.RoleSuperAdmin:
 		events, err = s.db.ListAlertEventsAll(limit)
-	} else if u.HubID == nil {
+	case u.HubID == nil:
 		events = []store.AlertEvent{}
-	} else {
+	default:
 		events, err = s.db.ListAlertEventsByHub(*u.HubID, limit)
 	}
 	if err != nil {

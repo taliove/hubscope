@@ -323,13 +323,29 @@ func (s *Server) hasValidSession(r *http.Request) (int64, bool) {
 
 // publicReadPattern matches the read paths that stay public: the status
 // board (overview matrix, endpoint detail/series/probes, and the per-model
-// eval summary that feeds the public endpoint detail page), the public eval
-// board (spec 0010 — the newest settled campaign's report, same information
-// level as the shared report) plus the token-gated shared report itself
-// (ADR 0006 — the token in the path is the credential, and the handler
-// answers unknown/revoked tokens with a uniform 404). Every other GET
-// requires a session, like all writes.
-var publicReadPattern = regexp.MustCompile(`^/api/(overview|endpoints/\d+(/series|/probes)?|models/\d+/eval-summary|shared-reports/[^/]+|public/eval/board)$`)
+// eval summary that feeds the public endpoint detail page), the public
+// alert timeline (spec 0019 — the anonymous payload is filtered to the
+// publicAlertKinds whitelist, so only the four incident-narrative kinds are
+// exposed), the public eval board (spec 0010 — the newest settled
+// campaign's report, same information level as the shared report) plus the
+// token-gated shared report itself (ADR 0006 — the token in the path is the
+// credential, and the handler answers unknown/revoked tokens with a uniform
+// 404). Every other GET requires a session, like all writes.
+var publicReadPattern = regexp.MustCompile(`^/api/(overview|alerts|endpoints/\d+(/series|/probes)?|models/\d+/eval-summary|shared-reports/[^/]+|public/eval/board)$`)
+
+// publicAlertKinds is the anonymous whitelist for GET /api/alerts
+// (spec 0019, ui-guidelines appendix item 16): the four incident-narrative
+// kinds. The seven operational-pipeline kinds (test / batch /
+// quiet_summary / score_drop / score_drop_skipped / retire_pending /
+// retired) — and with them every hub-less event, which only those kinds
+// produce — stay session-only. The constant lives next to
+// publicReadPattern so the public information boundary reads at one point.
+var publicAlertKinds = []string{
+	store.AlertKindDown,
+	store.AlertKindRecovered,
+	store.AlertKindGroupDown,
+	store.AlertKindGroupRecovered,
+}
 
 // requireSession rejects requests without a valid session cookie, except
 // status-board GETs, which stay public by design. On a valid session it
