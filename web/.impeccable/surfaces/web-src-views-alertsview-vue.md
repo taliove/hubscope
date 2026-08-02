@@ -24,8 +24,8 @@ related_targets: ["web/src/utils/alertTimeline.ts","web/src/utils/alertKind.ts"]
    - **日组:** 周內按本地日历日分组,日标签 = 今天/昨天锚点 + 日期(v1 `groupEventsByDate` 标签口径沿置)。
    - **轨道线跨日跨周连续不断**——v1 的 `:first-child/:last-child` 日界裁剪作废,裁剪只发生在月组首行之前与末行之后;折叠是视图组织,折叠不丢事件(展开即恢复,不重新拉取)。
    - **折叠默认态(2026-08-02 main 落锤确认):** 当前月及其各周默认展开,更早月份默认折叠;折叠态会话内保持,不做 localStorage 持久化。
-   - **事件行:** 时钟时间(sm secondary,tabular-nums)+ 轨道节点(9px 圆点,tag type 图形档着色)+ 类别 el-tag(`alertKindTagType`,size small)+ 影响对象(模型名;endpoint_id null 的聚合类事件显 group_key family 名;**已删除端点回退裸 id 标签——审计面永不丢行**)+ 持续时间(FIFO 配对,进行中显「持续中」danger-text)+ 投递状态 + message(列表态两行截断 + title 兜底沿置)。
-   - **行内展开详情(裁决 4,EvalLiveFeed 先例——否掉弹窗/面板):** 点击事件行就地展开(行 role/tabindex/Enter/Space 键盘可达,aria-expanded),展开区纵排——完整 message(不截断)/ 完整时间戳(含日期与秒)/ 事件 ID · 端点 ID / 配对恢复事件与其持续时长(未配对显「进行中」)/ 投递状态明细;**端点事件附「查看端点详情」链接 → /endpoints/:id**(已删除端点同样可点,详情页承接深链);展开态 keyed by event id,轮询/筛选变化不塌(v1 无轮询,本条为防御登记);同时只展开一个或多个不设限(参照 EvalLiveFeed 多开先例)。
+   - **事件行:** 时钟时间(sm secondary,tabular-nums)+ 轨道节点(9px 圆点,tag type 图形档着色)+ 类别 el-tag(`alertKindTagType`,size small)+ 影响对象(模型名;endpoint_id null 的聚合类事件显 group_key family 名;**已删除端点回退裸 id 标签——审计面永不丢行**)+ 持续时间(FIFO 配对,未配对 opener 显「进行中」danger-text)+ 投递状态 + message(列表态两行截断 + title 兜底沿置)。
+   - **行内展开详情(裁决 4,EvalLiveFeed 先例——否掉弹窗/面板):** 点击事件行就地展开(行 role/tabindex/Enter/Space 键盘可达,aria-expanded),展开区纵排——完整 message(不截断)/ 完整时间戳(含日期与秒)/ 事件 ID · 端点 ID / 配对恢复事件与其持续时长(复用 `pairIncidentDurations` 同一配对结果,经 `closerId` 回查;opener 未配对显「进行中」,closer 与非事故事件显中性「—」——无配对信息不冒充事故语义,check #144 LOW-2 登记)/ 投递状态明细(词 + sent_ok 原始态,词双端单源 `alertSentLabel`,check #144 LOW-1 登记);**端点事件附「查看端点详情」链接 → /endpoints/:id**(已删除端点同样可点,详情页承接深链);展开态 keyed by event id,轮询/筛选变化不塌(v1 无轮询,本条为防御登记);同时只展开一个或多个不设限(参照 EvalLiveFeed 多开先例)。
 5. **分页:** 「加载更早的事件」走既有 `limit` 参数(50 → 100 → … → 200 服务端帽,`internal/server/probes.go parseLimit` 同口径);帽到显「已达单次上限 200 条,更早事件请缩小时间范围」。
 6. 三态:首载 skeleton(**静态灰条,无 pulse**——v2 动效预算只给状态变化,spec 0018 决策 4)/ 错误带原因 + 重试 / 空态「所选范围内暂无告警事件」+ 提示「可放宽时间范围或清除筛选条件」(**空态命名当前范围,窄筛选不冒充清白记录**;匿名面空态同文案,永不读作「从无事故」)。
 

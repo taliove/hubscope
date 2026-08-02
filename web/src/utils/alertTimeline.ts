@@ -5,6 +5,7 @@
 // overviewDots.ts centralization precedent).
 import type { AlertEvent, AlertKind } from '@/api/settings'
 import { ALERT_KINDS } from '@/utils/alertKind'
+import { formatTime, formatDuration } from '@/utils/format'
 
 // Time-range presets offered by the timeline filter bar. 'today' is the
 // local calendar day (midnight → now); the others are rolling windows.
@@ -33,9 +34,13 @@ export function filterEventsByTimeRange(
 }
 
 // Duration of a paired incident: recovered_at - down_at in milliseconds.
-// 'paired' carries the ms span; 'ongoing' means no matching recovery exists
-// in the fetched window (the timeline renders 进行中).
-export type IncidentDuration = { state: 'paired'; ms: number } | { state: 'ongoing' }
+// 'paired' carries the ms span plus the closing event's id so the inline
+// detail (GH #144) can name the recovery WITHOUT re-running the pairing —
+// one caliber, one map. 'ongoing' means no matching recovery exists in the
+// fetched window (the timeline renders 进行中).
+export type IncidentDuration =
+  | { state: 'paired'; ms: number; closerId: number }
+  | { state: 'ongoing' }
 
 // The incident scope a down/recovered pair shares: endpoint-scoped events
 // pair by endpoint_id, vendor-group events (spec 0017) by group_key. Events
@@ -89,7 +94,7 @@ export function pairIncidentDurations(events: AlertEvent[]): Map<number, Inciden
       const down = openDowns.shift()
       if (down) {
         const ms = new Date(e.created_at).getTime() - new Date(down.created_at).getTime()
-        result.set(down.id, { state: 'paired', ms: Math.max(0, ms) })
+        result.set(down.id, { state: 'paired', ms: Math.max(0, ms), closerId: e.id })
       }
     }
     for (const down of openDowns) {
@@ -141,6 +146,72 @@ export function groupEventsByDate(events: AlertEvent[], now: Date): AlertDayGrou
   // are already newest-first — but sort defensively on the day key so a
   // shuffled input cannot scramble the timeline.
   return [...groups.values()].sort((a, b) => (a.key < b.key ? 1 : -1))
+}
+
+// --- Inline event detail (GH #144, spec 0019 裁决 4) -------------------------
+
+// Delivery-state vocabulary — the words (成功/失败/未发送) are carried over
+// from the history table unchanged. The row cell and the inline detail both
+// consume this single source so the two can never fork.
+export function alertSentLabel(ev: AlertEvent): string {
+  if (ev.kind === 'score_drop_skipped') return '未发送'
+  return ev.sent_ok ? '成功' : '失败'
+}
+
+// Structured content of one event row's inline expansion (EvalLiveFeed
+// precedent — no dialog, no panel). The component renders only; every
+// derivation lives here. `pairing` reuses the pairIncidentDurations map
+// verbatim (the closer is looked up by its closerId) — a second pairing
+// caliber is forbidden by the ticket face.
+export interface AlertEventDetail {
+  message: string // full, untruncated (the row clamps to two lines)
+  timestamp: string // full local reading with date and seconds (formatTime)
+  idText: string // 事件 ID #N[ · 端点 ID #M][ · 厂商组 key]
+  // Link target for 查看端点详情: the raw endpoint_id, verbatim. A deleted
+  // endpoint stays linkable by raw id — the detail page owns the deep-link.
+  endpointId: number | null
+  pairing:
+    | { state: 'paired'; text: string } // 恢复于 … · 持续 …
+    | { state: 'ongoing'; text: string } // 进行中
+    | { state: 'none'; text: string } // — (non-incident kinds and closers)
+  sentText: string // row vocabulary + raw sent_ok flag (投递状态明细)
+}
+
+export function buildEventDetail(
+  ev: AlertEvent,
+  events: AlertEvent[],
+  durations: Map<number, IncidentDuration>,
+): AlertEventDetail {
+  let idText = `事件 ID #${ev.id}`
+  if (ev.endpoint_id !== null) idText += ` · 端点 ID #${ev.endpoint_id}`
+  if (ev.group_key !== null) idText += ` · 厂商组 ${ev.group_key}`
+
+  const d = durations.get(ev.id)
+  let pairing: AlertEventDetail['pairing']
+  if (!d) {
+    pairing = { state: 'none', text: '—' }
+  } else if (d.state === 'ongoing') {
+    pairing = { state: 'ongoing', text: '进行中' }
+  } else {
+    // The closer is guaranteed to live in the same window (the map was built
+    // from it); the fallback covers a caller passing a mismatched window.
+    const closer = events.find((e) => e.id === d.closerId)
+    pairing = {
+      state: 'paired',
+      text: closer
+        ? `恢复于 ${formatTime(closer.created_at)} · 持续 ${formatDuration(d.ms)}`
+        : `持续 ${formatDuration(d.ms)}`,
+    }
+  }
+
+  return {
+    message: ev.message,
+    timestamp: formatTime(ev.created_at),
+    idText,
+    endpointId: ev.endpoint_id,
+    pairing,
+    sentText: `${alertSentLabel(ev)} · sent_ok=${ev.sent_ok ? 'true' : 'false'}`,
+  }
 }
 
 // --- URL query codec (GH #143, spec 0019 T3 — filter deep-link) ------------

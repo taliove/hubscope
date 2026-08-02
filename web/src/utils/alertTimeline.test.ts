@@ -9,9 +9,12 @@ import {
   groupEventsByDate,
   alertsFilterToQuery,
   parseAlertsFilterQuery,
+  alertSentLabel,
+  buildEventDetail,
   ALERTS_FILTER_DEFAULT,
   type AlertTimeRange,
 } from '@/utils/alertTimeline'
+import { formatTime } from '@/utils/format'
 import type { AlertEvent, AlertKind } from '@/api/settings'
 
 // Fixed "now" for every suite: 2026-07-31 15:00 local.
@@ -76,7 +79,7 @@ describe('pairIncidentDurations', () => {
     const down = event('down', new Date(2026, 6, 31, 10, 0, 0), { endpointId: 7 })
     const rec = event('recovered', new Date(2026, 6, 31, 10, 5, 30), { endpointId: 7 })
     const got = pairIncidentDurations([rec, down]) // input order must not matter
-    expect(got.get(down.id)).toEqual({ state: 'paired', ms: 5 * 60 * 1000 + 30 * 1000 })
+    expect(got.get(down.id)).toEqual({ state: 'paired', ms: 5 * 60 * 1000 + 30 * 1000, closerId: rec.id })
     expect(got.has(rec.id)).toBe(false)
   })
 
@@ -92,8 +95,8 @@ describe('pairIncidentDurations', () => {
     const d2 = event('down', new Date(2026, 6, 31, 8, 0, 0), { endpointId: 7 })
     const r2 = event('recovered', new Date(2026, 6, 31, 8, 30, 0), { endpointId: 7 })
     const got = pairIncidentDurations([d1, r1, d2, r2])
-    expect(got.get(d1.id)).toEqual({ state: 'paired', ms: 60 * 60 * 1000 })
-    expect(got.get(d2.id)).toEqual({ state: 'paired', ms: 30 * 60 * 1000 })
+    expect(got.get(d1.id)).toEqual({ state: 'paired', ms: 60 * 60 * 1000, closerId: r1.id })
+    expect(got.get(d2.id)).toEqual({ state: 'paired', ms: 30 * 60 * 1000, closerId: r2.id })
   })
 
   it('pairs group alerts by group_key, isolated from endpoint scopes', () => {
@@ -102,7 +105,7 @@ describe('pairIncidentDurations', () => {
     // An endpoint recovery for endpoint 3 must not close the group incident.
     const epRec = event('recovered', new Date(2026, 6, 31, 10, 30, 0), { endpointId: 3 })
     const got = pairIncidentDurations([gDown, epRec, gRec])
-    expect(got.get(gDown.id)).toEqual({ state: 'paired', ms: 60 * 60 * 1000 })
+    expect(got.get(gDown.id)).toEqual({ state: 'paired', ms: 60 * 60 * 1000, closerId: gRec.id })
     expect(got.has(epRec.id)).toBe(false)
   })
 
@@ -112,7 +115,7 @@ describe('pairIncidentDurations', () => {
     const r2 = event('recovered', new Date(2026, 6, 31, 10, 10, 0), { endpointId: 2 })
     const got = pairIncidentDurations([d1, d2, r2])
     expect(got.get(d1.id)).toEqual({ state: 'ongoing' })
-    expect(got.get(d2.id)).toEqual({ state: 'paired', ms: 10 * 60 * 1000 })
+    expect(got.get(d2.id)).toEqual({ state: 'paired', ms: 10 * 60 * 1000, closerId: r2.id })
   })
 
   it('closes the earliest open down on duplicate downs (true outage window)', () => {
@@ -120,7 +123,7 @@ describe('pairIncidentDurations', () => {
     const d2 = event('down', new Date(2026, 6, 31, 10, 5, 0), { endpointId: 7 })
     const rec = event('recovered', new Date(2026, 6, 31, 12, 0, 0), { endpointId: 7 })
     const got = pairIncidentDurations([d1, d2, rec])
-    expect(got.get(d1.id)).toEqual({ state: 'paired', ms: 2 * 60 * 60 * 1000 })
+    expect(got.get(d1.id)).toEqual({ state: 'paired', ms: 2 * 60 * 60 * 1000, closerId: rec.id })
     expect(got.get(d2.id)).toEqual({ state: 'ongoing' })
   })
 
@@ -170,6 +173,82 @@ describe('groupEventsByDate', () => {
   it('skips unparseable timestamps', () => {
     const broken = { ...event('down', now, { endpointId: 1 }), created_at: 'garbage' }
     expect(groupEventsByDate([broken], now)).toEqual([])
+  })
+})
+
+describe('buildEventDetail (GH #144, spec 0019 T4 — inline expansion)', () => {
+  it('paired down carries the recovery event time and duration from the same pairing map', () => {
+    const down = event('down', new Date(2026, 6, 31, 10, 0, 0), { endpointId: 7 })
+    const rec = event('recovered', new Date(2026, 6, 31, 10, 5, 30), { endpointId: 7 })
+    const events = [rec, down]
+    const detail = buildEventDetail(down, events, pairIncidentDurations(events))
+    expect(detail.pairing).toEqual({
+      state: 'paired',
+      text: `恢复于 ${formatTime(rec.created_at)} · 持续 5 分 30 秒`,
+    })
+  })
+
+  it('unpaired down reads 进行中', () => {
+    const down = event('down', new Date(2026, 6, 31, 10, 0, 0), { endpointId: 7 })
+    const detail = buildEventDetail(down, [down], pairIncidentDurations([down]))
+    expect(detail.pairing).toEqual({ state: 'ongoing', text: '进行中' })
+  })
+
+  it('hub-less non-incident event: no endpoint id, no link target, no pairing row', () => {
+    const test = event('test', new Date(2026, 6, 31, 10, 0, 0))
+    const detail = buildEventDetail(test, [test], pairIncidentDurations([test]))
+    expect(detail.endpointId).toBeNull()
+    expect(detail.idText).toBe(`事件 ID #${test.id}`)
+    expect(detail.pairing).toEqual({ state: 'none', text: '—' })
+  })
+
+  it('group event carries the group_key in the id line and pairs by group scope', () => {
+    const gDown = event('group_down', new Date(2026, 6, 31, 10, 0, 0), { groupKey: 'openai' })
+    const gRec = event('group_recovered', new Date(2026, 6, 31, 11, 0, 0), { groupKey: 'openai' })
+    const events = [gRec, gDown]
+    const detail = buildEventDetail(gDown, events, pairIncidentDurations(events))
+    expect(detail.idText).toBe(`事件 ID #${gDown.id} · 厂商组 openai`)
+    expect(detail.endpointId).toBeNull() // group events deep-link nowhere
+    expect(detail.pairing.state).toBe('paired')
+  })
+
+  it('endpoint id passes through verbatim so a deleted endpoint stays linkable by raw id', () => {
+    const down = event('down', new Date(2026, 6, 31, 10, 0, 0), { endpointId: 42 })
+    const detail = buildEventDetail(down, [down], pairIncidentDurations([down]))
+    expect(detail.endpointId).toBe(42)
+    expect(detail.idText).toBe(`事件 ID #${down.id} · 端点 ID #42`)
+  })
+
+  it('timestamp is the full local reading with date and seconds (formatTime)', () => {
+    const ev = event('down', new Date(2026, 6, 31, 10, 1, 2), { endpointId: 1 })
+    const detail = buildEventDetail(ev, [ev], pairIncidentDurations([ev]))
+    expect(detail.timestamp).toBe(formatTime(ev.created_at))
+    expect(detail.timestamp).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)
+  })
+
+  it('message passes through untruncated', () => {
+    const longMessage = 'x'.repeat(500)
+    const ev = { ...event('batch', new Date(2026, 6, 31, 10, 0, 0)), message: longMessage }
+    const detail = buildEventDetail(ev, [ev], pairIncidentDurations([ev]))
+    expect(detail.message).toBe(longMessage)
+  })
+
+  it('delivery detail keeps the row vocabulary and appends the raw sent_ok flag', () => {
+    const ok = event('down', new Date(2026, 6, 31, 10, 0, 0), { endpointId: 1 })
+    expect(buildEventDetail(ok, [ok], new Map()).sentText).toBe('成功 · sent_ok=true')
+    const failed = { ...event('down', new Date(2026, 6, 31, 10, 1, 0), { endpointId: 1 }), sent_ok: false }
+    expect(buildEventDetail(failed, [failed], new Map()).sentText).toBe('失败 · sent_ok=false')
+    const skipped = { ...event('score_drop_skipped', new Date(2026, 6, 31, 10, 2, 0)), sent_ok: false }
+    expect(buildEventDetail(skipped, [skipped], new Map()).sentText).toBe('未发送 · sent_ok=false')
+  })
+})
+
+describe('alertSentLabel (GH #144 — row cell and detail share one source)', () => {
+  it('maps sent state to the carried-over vocabulary', () => {
+    const at = new Date(2026, 6, 31, 10, 0, 0)
+    expect(alertSentLabel(event('down', at, { endpointId: 1 }))).toBe('成功')
+    expect(alertSentLabel({ ...event('down', at, { endpointId: 1 }), sent_ok: false })).toBe('失败')
+    expect(alertSentLabel(event('score_drop_skipped', at))).toBe('未发送')
   })
 })
 

@@ -61,23 +61,75 @@
         <section v-for="group in visibleGroups" :key="group.key" class="day-section">
           <h2 class="day-label">{{ group.label }}</h2>
           <ol class="day-events">
+            <!-- Inline expansion (GH #144, spec 0019 裁决 4, EvalLiveFeed
+                 precedent — no dialog, no panel): the summary is the toggle
+                 (role/tabindex/Enter/Space, aria-expanded); the expansion set
+                 is keyed by event id so filter changes and load-earlier
+                 prepends never collapse an open row; multi-open unlimited.
+                 The row stays self-contained (time / rail / body incl.
+                 expansion in one li) so the month>week>day nesting (GH #145)
+                 can lift it whole. -->
             <li v-for="ev in group.events" :key="ev.id" class="event-row">
               <span class="event-time">{{ formatClockMinute(ev.created_at) }}</span>
               <span class="rail"><span class="node" :class="`node--${alertKindTagType(ev.kind)}`" /></span>
               <div class="event-body">
-                <div class="event-head">
-                  <el-tag :type="alertKindTagType(ev.kind)" size="small" class="event-kind">
-                    {{ alertKindLabel(ev.kind) }}
-                  </el-tag>
-                  <span v-if="targetOf(ev)" class="event-target" :title="targetOf(ev) ?? undefined">
-                    {{ targetOf(ev) }}
-                  </span>
-                  <span v-if="durationText(ev)" class="event-duration" :class="{ ongoing: isOngoing(ev) }">
-                    {{ durationText(ev) }}
-                  </span>
-                  <span class="event-sent" :class="sentClass(ev)">{{ sentText(ev) }}</span>
+                <div
+                  class="event-summary"
+                  role="button"
+                  tabindex="0"
+                  :aria-expanded="isExpanded(ev.id)"
+                  :aria-controls="`event-detail-${ev.id}`"
+                  @click="toggleExpand(ev.id)"
+                  @keydown.enter.prevent="toggleExpand(ev.id)"
+                  @keydown.space.prevent="toggleExpand(ev.id)"
+                >
+                  <div class="event-head">
+                    <el-tag :type="alertKindTagType(ev.kind)" size="small" class="event-kind">
+                      {{ alertKindLabel(ev.kind) }}
+                    </el-tag>
+                    <span v-if="targetOf(ev)" class="event-target" :title="targetOf(ev) ?? undefined">
+                      {{ targetOf(ev) }}
+                    </span>
+                    <span v-if="durationText(ev)" class="event-duration" :class="{ ongoing: isOngoing(ev) }">
+                      {{ durationText(ev) }}
+                    </span>
+                    <span class="event-sent" :class="sentClass(ev)">{{ alertSentLabel(ev) }}</span>
+                    <span class="event-expand" aria-hidden="true">{{ isExpanded(ev.id) ? '▾' : '▸' }}</span>
+                  </div>
+                  <p class="event-message" :title="ev.message">{{ ev.message }}</p>
                 </div>
-                <p class="event-message" :title="ev.message">{{ ev.message }}</p>
+                <!-- Expansion: five stacked items — full message / full
+                     timestamp / ids / paired recovery + duration / delivery
+                     detail — plus the endpoint deep link (the page's only
+                     outbound interaction). Deleted endpoints stay linkable
+                     by raw id. -->
+                <div v-if="isExpanded(ev.id)" :id="`event-detail-${ev.id}`" class="event-detail">
+                  <p class="detail-message">{{ detailOf(ev).message }}</p>
+                  <div class="detail-row">
+                    <span class="detail-label">时间</span>
+                    <span class="detail-value">{{ detailOf(ev).timestamp }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">标识</span>
+                    <span class="detail-value">{{ detailOf(ev).idText }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">配对</span>
+                    <span
+                      class="detail-value"
+                      :class="{ ongoing: detailOf(ev).pairing.state === 'ongoing' }"
+                    >{{ detailOf(ev).pairing.text }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">投递</span>
+                    <span class="detail-value">{{ detailOf(ev).sentText }}</span>
+                  </div>
+                  <router-link
+                    v-if="detailOf(ev).endpointId !== null"
+                    class="detail-link"
+                    :to="`/endpoints/${detailOf(ev).endpointId}`"
+                  >查看端点详情</router-link>
+                </div>
               </div>
             </li>
           </ol>
@@ -112,8 +164,11 @@ import {
   groupEventsByDate,
   alertsFilterToQuery,
   parseAlertsFilterQuery,
+  alertSentLabel,
+  buildEventDetail,
   type AlertTimeRange,
   type IncidentDuration,
+  type AlertEventDetail,
 } from '@/utils/alertTimeline'
 
 // Time-range presets (今天 = local calendar day; the rest are rolling).
@@ -280,16 +335,35 @@ function durationText(ev: AlertEvent): string {
   return d.state === 'paired' ? `持续 ${formatDuration(d.ms)}` : '进行中'
 }
 
-// Delivery state cell — the words (成功/失败/未发送) are the existing
-// vocabulary carried over from the history table unchanged.
-function sentText(ev: AlertEvent): string {
-  if (ev.kind === 'score_drop_skipped') return '未发送'
-  return ev.sent_ok ? '成功' : '失败'
-}
-
+// Delivery state cell — the words come from the shared alertSentLabel
+// (alertTimeline.ts) so the row and the inline detail never fork; only the
+// color class stays a component concern.
 function sentClass(ev: AlertEvent): string {
   if (ev.kind === 'score_drop_skipped') return 'sent--skip'
   return ev.sent_ok ? 'sent--ok' : 'sent--fail'
+}
+
+// Inline expansion state (GH #144), keyed by event id — EvalLiveFeed
+// precedent: filter changes and load-earlier prepends never collapse an
+// open row, and multi-open is unlimited. Every update replaces the Set to
+// stay reactive.
+const expandedIds = ref<Set<number>>(new Set())
+
+function isExpanded(id: number): boolean {
+  return expandedIds.value.has(id)
+}
+
+function toggleExpand(id: number) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
+
+// The expansion content is assembled by the pure builder on the UNFILTERED
+// window with the shared pairing map — no second pairing caliber.
+function detailOf(ev: AlertEvent): AlertEventDetail {
+  return buildEventDetail(ev, events.value, durations.value)
 }
 
 const visibleGroups = computed(() => {
@@ -494,11 +568,82 @@ const atServerCap = computed(
   color: var(--hs-text-secondary);
   line-height: 1.5;
   /* Aggregate messages (batch / quiet summary) can run long — clamp to two
-     lines, the title attribute carries the full text. */
+     lines in the list state; the inline expansion carries the full text. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Row expansion (GH #144): the summary is the toggle — pointer + the row's
+   existing hover fill carry affordance, focus-visible speaks the shell's
+   single focus language (2px brand outline). */
+.event-summary {
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--hs-radius-sm);
+}
+.event-summary:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 2px;
+}
+.event-expand {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
+}
+
+/* Inline detail: a hairline separates it from the summary; stacked
+   label/value rows in the timeline's secondary voice (EvalLiveFeed
+   four-block precedent). */
+.event-detail {
+  margin-top: var(--hs-space-2);
+  padding-top: var(--hs-space-2);
+  border-top: 1px solid var(--hs-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-2);
+}
+.detail-message {
+  margin: 0;
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.detail-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--hs-space-3);
+  align-items: baseline;
+}
+.detail-label {
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-secondary);
+}
+.detail-value {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-regular);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+/* Same caliber as the row's ongoing duration cell: the one reading on the
+   timeline that means "still happening". */
+.detail-value.ongoing {
+  color: var(--hs-danger-text);
+  font-weight: 600;
+}
+/* 查看端点详情 — the page's only outbound interaction (feed-fix-link
+   precedent: brand-colored inline action, secondary weight). */
+.detail-link {
+  align-self: flex-start;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-brand);
+  text-decoration: none;
+}
+.detail-link:hover {
+  color: var(--hs-brand-hover);
+  text-decoration: underline;
 }
 
 /* Footer (load-more / cap hint) */
