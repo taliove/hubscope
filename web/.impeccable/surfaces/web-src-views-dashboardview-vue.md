@@ -23,7 +23,7 @@ related_targets: ["web/src/components/StatusHero.vue","web/src/components/Metric
 4. **筛选工具条**(关键词 / 供应商 / 状态(三态)+ 「分享状态」主按钮;协议筛选随 GH #131 退役;分组选择器 GH #140 回归(默认不分组))
 5. **ModelStatusList**(高级列表,列头点击排序默认按可用率降序,GH #136)
 6. **ModelDetailPanel**(行点击开启的右侧详情面板,teleport)
-7. **RecentEvents**(近期事件区,GH #132;**登录态专属**——`authed=false` 整区不渲染零请求,匿名读者面不泄露运营事件)
+7. **RecentEvents**(近期事件区,GH #132;**登录态专属**——`authed=false` 整区不渲染零请求;/alerts 四类故障叙事已按 spec 0019 公开(ui-guidelines 附录第 16 项),本区按同批裁决 2 **不同步开放**,匿名读者的事故叙事入口 = 侧栏「故障记录」页)
 8. 三态:首载 skeleton 行(后续轮询保持列表不打断——局部刷新)、筛选零匹配「暂无匹配的 Endpoint」、零端点「暂无监控端点,请先在模型管理中添加」、刷新失败 el-alert 带原因(保留上次好数据)。
 
 ## 组件规格
