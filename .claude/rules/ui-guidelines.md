@@ -331,7 +331,7 @@
 | ECharts `CHART_COLORS`(TimeSeriesChart/TrendChart 各一份) | `utils/chartColors.ts` 单一来源,`CHART_COLORS_LIGHT/DARK` 双份 | 色值按 §3 新映射;brand→teal、failing→橙、文本/描边→青灰 |
 | `web/public/logo.png` | **删除** | BrandMark.vue + Wordmark.vue 替代(AppHeader/LoginView/StatusCard/favicon) |
 
-## 附录 B:裁决记录(19 项)
+## 附录 B:裁决记录(20 项)
 
 > **归属拆分(GH #59 定稿):** 视觉类裁决(2 字阶 / 3 圆角 / 5 BrandMark / 6 暗色 / 7 令牌架构 / 8 token 映射)规格本体已迁 DESIGN.md,此处保留裁决理由备查;11(LatencySparkline 形态)已迁 dashboard surface brief;语义与评估域裁决(1 failing 例外 / 4 批次运行色 / 9 榜单矩阵化 / 10 api-contract / 12 判分不完整 / 13 实时排名与成本)留存本文件。全部 13 项无丢失。
 > **编号合并注记(2026-07-30,main 合批):** 14–16 为 ui-ux-impeccable 支系(warning 对比度 / success 文字深阶 / Dashboard 实机迭代),17–18 为 main 支系 spec 0017(UptimeStrip 组级分段条 / 告警事件词表)——两支系并行期间各自从 13 续号,合并时本支系续号优先、main 支系顺延后移(物理顺序 1–13、17、18、14、15、16 为合并留痕,不重排);历史引用已同步:UptimeStrip §5 条「附录 B 第 14 项」→ 第 17 项、§7 借字例外条「附录 B 第 15 项」→ 第 18 项。
@@ -363,6 +363,8 @@
   ④ **折叠组头(实机证据「折叠线」):** 折叠态 hairline 让干净单行多一条割裂线,组头行重心偏上。裁决:hairline 仅展开态显示,折叠态以 **1px 透明边占位**(几何稳定硬要求,折叠/展开两态组头行高度逐像素一致,与 §6 披露容器「禁布局跳动」同纪律);组头行 padding 上下对称,重心回中。
 
 19. **分享面手机端批次(GH #91–#95,share-mobile-polish 批,2026-07-31 设计评审;规格本体在 share-materials surface brief):** ① **正常端点名单区取代汇总行(GH #92):** 全集可见是防作假加强(不只挑异常示众);排序键定 24h 可用率升序(null 沉底、同率字典序)而非字典序——视觉权重 = 业务严重度,最脆弱的正常端点在前;不带协议/点条——名单是花名册,点条会把它变成十个迷你明细行、稀释异常明细首位度;封顶 20(2 列 × 10 行)与异常明细封顶 10 同哲学(高度有界);`healthyRangeText` 聚合用法退役(逐条着色率是其超集),全正常陈述行保留(显式结论是防作假正面形态)。② **480 紧凑版 = 同数据第二排版(GH #93):** 数字口径零变化、快照纯函数复用;端点小卡 = 单模型紧凑版,Hub/评估区/status_reason 不渲染登记为物料分工信息差(小卡 = 监控域快读,完整信息在大卡);版式默认档按视口 <768 一次性判定、不持久化(转发意图每次不同);EvalCard 无紧凑版(手机可读性由弹窗缩放承担)。③ **断点 768 与「窄屏 = 形态切换,非横滚豁免」(GH #94):** 列收敛方案算术证伪(最紧收敛 472px > 375 视口可用的 343px,维度数由数据决定不能按典型值赌),横向滚动否决(§4 承重纪律无豁免),定卡片式列表;预览 transform 缩放与离屏捕获双份构造性隔离(捕获不吃 transform,按设计宽渲染)。④ **盒模型事实登记:** 本仓无全局 box-sizing reset,物料卡根 content-box——width:720 = 内容盒,外盒 722(描边在盒外),「内容宽 640」口径由此而来;480 族同(内容 440);弹窗缩放按外盒 722/482 计算;桌面 752 弹窗 content 720 < 卡外盒 722 的 2px 溢出原由 overflow:auto 兜底,**2026-07-31 GH #95 已随预览衬底级联修复**——预览可用宽 = dialog 内容宽 − 衬底 padding(space-4×2),缩放分支与桌面分支都不再溢出(原「本批不动」登记被本批末票事实推翻,GH #85 旧定位词同类修订)。
+
+20. **评估直达与操控交互批(GH #149–#157 实施批,2026-08-02):** ① **ScoreCell 可点下钻(GH #156):** 仅登录版 settled 批次(/eval 与报告页)可点,打开该模型 × 该 suite 的逐题明细对话框(复用 EvalRunDetailDialog + modelId 过滤);shared(/report/:token)与 live 运行中榜单绝不可点(双重门控);点击 stopPropagation,行级趋势对话框行为不变;可点态 cursor pointer + hover 用 `--hs-bg-hover`、focus ring 用 `--hs-brand`(零新色)。② **取消批次按钮(GH #152):** /eval 批次头与评估运营追踪 alert 两处,仅批次未完结可见,danger plain;确认文案统一「未开始的评估单元放弃,在飞的跑完后批次判失败;已判分结果保留」,确认键「停止批次」;取消后批次走既有 failed 状态词(不新增「已取消」词)。③ **批次时间预算设置项(GH #153):** 设置表单「批次时间预算」分钟档 0–10080,0 = 不限,默认 120;锚点入 adminNav SETTINGS_ITEMS。④ **任务中心 eval_run 进度(GH #156):** running 的 eval_run 任务行显示服务端百分比(formatPercent 集中格式化,组件禁内联计算);「考核批次」表加「查看报告」链接。⑤ **告警事件批次链接(GH #156):** 近期告警事件表 score_drop/score_drop_skipped 行带「查看批次」→ 报告页。⑥ **公开榜单口径标注(GH #157):** /board 批次元信息下常驻「统计范围:全部 Hub」行。
 
 ## 附录 C:迁移验收 checklist(供品牌迁移 ticket 引用)
 

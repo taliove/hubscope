@@ -99,7 +99,7 @@
             <!-- Live unit completion (GH #156): running eval_run tasks only;
                  the fraction arrives from the server, never computed here. -->
             <span v-if="row.status === 'running' && row.progress !== null" class="progress-text">
-              {{ Math.round(row.progress * 100) }}%
+              {{ formatPercent(row.progress) }}
             </span>
           </template>
         </el-table-column>
@@ -175,7 +175,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { getTask, listTasks } from '@/api/tasks'
 import { listCampaigns } from '@/api/campaigns'
 import type { Campaign, CampaignStatus, TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'
-import { formatMs, formatTime } from '@/utils/format'
+import { formatMs, formatPercent, formatTime } from '@/utils/format'
 
 // Task center page (tickets 18, 28): filterable, paginated task list with a
 // per-task log drawer. Covers eval runs, discovery syncs, rollup and

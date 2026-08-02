@@ -565,7 +565,6 @@ func (s *Server) handleLatestEvals(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, dtos)
 }
 
-// averageScore computes the mean of all non-null scores, scaled through the
 // runScoreFromAvg finishes the aggregate read path (GH #151): the store's
 // per-run mean plus the run's own nadir snapshot, normalized with the same
 // caliber as averageScore. A run absent from the aggregate map has no
@@ -579,6 +578,7 @@ func runScoreFromAvg(avgs map[int64]float64, run store.EvalRun) *float64 {
 	return &v
 }
 
+// averageScore computes the mean of all non-null scores, scaled through the
 // ADR-0009 nadir normalization with the run's own nadir snapshot — the same
 // caliber as the leaderboard, kept on the 0~1 wire scale the eval API has
 // always spoken (nadir=0 degenerates to the legacy raw mean). Null scores
