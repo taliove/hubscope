@@ -247,7 +247,14 @@ onBeforeUnmount(() => {
   align-self: flex-start;
   width: 220px;
   flex: none;
-  height: calc(100vh - 56px);
+  /* Content-box trap (ModelDetailPanel precedent — this repo has no global
+     box-sizing reset): the height must subtract the vertical padding too,
+     or the outer box runs 32px past the viewport bottom and the pinned
+     footer hangs below the fold, clipped by overflow: hidden (the exact
+     "version still below" defect after GH #148). Height-only fix — a
+     border-box switch would also shrink the width 244 → 220, a separate
+     visual change. */
+  height: calc(100vh - 56px - var(--hs-space-4) - var(--hs-space-4));
   display: flex;
   flex-direction: column;
   padding: var(--hs-space-4) var(--hs-space-3);
