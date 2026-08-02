@@ -1,5 +1,21 @@
 <template>
   <header class="app-topbar">
+    <!-- Nav-drawer toggle (2026-08-01 shell drawer batch): narrow viewports
+         only — the sidebar leaves the flex row and becomes an overlay
+         drawer below this bar, and this hamburger is its single toggle
+         (menu icon closed, x icon open). data-drawer-toggle is the focus-
+         return anchor App.vue lands on after a drawer close. -->
+    <button
+      type="button"
+      class="icon-btn drawer-toggle"
+      data-drawer-toggle
+      :aria-expanded="drawerOpen"
+      :aria-label="drawerOpen ? '关闭导航菜单' : '打开导航菜单'"
+      @click="emit('toggle-drawer')"
+    >
+      <XIcon v-if="drawerOpen" class="icon-glyph" />
+      <MenuIcon v-else class="icon-glyph" />
+    </button>
     <!-- Brand block (GH #135): BrandMark + Wordmark, click goes home.
          BrandMark is never used bare — it always appears alongside the
          Wordmark. The brand seat moved here from the sidebar top when the
@@ -58,7 +74,13 @@ import type { AuthUser } from '@/api/auth'
 import { roleLabel } from '@/utils/role'
 import BrandMark from './BrandMark.vue'
 import Wordmark from './Wordmark.vue'
-import { BellIcon, CircleUserRoundIcon, LogOutIcon } from './icons/lucide'
+import { BellIcon, CircleUserRoundIcon, LogOutIcon, MenuIcon, XIcon } from './icons/lucide'
+
+// drawerOpen mirrors the shell's nav-drawer state (App.vue owns it) so the
+// toggle shows menu/x and the right aria-expanded; the toggle itself only
+// reports clicks upward.
+withDefaults(defineProps<{ drawerOpen?: boolean }>(), { drawerOpen: false })
+const emit = defineEmits<{ 'toggle-drawer': [] }>()
 
 const route = useRoute()
 const router = useRouter()
@@ -123,6 +145,11 @@ watch(() => route.fullPath, refreshAuth)
   align-items: center;
   gap: var(--hs-space-2);
   text-decoration: none;
+  /* With the narrow-viewport hamburger the bar has THREE children and
+     space-between would center the brand — the auto margin pins it next to
+     the hamburger (or the left edge on desktop, where the toggle is
+     display:none and this changes nothing). */
+  margin-right: auto;
 }
 .brand-mark {
   font-size: 24px;
@@ -158,6 +185,20 @@ watch(() => route.fullPath, refreshAuth)
 .icon-glyph {
   width: 18px;
   height: 18px;
+}
+/* The drawer toggle exists only on narrow viewports (the sidebar's overlay
+   form); on desktop the sidebar is always visible and there is nothing to
+   toggle. */
+.drawer-toggle {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .drawer-toggle {
+    display: inline-flex;
+  }
+  .app-topbar {
+    padding: 0 var(--hs-space-3);
+  }
 }
 .user-chip {
   display: flex;

@@ -240,6 +240,14 @@ const cardModels = computed(() => {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--hs-space-3);
 }
+/* Narrow form (2026-08-01 shell drawer batch): the four-up card row stacks
+   to a single column below the 1024px breakpoint; the 150px card height
+   anchor is width-independent, so cards and skeletons keep their shape. */
+@media (max-width: 1023px) {
+  .card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* Light container (DESIGN.md: white surface + 1px border + radius-lg, no
    shadow — a static container never takes a shadow). relative + hidden

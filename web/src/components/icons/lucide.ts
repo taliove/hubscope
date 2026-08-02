@@ -115,6 +115,20 @@ export const LogOutIcon = makeIcon([
   ['line', { x1: 21, x2: 9, y1: 12, y2: 12 }],
 ])
 
+// lucide/menu — the topbar hamburger that opens the nav drawer on narrow
+// viewports (2026-08-01 shell drawer batch).
+export const MenuIcon = makeIcon([
+  ['line', { x1: 4, x2: 20, y1: 6, y2: 6 }],
+  ['line', { x1: 4, x2: 20, y1: 12, y2: 12 }],
+  ['line', { x1: 4, x2: 20, y1: 18, y2: 18 }],
+])
+
+// lucide/x — the hamburger's open state (closes the nav drawer).
+export const XIcon = makeIcon([
+  ['path', { d: 'M18 6 6 18' }],
+  ['path', { d: 'm6 6 12 12' }],
+])
+
 // Sidebar glyph per nav key (GH #135). The key set mirrors
 // utils/sidebarNav.ts SIDEBAR_NAV_ITEMS one-to-one — the sync is
 // vitest-covered in sidebarNav.test.ts.

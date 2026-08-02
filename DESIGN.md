@@ -123,7 +123,7 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 - 三层令牌架构(原始刻度 → 语义令牌 → Element Plus 映射),暗色键位预留(暗色后置,独立 spec 定稿)
 - 轻容器语法:白面 + 1px 描边 + radius-lg + 无阴影;阴影只表达「可点/浮层」
 - 全宽顶栏 + 220px macOS 设置风侧边栏外壳(GH #135 顶栏恢复),签名面自造(顶栏/侧边栏/Hero/指标区/列表行/详情面板/时间线),Element Plus 保留管理台复杂件
-- 状态三态:稳定运行 / 降级 / 异常(参照稿词表,GH #128),小圆点 + 状态词双编码,局部强调而非大面积色块
+- 状态三态:稳定 / 降级 / 异常(参照稿词表,GH #128),小圆点 + 状态词双编码,局部强调而非大面积色块
 - 动效成体系(v2.0 §15):数字补间、图表入场绘制、页面 Fade+Slight Move、hover 上浮;reduced-motion 全局归零
 
 ## Colors
@@ -186,17 +186,17 @@ HubScope 的界面像 Apple 管理一套复杂 AI 系统:打开后 5 秒回答�
 
 ## Layout
 
-**外壳(决策 5/8;GH #135 顶部 Header 恢复):** 全宽 56px 顶栏(AppTopbar,自造签名面——左品牌块、右铃铛 + 用户 chip/「管理登录」)+ 其下 220px macOS 设置风侧边栏(AppSidebar,自造签名面,品牌位已迁顶栏)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无顶栏无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。
+**外壳(决策 5/8;GH #135 顶部 Header 恢复):** 全宽 56px 顶栏(AppTopbar,自造签名面——左品牌块、右铃铛 + 用户 chip/「管理登录」)+ 其下 220px macOS 设置风侧边栏(AppSidebar,自造签名面,品牌位已迁顶栏)+ 右侧内容区;`/login` 与 `/report/:token` 走 route `meta.bare` 壳外渲染(无顶栏无侧边栏)。页面切换 = Fade + ≤10px 轻位移(300ms slow 档,见 Motion)。**窄屏外壳形态(2026-08-01 外壳抽屉批;断点第九轮上移):** <1024px 侧栏退出 flex 行变 overlay 抽屉——顶栏左端汉堡按钮(menu/x 图标互换,aria-expanded)开合;抽屉 fixed 于顶栏之下(top 56px,宽 260px,`--hs-z-drawer` 档 + shadow-lg 浮层影),scrim 覆盖顶栏以下视口(`--hs-z-overlay` + `--hs-overlay-bg`),关闭走三路统一(ESC / scrim / 导航选择经路由切换自动关)+ focus trap + 焦点归还汉堡(data-drawer-toggle 锚点,自造模态面三件套沿置);桌面形态逐像素不变。
 
 内容区 max-width 1200px 居中,桌面优先——不为手机做专门适配,窄屏不阻断即可。4px 基准网格,间距消费 space-1..9 刻度(space-9 96px 为 hero 区块与页面级呼吸预留);**公开页 32–48px 页面留白**(状态概览 padding 32px,spec 0018 IA),管理台页 24/16。
 
-**轻容器语法(Apple 语法,全站容器唯一形态):** 白面(`--hs-bg-card`)+ 1px `--hs-border` 描边 + `radius-lg`(12px)+ **无阴影**;内边距桌面 24/32px(space-5/6),窄屏收紧 16px(space-4,768px 断点,Leaderboard 先例)。静态容器永不吃阴影;hover 上浮 + md 阴影只属可点元素。
+**轻容器语法(Apple 语法,全站容器唯一形态):** 白面(`--hs-bg-card`)+ 1px `--hs-border` 描边 + `radius-lg`(12px)+ **无阴影**;内边距桌面 24/32px(space-5/6),窄屏收紧 16px(space-4,1024px 断点,Leaderboard 先例)。静态容器永不吃阴影;hover 上浮 + md 阴影只属可点元素。
 
 **密度按读者分档:** 消费页(状态概览、Benchmark、分享报告)轻容器宽松档;管理台(模型管理/系统设置/评估中心运营区)EP 复杂件 + 紧凑档(`--el-card-padding` 12px 既定机制,禁 `:deep(.el-card__body)` 覆写)——档位由读者决定,不由登录态决定。
 
 页面结构:页面标题(h1 = 侧边栏标签,见 ui-guidelines §4)→ 内容区(轻容器或列表)→ 必要时底部辅助区。弹性列宽优先于固定宽度;卡片内容不得溢出、不得出现横向滚动条;管理台表格的弹性内容列必须显式 min-width,使全表最小宽度可算术核对。
 
-**响应式断点(GH #91 批登记,v2 沿置):** 全站唯一断点 **768px**(`(max-width: 767px)` 生效),消费方封闭清单 = 分享弹窗(StatusShareDialog/EvalShareDialog)、Leaderboard、EvalProgressGrid、/report/:token 页;**窄屏处置原则 = 形态切换,不是横向滚动豁免**——弹窗物料等比缩放、榜单矩阵降级卡片式列表、轻容器内边距收紧;断点判定统一 matchMedia 组件级实现,禁各处自造第二套断点逻辑。
+**响应式断点(GH #91 批登记,v2 沿置;2026-08-01 外壳抽屉批扩面 + 第九轮上移):** 全站唯一断点 **1024px**(`(max-width: 1023px)` 生效;**2026-08-01 第九轮实机裁决自 768px 上移**——768–1023px 带内 220px 侧栏下七列模型列表固定列最小和超内容道,模型 ID 涂压邻列成实机缺陷;上移完整覆盖重叠带,iPad 横屏(1024)落桌面形态;分享面族(GH #91/#94 的 768 登记行为)随单值一并迁移,回归复验),消费方封闭清单 = 分享弹窗(StatusShareDialog/EvalShareDialog)、Leaderboard、EvalProgressGrid、/report/:token 页、**外壳(App.vue 抽屉状态 / AppTopbar 汉堡 / AppSidebar overlay 抽屉)与状态概览页(DashboardView / StatusHero / MetricWidgets / ModelStatusList / RecentEvents)**(2026-08-01 第八轮实机反馈:用户经 Wireguard 在手机访问,220px 侧栏吃掉大半视口——dashboard 消费断点的原「桌面优先不消费」登记就此修订;**管理台内容区(EP 表格)仍保持桌面形态**,窄屏可用但不优,逐页适配另立批次);**窄屏处置原则 = 形态切换,不是横向滚动豁免**——弹窗物料等比缩放、榜单矩阵降级卡片式列表、模型列表降级卡片式列表(ModelStatusList 同 Leaderboard 先例)、侧栏降级 overlay 抽屉、轻容器内边距收紧;断点判定统一 matchMedia 组件级实现(useBreakpoint 共享单一 MediaQueryList;组件内 `@media (max-width: 1023px)` 纯样式镜像同值断点属允许形态,Leaderboard 先例),禁各处自造第二套断点逻辑。
 
 ### Named Rules
 
@@ -284,10 +284,10 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **登录态过滤:** 未登录只见公开项(状态概览、Benchmark);过滤逻辑集中 `utils/sidebarNav.ts`(visibleSidebarItems / isSidebarItemActive 纯函数)。
 
 ### Signature: StatusBadge(唯一状态灯)
-- 全站唯一的 endpoint 状态展示组件:**小圆点(图形阶)+ 状态词(文字阶)** 双编码,三态(稳定运行/降级/异常);词与色槽全部来自显示层映射 `utils/statusDisplay.ts`,组件内禁写状态词字面量;degraded 可挂成因副标签(「· 可用性」「· 延迟」,secondary,不随词着色);零动画(闪烁退役)。规格与消费纪律见 ui-guidelines §5 与 overview surface brief。
+- 全站唯一的 endpoint 状态展示组件:**小圆点(图形阶)+ 状态词(文字阶)** 双编码,三态(稳定/降级/异常);词与色槽全部来自显示层映射 `utils/statusDisplay.ts`,组件内禁写状态词字面量;degraded 可挂成因副标签(「· 可用性」「· 延迟」,secondary,不随词着色);零动画(闪烁退役)。规格与消费纪律见 ui-guidelines §5 与 overview surface brief。
 
 ### Signature: 24h 微条(UptimeMicroStrip)
-- 24 格填满式时间条(格高 14px、xs 圆角、2px 间距),格 = 一小时;三档着色(≥95% 绿 / <95% 黄 / 0% 红 / 无数据 border 灰),tier 与 tooltip 措辞集中 `utils/overviewDots.ts`(与分享物料同源,一致性由构造保证);聚合口径 = 按小时求和,禁止按端点简单平均。模型列表行内唯一时间形态;物料 24h 分段条保持独立实现(快照渲染契约)。
+- 24 格填满式时间条(格高 14px、xs 圆角、2px 间距),格 = 一小时;四档着色(≥95% 绿 ok / <95% 黄 partial / 0% 红 fail / 无数据 border 灰 none),tier 与 tooltip 措辞集中 `utils/overviewDots.ts`(与分享物料同源,一致性由构造保证);聚合口径 = 按小时求和,禁止按端点简单平均。**渲染位 = 模型列表可用率列数字右侧(2026-08-02 复活,推翻 GH #131 退役;连续 0–100 进度条同日退役)**;物料 24h 分段条保持独立实现(快照渲染契约)。
 
 ### Signature: 自造模态面三件套
 - 自造弹层(详情面板首例,重建的分享弹窗复用)必须三件套齐备:① **focus trap**(`utils/focusTrap.ts`——Tab/Shift+Tab 在面内循环,el-dialog 等价);② **统一关闭路径**(ESC / scrim 点击 / 关闭按钮走同一 emit);③ **焦点归还**(关闭后焦点回触发元素,父级承担)。任何 aria-modal 自造面缺一件 = 缺陷。
@@ -315,4 +315,4 @@ Flat-by-default。深度由 1px 描边与表面色阶(page → card → hover �
 - **Don't** 引入调色板外新色相——三态世界没有第四色,告警橙已整体退役。
 - **Don't** 引入任何闪烁动画;动效只走 Motion 节登记的词汇表。
 - **Don't** 用渐变装饰、大面积彩色背景块、营销物料(光斑/插画);BrandMark 渐变是唯一允许的渐变。
-- **Don't** 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性「暂无数据」,永不显示「全部正常/全部稳定运行」。
+- **Don't** 让局部集合冒充全局结论:任何汇总结论必须标注统计范围,零匹配用中性「暂无数据」,永不显示「全部正常/全部稳定」。

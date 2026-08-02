@@ -509,7 +509,7 @@ onMounted(reload)
 .state-block {
   padding: var(--hs-space-5) var(--hs-space-6);
 }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .state-block,
   .switcher-block {
     padding: var(--hs-space-4);

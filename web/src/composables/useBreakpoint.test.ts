@@ -1,4 +1,4 @@
-// Unit tests for the shared 768px breakpoint subscription (GH #94, check
+// Unit tests for the shared 1024px breakpoint subscription (GH #94, check
 // MEDIUM): initial state seeding, change propagation, single shared
 // MediaQueryList across subscribers, and teardown on last release. The
 // project has no DOM test environment (all tests run under node), so the
@@ -61,7 +61,7 @@ describe('subscribeBreakpoint', () => {
     const a = subscribeBreakpoint()
     const b = subscribeBreakpoint()
     expect(matchMedia).toHaveBeenCalledTimes(1)
-    expect(matchMedia).toHaveBeenCalledWith('(max-width: 767px)')
+    expect(matchMedia).toHaveBeenCalledWith('(max-width: 1023px)')
     expect(mql.listenerCount()).toBe(1)
     // One change reaches both subscribers (same shared ref).
     mql.fireChange(false)

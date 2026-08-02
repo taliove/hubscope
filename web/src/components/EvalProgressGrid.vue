@@ -87,7 +87,7 @@ import { useBreakpoint } from '@/composables/useBreakpoint'
 // unfinished batch; the parent feeds the report and owns polling. Read-only
 // mode (ticket 54, shared report page) hides the grid/scores view switch:
 // the shared boundary publishes progress metadata only, so there is no live
-// board to switch to. GH #94: narrow viewport (<= 767px) shrinks the model
+// board to switch to. GH #94: narrow viewport (<= 1023px) shrinks the model
 // column to 96px and omits the cell status word (the 8px dot stays, and the
 // tooltip carries the full info). GH #120 (v2 rebuild): the wrapper is the
 // light container and the status words consume the *-text steps while the
@@ -169,7 +169,7 @@ const costSummary = computed(() => {
   padding: var(--hs-space-5) var(--hs-space-6);
   margin-bottom: var(--hs-space-4);
 }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .progress-panel {
     padding: var(--hs-space-4);
   }
@@ -209,7 +209,7 @@ const costSummary = computed(() => {
 }
 /* GH #94: Narrow viewport shrinks the model column to 96px (the truncation +
    title hover already existed). */
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .grid-model {
     width: 96px;
   }

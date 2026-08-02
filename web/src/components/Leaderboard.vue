@@ -71,7 +71,7 @@
          expansion per §4). Live mode ranks by the half-scored total
          descending (GH #40) and shows the position in a de-emphasized
          style; null-total rows keep the placeholder dash. GH #94: narrow
-         viewport (<= 767px) switches to a card-style list (column headers
+         viewport (<= 1023px) switches to a card-style list (column headers
          never render; sorting goes through the toolbar select). -->
     <div v-if="!isNarrow" class="matrix-board">
       <div class="lb-grid lb-header" :style="gridStyle">
@@ -189,7 +189,7 @@
       </div>
     </div>
 
-    <!-- GH #94: Card-style list for narrow viewports (<= 767px). Each row
+    <!-- GH #94: Card-style list for narrow viewports (<= 1023px). Each row
          becomes a vertical card block: row 1 = rank (with top-3 rail ceremony)
          + model name + total (xl ink + 6px band bar); row 2 = delta (when
          baseline is comparable); dimension grid = 2 columns, each cell renders
@@ -472,7 +472,7 @@ function deltaTitle(row: ReportRow): string {
   padding: var(--hs-space-5) var(--hs-space-6);
   margin-bottom: var(--hs-space-4);
 }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .leaderboard {
     padding: var(--hs-space-4);
   }
@@ -705,7 +705,7 @@ function deltaTitle(row: ReportRow): string {
   color: var(--hs-danger-text);
 }
 
-/* GH #94: Card-style list for narrow viewports (<= 767px). Each row becomes
+/* GH #94: Card-style list for narrow viewports (<= 1023px). Each row becomes
    a vertical card block with 1px hairlines between blocks (matching the
    matrix row rhythm). The top-3 rail ceremony stays on (3px brand left
    border), and the rank/total/delta caliber is identical to the matrix. */

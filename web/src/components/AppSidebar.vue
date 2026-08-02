@@ -1,9 +1,17 @@
 <template>
-  <aside class="app-sidebar">
+  <!-- Nav-drawer scrim (2026-08-01 shell drawer batch): rendered only while
+       the drawer is open — and the drawer only ever opens on narrow
+       viewports (App.vue force-closes it when the viewport leaves the
+       1024px breakpoint), so this overlay never appears on desktop. The
+       click walks the same close-drawer emit as ESC. -->
+  <Transition name="drawer-fade">
+    <div v-if="drawerOpen" class="drawer-scrim" aria-hidden="true" @click="emit('close-drawer')" />
+  </Transition>
+  <aside ref="sidebarEl" class="app-sidebar" :class="{ 'drawer-open': drawerOpen }">
     <!-- The brand seat moved to AppTopbar when the full-width header was
          restored (GH #135) — the sidebar starts below the header with the
          nav itself. -->
-    <nav class="side-nav">
+    <nav class="side-nav" aria-label="主导航">
       <router-link
         v-for="item in visibleItems"
         :key="item.key"
@@ -63,7 +71,7 @@
 // (components/icons/lucide.ts). Session state is checked locally on mount
 // and re-checked on every route change — deliberately no state store
 // (AppHeader precedent).
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Loading } from '@element-plus/icons-vue'
 import { fetchAuthStatus } from '@/api/auth'
@@ -74,10 +82,48 @@ import { fetchVersion } from '@/api/version'
 import { roleLabel } from '@/utils/role'
 import { isSidebarItemActive, visibleSidebarItems } from '@/utils/sidebarNav'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
+import { createFocusTrap, type FocusTrapHandle } from '@/utils/focusTrap'
 import { CircleUserRoundIcon, SIDEBAR_ICONS } from './icons/lucide'
+
+// drawerOpen is owned by App.vue (the topbar hamburger toggles it, route
+// changes and desktop resizes force it false); this component only renders
+// the drawer form and reports close intents upward.
+const props = withDefaults(defineProps<{ drawerOpen?: boolean }>(), { drawerOpen: false })
+const emit = defineEmits<{ 'close-drawer': [] }>()
 
 const route = useRoute()
 const router = useRouter()
+
+// --- Nav drawer (narrow viewports) -------------------------------------------
+// The self-built modal trio applied to the drawer: focus trap (Tab cycles
+// inside the drawer while it is open), unified close (ESC / scrim click /
+// nav selection all end in the same close-drawer emit — nav selection
+// closes via App.vue's route watch), and focus return (App.vue lands focus
+// back on the hamburger via the data-drawer-toggle anchor).
+const sidebarEl = ref<HTMLElement | null>(null)
+let drawerTrap: FocusTrapHandle | null = null
+
+function onDrawerKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') emit('close-drawer')
+}
+
+watch(
+  () => props.drawerOpen,
+  async (open) => {
+    if (open) {
+      await nextTick()
+      document.addEventListener('keydown', onDrawerKeydown)
+      if (sidebarEl.value) {
+        drawerTrap = createFocusTrap(sidebarEl.value)
+        sidebarEl.value.querySelector<HTMLElement>('.nav-item')?.focus()
+      }
+    } else {
+      document.removeEventListener('keydown', onDrawerKeydown)
+      drawerTrap?.deactivate()
+      drawerTrap = null
+    }
+  },
+)
 
 // Local session identity; `user` is null when unauthenticated and every
 // authed-only branch reads it. A failed status check is treated as
@@ -163,7 +209,11 @@ onMounted(() => {
   void loadVersion()
 })
 watch(() => route.fullPath, refreshShellState)
-onBeforeUnmount(stopBatchPolling)
+onBeforeUnmount(() => {
+  stopBatchPolling()
+  document.removeEventListener('keydown', onDrawerKeydown)
+  drawerTrap?.deactivate()
+})
 </script>
 
 <style scoped>
@@ -345,5 +395,54 @@ onBeforeUnmount(stopBatchPolling)
 }
 .version {
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+/* --- Nav drawer (narrow viewports, 2026-08-01 shell drawer batch) ---------
+   Below the 1024px breakpoint the sidebar leaves the flex row and becomes a
+   fixed overlay drawer UNDER the topbar (top: 56px — the bar stays visible
+   so its hamburger remains the toggle). Closed = translated off-canvas +
+   visibility hidden (drops out of the a11y tree and the tab order); the
+   visibility transition delays the hide until the slide-out finishes.
+   Open = the drawer slot of the z scale + the lg overlay shadow. The
+   desktop form above is pixel-untouched (>=1024px this block never
+   matches). */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 56px;
+    z-index: var(--hs-z-drawer);
+    /* 260px: slightly wider than the 220px desktop rail — touch targets
+       read better with the extra breathing room. */
+    width: 260px;
+    background: var(--hs-bg-card);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform var(--hs-transition),
+      visibility var(--hs-transition);
+  }
+  .app-sidebar.drawer-open {
+    transform: none;
+    visibility: visible;
+    box-shadow: var(--hs-shadow-lg);
+  }
+}
+/* Scrim: covers everything below the topbar (the bar keeps its own white
+   face and stays clickable). Rendered only while the drawer is open, which
+   only happens on narrow viewports — App.vue force-closes on resize. */
+.drawer-scrim {
+  position: fixed;
+  inset: 56px 0 0 0;
+  z-index: var(--hs-z-overlay);
+  background: var(--hs-overlay-bg);
+}
+.drawer-fade-enter-active,
+.drawer-fade-leave-active {
+  transition: opacity var(--hs-transition);
+}
+.drawer-fade-enter-from,
+.drawer-fade-leave-to {
+  opacity: 0;
 }
 </style>

@@ -205,7 +205,7 @@ function scoreClass(score: number | null): string {
   padding: var(--hs-space-5) var(--hs-space-6);
   margin-bottom: var(--hs-space-4);
 }
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .feed-panel {
     padding: var(--hs-space-4);
   }

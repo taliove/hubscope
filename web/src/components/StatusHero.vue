@@ -262,4 +262,27 @@ const metaText = computed(
   height: 168px;
   border-radius: var(--hs-radius-lg);
 }
+
+/* Narrow form (2026-08-01 shell drawer batch): below the 1024px breakpoint
+   the two columns stack — stats on top, the trend chart full-width below
+   (its 168px height is width-independent). The 242px height anchor is a
+   side-by-side measure and lifts here; the skeleton shares the same
+   structure, so it stacks identically. Tile padding tightens to the
+   registered narrow container value (16px). */
+@media (max-width: 1023px) {
+  .status-hero {
+    flex-direction: column;
+    gap: var(--hs-space-5);
+    min-height: 0;
+    padding: var(--hs-space-4);
+  }
+  .hero-left {
+    flex: none;
+    width: 100%;
+  }
+  .hero-right {
+    flex: none;
+    width: 100%;
+  }
+}
 </style>

@@ -159,6 +159,14 @@ const widgets = computed<Widget[]>(() => {
      the gray skeleton ground. */
   margin-bottom: var(--hs-space-4);
 }
+/* Narrow form (2026-08-01 shell drawer batch): four cells reflow to a 2×2
+   grid below the 1024px breakpoint — the cell content (title / 3xl number /
+   sub-line / sparkline) is width-agnostic and needs no further change. */
+@media (max-width: 1023px) {
+  .metric-widgets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 /* Light containers (Apple syntax): white surface, 1px border, radius-lg;
    the hover lift (2–4px, spec 0018 §15) is the only shadow moment. */
 .widget {

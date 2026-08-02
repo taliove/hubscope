@@ -239,12 +239,17 @@ function openFullDetail() {
 
 /* Sheet: right-edge, full height, one tier above the scrim (drawer slot of
    the z scale). Shadow expresses the floating layer (shadow semantics:
-   shadows only express overlay/clickable). */
+   shadows only express overlay/clickable). box-sizing: border-box is
+   LOAD-BEARING here (2026-08-01 mobile fix): the repo has no global reset
+   (content-box), so without it the 94vw width + 48px padding + 1px border
+   made the sheet 415px wide on a 390px viewport — fixed right:0 then pushed
+   the content lane 25px past the LEFT edge. */
 .detail-panel {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
+  box-sizing: border-box;
   width: min(440px, 94vw);
   display: flex;
   flex-direction: column;
@@ -255,6 +260,14 @@ function openFullDetail() {
   border-left: 1px solid var(--hs-border);
   box-shadow: var(--hs-shadow-lg);
   z-index: var(--hs-z-drawer);
+}
+/* Narrow form (2026-08-01 shell drawer batch): the registered 16px narrow
+   container padding and a tighter region rhythm. */
+@media (max-width: 1023px) {
+  .detail-panel {
+    gap: var(--hs-space-4);
+    padding: var(--hs-space-4);
+  }
 }
 
 .panel-fade-enter-active,
@@ -283,6 +296,11 @@ function openFullDetail() {
   display: flex;
   flex-direction: column;
   gap: var(--hs-space-2);
+  /* flex-grow is what pins the close button to the sheet's right edge —
+     without it the button followed the title inline (2026-08-01 mobile
+     report: 「关闭按钮位置不正确」). min-width: 0 keeps the title's
+     ellipsis working inside the flex row. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 .panel-title {
@@ -326,6 +344,13 @@ function openFullDetail() {
 .close-btn:hover {
   background: var(--hs-bg-hover);
   color: var(--hs-text-primary);
+}
+/* The sheet focuses this button on open (focusClose) — without a rule the
+   UA default black ring showed (2026-08-01 mobile report). The single
+   focus language applies: 2px brand outline. */
+.close-btn:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: 1px;
 }
 
 /* Metric cells: three light wells, availability/error tiered by the shared
