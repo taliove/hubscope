@@ -17,6 +17,15 @@ func TestJudgeModelFromSettings(t *testing.T) {
 	retireSuiteCases(t, db, suiteID)
 	createJudgeCaseForTest(t, ts.URL, suiteID, "JUDGE-SETTINGS:请回答")
 
+	// The save-time guard (GH #155) requires the judge registered on some
+	// hub; put it on the evaluated model's hub so it is reachable there too.
+	model, err := db.GetModel(modelID)
+	if err != nil {
+		t.Fatalf("load model: %v", err)
+	}
+	if _, err := db.CreateModel(model.HubID, "alt-judge-model", []string{"openai"}); err != nil {
+		t.Fatalf("create judge model: %v", err)
+	}
 	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
 		"judge_model": "alt-judge-model",
 	})

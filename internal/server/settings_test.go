@@ -62,7 +62,15 @@ func TestSettingsRoundTrip(t *testing.T) {
 		t.Errorf("alert_enabled should stay true, got %v", after["alert_enabled"])
 	}
 
-	// Partial update of the remaining keys.
+	// Partial update of the remaining keys. judge_model must name a model
+	// registered on some hub (GH #155 save-time guard) — seed one first.
+	kimiHub, err := db.CreateHub("kimi-hub", "http://kimi.test", "tok-kimi-0000")
+	if err != nil {
+		t.Fatalf("create hub: %v", err)
+	}
+	if _, err := db.CreateModel(kimiHub.ID, "kimi-k3", []string{"openai"}); err != nil {
+		t.Fatalf("create judge model: %v", err)
+	}
 	putResp = doPut(t, ts.URL+"/api/settings", map[string]interface{}{
 		"alert_enabled":            false,
 		"score_drop_alert_enabled": false,

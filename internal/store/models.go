@@ -185,6 +185,30 @@ func (db *DB) GetModel(id int64) (*Model, error) {
 	return &m, nil
 }
 
+// ModelExistsAnywhere reports whether any non-retired model carries the
+// given model_id, regardless of hub (GH #155): the settings save-time
+// guard for judge_model — a judge on no hub at all is a configuration
+// typo, not a multi-hub gap.
+func (db *DB) ModelExistsAnywhere(modelID string) (bool, error) {
+	var n int
+	err := db.conn.QueryRow(
+		"SELECT COUNT(*) FROM models WHERE model_id = ? AND status != 'retired'",
+		modelID).Scan(&n)
+	return n > 0, err
+}
+
+// ModelExistsOnHub reports whether a non-retired model with the given
+// model_id exists on the given hub (GH #155): judge calls ride the
+// evaluated model's hub, so the judge must be reachable on each evaluated
+// hub specifically.
+func (db *DB) ModelExistsOnHub(hubID int64, modelID string) (bool, error) {
+	var n int
+	err := db.conn.QueryRow(
+		"SELECT COUNT(*) FROM models WHERE hub_id = ? AND model_id = ? AND status != 'retired'",
+		hubID, modelID).Scan(&n)
+	return n > 0, err
+}
+
 // SetModelCapability updates a model's capability tag ("chat" / "non_chat").
 // Discovery (ticket 05) sets this from the model list; eval eligibility
 // checks read it.

@@ -176,6 +176,12 @@ type evalCell struct {
 func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) {
 	defaultSamples := e.resolveDefaultSampleCount()
 
+	// GH #155 (decision B): judge calls ride the evaluated model's hub.
+	// Name every evaluated hub that lacks the judge up front — multi-hub
+	// deployments must not learn about an unreachable judge from a wiped
+	// leaderboard.
+	e.warnJudgeUnreachable(prepared, modelDBIDs)
+
 	// The GH #153 guards (campaign budget, all-dead abort) share the
 	// existing cancellation machinery: stopping means canceling, with an
 	// explicit reason carried to the runs whose cells never started.
@@ -442,6 +448,64 @@ func (e *Evaluator) resolveEvalConcurrency() int {
 		return store.MaxEvalConcurrency
 	}
 	return n
+}
+
+// warnJudgeUnreachable logs one warn line per (run, hub) whose judge
+// model is missing from that hub (GH #155, decision B). Judge calls ride
+// the evaluated model's hub, so a judge present on Hub A does nothing for
+// Hub B's models; the task log must say so before the cases burn.
+func (e *Evaluator) warnJudgeUnreachable(prepared []*preparedRun, modelDBIDs []int64) {
+	hasJudge := false
+	for _, prep := range prepared {
+		for _, c := range prep.cases {
+			if c.VerdictType == "judge" {
+				hasJudge = true
+				break
+			}
+		}
+	}
+	if !hasJudge {
+		return
+	}
+
+	// Distinct hubs behind the evaluated models.
+	hubs := map[int64]string{}
+	for _, id := range modelDBIDs {
+		model, err := e.db.GetModel(id)
+		if err != nil {
+			continue
+		}
+		if _, seen := hubs[model.HubID]; seen {
+			continue
+		}
+		hub, err := e.db.GetHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		hubs[model.HubID] = hub.Name
+	}
+
+	reachable := map[string]bool{}
+	for hubID, hubName := range hubs {
+		for _, prep := range prepared {
+			judge := prep.run.JudgeModel
+			key := fmt.Sprintf("%d|%s", hubID, judge)
+			ok, seen := reachable[key]
+			if !seen {
+				var err error
+				ok, err = e.db.ModelExistsOnHub(hubID, judge)
+				if err != nil {
+					ok = true // a check failure must not cry wolf
+				}
+				reachable[key] = ok
+			}
+			if !ok {
+				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
+					"judge model %q unreachable on hub %q: judge cases for its models will stay unjudged",
+					judge, hubName))
+			}
+		}
+	}
 }
 
 // resolveCampaignBudgetMinutes reads the campaign wall-clock budget from

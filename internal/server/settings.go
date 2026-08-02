@@ -127,6 +127,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GH #155 (decision B): judge calls ride the evaluated model's hub, so
+	// a judge model registered on no hub at all is a configuration typo —
+	// reject it at save time instead of letting every judge case fail
+	// silently at eval time.
+	if patch.JudgeModel != nil && *patch.JudgeModel != "" {
+		exists, err := s.db.ModelExistsAnywhere(*patch.JudgeModel)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check judge model")
+			return
+		}
+		if !exists {
+			writeError(w, http.StatusBadRequest,
+				fmt.Sprintf("judge model %q is not registered on any hub", *patch.JudgeModel))
+			return
+		}
+	}
+
 	if patch.SuiteWeights != nil {
 		if err := s.validateSuiteWeights(patch.SuiteWeights); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
