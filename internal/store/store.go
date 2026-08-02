@@ -33,6 +33,27 @@ func Open(path string) (*DB, error) {
 	// (e.g. the scheduler writing probes while the API serves reads).
 	conn.SetMaxOpenConns(1)
 
+	// WAL + NORMAL synchronous (GH #150): commits append to the WAL instead
+	// of rewriting the rollback journal and no longer fsync per commit,
+	// cutting the per-row commit cost of the probe/eval write streams;
+	// durability stays crash-safe (WAL checkpoints are atomic), only the
+	// last committed transactions are at risk on power loss — acceptable
+	// for derived monitoring data. busy_timeout absorbs brief contention
+	// with external readers. journal_mode persists on the database file,
+	// so old databases upgrade in place on first open.
+	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("enable WAL: %w", err)
+	}
+	if _, err := conn.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("set synchronous: %w", err)
+	}
+	if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("set busy timeout: %w", err)
+	}
+
 	db := &DB{conn: conn}
 	if err := db.migrate(); err != nil {
 		conn.Close()
@@ -191,6 +212,9 @@ func (db *DB) migrate() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_eval_results_run ON eval_results(eval_run_id);
+
+		-- GH #150: ListModelTrend filters eval_results by model_db_id.
+		CREATE INDEX IF NOT EXISTS idx_eval_results_model ON eval_results(model_db_id);
 
 		CREATE TABLE IF NOT EXISTS settings (
 			key TEXT PRIMARY KEY,

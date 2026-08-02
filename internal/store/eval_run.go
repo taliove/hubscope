@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -289,6 +290,80 @@ func (db *DB) CreateEvalResult(r EvalResult) (*EvalResult, error) {
 	r.VerdictProfile = profile
 	r.CreatedAt = now
 	return &r, nil
+}
+
+// CreateEvalResultsBatch inserts result rows in a single transaction
+// (GH #150): the failure-stamp paths (setup failure, circuit breaker)
+// write whole case-set rows at once, and a prepared statement inside one
+// tx is far cheaper than per-row implicit transactions. Live per-case
+// scoring keeps CreateEvalResult so the progress grid and live feed
+// update case by case. Profiles fall back to V1 like the single-row path.
+func (db *DB) CreateEvalResultsBatch(rs []EvalResult) error {
+	if len(rs) == 0 {
+		return nil
+	}
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`
+		INSERT INTO eval_results (eval_run_id, model_db_id, model_id, case_id, answer_text, score, verdict_detail, verdict_profile, latency_ms, input_tokens, output_tokens, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, r := range rs {
+		profile := r.VerdictProfile
+		if profile == "" {
+			profile = VerdictProfileV1
+		}
+		if _, err := stmt.Exec(r.EvalRunID, r.ModelDBID, r.ModelID, r.CaseID, r.AnswerText,
+			r.Score, r.VerdictDetail, profile, r.LatencyMs, r.InputTokens, r.OutputTokens, now); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ListEvalRunAverageScores returns each requested run's mean score in one
+// aggregate query (GH #151): SQLite AVG skips NULL scores, so unjudged
+// cases never drag the mean — the same convention as averageScore, whose
+// nadir normalization stays a read-side concern of the caller. Runs with
+// no scored result are absent from the map (nil mean).
+func (db *DB) ListEvalRunAverageScores(runIDs []int64) (map[int64]float64, error) {
+	out := map[int64]float64{}
+	if len(runIDs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(runIDs))
+	args := make([]interface{}, len(runIDs))
+	for i, id := range runIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := db.conn.Query(
+		"SELECT eval_run_id, AVG(score) FROM eval_results WHERE eval_run_id IN ("+
+			strings.Join(placeholders, ",")+") GROUP BY eval_run_id", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var runID int64
+		var avg *float64
+		if err := rows.Scan(&runID, &avg); err != nil {
+			return nil, err
+		}
+		if avg != nil {
+			out[runID] = *avg
+		}
+	}
+	return out, rows.Err()
 }
 
 // ListEvalResults returns all results of a run ordered by id. Each row is

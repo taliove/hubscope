@@ -662,10 +662,12 @@ func (e *Evaluator) verdict(ctx context.Context, hub *store.Hub, protocol, judge
 
 // failAllCases records a failed result (no answer, no score) for every case.
 // Failed results carry the current profile too, so a run's caliber can always
-// be derived from any of its rows.
+// be derived from any of its rows. Whole-set failure stamps go through one
+// batch transaction (GH #150).
 func (e *Evaluator) failAllCases(run *store.EvalRun, modelDBID int64, modelID string, cases []store.Case, reason string) {
+	rows := make([]store.EvalResult, 0, len(cases))
 	for _, c := range cases {
-		e.storeResult(store.EvalResult{
+		rows = append(rows, store.EvalResult{
 			EvalRunID:      run.ID,
 			ModelDBID:      modelDBID,
 			ModelID:        modelID,
@@ -673,6 +675,9 @@ func (e *Evaluator) failAllCases(run *store.EvalRun, modelDBID int64, modelID st
 			VerdictDetail:  &reason,
 			VerdictProfile: VerdictProfileCurrent,
 		})
+	}
+	if err := e.db.CreateEvalResultsBatch(rows); err != nil {
+		slog.Error("evaluator: persist failure stamp", "run_id", run.ID, "model_db_id", modelDBID, "error", err)
 	}
 }
 

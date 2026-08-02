@@ -475,14 +475,22 @@ func (s *Server) handleListEvals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	runIDs := make([]int64, len(runs))
+	for i, run := range runs {
+		runIDs[i] = run.ID
+	}
+	// One aggregate query for every run's mean score (GH #151) — the old
+	// per-run ListEvalResults pulled full detail rows (answer_text
+	// included) just to average them.
+	avgs, err := s.db.ListEvalRunAverageScores(runIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load eval results")
+		return
+	}
+
 	dtos := make([]evalRunDTO, 0, len(runs))
 	for _, run := range runs {
-		results, err := s.db.ListEvalResults(run.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load eval results")
-			return
-		}
-		dtos = append(dtos, toEvalRunDTO(run, averageScore(results, run.Nadir)))
+		dtos = append(dtos, toEvalRunDTO(run, runScoreFromAvg(avgs, run)))
 	}
 
 	writeData(w, http.StatusOK, dtos)
@@ -552,6 +560,19 @@ func (s *Server) handleLatestEvals(w http.ResponseWriter, r *http.Request) {
 }
 
 // averageScore computes the mean of all non-null scores, scaled through the
+// runScoreFromAvg finishes the aggregate read path (GH #151): the store's
+// per-run mean plus the run's own nadir snapshot, normalized with the same
+// caliber as averageScore. A run absent from the aggregate map has no
+// scored result and reports nil.
+func runScoreFromAvg(avgs map[int64]float64, run store.EvalRun) *float64 {
+	avg, ok := avgs[run.ID]
+	if !ok {
+		return nil
+	}
+	v := normalizeScore01(avg, run.Nadir)
+	return &v
+}
+
 // ADR-0009 nadir normalization with the run's own nadir snapshot — the same
 // caliber as the leaderboard, kept on the 0~1 wire scale the eval API has
 // always spoken (nadir=0 degenerates to the legacy raw mean). Null scores

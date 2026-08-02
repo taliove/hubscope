@@ -128,13 +128,20 @@ func (s *Server) handleGetCampaign(w http.ResponseWriter, r *http.Request) {
 // buildCampaignDetail assembles the detail DTO for one campaign: live
 // progress counts plus each member run's read-time aggregate score.
 func (s *Server) buildCampaignDetail(campaign store.Campaign, runs []store.EvalRun) (campaignDetailDTO, error) {
+	runIDs := make([]int64, len(runs))
+	for i, run := range runs {
+		runIDs[i] = run.ID
+	}
+	// One aggregate query for every run's mean score (GH #151), not one
+	// detail-row fetch per run.
+	avgs, err := s.db.ListEvalRunAverageScores(runIDs)
+	if err != nil {
+		return campaignDetailDTO{}, err
+	}
+
 	withProgress := store.CampaignWithProgress{Campaign: campaign}
 	runDTOs := make([]evalRunDTO, 0, len(runs))
 	for _, run := range runs {
-		results, err := s.db.ListEvalResults(run.ID)
-		if err != nil {
-			return campaignDetailDTO{}, err
-		}
 		withProgress.Progress.Total++
 		switch run.Status {
 		case "done":
@@ -144,7 +151,7 @@ func (s *Server) buildCampaignDetail(campaign store.Campaign, runs []store.EvalR
 		default:
 			withProgress.Progress.Running++
 		}
-		runDTOs = append(runDTOs, toEvalRunDTO(run, averageScore(results, run.Nadir)))
+		runDTOs = append(runDTOs, toEvalRunDTO(run, runScoreFromAvg(avgs, run)))
 	}
 	return campaignDetailDTO{
 		campaignDTO: toCampaignDTO(withProgress),
