@@ -3,7 +3,8 @@
 // the 故障记录 event timeline. Components render only; every derivation
 // lives here so the timeline semantics stay testable (format.ts /
 // overviewDots.ts centralization precedent).
-import type { AlertEvent } from '@/api/settings'
+import type { AlertEvent, AlertKind } from '@/api/settings'
+import { ALERT_KINDS } from '@/utils/alertKind'
 
 // Time-range presets offered by the timeline filter bar. 'today' is the
 // local calendar day (midnight → now); the others are rolling windows.
@@ -140,4 +141,56 @@ export function groupEventsByDate(events: AlertEvent[], now: Date): AlertDayGrou
   // are already newest-first — but sort defensively on the day key so a
   // shuffled input cannot scramble the timeline.
   return [...groups.values()].sort((a, b) => (a.key < b.key ? 1 : -1))
+}
+
+// --- URL query codec (GH #143, spec 0019 T3 — filter deep-link) ------------
+
+// The /alerts filter state mirrored into the query string: model id, event
+// kind, time range. The URL is the shareable form of the exact timeline
+// view (modelList.ts five-param codec precedent, 2026-08-02): a pasted link
+// must reproduce it, so on open the URL WINS over the defaults.
+export interface AlertsFilter {
+  model: string | null
+  kind: AlertKind | null
+  range: AlertTimeRange
+}
+
+export const ALERTS_FILTER_DEFAULT: AlertsFilter = { model: null, kind: null, range: '7d' }
+
+const ALERT_TIME_RANGES: AlertTimeRange[] = ['today', '24h', '7d', '30d']
+
+// alertsFilterToQuery serializes only the NON-DEFAULT params — a clean URL
+// is the default view (no model / no kind / 7d).
+export function alertsFilterToQuery(filter: AlertsFilter): Record<string, string> {
+  const query: Record<string, string> = {}
+  if (filter.model) query.model = filter.model
+  if (filter.kind) query.kind = filter.kind
+  if (filter.range !== ALERTS_FILTER_DEFAULT.range) query.range = filter.range
+  return query
+}
+
+// First value of a possibly-repeated query param (router/index.ts
+// firstQueryValue precedent).
+function firstQueryString(raw: unknown): string | null {
+  const first = Array.isArray(raw) ? raw[0] : raw
+  return typeof first === 'string' ? first : null
+}
+
+// parseAlertsFilterQuery reads the query back; anything unrecognized falls
+// back to the default for that param. The codec is SESSION-BLIND by design:
+// a deep link copied from a logged-in operator may carry one of the seven
+// kinds an anonymous reader's payload can never contain — parsing it
+// verbatim is correct (the empty-result semantics for an unmatchable kind
+// is registered on the GH #142 ticket face), not a codec-layer concern.
+export function parseAlertsFilterQuery(query: Record<string, unknown>): AlertsFilter {
+  const modelRaw = firstQueryString(query.model)
+  const kindRaw = firstQueryString(query.kind)
+  const rangeRaw = firstQueryString(query.range)
+  return {
+    model: modelRaw || null,
+    kind: ALERT_KINDS.includes(kindRaw as AlertKind) ? (kindRaw as AlertKind) : null,
+    range: ALERT_TIME_RANGES.includes(rangeRaw as AlertTimeRange)
+      ? (rangeRaw as AlertTimeRange)
+      : ALERTS_FILTER_DEFAULT.range,
+  }
 }

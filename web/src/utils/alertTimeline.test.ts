@@ -7,6 +7,9 @@ import {
   filterEventsByTimeRange,
   pairIncidentDurations,
   groupEventsByDate,
+  alertsFilterToQuery,
+  parseAlertsFilterQuery,
+  ALERTS_FILTER_DEFAULT,
   type AlertTimeRange,
 } from '@/utils/alertTimeline'
 import type { AlertEvent, AlertKind } from '@/api/settings'
@@ -167,5 +170,63 @@ describe('groupEventsByDate', () => {
   it('skips unparseable timestamps', () => {
     const broken = { ...event('down', now, { endpointId: 1 }), created_at: 'garbage' }
     expect(groupEventsByDate([broken], now)).toEqual([])
+  })
+})
+
+describe('alertsFilterToQuery / parseAlertsFilterQuery (GH #143)', () => {
+  it('serializes only non-default params (clean URL = default view)', () => {
+    expect(alertsFilterToQuery(ALERTS_FILTER_DEFAULT)).toEqual({})
+    expect(alertsFilterToQuery({ model: null, kind: null, range: '7d' })).toEqual({})
+    expect(alertsFilterToQuery({ model: 'gpt-5', kind: 'down', range: '30d' })).toEqual({
+      model: 'gpt-5',
+      kind: 'down',
+      range: '30d',
+    })
+    expect(alertsFilterToQuery({ model: null, kind: 'recovered', range: '7d' })).toEqual({
+      kind: 'recovered',
+    })
+    expect(alertsFilterToQuery({ model: '', kind: null, range: 'today' })).toEqual({
+      range: 'today',
+    })
+  })
+
+  it('roundtrips every representable state', () => {
+    const states = [
+      ALERTS_FILTER_DEFAULT,
+      { model: 'claude-sonnet-4', kind: null, range: 'today' as const },
+      { model: null, kind: 'group_down' as const, range: '24h' as const },
+      { model: 'qwen-max', kind: 'score_drop' as const, range: '30d' as const },
+    ]
+    for (const s of states) {
+      expect(parseAlertsFilterQuery(alertsFilterToQuery(s))).toEqual(s)
+    }
+  })
+
+  it('parses all eleven kinds session-blind (a login-only kind in an anonymous deep link is the codec layer\'s business)', () => {
+    expect(parseAlertsFilterQuery({ kind: 'test' }).kind).toBe('test')
+    expect(parseAlertsFilterQuery({ kind: 'quiet_summary' }).kind).toBe('quiet_summary')
+    expect(parseAlertsFilterQuery({ kind: 'retired' }).kind).toBe('retired')
+  })
+
+  it('falls back to defaults on bad values', () => {
+    expect(parseAlertsFilterQuery({ range: '1y' }).range).toBe('7d')
+    expect(parseAlertsFilterQuery({ range: '7D' }).range).toBe('7d')
+    expect(parseAlertsFilterQuery({ range: '' }).range).toBe('7d')
+    expect(parseAlertsFilterQuery({ kind: 'exploded' }).kind).toBeNull()
+    expect(parseAlertsFilterQuery({ model: '' }).model).toBeNull()
+    expect(parseAlertsFilterQuery({})).toEqual(ALERTS_FILTER_DEFAULT)
+  })
+
+  it('takes the first value of repeated (array) params — firstQueryValue precedent', () => {
+    expect(parseAlertsFilterQuery({ range: ['30d', '7d'] }).range).toBe('30d')
+    expect(parseAlertsFilterQuery({ range: ['bogus'] }).range).toBe('7d')
+    expect(parseAlertsFilterQuery({ kind: ['down', 'recovered'] }).kind).toBe('down')
+    expect(parseAlertsFilterQuery({ model: ['a', 'b'] }).model).toBe('a')
+  })
+
+  it('ignores non-string values defensively', () => {
+    expect(parseAlertsFilterQuery({ range: 30, kind: null, model: undefined })).toEqual(
+      ALERTS_FILTER_DEFAULT,
+    )
   })
 })

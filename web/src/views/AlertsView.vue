@@ -99,7 +99,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { listAlerts, type AlertEvent, type AlertKind } from '@/api/settings'
 import { fetchAuthStatus } from '@/api/auth'
 import { fetchOverview } from '@/api/overview'
@@ -109,6 +110,8 @@ import {
   filterEventsByTimeRange,
   pairIncidentDurations,
   groupEventsByDate,
+  alertsFilterToQuery,
+  parseAlertsFilterQuery,
   type AlertTimeRange,
   type IncidentDuration,
 } from '@/utils/alertTimeline'
@@ -132,9 +135,39 @@ const loading = ref(false)
 const error = ref('')
 const limit = ref(INITIAL_LIMIT)
 
-const modelFilter = ref<string | null>(null)
-const kindFilter = ref<AlertKind | null>(null)
-const rangeFilter = ref<AlertTimeRange>('7d')
+// --- URL deep-link state (GH #143, spec 0019 T3) -----------------------------
+// The three filter-bar conditions mirror into the query string so any
+// timeline view is shareable/bookmarkable by copying the address bar. On
+// mount the URL WINS (a pasted link must reproduce the exact view) —
+// DashboardView five-param precedent (2026-08-02).
+const route = useRoute()
+const router = useRouter()
+const initialFilter = parseAlertsFilterQuery(route.query)
+
+const modelFilter = ref<string | null>(initialFilter.model)
+const kindFilter = ref<AlertKind | null>(initialFilter.kind)
+const rangeFilter = ref<AlertTimeRange>(initialFilter.range)
+
+// Mirror the filters into the query string (router.replace — no history
+// spam; query changes never remount the page, App.vue keys on path).
+// Defaults stay OUT of the query so a clean URL is the default view. A
+// 200ms debounce keeps rapid select changes to one replace per pause.
+let querySyncTimer: ReturnType<typeof setTimeout> | null = null
+watch([modelFilter, kindFilter, rangeFilter], () => {
+  if (querySyncTimer) clearTimeout(querySyncTimer)
+  querySyncTimer = setTimeout(() => {
+    void router.replace({
+      query: alertsFilterToQuery({
+        model: modelFilter.value,
+        kind: kindFilter.value,
+        range: rangeFilter.value,
+      }),
+    })
+  }, 200)
+})
+onBeforeUnmount(() => {
+  if (querySyncTimer) clearTimeout(querySyncTimer)
+})
 
 // Session state forks the type filter's option set (spec 0019, GH #142):
 // anonymous visitors only see the four incident-narrative kinds their
@@ -151,6 +184,15 @@ async function refreshAuth() {
     authed.value = false
   }
 }
+
+// Re-check on every route switch (AppTopbar / AppSidebar shell precedent) —
+// a login/logout on another page must fork the kind options without a
+// reload (check GH #142 LOW-1, fixed alongside GH #143). The watch source
+// is route.path, NOT fullPath: this view mirrors its own filters into the
+// query (debounced router.replace above), and watching fullPath would
+// self-trigger a redundant /api/auth/status on every filter change
+// (check GH #143 LOW-2).
+watch(() => route.path, refreshAuth)
 
 // endpoint_id → model_id resolution map from the overview payload. A deleted
 // endpoint drops out of the overview and falls back to its raw id label —
