@@ -3,6 +3,7 @@ import {
   healthDeltaText,
   healthDeltaTone,
   heroScopeText,
+  emptyStateKind,
   hourlyAvailabilitySeries,
   hourlyProbeSeries,
   hourlyFailureSeries,
@@ -178,5 +179,27 @@ describe('abnormalModelCounts', () => {
   })
   it('all-stable is zero', () => {
     expect(abnormalModelCounts([entry({})]).total).toBe(0)
+  })
+})
+
+// emptyStateKind (GH #159): the dashboard list zone must never render the
+// configuration guide ("暂无监控端点") over a failed first load — a load
+// failure is not an unconfigured board (失败不冒充空态, ui-guidelines §6).
+describe('emptyStateKind', () => {
+  it('is none when entries exist (error or not — the board stays on screen)', () => {
+    expect(emptyStateKind(3, null, false)).toBe('none')
+    expect(emptyStateKind(3, 'boom', true)).toBe('none')
+  })
+  it('is loading only while the first load is in flight without an error', () => {
+    expect(emptyStateKind(0, null, true)).toBe('loading')
+  })
+  it('is guide only for a clean empty board (loaded, no error, no entries)', () => {
+    expect(emptyStateKind(0, null, false)).toBe('guide')
+  })
+  it('is error when the first load failed — never the guide', () => {
+    expect(emptyStateKind(0, 'network down', false)).toBe('error')
+  })
+  it('keeps the error state while a retry is in flight', () => {
+    expect(emptyStateKind(0, 'network down', true)).toBe('error')
   })
 })

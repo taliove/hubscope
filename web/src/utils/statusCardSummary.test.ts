@@ -392,6 +392,31 @@ describe('singleModelStatement', () => {
       failingChip: null,
     })
   })
+  // Defensive fallback (GH #159): a runtime status outside the domain union
+  // (e.g. unverified, whose display identity is GH #160's business) crashed
+  // the share dialog — the switch had no default and the consumers
+  // dereferenced undefined. The neutral fallback mirrors statusDisplay's
+  // UNKNOWN_DISPLAY: the 未知 word, the middle tone — never stable, never
+  // abnormal.
+  it('returns a neutral statement for a status outside the domain union', () => {
+    const entry = makeEntry({ status: 'unverified' as EndpointStatus })
+    expect(singleModelStatement(entry, null)).toEqual({
+      text: '未知 · 24h 内无探测数据',
+      tone: 'degraded',
+      failingChip: null,
+    })
+  })
+  it('keeps the rate clause for an unknown status with data', () => {
+    const entry = makeEntry({
+      status: 'unverified' as EndpointStatus,
+      dots_24h: dotsWith(100, 10, [23]),
+    })
+    expect(singleModelStatement(entry, 0.9)).toEqual({
+      text: '未知 · 24h 可用率 90.0%',
+      tone: 'degraded',
+      failingChip: null,
+    })
+  })
 })
 
 describe('singleModelSummaryText', () => {
@@ -421,5 +446,18 @@ describe('singleModelSummaryText', () => {
   })
   it('healthy without probes states the fact and the gap', () => {
     expect(singleModelSummaryText(makeEntry(), null)).toBe('当前状态稳定;暂无 24 小时探测数据')
+  })
+  // GH #159: an out-of-union runtime status used to fall into the healthy
+  // branches and claim "当前状态稳定" — false comfort. The defensive branch
+  // states the fact neutrally and never reads as stable.
+  it('unknown status without probes never claims stable', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'unverified' as EndpointStatus }), null)).toBe(
+      '状态未知;暂无 24 小时探测数据',
+    )
+  })
+  it('unknown status with data states the rate without a verdict', () => {
+    expect(singleModelSummaryText(makeEntry({ status: 'unverified' as EndpointStatus }), 0.9)).toBe(
+      '状态未知,24h 可用率 90.0%',
+    )
   })
 })

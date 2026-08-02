@@ -18,6 +18,7 @@ import {
   displayStatusCounts,
   statusLabel,
   statusTone,
+  toDisplayStatus,
   type DisplayStatus,
   type DisplayTone,
 } from '@/utils/statusDisplay'
@@ -209,6 +210,15 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
       // The chip copy is alert-event wording (event category, untouched);
       // the status word itself has already merged into 异常.
       return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+    default:
+      // Defensive fallback (GH #159): the wire is untyped, so a runtime
+      // status outside the domain union (e.g. unverified — its display
+      // identity is GH #160's ruling, not this ticket's) must not return
+      // undefined and crash the share dialog. Same family as statusDisplay's
+      // UNKNOWN_DISPLAY: statusLabel already yields 未知, and the middle
+      // tone never reads as stable (false comfort) nor abnormal (false
+      // alarm). No fourth status word is invented here.
+      return { text: `${word} · ${rate}`, tone: 'degraded', failingChip: null }
   }
 }
 
@@ -216,6 +226,14 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
 // summaryText, with singular phrasing (no counts, no model name — the scope
 // chips already name the model).
 export function singleModelSummaryText(entry: OverviewEntry, availability: number | null): string {
+  // Defensive branch (GH #159): an out-of-union runtime status must not fall
+  // into the healthy chain below — "当前状态稳定" for an unverified endpoint
+  // is false comfort. State the fact neutrally, no verdict, no advice.
+  if (toDisplayStatus(entry.status) === null) {
+    return availability !== null
+      ? `状态未知,24h 可用率 ${formatPercent(availability)}`
+      : '状态未知;暂无 24 小时探测数据'
+  }
   let text: string
   if (entry.status === 'failing') {
     text = '触发告警,建议立即处理'

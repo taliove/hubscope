@@ -88,10 +88,12 @@
           <el-option v-for="g in LIST_GROUPINGS" :key="g" :label="LIST_GROUPING_LABELS[g]" :value="g" />
         </el-select>
         <!-- Share the filtered picture as a Status Card PNG; disabled until the
-             first load lands (an empty board is not shareable). -->
+             first load lands (an empty board is not shareable) and while the
+             board is in the error-empty state (GH #159: a card born of a
+             failed load would share a fabricated "暂无数据"). -->
         <el-button
           class="share-btn"
-          :disabled="loading && entries.length === 0"
+          :disabled="emptyKind === 'loading' || emptyKind === 'error'"
           @click="openShare"
         >
           <el-icon><Share /></el-icon>
@@ -136,6 +138,13 @@
         v-else-if="entries.length > 0"
         description="暂无匹配的 Endpoint"
       />
+      <!-- GH #159: a failed first load renders the error state (reason is in
+           the alert above + a retry entry here), NEVER the configuration
+           guide — failure must not masquerade as an unconfigured board
+           (ui-guidelines §6). -->
+      <el-empty v-else-if="emptyKind === 'error'" description="加载失败,请重试">
+        <el-button size="small" @click="reload">重试</el-button>
+      </el-empty>
       <el-empty v-else description="暂无监控端点，请先在模型管理中添加" />
     </template>
 
@@ -189,6 +198,7 @@ import { countByStatus, toneOf, conclusionText } from '@/utils/healthConclusion'
 import { aggregateDots24h } from '@/utils/overviewDots'
 import {
   heroScopeText,
+  emptyStateKind,
   hourlyAvailabilitySeries,
   hourlyProbeSeries,
   hourlyLatencySeries,
@@ -209,6 +219,7 @@ const {
   healthScore24h,
   healthScoreDelta,
   probes24h,
+  reload,
   start,
 } = useOverview()
 
@@ -243,8 +254,12 @@ const statusOptions = [...DISPLAY_SEVERITY_ORDER].reverse()
 
 // First load only: hero/widgets/list render skeletons until the first
 // response lands. Poll failures keep the last good data (error alert on
-// top), so skeleton never replaces a populated board.
-const initialLoading = computed(() => loading.value && entries.value.length === 0 && error.value === null)
+// top), so skeleton never replaces a populated board. The empty-zone kind
+// (GH #159) is the single decision point: 'error' beats 'loading' and
+// 'guide', so a failed first load renders the error state and never the
+// configuration guide (失败不冒充空态).
+const emptyKind = computed(() => emptyStateKind(entries.value.length, error.value, loading.value))
+const initialLoading = computed(() => emptyKind.value === 'loading')
 
 // --- Hero -------------------------------------------------------------------
 

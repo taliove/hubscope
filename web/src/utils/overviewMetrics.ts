@@ -44,6 +44,21 @@ export function heroScopeText(enabledEndpoints: number): string {
   return `统计范围：${enabledEndpoints} 个启用端点`
 }
 
+// --- Empty-state kind (GH #159) ---------------------------------------------
+// What the dashboard list zone renders when there is nothing to list. The
+// anti-fake invariant (ui-guidelines §6, EndpointDetailView precedent): a
+// failed load must NEVER render the configuration guide ("暂无监控端点") —
+// failure is not "unconfigured". 'error' therefore beats both 'loading' (a
+// retry in flight keeps the error state, not the skeleton) and 'guide'.
+export type EmptyStateKind = 'loading' | 'error' | 'guide' | 'none'
+
+export function emptyStateKind(entryCount: number, error: string | null, loading: boolean): EmptyStateKind {
+  if (entryCount > 0) return 'none'
+  if (error !== null) return 'error'
+  if (loading) return 'loading'
+  return 'guide'
+}
+
 // --- Widget hourly trend series -------------------------------------------
 // Display-only sparkline inputs; the scalars beside them always come from
 // backend aggregates. All series are hour-aligned, oldest first.
