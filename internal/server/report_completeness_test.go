@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -17,26 +16,6 @@ import (
 // forfeits its total, its delta and its rank, and sinks below every fully
 // judged model. The helpers below are local to this file; shared harness
 // primitives (env, stub hub, HTTP seam) are reused untouched.
-
-// waitForSuiteRunStatus polls the campaign detail until the run covering
-// suiteKey reaches the wanted status. It exists so a test can hold a model
-// broken for exactly one suite of a sweep: keep it broken, wait for that
-// suite's run to settle, then unbreak — every later suite judges normally.
-func waitForSuiteRunStatus(t *testing.T, base string, campaignID int64, suiteKey, want string) {
-	t.Helper()
-	suiteID := suiteIDByKey(t, base, suiteKey)
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		campaign := getCampaign(t, base, campaignID)
-		for _, run := range campaignRuns(t, campaign) {
-			if int64(run["suite_id"].(float64)) == suiteID && run["status"] == want {
-				return
-			}
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	t.Fatalf("campaign %d suite %q run did not reach %q in time", campaignID, suiteKey, want)
-}
 
 // gateRowOrder extracts the model_id sequence of leaderboard rows.
 func gateRowOrder(rows []map[string]interface{}) []string {
@@ -162,11 +141,10 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	// One custom exact-rule case per rotation suite: normal answers score
 	// 100, bad answers score 0 (judged), broken calls stay unjudged.
 	installCustomBank(t, ts.URL, db, oneCasePerSuite())
-	// Serial cell order (GH #26 pool at 1): the scenario holds gamma broken
-	// for exactly the mmlu run — "broken until that suite's run settles,
-	// unbroken after" only maps to one suite when cells execute suite by
-	// suite, and alpha's gate freezes the campaign at a suite boundary only
-	// when alpha runs first inside every run.
+	// Serial cell order (GH #26 pool at 1, GH #169 model-major): each
+	// model's broken stretch is contiguous, so "gamma broken until its
+	// second suite starts" maps to exactly the mmlu suite when gamma's own
+	// gate freezes it at agieval_zh's first case.
 	setEvalConcurrency(t, ts.URL, 1)
 
 	// Batch 1: a fully judged baseline for every model.
@@ -175,27 +153,28 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	waitCampaignStatus(t, ts.URL, firstID, store.CampaignStatusDone)
 
 	// Batch 2: alpha and beta answer everything wrong (judged — complete,
-	// low scores); gamma is broken for exactly the mmlu run (the first suite
-	// in bank order), so that suite comes back fully unjudged while the rest
-	// judge normally. The freeze is deterministic: alpha runs FIRST inside
-	// every suite, so gating its second call freezes the campaign between
-	// mmlu (done, gamma broken) and agieval_zh (not yet started for gamma),
-	// where the test lifts the break before releasing (the stub reads the
-	// broken flag at call time, so gamma must be unbroken before its
-	// second-suite call is made, not merely before it is answered).
+	// low scores); gamma is broken for exactly the mmlu suite (its first
+	// cell under model-major order), so that suite comes back fully
+	// unjudged while the rest judge normally. The freeze is deterministic:
+	// gamma runs last, and a broken case costs two calls (answer +
+	// immediate retry, GH #27), so gating gamma after two calls freezes it
+	// at agieval_zh's first case, where the test lifts the break before
+	// releasing (the stub reads the broken flag at call time, so gamma
+	// must be unbroken before its second-suite call is made, not merely
+	// before it is answered).
 	stub.markBad("alpha-model", true)
 	stub.markBad("beta-model", true)
 	stub.markBroken("gamma-model", true)
 	stub.resetCalls()
-	stub.blockModelAfter("alpha-model", 1)
-	t.Cleanup(func() { stub.releaseModel("alpha-model") })
+	stub.blockModelAfter("gamma-model", 2)
+	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 	second := triggerFullSweep(t, ts.URL)
 	secondID := int64(second["id"].(float64))
-	waitFor(t, "alpha frozen before its second-suite call", func() bool {
-		return stub.callTotal("alpha-model") >= 2
+	waitFor(t, "gamma frozen before its second-suite call", func() bool {
+		return stub.callTotal("gamma-model") >= 3
 	})
 	stub.markBroken("gamma-model", false)
-	stub.releaseModel("alpha-model")
+	stub.releaseModel("gamma-model")
 	waitCampaignStatus(t, ts.URL, secondID, store.CampaignStatusDone)
 
 	report := getCampaignReport(t, ts.URL, secondID, "")
@@ -293,47 +272,53 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 // complete model — even the lexicographically last one — outranks them.
 func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 	// Async eval: steps the sweep through mid-flight unbreak windows. The
-	// windows are gated, not polled: foxtrot (first model in every run) is
-	// frozen at the next suite's first case, so echo/delta cannot advance
-	// past the boundary while their broken flags flip (ticket 100). Drained
-	// by releaseModel + waitCampaignStatus(done).
+	// windows are gated, not polled: under the GH #169 model-major order
+	// each model's broken stretch is contiguous, so echo is frozen at its
+	// second suite's first case and delta at its third suite's first case,
+	// and neither can advance past the boundary while its broken flag flips
+	// (ticket 100). Drained by releaseModel + waitCampaignStatus(done).
 	ts, stub, db := setupAsyncEvalEnv(t)
-	// delta-model is created last so it executes last inside each run.
+	// Creation order is the cell order: foxtrot runs first (complete),
+	// delta last.
 	createEvalModel(t, ts.URL, stub.URL, "foxtrot-model")
 	createEvalModel(t, ts.URL, stub.URL, "echo-model")
 	createEvalModel(t, ts.URL, stub.URL, "delta-model")
 	installCustomBank(t, ts.URL, db, oneCasePerSuite())
-	// Serial cell order (GH #26 pool at 1): the scenario pins models
-	// executing sequentially inside each run and suites in order — foxtrot's
-	// call counts gate suite boundaries only under that order.
+	// Serial cell order (GH #26 pool at 1, GH #169 model-major): models
+	// run strictly one after another, so each model's call count gates its
+	// own suite boundaries.
 	setEvalConcurrency(t, ts.URL, 1)
 
-	// One custom exact-rule case per rotation suite (oneCasePerSuite), so
-	// foxtrot's call count per suite equals one.
-	mmluCalls := 1
-	agievalCalls := 1
-
-	// delta-model misses two suites (mmlu + agieval_zh, the first two in
-	// bank order), echo-model misses one (mmlu); foxtrot-model is complete.
+	// One custom exact-rule case per rotation suite (oneCasePerSuite). A
+	// broken case costs two calls (answer + immediate retry, GH #27), so a
+	// broken suite costs each model exactly two calls.
 	stub.markBroken("delta-model", true)
 	stub.markBroken("echo-model", true)
 	stub.resetCalls()
-	// Freeze foxtrot at agieval_zh's first case: mmlu is fully done for
-	// every model, and echo/delta have not started agieval_zh (models
-	// execute sequentially inside a run).
-	stub.blockModelAfter("foxtrot-model", mmluCalls)
-	t.Cleanup(func() { stub.releaseModel("foxtrot-model") })
+	// Both gates armed up front (count-based, no slip window): echo freezes
+	// at agieval_zh's first case (its third call), delta at gsm8k's first
+	// case (its fifth call).
+	stub.blockModelAfter("echo-model", 2)
+	stub.blockModelAfter("delta-model", 4)
+	t.Cleanup(func() { stub.releaseModel("echo-model") })
+	t.Cleanup(func() { stub.releaseModel("delta-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	waitForSuiteRunStatus(t, ts.URL, campaignID, "mmlu", "done")
+	// echo recovers after its broken mmlu cell: unbreak while it is frozen
+	// at agieval_zh's first case, so exactly one suite stays missing.
+	waitFor(t, "echo-model frozen at agieval_zh", func() bool {
+		return stub.callTotal("echo-model") >= 3
+	})
 	stub.markBroken("echo-model", false)
-	// Atomic handoff: release foxtrot and re-freeze it at the third suite's
-	// first case in one locked step — no call can slip through between.
-	stub.moveModelGateAfter("foxtrot-model", mmluCalls+agievalCalls)
-	waitForSuiteRunStatus(t, ts.URL, campaignID, "agieval_zh", "done")
+	stub.releaseModel("echo-model")
+	// delta recovers after two broken suites: unbreak while it is frozen at
+	// gsm8k's first case, so exactly two suites stay missing.
+	waitFor(t, "delta-model frozen at gsm8k", func() bool {
+		return stub.callTotal("delta-model") >= 5
+	})
 	stub.markBroken("delta-model", false)
-	stub.releaseModel("foxtrot-model")
+	stub.releaseModel("delta-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
 
 	rows := reportRows(t, getCampaignReport(t, ts.URL, campaignID, ""))

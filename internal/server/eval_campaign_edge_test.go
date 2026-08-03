@@ -13,11 +13,17 @@ import (
 )
 
 // TestCampaignPartialFailureAggregatesFailed drives a weekly campaign where
-// the first suite completes and the rest are aborted mid-batch: the campaign
-// must settle to failed with progress showing exactly one done run and every
-// other run failed. Since GH #26 every suite's run is created up front, so
-// an aborted batch fails the runs it never executed instead of never
-// creating them — the settled aggregate is the same (failed).
+// two suites complete and the rest are aborted mid-batch: the campaign must
+// settle to failed with progress showing exactly the completed runs done
+// and every other run failed. Since GH #26 every suite's run is created up
+// front, so an aborted batch fails the runs it never executed instead of
+// never creating them — the settled aggregate is the same (failed).
+//
+// Why two suites: under the GH #169 model-major order the last model
+// (chat-three) is the only one with unstarted cells when the cancel lands,
+// and its in-flight agieval_zh cell runs to completion through the
+// cancellation (failed cases, no answers) — so agieval_zh settles done
+// alongside mmlu while the suites chat-three never started settle failed.
 func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "partial-campaign.db"))
 	if err != nil {
@@ -41,25 +47,27 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "chat-two")
 	createEvalModel(t, ts.URL, stub.URL, "chat-three")
 
-	// Serial cell order (GH #26 pool at 1): cells execute suite by suite, so
-	// "first suite done" deterministically precedes any second-suite result.
+	// Serial cell order (GH #26 pool at 1, GH #169 model-major): smart-model
+	// and chat-two run every suite before chat-three starts, so freezing
+	// chat-three at its second suite deterministically lands at "first
+	// suite done for every model, the rest mid-flight".
 	setEvalConcurrency(t, ts.URL, 1)
 
 	suites := suiteCount(t, ts.URL)
 
 	// Freeze point by construction, not by stepping: the first suite in the
 	// rotation (mmlu) is all rule cases answered exactly once, so
-	// its three cells cost exactly 3 × enabled-cases completion calls.
-	// Arming the count-based global gate after that many calls blocks suite
-	// 2's first answer deterministically — the N+1-th call is recorded
-	// before it blocks, and no release/re-arm window exists for calls to
-	// slip through (the old step gate leaked suite-2's first answer+judge
-	// pair ~21% of runs once GH #26 started feeding cells back-to-back).
-	// The gate is armed BEFORE the worker starts: arming mid-flight would
-	// let the fast local execution overshoot the threshold first.
+	// chat-three's mmlu cell costs exactly its enabled-case count of calls.
+	// Arming the count-based model gate after that many calls blocks
+	// chat-three's first agieval_zh answer deterministically — the N+1-th
+	// call is recorded before it blocks, and no release/re-arm window
+	// exists for calls to slip through. The gate is armed BEFORE the worker
+	// starts: arming mid-flight would let the fast local execution
+	// overshoot the threshold first.
 	stub.resetCalls()
-	suiteOneCalls := 3 * enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
-	stub.blockCallsAfter(suiteOneCalls)
+	mmluCalls := enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
+	stub.blockModelAfter("chat-three", mmluCalls)
+	t.Cleanup(func() { stub.releaseModel("chat-three") })
 
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
 	worker := scheduler.NewEvalWorker(db, srv.Evaluator(), clock,
@@ -72,7 +80,7 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		cancel()
-		stub.releaseGlobal()
+		stub.releaseModel("chat-three")
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
@@ -89,8 +97,8 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 		campaignID = int64(campaigns[0]["id"].(float64))
 		return true
 	})
-	waitFor(t, "suite 2's first answer call reaching the stub", func() bool {
-		return stub.grandTotalCalls() >= suiteOneCalls+1
+	waitFor(t, "chat-three's first agieval_zh call reaching the stub", func() bool {
+		return stub.callTotal("chat-three") >= mmluCalls+1
 	})
 
 	// Suite 1 is fully done (its last call completing precedes the blocked
@@ -112,11 +120,11 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 
 	final := waitCampaignStatus(t, ts.URL, campaignID, "failed")
 	progress := campaignProgress(t, final)
-	if got := int(progress["done"].(float64)); got != 1 {
-		t.Errorf("progress.done = %d, want 1 (first suite completed)", got)
+	if got := int(progress["done"].(float64)); got != 2 {
+		t.Errorf("progress.done = %d, want 2 (mmlu plus chat-three's in-flight agieval_zh cell completing through the cancel)", got)
 	}
-	if got := int(progress["failed"].(float64)); got != suites-1 {
-		t.Errorf("progress.failed = %d, want %d (unexecuted suites aborted)", got, suites-1)
+	if got := int(progress["failed"].(float64)); got != suites-2 {
+		t.Errorf("progress.failed = %d, want %d (unexecuted suites aborted)", got, suites-2)
 	}
 	if got := int(progress["running"].(float64)); got != 0 {
 		t.Errorf("progress.running = %d, want 0 after settling", got)
@@ -125,10 +133,12 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	if len(runs) != suites {
 		t.Fatalf("campaign has %d runs, want one per suite (%d)", len(runs), suites)
 	}
-	if runs[0]["status"] != "done" {
-		t.Errorf("first run status = %v, want done", runs[0]["status"])
+	for _, run := range runs[:2] {
+		if run["status"] != "done" {
+			t.Errorf("completed run %v status = %v, want done", run["id"], run["status"])
+		}
 	}
-	for _, run := range runs[1:] {
+	for _, run := range runs[2:] {
 		if run["status"] != "failed" {
 			t.Errorf("aborted run %v status = %v, want failed", run["id"], run["status"])
 		}
@@ -138,10 +148,12 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	}
 
 	// The failed campaign's report (ticket 52): the settled board carries
-	// per-suite cells — the completed suite done with full coverage, the
-	// aborted suites failed for every model with zero judged cases but the
-	// suite's planned case count as expected. The first two suites in the
-	// rotation are mmlu (done) and agieval_zh (aborted).
+	// per-suite cells — the completed suites done, the aborted suites
+	// failed with the suite's planned case count as expected. Under the GH
+	// #169 model-major order smart-model and chat-two had already recorded
+	// their results everywhere when the cancel landed, while chat-three's
+	// in-flight agieval_zh cell completed with zero judged cases and its
+	// unstarted suites (gsm8k on) failed without a single result.
 	report := getCampaignReport(t, ts.URL, campaignID, "")
 	rows := reportRows(t, report)
 	if len(rows) != 3 {
@@ -149,7 +161,12 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	}
 	for _, row := range rows {
 		assertCell(t, row, "mmlu", "done", 100, 100)
-		assertCell(t, row, "agieval_zh", "failed", 0, 100)
+		judged := 100
+		if row["model_id"] == "chat-three" {
+			judged = 0
+		}
+		assertCell(t, row, "agieval_zh", "done", judged, 100)
+		assertCell(t, row, "gsm8k", "failed", judged, 100)
 	}
 }
 

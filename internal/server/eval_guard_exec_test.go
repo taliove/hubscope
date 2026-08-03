@@ -151,7 +151,10 @@ func TestCircuitBreakerSkipsFailingModel(t *testing.T) {
 // TestCampaignAbortWhenAllCellsFail pins the campaign-level abort (GH #153):
 // when the first three cells all come back dead, the batch is hopeless and
 // unstarted cells are dropped — the campaign settles failed instead of
-// burning every remaining case against a dead Hub.
+// burning every remaining case against a dead Hub. Under the GH #169
+// model-major order the first wave is model 1's first four suite cells
+// (pool capacity 4), so the abort lands before any run has all its models
+// — every run fails and exactly four cells burn their circuit budget.
 func TestCampaignAbortWhenAllCellsFail(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	for _, m := range []string{"abort-m1", "abort-m2", "abort-m3"} {
@@ -178,13 +181,17 @@ func TestCampaignAbortWhenAllCellsFail(t *testing.T) {
 			failed++
 		}
 	}
-	if done == 0 || failed == 0 {
-		t.Errorf("all-dead campaign runs: done=%d failed=%d, want both > 0 (first wave executes, the rest is dropped)", done, failed)
+	if done != 0 || failed != len(runs) {
+		t.Errorf("all-dead campaign runs: done=%d failed=%d, want 0 done and all %d failed (the abort lands inside model 1's wave, so no run completes)", done, failed, len(runs))
 	}
 
 	// Without the abort every cell would burn its circuit budget: 15 cells
-	// x 10 calls = 150. The abort must bound the waste far below that.
-	if got := stub.grandTotalCalls(); got >= 150 {
-		t.Errorf("total calls = %d, want < 150 (abort dropped unstarted cells)", got)
+	// x 10 calls = 150. The abort drops everything past the first wave:
+	// the three cells whose completion triggers it burn their full 10-call
+	// budget, the fourth in-flight cell is cut short wherever the cancel
+	// lands, and a worker that finishes before the third completion may
+	// take one more cell — bounding the total at seven cells.
+	if got := stub.grandTotalCalls(); got < 30 || got > 70 {
+		t.Errorf("total calls = %d, want within [30, 70] (three completed cells plus in-flight tails; abort dropped the rest)", got)
 	}
 }

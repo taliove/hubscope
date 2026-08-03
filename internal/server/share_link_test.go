@@ -325,16 +325,19 @@ func TestSharedReportRateLimited(t *testing.T) {
 // the batch settles, the shared view renders the full ranked board like the
 // session view.
 //
-// Scenario mirrors TestCampaignReportProgressGrid: beta is frozen after 407
-// answer calls, catching the sweep mid-ifeval with results already recorded;
-// gamma is a discovered model retired mid-flight.
+// Scenario mirrors TestCampaignReportProgressGrid: beta runs first and is
+// frozen after 407 answer calls, catching the sweep mid-ifeval with results
+// already recorded; alpha (broken) and gamma have not started yet — the
+// broken model must run after a live one, otherwise its three dead cells
+// trip the GH #153 all-dead abort before the freeze point. Gamma is a
+// discovered model retired mid-flight.
 func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	// Async eval: observes the shared report while the sweep is frozen
 	// mid-flight (beta's answer gate after 407 calls); drained by
 	// releaseModel + waitCampaignStatus(done).
 	ts, stub, _ := setupAsyncEvalEnv(t)
-	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
+	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	stub.markBroken("alpha-model", true)
 
 	// Gamma joins the sweep as a discovered model and retires mid-flight:
@@ -343,9 +346,10 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	createHubViaAPI(t, ts.URL, discovery.URL)
 	runDiscovery(t, ts.URL)
 
-	// Serial cell order (GH #26 pool at 1): the 407-call freeze point maps
-	// to "four suites settled, beta mid-ifeval" only when cells execute
-	// suite by suite, model by model (alpha, beta, gamma inside each run).
+	// Serial cell order (GH #26 pool at 1, GH #169 model-major): the
+	// 407-call freeze point maps to "beta mid-ifeval, alpha fully recorded"
+	// because alpha runs to completion first and gamma has not started yet
+	// when beta's 408th call blocks.
 	setEvalConcurrency(t, ts.URL, 1)
 
 	stub.resetCalls()
@@ -420,15 +424,15 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 		}
 	}
 
-	// Cell states and coverage mirror the session grid's caliber: the four
-	// earlier suites are done, ifeval is mid-flight (alpha's broken results
-	// fully recorded, beta seven of a hundred judged).
+	// Cell states and coverage mirror the session grid's caliber: beta's
+	// four earlier suites are done and its ifeval is mid-flight (seven of
+	// a hundred judged); alpha has not started (all pending).
 	alpha, beta := rows[0], rows[1]
 	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
-		assertCell(t, alpha, key, "done", 0, 100)
+		assertCell(t, alpha, key, "pending", 0, 100)
 		assertCell(t, beta, key, "done", 100, 100)
 	}
-	assertCell(t, alpha, "ifeval", "done", 0, 100)
+	assertCell(t, alpha, "ifeval", "pending", 0, 100)
 	assertCell(t, beta, "ifeval", "running", 7, 100)
 
 	// Settled: the shared view renders the same full board as the session

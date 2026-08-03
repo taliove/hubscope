@@ -47,8 +47,8 @@ func TestRetiredModelSkippedFromEval(t *testing.T) {
 	ghostID := createEvalModel(t, ts.URL, stub.URL, "ghost-model")
 
 	// One custom case per rotation suite keeps the batch small; five
-	// suites still overflow the worker pool (4), so the ghost's later
-	// cells start only after the retirement lands.
+	// suites still overflow the worker pool (4), so the ghost's cells
+	// start only after the retirement lands.
 	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval", "ifeval"} {
 		suiteID := suiteIDByKey(t, ts.URL, key)
 		retireSuiteCases(t, db, suiteID)
@@ -56,9 +56,10 @@ func TestRetiredModelSkippedFromEval(t *testing.T) {
 	}
 	stub.resetCalls()
 
-	// In-flight state observed: the first cell wave (both models x the
-	// first two suites) is blocked on the stub gate when the ghost
-	// retires; its remaining three cells start only after the delete.
+	// In-flight state observed: the first cell wave is smart-model's four
+	// suite cells (GH #169 model-major order: every suite of model 1
+	// before model 2's first cell), blocked on the stub gate when the
+	// ghost retires; every ghost cell starts only after the delete.
 	stub.blockCalls()
 	t.Cleanup(stub.release)
 	campaign := triggerFullSweep(t, ts.URL)
@@ -79,10 +80,10 @@ func TestRetiredModelSkippedFromEval(t *testing.T) {
 	if final["status"] != store.CampaignStatusDone {
 		t.Fatalf("campaign status = %v, want done (skipped cells still execute)", final["status"])
 	}
-	// The ghost's two first-wave cells were mid-flight and answer; the
-	// three cells starting after the retirement place no calls.
-	if got := stub.callTotal("ghost-model"); got != 2 {
-		t.Errorf("ghost model calls = %d, want 2 (first wave only; later cells skipped)", got)
+	// Every ghost cell starts after the retirement and places no call;
+	// smart-model answers all five suites.
+	if got := stub.callTotal("ghost-model"); got != 0 {
+		t.Errorf("ghost model calls = %d, want 0 (all its cells start after the retirement)", got)
 	}
 	if got := stub.callTotal("smart-model"); got != 5 {
 		t.Errorf("smart model calls = %d, want 5 (all suites)", got)

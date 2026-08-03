@@ -62,39 +62,44 @@ func assertCell(t *testing.T, row map[string]interface{}, suiteKey, status strin
 // batch settles. After the sweep completes, the same endpoint serves the
 // full ranked board with every cell done.
 //
-// Scenario (post-cutover, ticket 99): a full sweep over three models where
-// alpha's answer calls all fail (unjudged results) and beta is frozen after
-// 407 answer calls. Runs execute the five benchmark suites in bank order
-// (mmlu, agieval_zh, gsm8k, cruxeval, ifeval) and each run iterates models
-// sequentially in creation order, so 407 calls lands beta mid-ifeval with
-// the four earlier suites fully settled for everyone: alpha's ifeval
-// results are complete (all broken), beta has seven ifeval cases judged and
-// is blocked on the eighth, and gamma has no ifeval results yet. The stub's
-// default answers score 0 on every benchmark case but stay judged, which is
-// exactly the coverage this grid asserts.
+// Scenario (post-cutover, ticket 99; re-derived for the GH #169
+// model-major cell order): a full sweep over three models where gamma's
+// answer calls all fail (unjudged results) and gamma is frozen mid-ifeval.
+// Cells execute model by model in creation order, each model walking the
+// five benchmark suites in bank order (mmlu, agieval_zh, gsm8k, cruxeval,
+// ifeval), so the broken model must run LAST — its dead cells would trip
+// the GH #153 all-dead abort if no live cell had completed first. Alpha
+// and beta finish every suite before gamma starts, so at the freeze point
+// the four earlier runs are done (scores exist), ifeval is mid-flight,
+// and gamma has zero judged cases anywhere. A broken cell burns exactly
+// ten calls (5 cases x answer+retry before the GH #153 circuit opens), so
+// gating gamma after 42 calls freezes it at its second ifeval case. The
+// stub's default answers score 0 on every benchmark case but stay judged,
+// which is exactly the coverage this grid asserts.
 func TestCampaignReportProgressGrid(t *testing.T) {
-	// Async eval: observes the running report with beta frozen mid-ifeval
-	// (blocked after 407 answer calls); drained by releaseModel +
+	// Async eval: observes the running report with gamma frozen mid-ifeval
+	// (blocked at its 43rd call); drained by releaseModel +
 	// waitCampaignStatus(done).
 	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
-	stub.markBroken("alpha-model", true)
-	// Serial cell order (GH #26 pool at 1): the scenario pins gamma's
-	// ifeval cell as not-yet-started at the freeze point, which only a
-	// deterministic suite→model order guarantees.
+	stub.markBroken("gamma-model", true)
+	// Serial cell order (GH #26 pool at 1, GH #169 model-major): gamma's
+	// call count gates suite boundaries only under a deterministic
+	// model→suite order.
 	setEvalConcurrency(t, ts.URL, 1)
 	stub.resetCalls()
-	stub.blockModelAfter("beta-model", 407)
-	t.Cleanup(func() { stub.releaseModel("beta-model") })
+	stub.blockModelAfter("gamma-model", 42)
+	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Beta's 408th call being recorded proves the freeze point: beta is
-	// blocked mid-ifeval, everything before it has settled deterministically.
-	waitFor(t, "beta's 408th call reaching the stub", func() bool {
-		return stub.callTotal("beta-model") >= 408
+	// Gamma's 43rd call being recorded proves the freeze point: gamma is
+	// blocked on its second ifeval case, the four earlier suites settled
+	// for everyone.
+	waitFor(t, "gamma's 43rd call reaching the stub", func() bool {
+		return stub.callTotal("gamma-model") >= 43
 	})
 
 	report := getCampaignReport(t, ts.URL, campaignID, "")
@@ -115,25 +120,25 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	}
 
 	// The live board ranks by the half-scored total descending (GH #40):
-	// beta and gamma both total 0 (their four done suites, all scored 0 by
-	// the default answers) and tie into model-id order; alpha judged nothing
-	// anywhere and sinks to the bottom with a null total.
+	// alpha and beta both total 0 (their four done suites, all scored 0 by
+	// the default answers) and tie into model-id order; gamma judged
+	// nothing anywhere and sinks to the bottom with a null total.
 	rows := reportRows(t, report)
 	if len(rows) != 3 {
-		t.Fatalf("running report rows = %v, want beta, gamma, alpha", rows)
+		t.Fatalf("running report rows = %v, want alpha, beta, gamma", rows)
 	}
-	for i, want := range []string{"beta-model", "gamma-model", "alpha-model"} {
+	for i, want := range []string{"alpha-model", "beta-model", "gamma-model"} {
 		if rows[i]["model_id"] != want {
 			t.Errorf("live board row %d = %v, want %s (partial total desc, null sunk)", i, rows[i]["model_id"], want)
 		}
 	}
 
 	// Unscored suites drop out of the totals (numerator and denominator
-	// alike): alpha judged nothing (null total), beta and gamma average
+	// alike): gamma judged nothing (null total), alpha and beta average
 	// their four scored suites only — ifeval is not done and must not
 	// dilute the total.
 	if rows[2]["total_score"] != nil {
-		t.Errorf("alpha total_score = %v, want null (nothing judged)", rows[2]["total_score"])
+		t.Errorf("gamma total_score = %v, want null (nothing judged)", rows[2]["total_score"])
 	}
 	for _, row := range rows[:2] {
 		scores, _ := row["suite_scores"].(map[string]interface{})
@@ -157,29 +162,28 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 		}
 	}
 
-	// Progress cells: the full 3 x 5 matrix with three of the four states
-	// observable — done (settled suites, plus alpha's fully recorded broken
-	// ifeval results), running (beta mid-ifeval with 7 of 100 judged),
-	// pending (gamma untouched in ifeval). The failed state is covered by
+	// Progress cells: the full 3 x 5 matrix — done (settled suites,
+	// including gamma's fully recorded broken results), running (gamma
+	// mid-ifeval with zero judged). Pending cells are covered by
+	// TestSharedReportHidesUnfinishedBoard (a model the sweep has not
+	// reached), the failed state by
 	// TestCampaignPartialFailureAggregatesFailed.
-	for _, row := range rows {
-		for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
-			judged := 100
-			if row["model_id"] == "alpha-model" {
-				judged = 0
-			}
-			assertCell(t, row, key, "done", judged, 100)
-		}
+	alpha, beta, gamma := rows[0], rows[1], rows[2]
+	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
+		assertCell(t, alpha, key, "done", 100, 100)
+		assertCell(t, beta, key, "done", 100, 100)
+		assertCell(t, gamma, key, "done", 0, 100)
 	}
-	alpha, beta, gamma := rows[2], rows[0], rows[1]
-	assertCell(t, alpha, "ifeval", "done", 0, 100)
-	assertCell(t, beta, "ifeval", "running", 7, 100)
-	assertCell(t, gamma, "ifeval", "pending", 0, 100)
+	// Alpha's and beta's ifeval results are complete inside the still-
+	// running run: their cells read done while gamma's is mid-flight.
+	assertCell(t, alpha, "ifeval", "done", 100, 100)
+	assertCell(t, beta, "ifeval", "done", 100, 100)
+	assertCell(t, gamma, "ifeval", "running", 0, 100)
 
-	// Settle: release beta and let the sweep finish. The report then serves
-	// the full ranked board — beta and gamma tied at 0 (ties break by model
-	// id), alpha last with a null total, every cell done.
-	stub.releaseModel("beta-model")
+	// Settle: release gamma and let the sweep finish. The report then serves
+	// the full ranked board — alpha and beta tied at 0 (ties break by model
+	// id), gamma last with a null total, every cell done.
+	stub.releaseModel("gamma-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
 
 	settled := getCampaignReport(t, ts.URL, campaignID, "")
@@ -187,12 +191,12 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	if len(settledRows) != 3 {
 		t.Fatalf("settled rows = %v, want all three models", settledRows)
 	}
-	if settledRows[0]["model_id"] != "beta-model" || settledRows[1]["model_id"] != "gamma-model" {
-		t.Errorf("settled top ranks = [%v %v], want beta then gamma (tied, model-id break)",
+	if settledRows[0]["model_id"] != "alpha-model" || settledRows[1]["model_id"] != "beta-model" {
+		t.Errorf("settled top ranks = [%v %v], want alpha then beta (tied, model-id break)",
 			settledRows[0]["model_id"], settledRows[1]["model_id"])
 	}
-	if settledRows[2]["model_id"] != "alpha-model" || settledRows[2]["total_score"] != nil {
-		t.Errorf("unscored alpha must rank last with null total, got %v", settledRows[2])
+	if settledRows[2]["model_id"] != "gamma-model" || settledRows[2]["total_score"] != nil {
+		t.Errorf("unscored gamma must rank last with null total, got %v", settledRows[2])
 	}
 	assertRowTotals(t, settled)
 
@@ -207,11 +211,11 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 					row["model_id"], cell["suite_key"], cell["status"])
 			}
 		}
-		// Alpha judged nothing anywhere; the others judged every case.
-		if row["model_id"] == "alpha-model" {
+		// Gamma judged nothing anywhere; the others judged every case.
+		if row["model_id"] == "gamma-model" {
 			for key, cell := range cellBySuiteKey(t, row) {
 				if got := int(cell["judged_cases"].(float64)); got != 0 {
-					t.Errorf("alpha suite %s judged = %d, want 0 (all calls broken)", key, got)
+					t.Errorf("gamma suite %s judged = %d, want 0 (all calls broken)", key, got)
 				}
 			}
 			continue
