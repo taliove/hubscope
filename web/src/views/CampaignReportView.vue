@@ -49,17 +49,22 @@
            or resets the family filter); the shared view is read-only — the
            grid is its only in-flight view, no switch, no drill-down. -->
       <template v-if="isUnfinished(report.status)">
-        <EvalProgressGrid v-if="shared" :report="report" view="grid" readonly />
+        <!-- Shared read-only view (ticket 54): the header without the view
+             switch or cost, then the grid — the only in-flight view across
+             the share boundary. -->
+        <template v-if="shared">
+          <EvalBoardHeader :report="report" view="grid" readonly />
+          <EvalProgressGrid :report="report" readonly />
+        </template>
         <template v-else>
-          <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
+          <EvalBoardHeader v-model:view="viewMode" :report="report" />
+          <EvalProgressGrid v-show="viewMode === 'grid'" :report="report" />
           <Leaderboard
             v-show="viewMode === 'scores'"
             :key="report.id"
             :report="report"
             :family-options="familyOptions"
             live
-            :view="viewMode"
-            @update:view="viewMode = $event"
             @query="onQuery"
             @select="openTrend"
           />
@@ -151,6 +156,7 @@ import { ApiError } from '@/api/client'
 import { getCampaign, getCampaignReport, retryCampaignFailed } from '@/api/campaigns'
 import { listSuites } from '@/api/evals'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
+import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -253,7 +259,7 @@ const familyOptions = ref<string[]>([])
 // Board view of an unfinished batch (logged-in only): the progress grid is
 // the default (spec 0004); "scores" reveals the live half-scored
 // leaderboard. The shared view never switches (read-only grid).
-const viewMode = ref<EvalBoardView>('grid')
+const viewMode = ref<EvalBoardView>('scores')
 
 // In shared mode the campaign id only arrives with the report payload.
 const displayCampaignId = computed(() => (shared ? (report.value?.id ?? '—') : authedCampaignId))

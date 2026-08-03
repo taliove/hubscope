@@ -1,39 +1,18 @@
 <template>
-  <!-- Light container (GH #120, spec 0018 §13): the v2 Apple syntax — white
-       surface, 1px border, radius-lg, no shadow (the el-card wrapper is
-       retired, the same translation as the Leaderboard's container). -->
+  <!-- EvalProgressGrid is the batch-progress matrix (2026-08-03 redesign,
+       ui-guidelines §5): one row per model, one column per suite, each cell
+       a single mini progress bar — color carries the four-state status
+       (success = done full bar, danger = failed, brand = running filling
+       with judged coverage, empty track = pending), width carries the
+       judged/expected coverage. Status words and dots are retired; the
+       tooltip (and aria-label) always carries the full caliber: status
+       word + X/Y 题 + console cost. The batch-level header (view switch,
+       progress bar, cost) lives in the parent's EvalBoardHeader. Readonly
+       mode (shared report page) only gates the cost fragment out of the
+       tooltip. GH #94: narrow viewport (<= 1023px) shrinks the model
+       column to 96px and omits the inline count (the bar stays, the
+       tooltip carries the numbers). -->
   <div class="progress-panel">
-    <!-- Card top: the grid/scores view switch plus the batch-level summary
-         (progress bar + done count) above the grid, same card (ui-guidelines
-         §5 EvalProgressGrid registration). Read-only mode (shared report
-         page, ticket 54) hides the switch: the grid is the only in-flight
-         view over there. -->
-    <div class="card-top">
-      <el-radio-group
-        v-if="!readonly"
-        :model-value="view"
-        size="small"
-        @update:model-value="emit('update:view', $event as EvalBoardView)"
-      >
-        <el-radio-button value="grid">进度网格</el-radio-button>
-        <el-radio-button value="scores">实时分数</el-radio-button>
-      </el-radio-group>
-      <span class="batch-note">
-        批次{{ statusWord }}:已结束 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行<template v-if="report.progress.failed > 0">(失败 {{ report.progress.failed }})</template>
-      </span>
-      <!-- Batch cost summary (GH #42, console-only): judging time and
-           wall-clock side by side plus the token split; accumulates with
-           polling while in flight, terminal once settled. Neutral secondary
-           text, never band-colored (cost is not a quality metric). The
-           shared read-only view never renders it. -->
-      <span v-if="!readonly && costSummary" class="batch-note">{{ costSummary }}</span>
-    </div>
-    <el-progress
-      :percentage="progressPercent"
-      :status="report.progress.failed > 0 ? 'exception' : undefined"
-      class="batch-progress"
-    />
-
     <!-- Empty state: no model has recorded results yet (the first run is
          still on its first model). -->
     <el-empty
@@ -41,10 +20,9 @@
       description="暂无模型进度:评估运行尚未产生结果,请稍候"
     />
 
-    <!-- Model x suite status matrix. First column pinned ~220px with
-         truncation + title hover; suite columns share the remaining width
-         equally; no horizontal scroll (ui-guidelines §4). Cells are pure
-         display, never clickable. -->
+    <!-- Model x suite matrix. First column pinned ~220px with truncation +
+         title hover; suite columns share the remaining width equally; no
+         horizontal scroll (ui-guidelines §4). -->
     <div v-else class="grid">
       <div class="grid-row grid-head">
         <span class="grid-model">模型</span>
@@ -59,12 +37,23 @@
       </div>
       <div v-for="row in report.rows" :key="row.model_db_id" class="grid-row">
         <span class="grid-model" :title="row.model_id">{{ row.model_id }}</span>
-        <span v-for="cell in row.cells" :key="cell.suite_key" class="grid-cell" :title="cellTitle(cell)">
-          <span class="cell-status" :class="`cell-${cell.status}`">
-            <span class="cell-dot" /><span v-if="!isNarrow" class="cell-word">{{ cellStatusWord(cell.status) }}</span>
+        <span
+          v-for="cell in row.cells"
+          :key="cell.suite_key"
+          class="grid-cell"
+          :title="cellTitle(cell)"
+          :aria-label="cellTitle(cell)"
+        >
+          <span class="cell-track">
+            <span
+              v-if="cell.status !== 'pending'"
+              class="cell-fill"
+              :class="`fill-${cell.status}`"
+              :style="{ width: fillWidth(cell) }"
+            />
           </span>
-          <span v-if="showCoverage(cell)" class="cell-coverage">
-            {{ cell.judged_cases }}/{{ cell.expected_cases }} 题
+          <span v-if="showInlineCount(cell) && !isNarrow" class="cell-count">
+            {{ cell.judged_cases }}/{{ cell.expected_cases }}
           </span>
         </span>
       </div>
@@ -73,51 +62,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { CampaignReport, EvalBoardView, ReportCell, ReportCellStatus } from '@/api/types'
-import { batchCostSummary } from '@/utils/evalCost'
+import type { CampaignReport, ReportCell, ReportCellStatus } from '@/api/types'
 import { cellCostText } from '@/utils/scoreTier'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 
-// EvalProgressGrid is the single batch-progress matrix component
-// (ui-guidelines §5): one row per model, one column per suite, four-state
-// cells colored by the batch/run status color mapping (§3 — success green
-// for done, danger red for failed, brand blue for running, placeholder grey
-// for pending; no flashing, no warning yellow). It is the default view of an
-// unfinished batch; the parent feeds the report and owns polling. Read-only
-// mode (ticket 54, shared report page) hides the grid/scores view switch:
-// the shared boundary publishes progress metadata only, so there is no live
-// board to switch to. GH #94: narrow viewport (<= 1023px) shrinks the model
-// column to 96px and omits the cell status word (the 8px dot stays, and the
-// tooltip carries the full info). GH #120 (v2 rebuild): the wrapper is the
-// light container and the status words consume the *-text steps while the
-// dots stay on the graphic bases — the four-state mapping itself is
-// untouched.
+// Props seam: the report only; view switching and batch meta moved to
+// EvalBoardHeader. readonly (shared report page) gates cost out of the
+// tooltip — the shared payload omits the fields anyway, the gate is the
+// explicit boundary.
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
-    view: EvalBoardView
     readonly?: boolean
   }>(),
   { readonly: false },
 )
 
-const emit = defineEmits<{
-  (e: 'update:view', view: EvalBoardView): void
-}>()
-
-// GH #94: Responsive breakpoint for narrow-viewport adaptations.
+// GH #94: responsive breakpoint for narrow-viewport adaptations.
 const { isNarrow } = useBreakpoint()
-const progressPercent = computed(() => {
-  const p = props.report.progress
-  if (!p || p.total === 0) return 0
-  return Math.round(((p.done + p.failed) / p.total) * 100)
-})
 
-// Batch/campaign status vocabulary (ui-guidelines §7), never mixed with the
-// endpoint status words.
-const statusWord = computed(() => (props.report.status === 'pending' ? '等待中' : '运行中'))
+// Cell fill width: coverage drives running/failed bars; a failed cell with
+// zero judged cases keeps a 2px minimum visible segment so it never reads
+// as a pending cell (the tooltip always reports the true numbers). A
+// running cell with expected_cases 0 stays an empty track — null never
+// impersonates progress.
+function fillWidth(cell: ReportCell): string {
+  if (cell.status === 'done') return '100%'
+  if (cell.expected_cases <= 0) return cell.status === 'failed' ? '2px' : '0%'
+  const ratio = (cell.judged_cases / cell.expected_cases) * 100
+  if (cell.status === 'failed') return `max(2px, ${ratio}%)`
+  return `${ratio}%`
+}
 
+// Inline judged/expected count: only cells with recorded progress (running
+// or failed); done cells are full bars, pending cells empty tracks.
+function showInlineCount(cell: ReportCell): boolean {
+  return (cell.status === 'running' || cell.status === 'failed') && cell.expected_cases > 0
+}
+
+// Batch/run status vocabulary (ui-guidelines §7) — the words no longer
+// render in the cells; the tooltip is their only standing carrier.
 function cellStatusWord(status: ReportCellStatus): string {
   switch (status) {
     case 'done':
@@ -149,14 +133,6 @@ function cellTitle(cell: ReportCell): string {
   const cost = props.readonly ? '' : cellCostText(cell)
   return cost === '' ? base : `${base} · ${cost}`
 }
-
-// Batch cost summary (GH #42): judging time and wall-clock side by side
-// (main ruling 2026-07-29) plus the token split. Empty when the payload
-// carries no cost (shared/public surfaces).
-const costSummary = computed(() => {
-  if (!props.report.cost) return ''
-  return batchCostSummary(props.report.cost, props.report.started_at, props.report.finished_at, Date.now())
-})
 </script>
 
 <style scoped>
@@ -174,24 +150,10 @@ const costSummary = computed(() => {
     padding: var(--hs-space-4);
   }
 }
-.card-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.batch-note {
-  font-size: var(--hs-text-sm);
-  color: var(--hs-text-secondary);
-}
-.batch-progress {
-  margin-bottom: 16px;
-}
 .grid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--hs-space-2);
 }
 .grid-row {
   display: flex;
@@ -207,7 +169,7 @@ const costSummary = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* GH #94: Narrow viewport shrinks the model column to 96px (the truncation +
+/* GH #94: narrow viewport shrinks the model column to 96px (the truncation +
    title hover already existed). */
 @media (max-width: 1023px) {
   .grid-model {
@@ -218,7 +180,7 @@ const costSummary = computed(() => {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   overflow: hidden;
 }
@@ -230,44 +192,36 @@ const costSummary = computed(() => {
   white-space: nowrap;
   display: block;
 }
-.cell-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--hs-text-sm);
-  white-space: nowrap;
+/* Mini progress bar (2026-08-03 design review): 6px full-radius track on
+   the neutral hover-ground (the ScoreCell track's token), fill color =
+   four-state status on the §3.2 graphic bases. Width growth transitions at
+   the feedback tier — one-directional fact growth, not flashing (the batch
+   el-progress's 0.6s ease is the registered precedent; the global
+   reduced-motion rule zeroes it). No stripes, no pulse, no warning yellow. */
+.cell-track {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--hs-radius-full);
+  background: var(--hs-bg-hover);
+  overflow: hidden;
 }
-.cell-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
+.cell-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--hs-radius-full);
+  transition: width var(--hs-transition);
 }
-/* Four-state batch/run status color mapping on the v2 palette (GH #120):
-   the status WORD is text and consumes the deepened *-text steps (the v2
-   success/danger bases are graphic-tier); the DOT stays on the graphic base
-   via an explicit background override. Running takes brand blue (the
-   registered brief value), pending the neutral placeholder. */
-.cell-done {
-  color: var(--hs-success-text);
-}
-.cell-done .cell-dot {
+.fill-done {
   background: var(--hs-success);
 }
-.cell-failed {
-  color: var(--hs-danger-text);
-}
-.cell-failed .cell-dot {
+.fill-failed {
   background: var(--hs-danger);
 }
-.cell-running {
-  color: var(--hs-brand);
+.fill-running {
+  background: var(--hs-brand);
 }
-.cell-pending {
-  color: var(--hs-text-placeholder);
-}
-.cell-coverage {
+.cell-count {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
   white-space: nowrap;

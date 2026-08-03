@@ -15,15 +15,6 @@
          only, no second caliber) because the card-style list has no column
          headers to click. -->
     <div class="toolbar">
-      <el-radio-group
-        v-if="live"
-        :model-value="view"
-        size="small"
-        @update:model-value="emit('update:view', $event as EvalBoardView)"
-      >
-        <el-radio-button value="grid">进度网格</el-radio-button>
-        <el-radio-button value="scores">实时分数</el-radio-button>
-      </el-radio-group>
       <el-select
         v-if="isNarrow"
         v-model="sortKey"
@@ -283,7 +274,7 @@
 import { computed, ref } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
-import type { CampaignReport, EvalBoardView, ReportCell, ReportRow } from '@/api/types'
+import type { CampaignReport, ReportCell, ReportRow } from '@/api/types'
 import ScoreCell from '@/components/ScoreCell.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { scoreBand, liveCounts, liveRankText } from '@/utils/scoreTier'
@@ -334,7 +325,6 @@ const props = withDefaults(
     // option list itself.
     familyOptions: string[]
     live?: boolean
-    view?: EvalBoardView
     // Shared report page (/report/:token): the share-image entry copy reads
     // "保存图片" for the recipient reader (ticket 76, ui-guidelines §5).
     shared?: boolean
@@ -343,7 +333,7 @@ const props = withDefaults(
     // drill-down. Default true; /eval behavior unchanged.
     selectable?: boolean
   }>(),
-  { live: false, view: 'grid', shared: false, selectable: true },
+  { live: false, shared: false, selectable: true },
 )
 
 const emit = defineEmits<{
@@ -353,7 +343,6 @@ const emit = defineEmits<{
   // that model x suite; the cell stops the click, so `select` never fires
   // from a cell click.
   (e: 'cellSelect', payload: { row: ReportRow; suiteKey: string }): void
-  (e: 'update:view', view: EvalBoardView): void
 }>()
 
 const family = ref('')

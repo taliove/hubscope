@@ -105,20 +105,20 @@
             </div>
 
             <template v-else-if="report">
-              <!-- Unfinished batches (ticket 52, spec 0004): the progress grid is
-                   the default view; the live half-scored leaderboard sits behind
-                   the "实时分数" switch. Both stay mounted (v-show) so the view
-                   switch never interrupts polling or resets the family filter. -->
+              <!-- Unfinished batches: the live half-scored leaderboard is the
+                   default view (2026-08-03 user ruling), the progress grid the
+                   secondary tab; the shared EvalBoardHeader owns the view switch
+                   and batch meta. Both views stay mounted (v-show) so the switch
+                   never interrupts polling or resets the family filter. -->
               <template v-if="isUnfinished(report.status)">
-                <EvalProgressGrid v-show="viewMode === 'grid'" v-model:view="viewMode" :report="report" />
+                <EvalBoardHeader v-model:view="viewMode" :report="report" />
+                <EvalProgressGrid v-show="viewMode === 'grid'" :report="report" />
                 <Leaderboard
                   v-show="viewMode === 'scores'"
                   :key="report.id"
                   :report="report"
                   :family-options="familyOptions"
                   live
-                  :view="viewMode"
-                  @update:view="viewMode = $event"
                   @query="onQuery"
                   @select="openTrend"
                 />
@@ -198,6 +198,7 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { listCampaigns, getCampaign, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
 import { listSuites } from '@/api/evals'
 import { fetchAuthStatus, type AuthUser } from '@/api/auth'
+import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
@@ -267,7 +268,7 @@ const reportError = ref('')
 
 // Board view of an unfinished batch: the progress grid is the default
 // (spec 0004); "scores" reveals the live half-scored leaderboard.
-const viewMode = ref<EvalBoardView>('grid')
+const viewMode = ref<EvalBoardView>('scores')
 
 // Last query chosen inside the Leaderboard toolbar; re-applied on refresh.
 const query = ref<{ family?: string; sort: string }>({ sort: 'total' })
@@ -502,7 +503,7 @@ function switchBatch(id: number) {
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []
-  viewMode.value = 'grid'
+  viewMode.value = 'scores'
   trendModel.value = null
   resetLiveFeed()
   void Promise.all([loadReport(), loadLiveFeed()]).then(armPolling)
