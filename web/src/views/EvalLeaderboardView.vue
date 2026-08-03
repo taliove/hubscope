@@ -1,15 +1,20 @@
 <template>
   <div class="eval-leaderboard">
+    <!-- PROTOTYPE (dev-only, ?proto=A|B|C): spec-0020 jury-pipeline
+         eval-center variants with static mock data. The real pane below
+         stays mounted (v-show) so batch polling keeps running. -->
+    <EvalProtoHost v-if="protoVariant" />
+
     <!-- Page title at the v2 page-title tier (32px, v2.0 §14; AlertsView
          precedent) — no header wrapper. -->
-    <h1 class="page-title">评估中心</h1>
+    <h1 v-if="!protoVariant" class="page-title">评估中心</h1>
 
     <!-- Eval-center secondary tabs (finalized GH #120, spec 0018 IA): 榜单 /
          评估运营 / 题库 — the leaderboard stays the default pane, and
          AdminView's eval-ops and case-library panes live here as the two
          console tabs. Panes stay mounted (no lazy, AdminView precedent)
          so an unfinished batch keeps polling while the ops pane is open. -->
-    <el-tabs v-model="activeTab" class="eval-tabs">
+    <el-tabs v-show="!protoVariant" v-model="activeTab" class="eval-tabs">
       <el-tab-pane label="榜单" name="board">
         <!-- Vertical rhythm via child margins (pre-tabs layout), not the
              tab-stack gap — the state blocks below already carry their own
@@ -204,6 +209,7 @@ import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
+import EvalProtoHost from '@/components/proto/EvalProtoHost.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
@@ -228,6 +234,14 @@ import type { Campaign, CampaignReport, CampaignStatus, EvalBoardView, EvalRun, 
 // (legacy /admin?tab=eval-ops|case-library redirects land here).
 const router = useRouter()
 const route = useRoute()
+
+// PROTOTYPE (spec 0020): ?proto=A|B|C swaps the pane for a mock-data
+// variant. Dev-only so a stray merge can never ship the switcher.
+const protoVariant = computed(() => {
+  if (!import.meta.env.DEV) return null
+  const v = Array.isArray(route.query.proto) ? route.query.proto[0] : route.query.proto
+  return v === 'A' || v === 'B' || v === 'C' ? v : null
+})
 
 // A valid ?tab= query overrides the default landing pane (AdminView GH #29
 // precedent); an invalid value falls back silently. Panes stay mounted (no
