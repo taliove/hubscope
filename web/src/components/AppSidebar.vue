@@ -322,23 +322,32 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
-  margin-top: var(--hs-space-4);
+  margin-top: var(--hs-space-2);
   min-height: 48px;
   padding: 0 var(--hs-space-3);
   border: none;
   border-radius: var(--hs-radius-lg);
-  background: none;
-  font-size: var(--hs-text-sm);
+  /* Live-status pill in the nav family's language (user feedback
+     2026-08-03: the bare transparent row read as a foreign object next to
+     the nav items) — the same soft-brand ground as the active nav pill,
+     so the running batch reads as a deliberate status chip. */
+  background: var(--hs-brand-soft);
+  font-size: var(--hs-text-md);
   color: var(--hs-brand);
   cursor: pointer;
   text-align: left;
+  transition: background-color var(--hs-transition);
 }
 .batch-entry:hover {
-  background: var(--hs-bg-hover);
+  background: var(--hs-blue-100);
+}
+.batch-entry:focus-visible {
+  outline: 2px solid var(--hs-brand);
+  outline-offset: -2px;
 }
 .batch-icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex: none;
   animation: side-spin 1s linear infinite;
 }
