@@ -1,8 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -81,6 +83,9 @@ type costRowDTO struct {
 	// AvgTPS is the model's mean output speed in the run (GH #178); null
 	// when it produced no answer.
 	AvgTPS *float64 `json:"avg_tps"`
+	// ExamCost prices the row's answer tokens against the registry
+	// (GH #178); null when the model's price is not registered.
+	ExamCost *float64 `json:"exam_cost"`
 }
 
 // queueDepthDTO is the live queue state of a running campaign's pipeline
@@ -90,6 +95,16 @@ type queueDepthDTO struct {
 	ExamInflight  int `json:"exam_inflight"`
 	JudgePending  int `json:"judge_pending"`
 	JudgeInflight int `json:"judge_inflight"`
+}
+
+// estimatedCostDTO is the campaign-level estimated cost split (GH #178,
+// console-only): the sum of every run's exam/judge portions, with the
+// count of runs whose estimate is null because some component's price is
+// not registered.
+type estimatedCostDTO struct {
+	Exam        float64 `json:"exam"`
+	Judge       float64 `json:"judge"`
+	UnknownRuns int     `json:"unknown_runs"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -110,6 +125,9 @@ type campaignReportDTO struct {
 	FailedResults int                `json:"failed_results"`
 	Cost          *campaignCostDTO   `json:"cost,omitempty"`
 	CostRows      []costRowDTO       `json:"cost_rows,omitempty"`
+	// EstimatedCost is the campaign's registry-priced cost split (GH #178);
+	// session-only like the other cost fields.
+	EstimatedCost *estimatedCostDTO `json:"estimated_cost,omitempty"`
 	// QueueDepth is the live two-stage queue state (GH #178), present only
 	// while the campaign is executing on this process.
 	QueueDepth *queueDepthDTO `json:"queue_depth,omitempty"`
@@ -310,6 +328,11 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	// construction (never serialized as zeroed values).
 	var cost *campaignCostDTO
 	var costRows []costRowDTO
+	var estimated *estimatedCostDTO
+	var queueDepth *queueDepthDTO
+	if !shared {
+		queueDepth = s.liveQueueDepth(id, campaign.Status)
+	}
 	if withCost {
 		totals, err := s.db.CampaignCostTotals(id)
 		if err != nil {
@@ -335,8 +358,10 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 				InputTokens:  cr.InputTokens,
 				OutputTokens: cr.OutputTokens,
 				AvgTPS:       cr.AvgTPS,
+				ExamCost:     examCostOf(cr, s.registryOverrides()),
 			})
 		}
+		estimated = s.campaignEstimatedCost(id)
 	}
 
 	return campaignReportDTO{
@@ -348,8 +373,66 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		FailedResults: failedResults,
 		Cost:          cost,
 		CostRows:      costRows,
-		QueueDepth:    s.liveQueueDepth(id, campaign.Status),
+		// Cost metrics stay console-only (the GH #42 caliber the ticket-54
+		// review registered): the shared/public board strips both the
+		// registry-priced estimate and the live queue state.
+		EstimatedCost: estimated,
+		QueueDepth:    queueDepth,
 	}, nil
+}
+
+// campaignEstimatedCost sums every run's registry-priced split; runs with a
+// null estimate are counted, never guessed.
+func (s *Server) campaignEstimatedCost(campaignID int64) *estimatedCostDTO {
+	runs, err := s.db.ListEvalRunsByCampaign(campaignID)
+	if err != nil {
+		return nil
+	}
+	out := &estimatedCostDTO{}
+	for _, run := range runs {
+		if run.EstimatedCost == "" {
+			out.UnknownRuns++
+			continue
+		}
+		var split struct {
+			Exam  float64 `json:"exam"`
+			Judge float64 `json:"judge"`
+		}
+		if err := json.Unmarshal([]byte(run.EstimatedCost), &split); err != nil {
+			out.UnknownRuns++
+			continue
+		}
+		out.Exam += split.Exam
+		out.Judge += split.Judge
+	}
+	return out
+}
+
+// registryOverrides reads the administrator's registry overrides for
+// report-side pricing (GH #178); a corrupt stored value falls back to the
+// built-in table.
+func (s *Server) registryOverrides() []registry.Override {
+	raw, err := s.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		return nil
+	}
+	overrides, err := registry.ParseOverrides(raw)
+	if err != nil {
+		return nil
+	}
+	return overrides
+}
+
+// examCostOf prices one cost row's answer tokens against the registry:
+// null when the model's price is unregistered or the run recorded no
+// tokens (GH #178).
+func examCostOf(cr store.CampaignCostRow, overrides []registry.Override) *float64 {
+	info := registry.Lookup(cr.ModelID, overrides)
+	if info.PriceIn == nil || info.PriceOut == nil || cr.InputTokens == nil || cr.OutputTokens == nil {
+		return nil
+	}
+	cost := (float64(*cr.InputTokens)**info.PriceIn + float64(*cr.OutputTokens)**info.PriceOut) / 1e6
+	return &cost
 }
 
 // liveQueueDepth reads the campaign's pipeline queue state while it is

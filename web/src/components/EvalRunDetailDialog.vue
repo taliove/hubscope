@@ -43,6 +43,37 @@
                   <div class="expand-label">判定理由</div>
                   <pre class="expand-text">{{ row.verdict_detail ?? '-' }}</pre>
                 </div>
+                <!-- Jury breakdown (GH #179 view B「裁判席」): every jury
+                     vote of the case's latest attempt, with the spread as
+                     the disagreement signal. -->
+                <div v-if="row.judge_scores && row.judge_scores.length > 0" class="expand-block">
+                  <div class="expand-label">
+                    裁判团
+                    <el-tag
+                      v-if="row.spread !== null && row.spread !== undefined && row.spread > 0.12"
+                      size="small"
+                      type="danger"
+                      class="spread-tag"
+                    >分歧 {{ row.spread.toFixed(2) }}</el-tag>
+                    <el-tag
+                      v-else-if="row.spread !== null && row.spread !== undefined"
+                      size="small"
+                      type="info"
+                      class="spread-tag"
+                    >分歧 {{ row.spread.toFixed(2) }}</el-tag>
+                  </div>
+                  <div class="jury-votes">
+                    <span
+                      v-for="(v, i) in row.judge_scores"
+                      :key="i"
+                      class="vote-chip"
+                      :class="{ fail: v.score === null }"
+                    >
+                      {{ v.judge_model }} {{ v.score === null ? 'FAIL' : v.score.toFixed(2) }}
+                      <em>样本 {{ v.sample_no }}</em>
+                    </span>
+                  </div>
+                </div>
               </div>
             </template>
           </el-table-column>
@@ -324,5 +355,29 @@ async function onRetryAll() {
 }
 .deleted-tag {
   margin-left: 4px;
+}
+.spread-tag {
+  margin-left: 8px;
+}
+.jury-votes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hs-space-2);
+}
+.vote-chip {
+  background: var(--hs-blue-50);
+  color: var(--hs-gray-900);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.vote-chip.fail {
+  background: #ffecea;
+  color: var(--hs-danger-text-base);
+}
+.vote-chip em {
+  font-style: normal;
+  color: var(--hs-gray-500);
+  margin-left: 6px;
 }
 </style>

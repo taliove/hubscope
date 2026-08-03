@@ -81,6 +81,10 @@
             @query="onQuery"
             @select="openTrend"
           />
+          <EvalValueBoard
+            v-if="costViewEnabled && viewMode === 'scores' && reportView === 'cost'"
+            :report="report"
+          />
           <EvalCostMatrix
             v-if="costViewEnabled && viewMode === 'scores' && reportView === 'cost'"
             :report="report"
@@ -192,6 +196,7 @@ import { listSuites } from '@/api/evals'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
 import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalCostMatrix from '@/components/EvalCostMatrix.vue'
+import EvalValueBoard from '@/components/EvalValueBoard.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'

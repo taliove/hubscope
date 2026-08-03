@@ -132,6 +132,7 @@ func TestPublicEvalBoardLatestSettled(t *testing.T) {
 	sessionReport := getCampaignReport(t, ts.URL, campaignID, "")
 	delete(sessionReport, "cost")
 	delete(sessionReport, "cost_rows")
+	delete(sessionReport, "estimated_cost")
 	for _, row := range sessionReport["rows"].([]interface{}) {
 		for _, c := range row.(map[string]interface{})["cells"].([]interface{}) {
 			cell := c.(map[string]interface{})

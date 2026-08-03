@@ -430,6 +430,9 @@ export interface CampaignReport extends Campaign {
   cost_rows?: CampaignCostRow[]
   // Live queue state (GH #178), present only while the batch executes.
   queue_depth?: QueueDepth
+  // Registry-priced cost split of the whole batch (GH #178, console-only);
+  // unknown_runs counts runs whose estimate is null (price not registered).
+  estimated_cost?: { exam: number; judge: number; unknown_runs: number }
 }
 
 // Batch-level cost summary (GH #42): Σ latency / Σ input / Σ output tokens
@@ -454,6 +457,9 @@ export interface CampaignCostRow {
   // Mean output speed of the model in the run (GH #178); null when it
   // produced no measurable answer.
   avg_tps: number | null
+  // Registry-priced cost of the row's answer tokens (GH #178); null when
+  // the model's price is not registered.
+  exam_cost: number | null
 }
 
 // Live two-stage queue state of a running batch (GH #178).

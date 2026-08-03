@@ -56,10 +56,6 @@ frontend-test:
 		echo "skip: web/ not initialized yet"; \
 	fi
 
-## proto-eval: THROWAWAY prototype — jury/pipeline eval-revamp sim (internal/evaluator/prototype)
-proto-eval:
-	$(GO) run ./internal/evaluator/prototype
-
 ## dev: run backend locally (stub frontend if not built)
 dev: ensure-dist
 	$(GO) run ./cmd/hubscope

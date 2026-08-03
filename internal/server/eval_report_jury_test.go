@@ -150,6 +150,58 @@ func TestCampaignReportQueueDepth(t *testing.T) {
 	}
 }
 
+// TestCampaignEstimatedCostSummary pins the GH #178 batch-level split: the
+// report sums every run's exam/judge estimate and prices each cost row's
+// exam tokens through the registry.
+func TestCampaignEstimatedCostSummary(t *testing.T) {
+	ts, stub, db := setupEvalEnv(t)
+	subjectID, _ := setupJuryCase(t, ts.URL, stub.URL, db)
+	putResp := doPut(t, ts.URL+"/api/settings", map[string]interface{}{
+		"model_registry_overrides": []map[string]interface{}{
+			{"match": "subject", "iq_tier": 10, "price_in": 1000, "price_out": 1000},
+			{"match": "judge-1", "iq_tier": 9, "price_in": 1000, "price_out": 1000},
+			{"match": "judge-2", "iq_tier": 8, "price_in": 1000, "price_out": 1000},
+			{"match": "judge-3", "iq_tier": 7, "price_in": 1000, "price_out": 1000},
+		},
+	})
+	putResp.Body.Close()
+
+	runID := triggerEval(t, ts.URL, suiteIDByKey(t, ts.URL, "gsm8k"), subjectID)
+	run := waitEvalDone(t, ts.URL, runID)
+	campaignID := int64(run["campaign_id"].(float64))
+
+	report := getCampaignReport(t, ts.URL, campaignID, "")
+	estimated, _ := report["estimated_cost"].(map[string]interface{})
+	if estimated == nil {
+		t.Fatal("report must carry the estimated cost split")
+	}
+	if exam, _ := estimated["exam"].(float64); exam <= 0 {
+		t.Errorf("estimated exam = %v, want > 0", exam)
+	}
+	if judge, _ := estimated["judge"].(float64); judge <= 0 {
+		t.Errorf("estimated judge = %v, want > 0", judge)
+	}
+	if unknown, _ := estimated["unknown_runs"].(float64); unknown != 0 {
+		t.Errorf("unknown_runs = %v, want 0 (every component priced)", unknown)
+	}
+
+	rows, _ := report["cost_rows"].([]interface{})
+	if len(rows) == 0 {
+		t.Fatal("cost_rows must not be empty")
+	}
+	for _, r := range rows {
+		rm := r.(map[string]interface{})
+		if rm["model_id"] != "subject" {
+			continue
+		}
+		if examCost, ok := rm["exam_cost"].(float64); !ok || examCost <= 0 {
+			t.Errorf("subject exam_cost = %v, want a positive registry price", rm["exam_cost"])
+		}
+		return
+	}
+	t.Error("subject missing from cost_rows")
+}
+
 // TestJudgeConcurrencySetting pins the new pool-size setting's boundary:
 // 0 and 17 are rejected, 1..16 round-trip.
 func TestJudgeConcurrencySetting(t *testing.T) {
