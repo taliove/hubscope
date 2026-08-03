@@ -18,9 +18,14 @@
         <el-radio-button value="grid">进度网格</el-radio-button>
       </el-radio-group>
       <span class="batch-note">
-        批次{{ statusWord }}:已结束 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个评估运行<template v-if="report.progress.failed > 0">(失败 {{ report.progress.failed }})</template>
+        批次{{ statusWord }}:已判分 {{ units.judged }}/{{ units.expected }} 题 · 已结束 {{ report.progress.done + report.progress.failed }}/{{ report.progress.total }} 个运行<template v-if="report.progress.failed > 0">(失败 {{ report.progress.failed }})</template>
       </span>
       <span v-if="!readonly && costText" class="batch-note">{{ costText }}</span>
+      <!-- Batch timing (2026-08-03 live-board batch): start, ETA from the
+           observed pace spread over the worker pool, actual finish. -->
+      <span class="batch-note timing-note">
+        开始 {{ formatTimeMinute(report.started_at) }}<template v-if="report.finished_at"> · 实际结束 {{ formatTimeMinute(report.finished_at) }}</template><template v-else-if="etaText"> · {{ etaText }}</template>
+      </span>
     </div>
     <el-progress
       :percentage="progressPercent"
@@ -31,9 +36,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { CampaignReport, EvalBoardView } from '@/api/types'
 import { batchCostSummary } from '@/utils/evalCost'
+import { avgUnitMs, batchRemainingMs, unitProgress } from '@/utils/batchEta'
+import { formatDuration, formatTimeMinute } from '@/utils/format'
+import { getSettings } from '@/api/settings'
 
 // Batch-level header, view-agnostic: the progress bar and counts are batch
 // metadata, not grid content, so they live above both views (design ruling:
@@ -51,10 +59,32 @@ const emit = defineEmits<{
   (e: 'update:view', view: EvalBoardView): void
 }>()
 
+// Progress caliber (2026-08-03): judged units, not settled runs — under
+// model-major feeding every run settles near the tail, so a run-count bar
+// pins at zero for most of the batch.
+const units = computed(() => unitProgress(props.report))
 const progressPercent = computed(() => {
-  const p = props.report.progress
-  if (!p || p.total === 0) return 0
-  return Math.round(((p.done + p.failed) / p.total) * 100)
+  const u = units.value
+  if (u.expected === 0) return 0
+  return Math.round((u.judged / u.expected) * 100)
+})
+
+// Batch ETA: remaining unit-seconds spread over the eval worker pool. The
+// pool size comes from settings once; the estimate hides until a pace
+// exists (first judged case).
+const concurrency = ref(4)
+onMounted(() => {
+  getSettings()
+    .then((s) => {
+      concurrency.value = Math.max(1, s.eval_concurrency)
+    })
+    .catch(() => {})
+})
+const etaText = computed(() => {
+  if (avgUnitMs(props.report) === null) return ''
+  const remaining = batchRemainingMs(props.report, concurrency.value)
+  if (remaining === null) return ''
+  return `预估剩余 ${formatDuration(remaining)}(按当前速度)`
 })
 
 // Batch/campaign status vocabulary (ui-guidelines §7), never mixed with the

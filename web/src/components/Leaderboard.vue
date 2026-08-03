@@ -48,7 +48,9 @@
       </span>
     </div>
 
-    <!-- Empty state: no model ranked (nothing scored, or filtered out). -->
+    <!-- Empty state: no model ranked (nothing scored, or filtered out) —
+         the matrix itself (header included) hides so a failed batch reads
+         as a compact empty block, not a giant void with a floating header. -->
     <el-empty v-if="report.rows.length === 0" :description="emptyDescription" />
 
     <!-- Matrix board (ticket 78, spec 0009): one fixed column per dimension —
@@ -64,7 +66,7 @@
          style; null-total rows keep the placeholder dash. GH #94: narrow
          viewport (<= 1023px) switches to a card-style list (column headers
          never render; sorting goes through the toolbar select). -->
-    <div v-if="!isNarrow" class="matrix-board">
+    <div v-if="!isNarrow && report.rows.length > 0" class="matrix-board">
       <div class="lb-grid lb-header" :style="gridStyle">
         <span class="h-rank">名次</span>
         <span class="h-model">模型</span>
@@ -189,7 +191,7 @@
          the dimension name above the score via ScoreCell show-name. Live mode
          and judged-incomplete mode carry the same caliber as the matrix (live
          rank ordinal, incomplete dash/watermark/empty track, row-end note). -->
-    <div v-else class="card-list">
+    <div v-else-if="report.rows.length > 0" class="card-list">
       <div
         v-for="(row, index) in report.rows"
         :key="row.model_db_id"

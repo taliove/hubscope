@@ -56,15 +56,24 @@
             {{ cell.judged_cases }}/{{ cell.expected_cases }}
           </span>
         </span>
+        <!-- Per-model ETA (2026-08-03): the model's remaining suite time at
+             its own pace; console only (cost class data never crosses the
+             share boundary). -->
+        <span v-if="!readonly && rowEta(row)" class="row-eta" title="按当前速度的预估剩余时间">
+          ≈{{ rowEta(row) }}
+        </span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { CampaignReport, ReportCell, ReportCellStatus } from '@/api/types'
+import type { CampaignReport, ReportCell, ReportCellStatus, ReportRow } from '@/api/types'
 import { cellCostText } from '@/utils/scoreTier'
+import { avgUnitMs, cellRemainingMs, rowRemainingMs } from '@/utils/batchEta'
+import { formatDuration } from '@/utils/format'
 import { useBreakpoint } from '@/composables/useBreakpoint'
+import { computed } from 'vue'
 
 // Props seam: the report only; view switching and batch meta moved to
 // EvalBoardHeader. readonly (shared report page) gates cost out of the
@@ -123,15 +132,29 @@ function showCoverage(cell: ReportCell): boolean {
 
 // Cell tooltip: the status word plus the judged-case coverage ("运行中 ·
 // 2/12 题") and, on the console, the GH #42 cost fragment ("· 耗时 X · Token
-// Y"); a waiting cell has no meaningful coverage yet. The shared read-only
-// view never shows cost (the shared payload omits the fields anyway; the
-// readonly gate is the explicit boundary).
+// Y") and the ETA fragment ("· 预估剩余 Z"); a waiting cell has no
+// meaningful coverage yet. The shared read-only view never shows cost or
+// ETA (the shared payload omits the latency fields anyway; the readonly
+// gate is the explicit boundary).
 function cellTitle(cell: ReportCell): string {
   const word = cellStatusWord(cell.status)
   if (!showCoverage(cell)) return word
   const base = `${word} · ${cell.judged_cases}/${cell.expected_cases} 题`
-  const cost = props.readonly ? '' : cellCostText(cell)
-  return cost === '' ? base : `${base} · ${cost}`
+  if (props.readonly) return base
+  const cost = cellCostText(cell)
+  const eta = cellRemainingMs(cell, fallbackPace.value)
+  const etaText = eta === null ? '' : ` · 预估剩余 ${formatDuration(eta)}`
+  return (cost === '' ? base : `${base} · ${cost}`) + etaText
+}
+
+// Per-cell pace fallback (campaign-wide average unit latency), computed
+// once per report refresh.
+const fallbackPace = computed(() => avgUnitMs(props.report))
+
+// Per-model ETA text (console only): the model's remaining suite time.
+function rowEta(row: ReportRow): string {
+  const remaining = rowRemainingMs(row, fallbackPace.value)
+  return remaining === null ? '' : formatDuration(remaining)
 }
 </script>
 
@@ -224,6 +247,12 @@ function cellTitle(cell: ReportCell): string {
 .cell-count {
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
+  white-space: nowrap;
+}
+.row-eta {
+  flex: none;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-placeholder);
   white-space: nowrap;
 }
 </style>
