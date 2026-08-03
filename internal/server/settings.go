@@ -3,10 +3,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -27,23 +29,30 @@ type settingsDTO struct {
 	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
 	QuietHoursStart   int  `json:"quiet_hours_start"`
 	QuietHoursEnd     int  `json:"quiet_hours_end"`
+	// ModelRegistryOverrides carries the administrator corrections to the
+	// built-in model registry (spec 0020 ticket 1); empty when unset or
+	// when the stored value is corrupt (reads fail open to built-ins).
+	ModelRegistryOverrides []registry.Override `json:"model_registry_overrides"`
 }
 
 // settingsPatch is the PUT body: every field is optional; a nil field leaves
 // the stored value unchanged. SuiteWeights is a map: absent (or explicit
 // null) leaves it unchanged, an object replaces the whole weight map.
+// ModelRegistryOverrides follows the same discipline: absent/null leaves it
+// unchanged, an array (including []) replaces the whole override list.
 type settingsPatch struct {
-	LarkWebhookURL        *string            `json:"lark_webhook_url"`
-	AlertEnabled          *bool              `json:"alert_enabled"`
-	ScoreDropAlertEnabled *bool              `json:"score_drop_alert_enabled"`
-	JudgeModel            *string            `json:"judge_model"`
-	DefaultSampleCount    *int               `json:"default_sample_count"`
-	EvalConcurrency       *int               `json:"eval_concurrency"`
-	EvalCampaignBudgetMin *int               `json:"eval_campaign_budget_minutes"`
-	SuiteWeights          map[string]float64 `json:"suite_weights"`
-	QuietHoursEnabled     *bool              `json:"quiet_hours_enabled"`
-	QuietHoursStart       *int               `json:"quiet_hours_start"`
-	QuietHoursEnd         *int               `json:"quiet_hours_end"`
+	LarkWebhookURL         *string             `json:"lark_webhook_url"`
+	AlertEnabled           *bool               `json:"alert_enabled"`
+	ScoreDropAlertEnabled  *bool               `json:"score_drop_alert_enabled"`
+	JudgeModel             *string             `json:"judge_model"`
+	DefaultSampleCount     *int                `json:"default_sample_count"`
+	EvalConcurrency        *int                `json:"eval_concurrency"`
+	EvalCampaignBudgetMin  *int                `json:"eval_campaign_budget_minutes"`
+	SuiteWeights           map[string]float64  `json:"suite_weights"`
+	QuietHoursEnabled      *bool               `json:"quiet_hours_enabled"`
+	QuietHoursStart        *int                `json:"quiet_hours_start"`
+	QuietHoursEnd          *int                `json:"quiet_hours_end"`
+	ModelRegistryOverrides []registry.Override `json:"model_registry_overrides"`
 }
 
 // readSettings loads all settings, applying defaults for keys never written.
@@ -82,6 +91,21 @@ func (s *Server) readSettings() (settingsDTO, error) {
 	}
 	if dto.QuietHoursEnd, err = s.db.GetSettingInt(store.SettingQuietHoursEnd, store.DefaultQuietHoursEnd); err != nil {
 		return dto, err
+	}
+	rawOverrides, err := s.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		return dto, err
+	}
+	overrides, err := registry.ParseOverrides(rawOverrides)
+	if err != nil {
+		// A hand-edited corrupt value must never break settings reads (the
+		// GetSuiteWeights precedent): fall back to the built-in table.
+		slog.Error("settings: corrupt model_registry_overrides, ignoring", "error", err)
+		overrides = nil
+	}
+	dto.ModelRegistryOverrides = overrides
+	if dto.ModelRegistryOverrides == nil {
+		dto.ModelRegistryOverrides = []registry.Override{}
 	}
 	return dto, nil
 }
@@ -165,6 +189,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if patch.ModelRegistryOverrides != nil {
+		if err := registry.Validate(patch.ModelRegistryOverrides); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid model_registry_overrides: "+err.Error())
+			return
+		}
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -202,6 +233,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingQuietHoursEnd, func() error {
 			return s.db.SetSettingInt(store.SettingQuietHoursEnd, *patch.QuietHoursEnd)
 		}},
+		{store.SettingModelRegistryOverrides, func() error {
+			raw, err := json.Marshal(patch.ModelRegistryOverrides)
+			if err != nil {
+				return err
+			}
+			return s.db.SetSetting(store.SettingModelRegistryOverrides, string(raw))
+		}},
 	}
 	present := []bool{
 		patch.LarkWebhookURL != nil,
@@ -215,6 +253,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.QuietHoursEnabled != nil,
 		patch.QuietHoursStart != nil,
 		patch.QuietHoursEnd != nil,
+		patch.ModelRegistryOverrides != nil,
 	}
 	for i, u := range updates {
 		if !present[i] {

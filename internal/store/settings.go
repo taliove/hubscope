@@ -47,6 +47,11 @@ const (
 	// enabled" even when the switch is on.
 	SettingQuietHoursStart = "quiet_hours_start"
 	SettingQuietHoursEnd   = "quiet_hours_end"
+	// SettingModelRegistryOverrides holds administrator corrections to the
+	// built-in model registry (spec 0020 ticket 1) as a JSON array of
+	// {match, iq_tier?, price_in?, price_out?} entries; overrides merge
+	// field-by-field over the shipped table.
+	SettingModelRegistryOverrides = "model_registry_overrides"
 )
 
 // Default setting values applied when a key has never been written.

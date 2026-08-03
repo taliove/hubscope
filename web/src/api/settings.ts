@@ -1,6 +1,16 @@
 // Settings and alert-events API calls.
 import { http } from './client'
 
+// One administrator correction to the built-in model registry (spec 0020
+// ticket 1): match is an exact model ID or a prefix with a trailing '*';
+// unset fields keep the built-in values (field-level merge).
+export interface ModelRegistryOverride {
+  match: string
+  iq_tier?: number
+  price_in?: number
+  price_out?: number
+}
+
 export interface AppSettings {
   lark_webhook_url: string
   alert_enabled: boolean
@@ -23,6 +33,9 @@ export interface AppSettings {
   quiet_hours_enabled: boolean
   quiet_hours_start: number
   quiet_hours_end: number
+  // Administrator corrections to the built-in model registry (spec 0020
+  // ticket 1); empty when unset.
+  model_registry_overrides: ModelRegistryOverride[]
 }
 
 export type UpdateSettingsPayload = Partial<AppSettings>

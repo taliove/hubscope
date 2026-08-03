@@ -167,6 +167,7 @@ const form = reactive<AppSettings>({
   quiet_hours_enabled: false,
   quiet_hours_start: 23,
   quiet_hours_end: 7,
+  model_registry_overrides: [],
 })
 
 // Quiet-hours bounds: integer hours 0–23 rendered as HH:00 via formatHour
