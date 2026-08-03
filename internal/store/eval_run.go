@@ -59,6 +59,10 @@ type LatestEvalScore struct {
 const (
 	VerdictProfileV1 = "v1"
 	VerdictProfileV2 = "v2"
+	// VerdictProfileV3 is the jury-median caliber (spec 0020, ADR 0016):
+	// judge cases are scored by up to three judges and the sample score is
+	// their median. Rule verdicts stay V2 — the pipeline did not change.
+	VerdictProfileV3 = "v3"
 )
 
 // EvalResult is the outcome of one (model, case) pair inside a run. Score is

@@ -259,6 +259,7 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		return !deadline.IsZero() && !e.now().Before(deadline)
 	}
 
+	p := newPipeline(e, prepared)
 	remaining := map[int64]int{}
 	for _, prep := range prepared {
 		remaining[prep.run.ID] = len(feed)
@@ -266,7 +267,7 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		// nothing and finishes done immediately (the serial executor's
 		// zero-model outcome).
 		if len(feed) == 0 {
-			e.finishPreparedRun(prep, "done")
+			p.markCellsDone(prep.run.ID)
 		}
 	}
 	// GH #169: model-major cell order — the pool takes a model's whole suite
@@ -279,6 +280,7 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	}
 
 	var completed, dead int
+	p.runJudgePool(ctx, budgetExceeded)
 	e.runCellPool(ctx, cells, func() bool {
 		if budgetExceeded() {
 			stop("campaign budget exceeded")
@@ -286,7 +288,7 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		}
 		return false
 	}, func(cctx context.Context, cell evalCell) {
-		answered := e.evalModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+		answered := e.evalModel(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
 		done := remaining[cell.prep.run.ID] == 0
@@ -308,28 +310,34 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 			stop("campaign budget exceeded")
 		}
 		if done {
-			// All of the run's cells executed: the run is done regardless
-			// of a later cancellation (the serial executor finished a run
-			// done once its last model completed, too).
-			e.finishPreparedRun(cell.prep, "done")
+			// All of the run's exam cells executed: the run finishes once
+			// its judge queue is also empty (GH #176).
+			p.markCellsDone(cell.prep.run.ID)
 		}
 	})
+	// The exam stage is done (or canceled): stop the judge feed and wait
+	// for in-flight judge calls. Votes never offered stay owed in the
+	// database — the recovery sweep sees them.
+	p.closeJudgeQueue()
 
 	// Cells dropped because the context was canceled never reported back;
 	// their runs fail, matching the serial executor's cancellation outcome.
+	// Runs whose judge queue could not drain fail the same way: their case
+	// grid is incomplete.
 	mu.Lock()
 	defer mu.Unlock()
 	for _, prep := range prepared {
-		if remaining[prep.run.ID] > 0 {
-			reason := stopReason
-			if reason == "" {
-				reason = "execution incomplete"
-				if err := ctx.Err(); err != nil {
-					reason = err.Error()
-				}
-			}
-			e.failPreparedRun(prep, reason)
+		if p.isFinished(prep.run.ID) {
+			continue
 		}
+		reason := stopReason
+		if reason == "" {
+			reason = "execution incomplete"
+			if err := ctx.Err(); err != nil {
+				reason = err.Error()
+			}
+		}
+		e.failPreparedRun(prep, reason)
 	}
 }
 
@@ -852,7 +860,28 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 		if err := e.db.SetEvalRunJuryModels(prep.run.ID, snapshot); err != nil {
 			slog.Error("evaluator: snapshot jury on run", "run_id", prep.run.ID, "error", err)
 		}
+		// Keep the in-memory record in step: judgesFor reads it when the
+		// cells fan out, before any later store reload.
+		prep.run.JuryModels = snapshot
 	}
+}
+
+// resolveJudgeConcurrency reads the judge-stage pool size from settings,
+// clamped to [1, store.MaxEvalConcurrency] (GH #176). Read failures fall
+// back to the built-in default.
+func (e *Evaluator) resolveJudgeConcurrency() int {
+	n, err := e.db.GetSettingInt(store.SettingJudgeConcurrency, store.DefaultJudgeConcurrency)
+	if err != nil {
+		slog.Error("evaluator: read judge_concurrency setting, using default", "error", err)
+		return store.DefaultJudgeConcurrency
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > store.MaxEvalConcurrency {
+		return store.MaxEvalConcurrency
+	}
+	return n
 }
 
 // resolveCampaignBudgetMinutes reads the campaign wall-clock budget from
@@ -884,7 +913,8 @@ func (e *Evaluator) resolveCampaignBudgetMinutes() int {
 // is skipped without any call or result row. The return reports whether
 // any case got an answer at all — the campaign-level abort reads it to
 // detect an all-dead batch.
-func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
+func (e *Evaluator) evalModel(ctx context.Context, p *pipeline, prep *preparedRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
+	run := prep.run
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, "", cases, "model not found")
@@ -938,7 +968,7 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 	answered := false
 	consecutiveFailed := 0
 	for i, c := range cases {
-		if e.evalCase(ctx, run, hub, protocol, model, c, task, defaultSamples) {
+		if e.evalCase(ctx, p, prep, hub, protocol, model, c, task, defaultSamples) {
 			answered = true
 			consecutiveFailed = 0
 			continue
@@ -954,84 +984,95 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 	return answered
 }
 
-// evalCase answers one case sampleCount times and stores a single result
-// whose score is the average of the judged samples. Samples that cannot be
-// judged (answer call failed, judge failed) contribute no score; when no
-// sample is judged at all the case stays unscored — the same convention as a
-// single unjudged answer. The outcome is logged to the task: scored
-// completions at info, answer/judge failures at warn. The return reports
-// whether any sample got an answer (the circuit breaker counts consecutive
-// unanswered cases).
-func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) bool {
+// evalCase answers one case sampleCount times through the exam stage and
+// routes each sample to its verdict path (spec 0020, GH #176): rule
+// verdicts settle inline, judge samples persist to eval_answers and fan
+// out to the jury — the case's eval_results row is written by the pipeline
+// when its last sample settles. The return reports whether any sample got
+// an answer (the circuit breaker counts consecutive unanswered cases).
+func (e *Evaluator) evalCase(ctx context.Context, p *pipeline, prep *preparedRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) bool {
+	run := prep.run
 	samples := defaultSamples
 	if c.SampleCount != nil && *c.SampleCount >= 1 {
 		samples = *c.SampleCount
 	}
 
-	result := store.EvalResult{
-		EvalRunID:      run.ID,
-		ModelDBID:      model.ID,
-		ModelID:        model.ModelID,
-		CaseID:         c.ID,
-		VerdictProfile: VerdictProfileCurrent,
+	// Judge cases move to the jury-median caliber (ADR 0016) only when the
+	// run carries a jury snapshot; legacy runs keep the single-judge V2
+	// caliber they were created with.
+	judges, hasJury := e.judgesFor(run, model.ID)
+	profile := VerdictProfileCurrent
+	if c.VerdictType == "judge" && hasJury {
+		profile = store.VerdictProfileV3
 	}
+	p.openCase(prep, model.ID, c.ID, model.ModelID, profile, samples)
 
-	var scoreSum float64
-	var scored int
 	answered := false
-	var details []string
 	for i := 1; i <= samples; i++ {
-		sample := e.evalSample(ctx, run, hub, protocol, model, c)
-		result.LatencyMs += sample.latencyMs
-		result.InputTokens = addIntPtr(result.InputTokens, sample.inputTokens)
-		result.OutputTokens = addIntPtr(result.OutputTokens, sample.outputTokens)
-		if sample.answer != nil {
-			answered = true
-			if result.AnswerText == nil {
-				result.AnswerText = sample.answer
+		out := e.examSample(ctx, run, hub, protocol, model, c, i)
+		if out.answer == nil {
+			p.settleSample(run.ID, model.ID, c.ID, nil, fmt.Sprintf("sample %d/%d: %s", i, samples, out.detail))
+			continue
+		}
+		answered = true
+		p.recordAnswer(run.ID, model.ID, c.ID, out.latencyMs, out.inputTokens, out.outputTokens, *out.answer)
+		if c.VerdictType == "rule" {
+			score, detail := ruleVerdict(c, *out.answer, profile)
+			if out.detail != "answered" {
+				detail = out.detail + "; " + detail
 			}
+			p.settleSample(run.ID, model.ID, c.ID, score, fmt.Sprintf("sample %d/%d: %s", i, samples, detail))
+			continue
 		}
-		if sample.score != nil {
-			scoreSum += *sample.score
-			scored++
+		if len(judges) == 0 {
+			p.settleSample(run.ID, model.ID, c.ID, nil, fmt.Sprintf("sample %d/%d: no jury available", i, samples))
+			continue
 		}
-		details = append(details, fmt.Sprintf("sample %d/%d: %s", i, samples, sample.detail))
-	}
-
-	if scored > 0 {
-		avg := scoreSum / float64(scored)
-		result.Score = &avg
-	}
-	detail := strings.Join(details, "; ")
-	result.VerdictDetail = &detail
-	e.storeResult(result)
-
-	switch {
-	case result.Score != nil:
-		task.log(store.TaskLogInfo, fmt.Sprintf("case %d done: model=%s score=%.2f", c.ID, model.ModelID, *result.Score))
-	case strings.Contains(detail, "judge"):
-		task.log(store.TaskLogWarn, fmt.Sprintf("case %d judge failed: model=%s detail=%q", c.ID, model.ModelID, detail))
-	default:
-		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+		p.enqueueVotes(ctx, judgeJob{
+			prep:            prep,
+			model:           model,
+			hub:             hub,
+			protocol:        protocol,
+			c:               c,
+			answerID:        out.answerID,
+			sampleNo:        i,
+			expectedSamples: samples,
+			answerText:      *out.answer,
+		}, judges)
 	}
 	return answered
 }
 
-// sampleOutcome is one answer-and-verdict attempt for a case.
-type sampleOutcome struct {
+// judgesFor resolves the judge list for one model from the run's jury
+// snapshot (spec 0020). The second return reports whether a snapshot
+// exists at all: legacy runs (no snapshot) fall back to the single
+// judge_model and keep the V2 caliber.
+func (e *Evaluator) judgesFor(run *store.EvalRun, modelDBID int64) ([]string, bool) {
+	_, juries := parseJurySnapshot(run.JuryModels)
+	if juries == nil {
+		return []string{run.JudgeModel}, false
+	}
+	return juries[modelDBID], true
+}
+
+// examOutcome is one answer-call attempt's exam-stage result: the answer
+// text (nil when every attempt failed), the eval_answers row ID, and the
+// accounting payload.
+type examOutcome struct {
+	answerID     int64
 	answer       *string
-	score        *float64
 	detail       string
 	latencyMs    int
 	inputTokens  *int
 	outputTokens *int
 }
 
-// evalSample executes one answer call plus its verdict. A failed answer call
-// (timeout, connection error, hub 5xx) is retried exactly once, immediately —
-// the 120s request timeout is already the wait (GH #27). The judge call is
-// never retried: a failed judge stays a null score (W7).
-func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) sampleOutcome {
+// examSample executes one answer call and persists it to eval_answers —
+// before any judge call exists, so a crash never loses a paid completion
+// (ADR 0016). A failed call (timeout, connection error, hub 5xx) is
+// retried exactly once, immediately (GH #27); a canceled context skips
+// the retry.
+func (e *Evaluator) examSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, sampleNo int) examOutcome {
 	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
 	retried := false
 	if !res.OK && ctx.Err() == nil {
@@ -1046,10 +1087,27 @@ func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *sto
 			res.ErrorSummary = retry.ErrorSummary
 		}
 	}
-	out := sampleOutcome{
+	out := examOutcome{
 		latencyMs:    res.LatencyMs,
 		inputTokens:  res.InputTokens,
 		outputTokens: res.OutputTokens,
+	}
+
+	status := store.EvalAnswerAnswered
+	if !res.OK {
+		status = store.EvalAnswerFailed
+	}
+	row := store.EvalAnswer{
+		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
+		CaseID: c.ID, SampleNo: sampleNo, Status: status,
+		LatencyMs: res.LatencyMs, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
+	}
+	if res.OK {
+		row.AnswerText = &res.Text
+	}
+	answerID, err := e.db.CreateEvalAnswer(row)
+	if err != nil {
+		slog.Error("evaluator: persist answer", "run_id", run.ID, "case_id", c.ID, "error", err)
 	}
 
 	if !res.OK {
@@ -1066,11 +1124,11 @@ func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *sto
 		return out
 	}
 
+	out.answerID = answerID
 	out.answer = &res.Text
-	out.score, out.detail = e.verdict(ctx, hub, protocol, run.JudgeModel, c, res.Text)
+	out.detail = "answered"
 	if retried {
-		// Never claim a first-try success: the detail names the recovery.
-		out.detail += "; answer succeeded on attempt 2 after an initial failure"
+		out.detail = "answered on attempt 2 after an initial failure"
 	}
 	return out
 }
@@ -1085,15 +1143,6 @@ func addIntPtr(a, b *int) *int {
 	}
 	sum := *a + *b
 	return &sum
-}
-
-// verdict scores an answer according to the case's verdict type. Rule
-// verdicts run under the current verdict profile (ADR 0008).
-func (e *Evaluator) verdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string) {
-	if c.VerdictType == "rule" {
-		return ruleVerdict(c, answer, VerdictProfileCurrent)
-	}
-	return e.judgeVerdict(ctx, hub, protocol, judgeModel, c, answer)
 }
 
 // failAllCases records a failed result (no answer, no score) for every case.

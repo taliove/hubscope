@@ -228,6 +228,7 @@ func (db *DB) migrate() error {
 		model_id TEXT NOT NULL,
 		case_id INTEGER NOT NULL,
 		sample_no INTEGER NOT NULL,
+		attempt INTEGER NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
 		answer_text TEXT,
 		latency_ms INTEGER NOT NULL DEFAULT 0,
@@ -237,7 +238,8 @@ func (db *DB) migrate() error {
 		FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id)
 	);
 
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no);
+	-- Not unique: retry-failed re-answers a cell as a new attempt row.
+	CREATE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no);
 
 	CREATE TABLE IF NOT EXISTS eval_judge_scores (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -448,6 +450,19 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.ensureColumn("eval_runs", "estimated_cost", "REAL NULL"); err != nil {
+		return err
+	}
+	// GH #176: retry-failed re-answers a cell as a new attempt, so the
+	// answers cell index must not be unique. The unique index only ever
+	// shipped on the spec-0020 development branch, but dropping it here is
+	// idempotent insurance for databases created from it.
+	if _, err := db.conn.Exec("DROP INDEX IF EXISTS idx_eval_answers_cell"); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec("CREATE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no)"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_answers", "attempt", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
 	if err := db.backfillRunCampaigns(); err != nil {

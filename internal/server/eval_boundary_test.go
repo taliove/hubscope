@@ -157,12 +157,13 @@ func TestRetrySkipsDisabledCase(t *testing.T) {
 	}
 
 	// Exactly one answer + one judge call: case B only. Case A's prompt
-	// never reaches the Hub again.
-	if got := stub.callTotal("smart-model"); got != 1 {
-		t.Errorf("answer calls after retry = %d, want 1 (case B only)", got)
+	// never reaches the Hub again. The jury is the subject itself (GH #175:
+	// the only candidate on its hub), so both calls land on smart-model.
+	if got := stub.callTotal("smart-model"); got != 2 {
+		t.Errorf("smart-model calls after retry = %d, want 2 (1 answer + 1 judge, case B only)", got)
 	}
-	if got := stub.callTotal(store.DefaultJudgeModel); got != 1 {
-		t.Errorf("judge calls after retry = %d, want 1 (case B only)", got)
+	if got := stub.callTotal(store.DefaultJudgeModel); got != 0 {
+		t.Errorf("legacy judge calls after retry = %d, want 0 (the jury replaced judge_model)", got)
 	}
 
 	run = waitEvalDone(t, ts.URL, runID)

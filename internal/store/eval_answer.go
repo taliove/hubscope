@@ -17,6 +17,7 @@ type EvalAnswer struct {
 	ModelID      string
 	CaseID       int64
 	SampleNo     int
+	Attempt      int
 	Status       string
 	AnswerText   *string
 	LatencyMs    int
@@ -45,13 +46,16 @@ type EvalJudgeScore struct {
 }
 
 // CreateEvalAnswer persists one answer attempt and returns its row ID.
+// Re-answering a cell (retry-failed) lands as a new attempt, not a
+// duplicate-key failure.
 func (db *DB) CreateEvalAnswer(a EvalAnswer) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.conn.Exec(`
-		INSERT INTO eval_answers (eval_run_id, model_db_id, model_id, case_id, sample_no, status, answer_text, latency_ms, input_tokens, output_tokens, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, a.EvalRunID, a.ModelDBID, a.ModelID, a.CaseID, a.SampleNo, a.Status,
-		a.AnswerText, a.LatencyMs, a.InputTokens, a.OutputTokens, now)
+		INSERT INTO eval_answers (eval_run_id, model_db_id, model_id, case_id, sample_no, attempt, status, answer_text, latency_ms, input_tokens, output_tokens, created_at)
+		VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(attempt), 0) + 1 FROM eval_answers WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ? AND sample_no = ?), ?, ?, ?, ?, ?, ?)
+	`, a.EvalRunID, a.ModelDBID, a.ModelID, a.CaseID, a.SampleNo,
+		a.EvalRunID, a.ModelDBID, a.CaseID, a.SampleNo,
+		a.Status, a.AnswerText, a.LatencyMs, a.InputTokens, a.OutputTokens, now)
 	if err != nil {
 		return 0, err
 	}
@@ -71,7 +75,7 @@ func (db *DB) CreateEvalJudgeScore(s EvalJudgeScore) (int64, error) {
 	return res.LastInsertId()
 }
 
-const evalAnswerColumns = `id, eval_run_id, model_db_id, model_id, case_id, sample_no, status, answer_text, latency_ms, input_tokens, output_tokens, created_at`
+const evalAnswerColumns = `id, eval_run_id, model_db_id, model_id, case_id, sample_no, attempt, status, answer_text, latency_ms, input_tokens, output_tokens, created_at`
 
 // scanEvalAnswers scans eval_answers rows.
 func scanEvalAnswers(rows *sql.Rows) ([]EvalAnswer, error) {
@@ -80,11 +84,30 @@ func scanEvalAnswers(rows *sql.Rows) ([]EvalAnswer, error) {
 		var a EvalAnswer
 		var createdAt string
 		if err := rows.Scan(&a.ID, &a.EvalRunID, &a.ModelDBID, &a.ModelID, &a.CaseID,
-			&a.SampleNo, &a.Status, &a.AnswerText, &a.LatencyMs, &a.InputTokens, &a.OutputTokens, &createdAt); err != nil {
+			&a.SampleNo, &a.Attempt, &a.Status, &a.AnswerText, &a.LatencyMs, &a.InputTokens, &a.OutputTokens, &createdAt); err != nil {
 			return nil, err
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListRunsWithAnswers returns the distinct runs that have eval_answers
+// rows — the crash-recovery candidate set (GH #176).
+func (db *DB) ListRunsWithAnswers() ([]int64, error) {
+	rows, err := db.conn.Query(`SELECT DISTINCT eval_run_id FROM eval_answers ORDER BY eval_run_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
 	}
 	return out, rows.Err()
 }

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/taliove/hubscope/internal/store"
 )
 
 // resultByCaseID finds one model's result row for a case in a run detail.
@@ -121,9 +119,13 @@ func TestAnswerRetryBothAttemptsFail(t *testing.T) {
 // judge path keeps its single-attempt semantics (GH #27: the retry covers
 // answer calls only; a failed judge stays a null score, W7).
 func TestJudgeCallIsNotRetried(t *testing.T) {
-	ts, stub, _ := setupEvalEnv(t)
+	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
+	// Retire the seeded cases: with the jury riding the subject's own model
+	// (GH #175), judge calls are indistinguishable from answer calls by
+	// model — the single judge case keeps the call accounting exact.
+	retireSuiteCases(t, db, suiteID)
 
 	prompt := "JUDGE-FAIL-MARKER 随便聊聊天气"
 	resp := doPost(t, ts.URL+"/api/cases", map[string]interface{}{
@@ -139,7 +141,9 @@ func TestJudgeCallIsNotRetried(t *testing.T) {
 	caseID := lastCaseID(t, ts.URL, suiteID)
 
 	stub.resetCalls()
-	stub.failNextCalls(store.DefaultJudgeModel, "你是评估裁判", 1)
+	// The jury is the subject itself (GH #175: the only candidate on its
+	// hub), so the judge failure is scripted on smart-model's judge prompt.
+	stub.failNextCalls("smart-model", "你是评估裁判", 1)
 
 	runID := triggerEval(t, ts.URL, suiteID, smartID)
 	run := waitEvalDone(t, ts.URL, runID)
@@ -148,8 +152,10 @@ func TestJudgeCallIsNotRetried(t *testing.T) {
 	if result["score"] != nil {
 		t.Errorf("judge-failed case score = %v, want null", result["score"])
 	}
-	if got := stub.callTotal(store.DefaultJudgeModel); got != 1 {
-		t.Errorf("judge calls = %d, want exactly 1 (judge is never retried)", got)
+	// 3 probe rounds + 1 answer call + exactly 1 judge call (the judge is
+	// never retried).
+	if got := stub.callTotal("smart-model"); got != 5 {
+		t.Errorf("smart-model calls = %d, want 5 (3 probes + 1 answer + 1 judge, judge never retried)", got)
 	}
 	detail, _ := result["verdict_detail"].(string)
 	if !strings.Contains(detail, "judge") {

@@ -48,12 +48,17 @@ func TestEvalAnswerJudgeScoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create answer: %v", err)
 	}
-	// The same (run, model, case, sample) cell cannot be written twice.
-	if _, err := db.CreateEvalAnswer(EvalAnswer{
+	// Re-answering the same cell (retry-failed) lands as attempt 2, not a
+	// duplicate-key failure (GH #176).
+	secondID, err := db.CreateEvalAnswer(EvalAnswer{
 		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
 		CaseID: 7, SampleNo: 1, Status: EvalAnswerFailed,
-	}); err == nil {
-		t.Fatal("duplicate cell must be rejected by the unique index")
+	})
+	if err != nil {
+		t.Fatalf("second attempt on the same cell must be allowed: %v", err)
+	}
+	if secondID == answerID {
+		t.Fatal("the second attempt must be its own row")
 	}
 
 	score := 0.62
@@ -69,11 +74,14 @@ func TestEvalAnswerJudgeScoreRoundTrip(t *testing.T) {
 	}
 
 	answers, err := db.ListEvalAnswersByRun(run.ID)
-	if err != nil || len(answers) != 1 {
-		t.Fatalf("list answers: %v (n=%d)", err, len(answers))
+	if err != nil || len(answers) != 2 {
+		t.Fatalf("list answers: %v (n=%d, want 2 attempts)", err, len(answers))
 	}
 	if answers[0].AnswerText == nil || *answers[0].AnswerText != text || answers[0].LatencyMs != 1200 {
 		t.Fatalf("answer round-trip mismatch: %+v", answers[0])
+	}
+	if answers[0].Attempt != 1 || answers[1].Attempt != 2 {
+		t.Fatalf("attempt numbers = %d, %d, want 1, 2", answers[0].Attempt, answers[1].Attempt)
 	}
 	scores, err := db.ListJudgeScoresByAnswer(answerID)
 	if err != nil || len(scores) != 2 {

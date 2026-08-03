@@ -61,6 +61,8 @@ type evalStubHub struct {
 	answerSeq map[string][]string
 	// judgeSeq scripts cycled judge responses by prompt marker.
 	judgeSeq map[string][]string
+	// judgeSeqFor scripts cycled judge responses per judge model (GH #176).
+	judgeSeqFor map[string][]string
 	// failNext scripts the next n completion calls of (model, prompt marker)
 	// to fail with HTTP 503 — the answer/judge retry scenarios (GH #27).
 	failNext map[string]int
@@ -73,17 +75,18 @@ type evalStubHub struct {
 
 func newEvalStubHub() *evalStubHub {
 	stub := &evalStubHub{
-		calls:      map[string]map[string]bool{},
-		callCounts: map[string]int{},
-		bad:        map[string]bool{},
-		broken:     map[string]bool{},
-		caseBroken: map[string]bool{},
-		answerSeq:  map[string][]string{},
-		judgeSeq:   map[string][]string{},
-		failNext:   map[string]int{},
-		totalCalls: map[string]int{},
-		gateAfter:  map[string]int{},
-		modelGates: map[string]chan struct{}{},
+		calls:       map[string]map[string]bool{},
+		callCounts:  map[string]int{},
+		bad:         map[string]bool{},
+		broken:      map[string]bool{},
+		caseBroken:  map[string]bool{},
+		answerSeq:   map[string][]string{},
+		judgeSeq:    map[string][]string{},
+		judgeSeqFor: map[string][]string{},
+		failNext:    map[string]int{},
+		totalCalls:  map[string]int{},
+		gateAfter:   map[string]int{},
+		modelGates:  map[string]chan struct{}{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
@@ -267,6 +270,15 @@ func (h *evalStubHub) failNextCalls(model, marker string, n int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.failNext[model+"\x00"+marker] = n
+}
+
+// setJudgeSeqFor scripts cycled judge responses for one model on prompts
+// carrying the judge marker (GH #176): jury scenarios need distinct
+// verdicts per judge, which the prompt-only setJudgeSeq cannot express.
+func (h *evalStubHub) setJudgeSeqFor(model string, seq ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.judgeSeqFor[model] = seq
 }
 
 // consumeScriptedFailure reports whether this call was scripted to fail,

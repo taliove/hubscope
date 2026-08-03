@@ -55,6 +55,10 @@ const (
 	// SettingJuryPolicy selects the jury ranking strategy (spec 0020):
 	// balanced, speed, iq, or cost.
 	SettingJuryPolicy = "jury_policy"
+	// SettingJudgeConcurrency bounds the judge-stage worker pool of the
+	// decoupled eval pipeline (spec 0020, GH #176); capped by
+	// MaxEvalConcurrency.
+	SettingJudgeConcurrency = "judge_concurrency"
 )
 
 // Default setting values applied when a key has never been written.
@@ -68,6 +72,10 @@ const (
 	DefaultJudgeModel = "claude-opus-4-8"
 	// DefaultJuryPolicy ranks jury candidates on the balanced mix (spec 0020).
 	DefaultJuryPolicy = "balanced"
+	// DefaultJudgeConcurrency matches the exam pool out of the box (GH #176):
+	// judging a batch's answers takes about as much hub pressure as
+	// producing them.
+	DefaultJudgeConcurrency = DefaultEvalConcurrency
 	// DefaultSampleCount answers each case once unless configured otherwise.
 	DefaultSampleCount = 1
 	// MaxSampleCount bounds per-case sampling to keep run cost predictable.

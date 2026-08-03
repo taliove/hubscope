@@ -70,6 +70,7 @@ func (e *Evaluator) retryNullScoreCells(ctx context.Context, campaignID int64, u
 	var mu sync.Mutex
 	remaining := map[int64]int{}
 	var cells []evalCell
+	var preps []*preparedRun
 	for i := range runs {
 		run := runs[i]
 		nulls, err := e.db.ListNullScoreCells(run.ID)
@@ -138,35 +139,38 @@ func (e *Evaluator) retryNullScoreCells(ctx context.Context, campaignID int64, u
 			// task already settled, and the campaign's progress grid is the
 			// observable surface of a retry.
 			prep := &preparedRun{run: &run, cases: byModel[modelDBID]}
+			preps = append(preps, prep)
 			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
 			remaining[run.ID]++
 		}
 	}
 
+	p := newPipeline(e, preps)
+	p.finishRun = func(prep *preparedRun) { e.finishRetriedRun(prep.run.ID, "done") }
+	p.runJudgePool(ctx, nil)
 	e.runCellPool(ctx, cells, nil, func(cctx context.Context, cell evalCell) {
-		e.retryModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, defaultSamples)
+		e.retryModel(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, defaultSamples)
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
 		done := remaining[cell.prep.run.ID] == 0
 		mu.Unlock()
 		if done {
-			// All of the run's retried cells executed: the run is done
-			// regardless of a later cancellation (the normal executor's
-			// semantics, GH #26).
-			e.finishRetriedRun(cell.prep.run.ID, "done")
+			// All of the run's retried cells executed: the run finishes
+			// once its judge queue is also empty (GH #176).
+			p.markCellsDone(cell.prep.run.ID)
 		}
 	})
+	p.closeJudgeQueue()
 
 	// Cells dropped because the context was canceled never reported back;
 	// their runs fail, matching the normal executor's cancellation outcome.
-	// Cases they never reached keep their null rows and stay retryable.
-	mu.Lock()
-	for runID, left := range remaining {
-		if left > 0 {
+	// Runs whose judge queue could not drain fail the same way. Cases they
+	// never reached keep their null rows and stay retryable.
+	for runID := range remaining {
+		if !p.isFinished(runID) {
 			e.finishRetriedRun(runID, "failed")
 		}
 	}
-	mu.Unlock()
 	e.SettleCampaign(ctx, campaignID)
 }
 
@@ -183,7 +187,7 @@ func (e *Evaluator) finishRetriedRun(runID int64, status string) {
 // model whose setup no longer resolves (deleted, hub gone, no enabled
 // endpoint) keeps its existing null rows — the grid stays complete and the
 // failure stays retryable — rather than gaining duplicate failure rows.
-func (e *Evaluator) retryModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, defaultSamples int) {
+func (e *Evaluator) retryModel(ctx context.Context, p *pipeline, prep *preparedRun, modelDBID int64, cases []store.Case, defaultSamples int) {
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		slog.Error("evaluator: retry skips model", "model_db_id", modelDBID, "error", err)
@@ -215,13 +219,13 @@ func (e *Evaluator) retryModel(ctx context.Context, run *store.EvalRun, modelDBI
 		if ctx.Err() != nil {
 			return
 		}
-		if err := e.db.DeleteNullScoreResult(run.ID, modelDBID, c.ID); err != nil {
+		if err := e.db.DeleteNullScoreResult(prep.run.ID, modelDBID, c.ID); err != nil {
 			// Keep the old row rather than risk a duplicate result for the
 			// same (run, model, case) unit.
-			slog.Error("evaluator: delete null result before retry", "run_id", run.ID,
+			slog.Error("evaluator: delete null result before retry", "run_id", prep.run.ID,
 				"model_db_id", modelDBID, "case_id", c.ID, "error", err)
 			continue
 		}
-		e.evalCase(ctx, run, hub, protocol, model, c, nil, defaultSamples)
+		e.evalCase(ctx, p, prep, hub, protocol, model, c, nil, defaultSamples)
 	}
 }

@@ -134,6 +134,32 @@ func containsModel(cands []juryCandidate, modelID string) bool {
 	return false
 }
 
+// parseJurySnapshot decodes a stored jury snapshot into the policy and the
+// per-model judge lists (keys are model DB IDs). An empty or corrupt
+// snapshot yields nil juries — callers then ride the legacy single-judge
+// path (pre-jury runs).
+func parseJurySnapshot(raw string) (string, map[int64][]string) {
+	if raw == "" {
+		return "", nil
+	}
+	var payload struct {
+		Policy string              `json:"policy"`
+		Juries map[string][]string `json:"juries"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return "", nil
+	}
+	juries := make(map[int64][]string, len(payload.Juries))
+	for k, v := range payload.Juries {
+		id, err := strconv.ParseInt(k, 10, 64)
+		if err != nil {
+			continue
+		}
+		juries[id] = v
+	}
+	return payload.Policy, juries
+}
+
 // jurySnapshotJSON renders the run's jury snapshot (ADR 0016): the policy
 // plus, per evaluated model, the judges selected for it. The snapshot makes
 // every verdict attributable to the jury that produced it. Map keys marshal

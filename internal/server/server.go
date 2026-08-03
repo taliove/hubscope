@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
@@ -235,6 +236,10 @@ func New(db *store.DB, opts ...Option) *Server {
 	// invalidate the overview on completion — they create, retire and
 	// reactivate models and endpoints.
 	s.discovery.AfterSync = func(hubID int64) { s.InvalidateOverview() }
+	// Crash recovery (GH #176): drain judge work a dead process left
+	// behind. store.Open has already stamped the interrupted runs failed;
+	// this rescues their suppressed case results before traffic starts.
+	s.evaluator.RecoverInterruptedRuns(context.Background())
 	// Brute-force login alerts fire through the same single Evaluator
 	// instance (W5), throttled by the server-side tracker.
 	s.loginAlertTracker = newLoginAlertTracker(defaultLoginAlertPolicy(), s.alerter.HandleLoginFailures)

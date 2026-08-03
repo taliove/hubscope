@@ -24,6 +24,7 @@ type settingsDTO struct {
 	JuryPolicy            string             `json:"jury_policy"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
 	EvalConcurrency       int                `json:"eval_concurrency"`
+	JudgeConcurrency      int                `json:"judge_concurrency"`
 	EvalCampaignBudgetMin int                `json:"eval_campaign_budget_minutes"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 	// Quiet hours (spec 0017 ticket 4): integer hours 0–23, server-local
@@ -50,6 +51,7 @@ type settingsPatch struct {
 	JuryPolicy             *string             `json:"jury_policy"`
 	DefaultSampleCount     *int                `json:"default_sample_count"`
 	EvalConcurrency        *int                `json:"eval_concurrency"`
+	JudgeConcurrency       *int                `json:"judge_concurrency"`
 	EvalCampaignBudgetMin  *int                `json:"eval_campaign_budget_minutes"`
 	SuiteWeights           map[string]float64  `json:"suite_weights"`
 	QuietHoursEnabled      *bool               `json:"quiet_hours_enabled"`
@@ -81,6 +83,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.EvalConcurrency, err = s.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency); err != nil {
+		return dto, err
+	}
+	if dto.JudgeConcurrency, err = s.db.GetSettingInt(store.SettingJudgeConcurrency, store.DefaultJudgeConcurrency); err != nil {
 		return dto, err
 	}
 	if dto.EvalCampaignBudgetMin, err = s.db.GetSettingInt(store.SettingEvalCampaignBudgetMin, store.DefaultEvalCampaignBudgetMin); err != nil {
@@ -148,6 +153,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		(*patch.EvalConcurrency < 1 || *patch.EvalConcurrency > store.MaxEvalConcurrency) {
 		writeError(w, http.StatusBadRequest,
 			fmt.Sprintf("eval_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
+		return
+	}
+
+	if patch.JudgeConcurrency != nil &&
+		(*patch.JudgeConcurrency < 1 || *patch.JudgeConcurrency > store.MaxEvalConcurrency) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("judge_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
 		return
 	}
 
@@ -233,6 +245,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingEvalConcurrency, func() error {
 			return s.db.SetSettingInt(store.SettingEvalConcurrency, *patch.EvalConcurrency)
 		}},
+		{store.SettingJudgeConcurrency, func() error {
+			return s.db.SetSettingInt(store.SettingJudgeConcurrency, *patch.JudgeConcurrency)
+		}},
 		{store.SettingEvalCampaignBudgetMin, func() error {
 			return s.db.SetSettingInt(store.SettingEvalCampaignBudgetMin, *patch.EvalCampaignBudgetMin)
 		}},
@@ -264,6 +279,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.JuryPolicy != nil,
 		patch.DefaultSampleCount != nil,
 		patch.EvalConcurrency != nil,
+		patch.JudgeConcurrency != nil,
 		patch.EvalCampaignBudgetMin != nil,
 		patch.SuiteWeights != nil,
 		patch.QuietHoursEnabled != nil,

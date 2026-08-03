@@ -22,6 +22,9 @@ export interface AppSettings {
   // Eval worker-pool size: how many (suite × model) cells run at once
   // (GH #26); 1-16, default 4.
   eval_concurrency: number
+  // Judge-stage worker-pool size of the decoupled pipeline (GH #176);
+  // 1-16, default follows eval_concurrency.
+  judge_concurrency: number
   // Campaign wall-clock budget in minutes (GH #153): a batch outliving it
   // drops unstarted cells and settles failed; 0 disables. Default 120.
   eval_campaign_budget_minutes: number

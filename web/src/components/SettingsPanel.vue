@@ -163,6 +163,7 @@ const form = reactive<AppSettings>({
   jury_policy: 'balanced',
   default_sample_count: 1,
   eval_concurrency: 4,
+  judge_concurrency: 4,
   eval_campaign_budget_minutes: 60,
   suite_weights: {},
   quiet_hours_enabled: false,
