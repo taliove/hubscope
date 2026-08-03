@@ -542,8 +542,11 @@ func (e *Evaluator) resolveCampaignBudgetMinutes() int {
 // The per-model circuit breaker (GH #153): after circuitBreakerThreshold
 // consecutive cases whose answer calls all failed, the remaining cases are
 // recorded unscored with the circuit reason instead of burning two more Hub
-// calls each. The return reports whether any case got an answer at all —
-// the campaign-level abort reads it to detect an all-dead batch.
+// calls each. The pre-flight skip reads the status board's down caliber
+// before the first case: a model whose enabled chat endpoints are all down
+// is skipped without any call or result row. The return reports whether
+// any case got an answer at all — the campaign-level abort reads it to
+// detect an all-dead batch.
 func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
@@ -577,6 +580,21 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 	if !ok {
 		e.failAllCases(run, modelDBID, model.ModelID, cases, "no enabled endpoint for this model")
 		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: no enabled endpoint for this model", model.ModelID))
+		return false
+	}
+
+	// Pre-flight offline skip: when the status board already shows every
+	// enabled chat endpoint of the model as down, each answer call would
+	// 503 into the circuit breaker — a broken model burns ten Hub calls
+	// per run before it opens. Skip like the retired precedent (GH #154):
+	// no dead rows, one warn line, and a false return so the cell still
+	// counts toward the all-dead campaign abort. A failed check never
+	// skips the model (fail-open): the circuit breaker stays the backstop.
+	down, err := e.db.ListModelsAllChatEndpointsDown([]int64{modelDBID})
+	if err != nil {
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s: endpoint-down pre-flight check failed: %v", model.ModelID, err))
+	} else if down[modelDBID] {
+		task.log(store.TaskLogWarn, fmt.Sprintf("model %s skipped: endpoints down (pre-flight)", model.ModelID))
 		return false
 	}
 

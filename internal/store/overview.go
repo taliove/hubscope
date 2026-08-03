@@ -2,7 +2,10 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
+
+	"github.com/taliove/hubscope/internal/status"
 )
 
 // ProbeSample is the minimal probe data used for window statistics.
@@ -28,6 +31,62 @@ func (db *DB) CountConsecutiveFailures(endpointID int64) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// ListModelsAllChatEndpointsDown returns, among the given model IDs, the
+// set whose EVERY enabled chat endpoint (anthropic/openai) is currently
+// down — the status board's down caliber (status.DownThreshold consecutive
+// failures since the most recent success, the same window
+// CountConsecutiveFailures reads), evaluated per endpoint in one batch
+// query. An endpoint with no probe history is unknown, never down, so
+// unprobed models are never returned; a model with no enabled chat
+// endpoint is absent too (the evaluator's "no enabled endpoint" path owns
+// it).
+func (db *DB) ListModelsAllChatEndpointsDown(modelIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool)
+	if len(modelIDs) == 0 {
+		return out, nil
+	}
+	args := make([]interface{}, 0, len(modelIDs)+1)
+	args = append(args, status.DownThreshold)
+	for _, id := range modelIDs {
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(`
+		WITH fails AS (
+			SELECT p.endpoint_id
+			FROM probes p
+			WHERE p.ok = 0
+			AND p.created_at > COALESCE(
+				(SELECT MAX(p2.created_at) FROM probes p2
+				 WHERE p2.endpoint_id = p.endpoint_id AND p2.ok = 1),
+				''
+			)
+			GROUP BY p.endpoint_id
+			HAVING COUNT(*) >= ?
+		)
+		SELECT e.model_id
+		FROM endpoints e
+		LEFT JOIN fails f ON f.endpoint_id = e.id
+		WHERE e.model_id IN (%s)
+		AND e.enabled = 1
+		AND e.protocol IN ('anthropic', 'openai')
+		GROUP BY e.model_id
+		HAVING COUNT(*) = COUNT(f.endpoint_id)
+	`, inPlaceholders(len(modelIDs)))
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // LatestProbe returns the newest probe for an endpoint, or nil when the
