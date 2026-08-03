@@ -217,6 +217,41 @@ func (db *DB) migrate() error {
 		-- GH #150: ListModelTrend filters eval_results by model_db_id.
 		CREATE INDEX IF NOT EXISTS idx_eval_results_model ON eval_results(model_db_id);
 
+	-- Spec 0020 (ADR 0016): decoupled eval pipeline persistence. Answers
+	-- land here before entering the judge queue, so a crash mid-judging
+	-- never loses paid completions; judge scores carry one row per
+	-- (answer, jury slot) with NULL score for a failed judge call (W7).
+	CREATE TABLE IF NOT EXISTS eval_answers (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		eval_run_id INTEGER NOT NULL,
+		model_db_id INTEGER NOT NULL,
+		model_id TEXT NOT NULL,
+		case_id INTEGER NOT NULL,
+		sample_no INTEGER NOT NULL,
+		status TEXT NOT NULL,
+		answer_text TEXT,
+		latency_ms INTEGER NOT NULL DEFAULT 0,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id)
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no);
+
+	CREATE TABLE IF NOT EXISTS eval_judge_scores (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		answer_id INTEGER NOT NULL,
+		slot INTEGER NOT NULL,
+		judge_model TEXT NOT NULL,
+		score REAL,
+		latency_ms INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (answer_id) REFERENCES eval_answers(id)
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_judge_scores_slot ON eval_judge_scores(answer_id, slot);
+
 		CREATE TABLE IF NOT EXISTS settings (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -403,6 +438,16 @@ func (db *DB) migrate() error {
 	// backfill below wraps each pre-existing run in its own migration
 	// campaign, so 0 never survives as a dangling reference.
 	if err := db.ensureColumn("eval_runs", "campaign_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	// GH #173 (spec 0020, ADR 0016): the run snapshots its jury (JSON:
+	// policy + slot model IDs; NULL = a pre-jury single-judge run) and
+	// accumulates the estimated cost (NULL = some component's price is not
+	// registered). Both nullable — historical runs need no backfill.
+	if err := db.ensureColumn("eval_runs", "jury_models", "TEXT NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_runs", "estimated_cost", "REAL NULL"); err != nil {
 		return err
 	}
 	if err := db.backfillRunCampaigns(); err != nil {
