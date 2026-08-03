@@ -24,8 +24,12 @@ import { ElInputNumber } from 'element-plus/es/components/input-number/index'
 import { ElOption } from 'element-plus/es/components/select/index'
 import { ElPagination } from 'element-plus/es/components/pagination/index'
 import { ElProgress } from 'element-plus/es/components/progress/index'
-import { ElRadioButton } from 'element-plus/es/components/radio/index'
-import { ElRadioGroup } from 'element-plus/es/components/radio/index'
+// The radio family must enter through ElRadio (GH live-board batch,
+// 2026-08-03 prod bug): element-plus exports ElRadioGroup/ElRadioButton via
+// withNoopInstall — app.use on them is a silent no-op in production, so the
+// family was never registered and every radio rendered as glued plain
+// text. ElRadio's withInstall registers the whole family as extras.
+import { ElRadio } from 'element-plus/es/components/radio/index'
 import { ElSelect } from 'element-plus/es/components/select/index'
 import { ElSkeleton } from 'element-plus/es/components/skeleton/index'
 import { ElSwitch } from 'element-plus/es/components/switch/index'
@@ -122,8 +126,7 @@ const epComponents = [
   ElOption,
   ElPagination,
   ElProgress,
-  ElRadioButton,
-  ElRadioGroup,
+  ElRadio,
   ElSelect,
   ElSkeleton,
   ElSwitch,
