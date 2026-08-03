@@ -1,8 +1,10 @@
 // Shared 24h segmented-availability helpers (spec 0017, GH #64): the single
 // source for the per-bucket tier mapping, the probe-weighted group aggregate,
-// and the slot tooltip wording. Both consumers — the EndpointCard in-card
-// dots strip and the group-level UptimeStrip (OverviewGroupSection) — derive
-// coloring and tooltip text from these functions so the two strips are
+// and the slot tooltip wording. Consumers — the share-card material
+// (statusCardSummary re-export) and the model-list availability column's
+// UptimeMicroStrip (revived 2026-08-02: the GH #131 retirement was
+// overturned by user ruling; the strip replaced the continuous 0–100 bar)
+// — derive coloring and tooltip text from these functions so all strips are
 // consistent by construction, not by convention.
 //
 // Anti-fake invariant (ui-guidelines §3 batch-59 registration): aggregation

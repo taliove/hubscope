@@ -192,6 +192,97 @@ func TestEndpointDetail(t *testing.T) {
 	}
 }
 
+// TestEndpointDetailPingUnverified verifies the Ping-endpoint override
+// (GH #160, appendix 17②): an endpoint of a Ping-monitoring protocol
+// (images_*/video_generation — never probed, so the status machine would
+// report healthy/暂无探测数据) presents as "unverified" in the detail API,
+// aligned with the overview matrix override. A chat endpoint of the same
+// hub keeps the state-machine verdict untouched.
+func TestEndpointDetailPingUnverified(t *testing.T) {
+	db := openTempDB(t)
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	// An image model yields trial-free Ping endpoints (images_generation /
+	// images_edit, creation order per createModelEndpoints).
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "gpt-image-detail")
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 endpoints, got %d", len(ids))
+	}
+	for _, id := range ids {
+		d := fetchDetail(t, ts.URL, int64(id))
+		if !store.IsPingProtocol(d.Protocol) {
+			t.Fatalf("expected a Ping protocol endpoint, got %q", d.Protocol)
+		}
+		if d.Status != "unverified" {
+			t.Fatalf("Ping endpoint %d (%s): expected status unverified, got %q (%s)",
+				id, d.Protocol, d.Status, d.StatusReason)
+		}
+	}
+
+	// A chat endpoint is unaffected: never probed stays healthy with the
+	// no-data reason (covered exhaustively by TestEndpointDetail).
+	chatIDs := createModelEndpoints(t, ts.URL, stub.URL, "gpt-chat-detail")
+	d := fetchDetail(t, ts.URL, int64(chatIDs[0]))
+	if store.IsPingProtocol(d.Protocol) {
+		t.Fatalf("expected a chat protocol endpoint, got %q", d.Protocol)
+	}
+	if d.Status != "healthy" {
+		t.Fatalf("chat endpoint: expected healthy, got %q", d.Status)
+	}
+}
+
+// TestEndpointSeriesSuccessOnlyLatency pins the success-only latency caliber
+// of the series buckets (GH #160, appendix 17③): a failed probe's latency is
+// time-to-failure and never enters the percentile math; an all-failed bucket
+// reports null percentiles (its total/failures still count). Both read paths
+// — the raw tail and the rolled-up probe_rollups rows — share the caliber
+// (one bucketAgg implementation).
+func TestEndpointSeriesSuccessOnlyLatency(t *testing.T) {
+	db := openTempDB(t)
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-series-success-only")
+	ep := int64(ids[0])
+
+	failErr := "HTTP 503: boom"
+	// Bucket 11:00 (raw tail): two successes at 100/200ms plus one failure at
+	// an extreme 9000ms — under the old all-sample caliber the failure would
+	// pull the p95 to 9000; success-only keeps 100/200.
+	seedProbeFull(t, db, ep, false, true, 100, nil, nil, fakeNow.Add(-50*time.Minute))
+	seedProbeFull(t, db, ep, false, true, 200, nil, nil, fakeNow.Add(-40*time.Minute))
+	seedProbeFull(t, db, ep, false, false, 9000, nil, &failErr, fakeNow.Add(-30*time.Minute))
+	// Bucket 08:00: two failures only — null percentiles, counts preserved.
+	seedProbeFull(t, db, ep, false, false, 9000, nil, &failErr, fakeNow.Add(-230*time.Minute))
+	seedProbeFull(t, db, ep, false, false, 8000, nil, &failErr, fakeNow.Add(-220*time.Minute))
+
+	assertBuckets := func(label string) {
+		t.Helper()
+		buckets := fetchSeries(t, ts.URL, ep, "hours=24&streaming=all")
+		if len(buckets) != 2 {
+			t.Fatalf("%s: expected 2 buckets, got %d: %+v", label, len(buckets), buckets)
+		}
+		expectBucket(t, findBucket(t, buckets, "2026-07-20T11:00:00Z"), 3, 1, f64(100), f64(200), nil)
+		expectBucket(t, findBucket(t, buckets, "2026-07-20T08:00:00Z"), 2, 2, nil, nil, nil)
+	}
+
+	assertBuckets("raw tail")
+
+	// Roll up everything before the current hour; the rolled rows must carry
+	// the same success-only percentiles (存量历史行不回填,新行按新口径).
+	if _, err := db.RollupProbesBefore(fakeNow); err != nil {
+		t.Fatalf("rollup: %v", err)
+	}
+	assertBuckets("rolled up")
+}
+
 // TestEndpointSeriesAggregation verifies hourly bucket math for the three
 // streaming modes against seeded multi-hour history.
 func TestEndpointSeriesAggregation(t *testing.T) {
@@ -226,12 +317,14 @@ func TestEndpointSeriesAggregation(t *testing.T) {
 	expectBucket(t, findBucket(t, buckets, "2026-07-20T10:00:00Z"), 4, 1, f64(200), f64(400), f64(100))
 	expectBucket(t, findBucket(t, buckets, "2026-07-20T11:00:00Z"), 1, 0, f64(600), f64(600), f64(100))
 
-	// streaming=non_streaming drops the streaming-only bucket.
+	// streaming=non_streaming drops the streaming-only bucket. The failure's
+	// 300ms never enters the percentiles (success-only caliber, GH #160):
+	// the single successful 100ms probe sets both.
 	buckets = fetchSeries(t, ts.URL, ep, "hours=24&streaming=non_streaming")
 	if len(buckets) != 1 {
 		t.Fatalf("expected 1 bucket, got %d: %+v", len(buckets), buckets)
 	}
-	expectBucket(t, findBucket(t, buckets, "2026-07-20T10:00:00Z"), 2, 1, f64(100), f64(300), nil)
+	expectBucket(t, findBucket(t, buckets, "2026-07-20T10:00:00Z"), 2, 1, f64(100), f64(100), nil)
 
 	// streaming=streaming keeps both buckets with streaming-only stats.
 	buckets = fetchSeries(t, ts.URL, ep, "hours=24&streaming=streaming")

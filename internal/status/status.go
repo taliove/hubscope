@@ -129,6 +129,21 @@ func Latencies(samples []Sample) []int {
 	return out
 }
 
+// SuccessLatencies extracts the latencies of SUCCESSFUL samples only — the
+// display-layer caliber (GH #160, appendix 17③): a failed probe's latency is
+// time-to-failure and must never enter a presented percentile. The status
+// machine's degradation judgment keeps the all-sample Latencies above (W5);
+// display fields (overview entry p50/p95, series buckets) use this one.
+func SuccessLatencies(samples []Sample) []int {
+	out := make([]int, 0, len(samples))
+	for _, s := range samples {
+		if s.OK {
+			out = append(out, s.LatencyMs)
+		}
+	}
+	return out
+}
+
 // Evaluate applies the four status rules in priority order.
 func Evaluate(in Input) Result {
 	lastError := in.LastError

@@ -70,7 +70,8 @@ function suiteName(suites: ReportSuite[], key: string): string {
   return suites.find((s) => s.key === key)?.name ?? key
 }
 
-// Scope chips in fixed order: 批次 → 系列 → 排序 → 涨跌基准 (spec 0009). The
+// Scope chips in fixed order: 批次 → 厂商 → 排序 → 涨跌基准 (spec 0009; 厂商
+// unifies the family wording, GH #122 ruling). The
 // batch chip is always present and neutral (the failed emphasis is carried
 // by the warning line, not a colored chip). The matrix has no dimension
 // view, so the dimension chip and the sort/dimension dedup are gone; the
@@ -82,7 +83,7 @@ function buildChips(report: CampaignReport, query: { family?: string; sort: stri
       value: `#${report.id} · ${campaignTriggerLabel(report.trigger)} · ${STATUS_LABELS[report.status]}`,
     },
   ]
-  if (query.family) chips.push({ label: '系列', value: query.family })
+  if (query.family) chips.push({ label: '厂商', value: query.family })
   if (query.sort !== 'total') {
     chips.push({ label: '排序', value: suiteName(report.suites, query.sort) })
   }

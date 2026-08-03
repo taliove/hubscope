@@ -14,8 +14,8 @@
       </template>
       <el-skeleton v-else-if="!error" class="header-skeleton" :rows="1" animated />
     </header>
-    <!-- Status row mirrors the Dashboard card: StatusBadge first, then tags,
-         then the reason text (same colors, same words, ui-guidelines §3). -->
+    <!-- Status row: StatusBadge first, then tags, then the reason text
+         (same display-layer mapping as the list and the panel). -->
     <div v-if="detail" class="status-row">
       <StatusBadge :status="detail.status" :reason="detail.status_reason" />
       <el-tag v-if="!detail.enabled" type="info" size="small">已停用</el-tag>
@@ -126,9 +126,6 @@
     />
 
     <StatusShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" />
-
-    <!-- Quiet admin entry (ticket 90): the shared PublicFooter. -->
-    <PublicFooter />
   </div>
 </template>
 
@@ -147,7 +144,6 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import TimeSeriesChart from '@/components/TimeSeriesChart.vue'
 import ProbeRecordTable from '@/components/ProbeRecordTable.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
-import PublicFooter from '@/components/PublicFooter.vue'
 import StatusShareDialog from '@/components/StatusShareDialog.vue'
 import { formatBucketTime, formatPercent, formatScore, formatTime } from '@/utils/format'
 import { protocolTagType } from '@/utils/protocol'
@@ -155,8 +151,11 @@ import { availabilityTier, endpointAvailability24h, type AvailabilityTier } from
 import { createSingleModelSnapshot, type StatusCardSnapshot } from '@/utils/statusCardSnapshot'
 import type { EndpointDetail, ProbeRecord, SeriesBucket, SeriesStreaming, ModelEvalSummary, Suite, Model, Campaign, OverviewEntry } from '@/api/types'
 
-// Endpoint detail page: status header plus latency/TTFT/success-rate charts
-// over hourly buckets, and the recent-failures evidence table.
+// Endpoint detail page (v2.0 visual pass, GH #116, spec 0018 §10): the
+// deep-link target of the side detail panel, rendered inside the sidebar
+// shell. Same information as before (status / fixed 24h KPI / eval score /
+// windowed charts / recent failures), recomposed in the new grammar — 32px
+// page title, light containers, token-only spacing.
 const route = useRoute()
 const endpointId = Number(route.params.id)
 
@@ -331,17 +330,20 @@ onMounted(async () => {
 .detail-page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px 32px;
+  /* Public-page breathing room (spec 0018 IA: 32–48px whitespace). */
+  padding: var(--hs-space-6) var(--hs-space-6) var(--hs-space-8);
 }
 .detail-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--hs-space-3);
   flex-wrap: wrap;
 }
+/* Page title on the 32px tier (v2.0 §14). */
 .model-title {
   margin: 0;
-  font-size: var(--hs-text-xl);
+  font-size: var(--hs-text-3xl);
+  font-weight: 600;
   color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -354,9 +356,9 @@ onMounted(async () => {
 .status-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--hs-space-2);
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: var(--hs-space-2);
 }
 .status-reason {
   font-size: var(--hs-text-sm);
@@ -369,8 +371,8 @@ onMounted(async () => {
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-top: 16px;
+  gap: var(--hs-space-4);
+  margin-top: var(--hs-space-4);
 }
 .metric-card {
   --el-card-padding: 16px;
@@ -378,7 +380,7 @@ onMounted(async () => {
 .metric-label {
   font-size: var(--hs-text-sm);
   color: var(--hs-text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--hs-space-2);
 }
 .metric-label.empty {
   text-align: center;
@@ -390,17 +392,18 @@ onMounted(async () => {
   font-size: var(--hs-text-2xl);
   font-weight: 600;
   color: var(--hs-text-primary);
-  margin-bottom: 8px;
+  margin-bottom: var(--hs-space-2);
 }
-/* Availability tier colors (ui-guidelines §3) */
+/* Availability tier colors — text scenarios consume the *-text grade
+   (graphic/text division). */
 .metric-value.score-ok {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .metric-value.score-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .metric-value.score-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .metric-value.score-none {
   color: var(--hs-text-placeholder);
@@ -410,15 +413,15 @@ onMounted(async () => {
   color: var(--hs-text-secondary);
 }
 /* Eval-load failure: neutral secondary (auxiliary card — danger red would
-   read as an endpoint incident, ui-guidelines §3 semantic domain). */
+   read as an endpoint incident). */
 .eval-error {
   margin-bottom: 0;
   display: flex;
   align-items: center;
   gap: var(--hs-space-2);
 }
-/* Long backend messages truncate with title hover (ui-guidelines §6), same
-   pattern as .status-reason. */
+/* Long backend messages truncate with title hover, same pattern as
+   .status-reason. */
 .eval-error-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -432,8 +435,8 @@ onMounted(async () => {
 .suite-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-2);
 }
 .eval-time {
   font-size: var(--hs-text-xs);
@@ -446,24 +449,22 @@ onMounted(async () => {
 }
 .controls {
   display: flex;
-  gap: 16px;
-  margin: 16px 0;
+  gap: var(--hs-space-4);
+  margin: var(--hs-space-5) 0 var(--hs-space-4);
   flex-wrap: wrap;
 }
 .error-alert {
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-4);
 }
 .failures-card {
-  margin-top: 8px;
-}
-/* Public status board density: 16px card padding (ui-guidelines §2). */
-.failures-card {
+  margin-top: var(--hs-space-2);
   --el-card-padding: 16px;
 }
+/* Module title on the 20px tier (v2.0 §14). */
 .failures-title {
-  font-size: var(--hs-text-md);
+  font-size: var(--hs-text-xl);
   font-weight: 600;
   color: var(--hs-text-primary);
-  margin-bottom: 8px;
+  margin-bottom: var(--hs-space-2);
 }
 </style>

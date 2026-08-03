@@ -1,5 +1,5 @@
 <template>
-  <div class="task-center">
+  <div>
     <el-alert v-if="error" :title="`加载失败:${error}`" type="error" :closable="false" class="error-alert" />
 
     <!-- Eval campaigns are first-class batches with their own state machine;
@@ -114,7 +114,7 @@
             >
               eval_run #{{ row.entity_id }}
             </router-link>
-            <router-link v-else-if="row.entity_type === 'hub'" to="/admin" class="entity-link">
+            <router-link v-else-if="row.entity_type === 'hub'" to="/models" class="entity-link">
               hub #{{ row.entity_id }}
             </router-link>
             <span v-else-if="row.entity_type">{{ row.entity_type }} #{{ row.entity_id }}</span>
@@ -177,11 +177,16 @@ import { listCampaigns } from '@/api/campaigns'
 import type { Campaign, CampaignStatus, TaskDetail, TaskItem, TaskLogLevel, TaskStatus, TaskType } from '@/api/types'
 import { formatMs, formatPercent, formatTime } from '@/utils/format'
 
-// Task center page (tickets 18, 28): filterable, paginated task list with a
+// Task center (tickets 18, 28): filterable, paginated task list with a
 // per-task log drawer. Covers eval runs, discovery syncs, rollup and
 // retention cleanup; probe rounds are not tasks and never appear here.
 // Reads require a session like the other monitoring APIs; the router guard
 // bounces anonymous visitors to /login.
+// GH #119 (spec 0018 IA): the task center folds into /settings as the 任务中心
+// pane and renders embedded-only — the standalone /tasks route redirects
+// there, so this view carries no page chrome of its own (no max-width, no
+// page padding; the settings tab supplies both, which resolves the T2
+// double-padding by construction).
 const tasks = ref<TaskItem[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -361,11 +366,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.task-center {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px 16px 48px;
-}
 .error-alert {
   margin-bottom: 16px;
 }

@@ -168,7 +168,7 @@ function scoreClass(score: number | null): string {
 }
 .load-error-text {
   font-size: var(--hs-text-md);
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
   margin: 0 0 12px;
   word-break: break-all;
 }
@@ -198,19 +198,21 @@ function scoreClass(score: number | null): string {
   word-break: break-word;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-primary);
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   border-radius: var(--hs-radius-sm);
   padding: 8px;
 }
-/* Score band text colors follow the ui-guidelines §3 band mapping. */
+/* Score band text colors follow the band mapping; on the v2 palette the
+   bases are graphic-tier, so text consumes the deepened *-text steps
+   (ScoreCell precedent). */
 .score-high {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .score-mid {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .score-low {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .score-none {
   color: var(--hs-text-placeholder);

@@ -2,36 +2,36 @@
 version: 1
 slug: "web-src-views-endpointdetailview-vue"
 primary_target: "web/src/views/EndpointDetailView.vue"
-related_targets: ["web/src/components/TimeSeriesChart.vue","web/src/components/ProbeRecordTable.vue"]
+related_targets: ["web/src/components/TimeSeriesChart.vue","web/src/components/ProbeRecordTable.vue","web/src/components/StatusBadge.vue","web/src/components/StatusShareDialog.vue","web/src/utils/protocol.ts"]
 ---
 
-# EndpointDetail 端点详情 — 表面简报
+# EndpointDetail 端点详情(v2)— 表面简报
+
+> **v2 更新(2026-08-01,GH #122):** 外壳迁 AppSidebar(GH #112),详情面板(GH #116)承担速览后本页为深钻终点;新视觉 = 页面标题档 + 轻容器指标卡 + 图表 Apple Health 化(GH #114)。
 
 ## 范围与模式
-- 模式:**Operate**(公开排障面);route `/endpoints/:id`,未登录可达。
-- 读者:排障中的运维/状态板读者下钻。任务:30 秒回答「什么时候坏的、坏成什么样、是不是只有我」。
+- 模式:**Operate**(公开排障面);route `/endpoints/:id`,未登录可达;壳内渲染。
+- 读者:排障中的运维/状态板读者下钻(列表行 → 详情面板 → 「打开完整详情」→ 本页)。任务:30 秒回答「什么时候坏的、坏成什么样、是不是只有我」。
 
-## 页面构成
-1. AppHeader(公开侧形态,同 Dashboard 简报)
-2. 标题行:模型名 + 协议 tag + StatusBadge(含降级成因副标签)+ status_reason + 登录态操作(评估此模型、分享——分享弹窗 GH #93 起含「完整版/紧凑版」切换,紧凑版 = 端点小卡,规格见 share-materials 简报)
-3. 指标卡区:稳定性 KPI + 评估总分卡
-4. 窗口/mode 控件行(24h/7天/30天 × 合并/流式/非流式)
-5. 时序图表区(TimeSeriesChart:成功率/延迟/TTFT——非流式模式隐藏 TTFT 图)
-6. 近期失败表(ProbeRecordTable,最近 20 条)
-7. PublicFooter
+## 页面构成(自上而下)
+1. **标题行:** h1 模型名(对象名 h1——「页面 h1 = 侧边栏标签」惯例不管辖深链页)+ 协议 tag(`protocolTagType` 集中映射)+ Hub 名 + 登录态「分享」按钮(StatusShareDialog 单模型入口,含完整版/紧凑版切换,紧凑版 = 端点小卡,规格见 share-materials 简报)
+2. **状态行:** StatusBadge(显示层 3+1,`reason` 经 title 提供判定依据——detail 契约不提供 `degrade_causes` 字段,本页不显示成因副标签,与列表/面板同映射不同字段集;**Ping 监测端点 GH #160 裁决②:detail API 与 overview 对齐 override 为 unverified,本页显示「未验证」中性档,不再返回 healthy**)+ 已停用 tag + status_reason
+3. **指标卡区:** 24h 可用率 KPI(固定 24h 口径,GH #56——复用 overview entry dots_24h 聚合,**不随窗口控件漂移**;`availabilityRateTier` *-text 阶着色;null 注「24h 内无探测数据」)+ 评估总分卡(最近 settle 批次;suite tags 封顶展示)
+4. **窗口/mode 控件行:** 24h/7天/30天 × 合并/流式/非流式(只驱动图表)+ 登录态「评估此模型」主按钮
+5. **时序图表区(TimeSeriesChart × 3):** 延迟(P50/P95——**仅成功口径,GH #160**:series 桶只统计成功探测,全失败桶 p50/p95 = null,随 null 断线纪律断线不插值;ui-guidelines §3.3 四出口统一)/ TTFT(非流式模式隐藏)/ 成功率
+6. **近期失败表(ProbeRecordTable,最近 20 条)**
 
 ## 组件规格
-- **协议 tag / StatusBadge:** 与 Dashboard 简报同源复用,禁止本地另造映射。
-- **TimeSeriesChart:** ECharts 折线,色板走 utils/chartColors.ts 亮暗双镜像,主题切换重渲染。**null 断线纪律(GH #56 起生效):** connectNulls:false——无探测时段断线,不插值编造数据点;smooth:false——延迟尖峰可见,曲线是证据。
-- **稳定性 KPI(GH #56 起生效):** 固定 24h 口径(复用 overview entry dots_24h 聚合,批 59 纯函数),窗口/mode 控件只驱动图表,KPI 数值不随控件漂移。
-- **匿名/登录信息边界:** 探测与评估数据公开;管理动作(评估触发、分享管理)按会话门控;匿名态跳过 suites/models 请求。
+- **协议 tag / StatusBadge:** 集中映射复用(ui-guidelines §5),禁止本地另造。
+- **TimeSeriesChart(GH #114 轻量化):** ECharts,色板走 `utils/chartColors.ts`(LIGHT 单份,暗色键位预留);**null 断线纪律(GH #56 起生效):** connectNulls:false——无探测时段断线,不插值编造数据点;平滑走 `utils/monotoneSmooth.ts` 单调插值(不发明极值;样式口径 = 线宽 2、无逐点圆点、y 轴无线无刻度 + 虚线网格、x 轴标签稀疏,tooltip 保真值;入场绘制 1000ms chartMotion 门控)。30 天窗口(5761 点)超 animationThreshold 自动关动画(已登记)。
+- **稳定性 KPI:** 固定 24h 口径(见上),窗口/mode 控件只驱动图表。
+- **匿名/登录信息边界:** 探测与评估数据公开;管理动作(评估触发、分享)按会话门控;匿名态跳过 suites/models 请求。
 
-## 错误恢复(GH #56 起生效)
-加载失败 alert 带原因 + 重试按钮(重跑首载加载链);eval summary 加载失败渲染「评估数据加载失败 · 重试」,与「暂无评估数据」真空态明确区分(失败不冒充空态);header/metrics 区首载 skeleton。
+## 错误恢复(GH #56 起生效,沿置)
+加载失败 alert 带原因 + 重试按钮(重跑首载加载链);eval summary 加载失败渲染「评估数据加载失败 · 重试」(中性 secondary,非 danger——评估卡是辅助信息,danger 会读作端点事故),与「暂无评估数据」真空态明确区分(**失败不冒充空态**);header/metrics 区首载 skeleton。
 
-## 体检基线与已排改进
-- critique 基线 22/40(2026-07-29):KPI 口径说谎(P1)、排障动线倒置(P1)、connectNulls 插值(P2)、状态无轮询(P2)、错误恢复残缺 + eval 失败冒充空态(P2)。
-- 已排票:#56(诚实度 + 错误恢复修正,本简报相关条款已按修后口径登记)。
+## 退役登记
+AppHeader / PublicFooter 随 GH #112 退役;本页导航由 AppSidebar 承担,登录入口由 AppTopbar 承担(GH #135 顶栏恢复,登录入口自侧栏底部迁顶栏右侧)。速览职责迁 ModelDetailPanel(GH #116),本页保持深链可用(书签与分享链接不失效,spec 0018 §10 story 37)。
 
 ## 未决(另立批次)
-- 排障动线重构(状态结论区 + 复用 24h 分段条 + 证据上移 + 三图收敛)、状态轮询与「更新于」、同 Hub 邻接上下文(「是不是只有我」零覆盖)、视图状态 URL 深链。
+- 排障动线重构(证据上移 + 三图收敛)、状态轮询与「更新于」、同 Hub 邻接上下文(「是不是只有我」零覆盖)、视图状态 URL 深链。

@@ -1,7 +1,7 @@
 <template>
   <div class="report-page">
     <div class="page-header">
-      <router-link v-if="!shared" to="/eval" class="back-link no-print">← 返回评估榜单</router-link>
+      <router-link v-if="!shared" to="/eval" class="back-link no-print">← 返回评估中心</router-link>
       <div class="title-row">
         <h1 class="page-title">考核批次 #{{ displayCampaignId }} 报告</h1>
         <template v-if="report">
@@ -27,18 +27,19 @@
       <p v-if="shared" class="shared-note no-print">此页面为只读分享视图</p>
     </div>
 
-    <!-- Error state: reason plus a retry entry (ui-guidelines §6). In shared
+    <!-- Error state: reason plus a retry entry (three-state rule). In shared
          mode a 404 means the link is gone; anything else is a server or
          network failure and must not be misread as a dead link. -->
-    <el-alert v-if="error" type="error" :closable="false" class="state-block">
+    <el-alert v-if="error" type="error" :closable="false" class="state-alert">
       <template #title>{{ sharedErrorTitle }}</template>
       <el-button v-if="!shared || !errorIs404" size="small" @click="reload">重试</el-button>
     </el-alert>
 
-    <!-- Loading state. -->
-    <el-card v-else-if="loading && !report" shadow="never" class="state-block">
+    <!-- Loading state (light container, v2 Apple syntax — white surface,
+         1px border, radius-lg, no shadow). -->
+    <div v-else-if="loading && !report" class="state-block">
       <el-skeleton :rows="8" animated />
-    </el-card>
+    </div>
 
     <template v-else-if="report">
       <!-- Unfinished batches (ticket 54, spec 0004): the progress grid is
@@ -70,11 +71,11 @@
           v-if="report.status === 'failed'"
           type="warning"
           :closable="false"
-          class="state-block"
+          class="state-alert"
           :title="failedBatchWarning(report.progress.failed)"
         >
           <template v-if="!shared" #default>
-            <router-link to="/admin" class="failed-link no-print">到管理台评估运营查看失败运行详情</router-link>
+            <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link no-print">到评估运营查看失败运行详情</router-link>
           </template>
         </el-alert>
 
@@ -97,8 +98,9 @@
              batch summary rides the title row (main ruling: judging time
              and wall-clock side by side). Not .no-print — the table is part
              of the settled report's PDF export. The shared view and the
-             public board never render it (operational data). -->
-        <el-card v-if="!shared && report.cost" shadow="never" class="cost-card">
+             public board never render it (operational data). The container
+             is the same light container as the rest of the page. -->
+        <div v-if="!shared && report.cost" class="cost-block">
           <div class="cost-head">
             <span class="cost-title">运行成本明细</span>
             <span class="cost-summary">{{ costSummary }}</span>
@@ -119,7 +121,7 @@
               <template #default="{ row }">{{ formatTokens(row.output_tokens) }}</template>
             </el-table-column>
           </el-table>
-        </el-card>
+        </div>
       </template>
 
       <!-- Trend dialog mounts outside the status branches (same as /eval) so
@@ -175,6 +177,13 @@ import type { CampaignReport, CampaignStatus, EvalBoardView, EvalRun, ReportRow,
 // unfinished batch shows the read-only progress grid only (ticket 54): the
 // shared boundary publishes progress metadata, never half-baked scores, so
 // there is no view switch and no row drill-down.
+//
+// v2 visual rebuild (GH #120, spec 0018 §13): the page title moves to the
+// 32px tier and the state/cost containers become light containers (white
+// surface, 1px border, radius-lg, no shadow). Every boundary above is
+// untouched: the shared view keeps the mint-link/ops/cost entries off, the
+// unfinished shared batch keeps its read-only grid, and the settle
+// transition / visibility-poll semantics are unchanged.
 const route = useRoute()
 const shareToken = route.params.token as string | undefined
 const shared = shareToken !== undefined
@@ -412,7 +421,7 @@ onMounted(reload)
   padding: 24px 16px 48px;
 }
 .page-header {
-  margin-bottom: 16px;
+  margin-bottom: var(--hs-space-5);
 }
 .back-link {
   font-size: var(--hs-text-sm);
@@ -429,8 +438,9 @@ onMounted(reload)
   margin-top: 8px;
   flex-wrap: wrap;
 }
+/* Page title at the v2 page-title tier (32px, v2.0 §14). */
 .page-title {
-  font-size: var(--hs-text-xl);
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   color: var(--hs-text-primary);
   margin: 0;
@@ -449,9 +459,25 @@ onMounted(reload)
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
 }
-.state-block {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+/* Light container (v2 Apple syntax, Leaderboard precedent): white surface,
+   1px border, radius-lg, no shadow — static containers never take a
+   shadow. */
+.state-alert {
+  margin-bottom: var(--hs-space-4);
+}
+.state-block,
+.cost-block {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
+  margin-bottom: var(--hs-space-4);
+}
+@media (max-width: 1023px) {
+.state-block,
+.cost-block {
+    padding: var(--hs-space-4);
+  }
 }
 .failed-link {
   font-size: var(--hs-text-sm);
@@ -463,10 +489,6 @@ onMounted(reload)
 }
 /* Cost detail table (GH #42): the title row carries the batch summary at
    the right, same secondary caliber as the grid's card-top line. */
-.cost-card {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
-}
 .cost-head {
   display: flex;
   align-items: baseline;

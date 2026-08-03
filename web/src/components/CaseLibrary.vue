@@ -1,5 +1,7 @@
 <template>
-  <el-card shadow="never" class="library-card">
+  <!-- Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+       radius-lg, no shadow; the EP complex parts inside stay token-driven. -->
+  <div class="library-panel">
     <div class="card-header">
       <div class="card-title">题库</div>
       <el-select v-model="capabilityFilter" class="capability-filter" size="small" placeholder="按能力点筛选">
@@ -149,7 +151,7 @@
         <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -160,8 +162,9 @@ import { createCase, listSuites, patchCase } from '@/api/evals'
 import type { Capability, Difficulty, EvalCase, Suite, VerdictType } from '@/api/types'
 
 // Case library (admin console): browses suites by capability (question-bank
-// v3, ADR 0010) and creates/edits cases. The /admin route already gates the
-// session, so write forms are always shown; the server still re-validates.
+// v3, ADR 0010) and creates/edits cases. The /eval route already gates the
+// session (GH #119: the panel moved from AdminView to the eval center's 题库
+// tab), so write forms are always shown; the server still re-validates.
 // Cases are immutable server-side: a content edit returns a new case id and
 // retires the old row, which stays visible as disabled after the refresh.
 // Retired suites never reach this panel: disabled suites are hard-deleted
@@ -368,10 +371,14 @@ async function onSave() {
 </script>
 
 <style scoped>
-/* Admin console compact density: 12px card padding (ui-guidelines §2). */
-.library-card {
-  margin-bottom: 16px;
-  --el-card-padding: 12px;
+/* Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+   radius-lg, no shadow. No bottom margin — the eval tab-stack gap owns the
+   vertical rhythm. */
+.library-panel {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
 }
 .card-header {
   display: flex;

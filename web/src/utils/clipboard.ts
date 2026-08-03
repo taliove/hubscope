@@ -11,8 +11,13 @@ export async function copyText(text: string): Promise<boolean> {
   const el = document.createElement('textarea')
   el.value = text
   el.style.position = 'fixed'
+  el.style.top = '0'
+  el.style.left = '0'
   el.style.opacity = '0'
   document.body.appendChild(el)
+  // Focus before select — without it execCommand('copy') has no selection
+  // target in several engines (and silently returns false).
+  el.focus()
   el.select()
   let ok = false
   try {

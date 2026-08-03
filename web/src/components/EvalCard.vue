@@ -107,6 +107,14 @@
 // by design convention; the two cards deliberately do not share a
 // subcomponent (§5 外框约定). Static medium rules: no hover reliance, no
 // animations, rows not clickable.
+// v2 visual rebuild (GH #121, spec 0018 §13 (share materials)): isomorphic with the
+// GH #118 page Leaderboard — light container (white surface, 1px border,
+// radius-lg, no shadow), hairline-tier separators, band-colored numbers on
+// the deepened *-text steps, model name at md/600 ink, and the top-3
+// ceremony (3px brand rail + one-size-up rank) retranslated onto the blue
+// brand. Every anti-fake caliber is untouched: scope chips, failed-batch
+// warning line, incomplete watermark, band colors and thresholds, the
+// delta-column baseline rule.
 import { computed } from 'vue'
 import type { EvalCardRow, EvalCardSnapshot } from '@/utils/evalCardSnapshot'
 import type { ReportCell } from '@/api/types'
@@ -194,7 +202,9 @@ function deltaTone(row: EvalCardRow): string {
   flex-shrink: 0;
 }
 .brand-title {
-  font-size: var(--hs-text-2xl);
+  /* v2 type scale (GH #121): the material title takes the page-title tier
+     (v2.0 §14: page title 32), same as the StatusCard frame. */
+  font-size: var(--hs-text-3xl);
   font-weight: 600;
   color: var(--hs-text-primary);
 }
@@ -231,7 +241,10 @@ function deltaTone(row: EvalCardRow): string {
 .failed-warning {
   margin: calc(-1 * var(--hs-space-2)) 0 var(--hs-space-4);
   font-size: var(--hs-text-sm);
-  color: var(--hs-warning);
+  /* Text scenario on the v2 palette (GH #121): the warning base is
+     graphic-tier (2.20:1 on white), so the warning line takes the deepened
+     text step. */
+  color: var(--hs-warning-text);
 }
 .empty-note {
   margin: 0 0 var(--hs-space-5);
@@ -243,11 +256,11 @@ function deltaTone(row: EvalCardRow): string {
   flex-direction: column;
   margin-bottom: var(--hs-space-5);
 }
-/* Table polish (ticket 82, same rhythm as the page): header hairline,
-   inter-row hairlines, 46px rows. */
+/* Table polish (ticket 82, same rhythm as the page; GH #121 line-lightening
+ * mirrors GH #118): header hairline, inter-row hairlines, 46px rows. */
 .ec-header {
   padding-bottom: var(--hs-space-2);
-  border-bottom: 1px solid var(--hs-border);
+  border-bottom: 1px solid var(--hs-border-light);
   /* Matches the rows' transparent 3px rail so header columns share the
      rows' x positions exactly (matrix alignment invariant). */
   border-left: 3px solid transparent;
@@ -308,6 +321,9 @@ function deltaTone(row: EvalCardRow): string {
   color: var(--hs-text-primary);
 }
 .model-name {
+  /* Comparison hierarchy (GH #121, isomorph of the GH #118 page): the model
+     name is the row's primary key — md/600 ink. */
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -357,12 +373,14 @@ function deltaTone(row: EvalCardRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
+/* GH #69 text/graphics split + GH #121 v2-palette text step: the delta
+ * arrow is text — deepened grade (the v2 danger base is graphic-tier), same
+ * treatment as the GH #118 page. */
 .delta-up {
   color: var(--hs-success-text);
 }
 .delta-down {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .delta-flat {
   color: var(--hs-text-placeholder);
@@ -379,7 +397,8 @@ function deltaTone(row: EvalCardRow): string {
   gap: var(--hs-space-4);
   margin: 0 40px;
   padding: var(--hs-space-4) 0 var(--hs-space-5);
-  border-top: 1px solid var(--hs-border);
+  /* Hairline tier (GH #121 line-lightening). */
+  border-top: 1px solid var(--hs-border-light);
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }

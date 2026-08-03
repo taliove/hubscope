@@ -45,44 +45,6 @@
         </el-form-item>
       </el-form>
 
-      <el-divider content-position="left">近期告警事件</el-divider>
-      <el-table :data="alerts" size="small" empty-text="暂无告警事件">
-        <el-table-column prop="kind" label="类型" width="110">
-          <template #default="{ row }">
-            <el-tag :type="alertKindTagType(row.kind)" size="small">{{ alertKindLabel(row.kind) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="厂商" width="120">
-          <template #default="{ row }">
-            <!-- Vendor family name rides group_key (spec 0017 group alerts);
-                 blank on every endpoint- or hub-scoped event. -->
-            <span v-if="row.group_key" class="vendor-cell" :title="row.group_key">{{ row.group_key }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="message" label="内容" min-width="240" show-overflow-tooltip />
-        <el-table-column label="发送" width="80">
-          <template #default="{ row }">
-            <span v-if="row.kind === 'score_drop_skipped'" class="sent-skip">未发送</span>
-            <span v-else :class="row.sent_ok ? 'sent-ok' : 'sent-fail'">{{ row.sent_ok ? '成功' : '失败' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="批次" width="100">
-          <template #default="{ row }">
-            <!-- GH #156: eval-batch alerts deep-link straight to the batch
-                 report; every other kind has no batch to link. -->
-            <router-link
-              v-if="row.campaign_id !== null && (row.kind === 'score_drop' || row.kind === 'score_drop_skipped')"
-              :to="`/campaigns/${row.campaign_id}/report`"
-              class="batch-link"
-            >
-              查看批次
-            </router-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="时间" width="170">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-      </el-table>
     </el-card>
 
     <el-card shadow="never" class="admin-card">
@@ -138,20 +100,18 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import {
   getSettings,
   updateSettings,
-  listAlerts,
   testLark,
-  type AlertEvent,
   type AppSettings,
 } from '@/api/settings'
 import { listSuites } from '@/api/evals'
-import { formatTime, formatHour } from '@/utils/format'
-import { alertKindLabel, alertKindTagType } from '@/utils/alertKind'
+import { formatHour } from '@/utils/format'
 import type { SettingsItem } from '@/utils/adminNav'
 import type { Suite } from '@/api/types'
 
-// Settings item anchor requested via /admin?tab=settings&item=... (GH #29):
-// AdminView owns the query parsing; this panel only scrolls the named row
-// into view and flashes it. Null = no deep link, render as before.
+// Settings item anchor requested via /settings?tab=settings&item=... (GH #29;
+// path since GH #119 — legacy /admin links redirect here): SettingsView owns
+// the query parsing; this panel only scrolls the named row into view and
+// flashes it. Null = no deep link, render as before.
 const props = defineProps<{
   highlightItem?: SettingsItem | null
 }>()
@@ -215,12 +175,8 @@ const form = reactive<AppSettings>({
 // not width-capped).
 const hourOptions = Array.from({ length: 24 }, (_, h) => h)
 const suites = ref<Suite[]>([])
-const alerts = ref<AlertEvent[]>([])
 const saving = ref(false)
 const testing = ref(false)
-
-// Kind word/tag mapping lives in utils/alertKind.ts (GH #68): the alert
-// event vocabulary is a single source of truth, never component literals.
 
 // Only suites in the evaluation rotation take a weight input: retired
 // suites no longer join campaigns, so weighting them would be misleading.
@@ -252,8 +208,9 @@ async function onSave() {
 }
 
 // Sends the test message to the address currently in the input (not the
-// saved setting). Success or failure, the attempt lands in the alert history
-// as kind="test", so the table refreshes after every try.
+// saved setting). Every attempt lands in the alert history as kind="test";
+// that history now lives on the first-class /alerts timeline (GH #117), so
+// this panel no longer refreshes an embedded table after a send.
 async function onTestLark() {
   const url = form.lark_webhook_url.trim()
   if (!url) {
@@ -268,7 +225,6 @@ async function onTestLark() {
     } else {
       ElMessage.error(`测试消息发送失败:${result.error ?? '未知原因'}`)
     }
-    alerts.value = await listAlerts()
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
@@ -277,15 +233,14 @@ async function onTestLark() {
 }
 
 onMounted(async () => {
-  // Initial deep link (/admin?tab=settings&item=...): the tab is already
+  // Initial deep link (/settings?tab=settings&item=...): the tab is already
   // active, so the anchored row can flash as soon as the pane is painted.
   if (props.highlightItem) void flashItem(props.highlightItem)
   try {
-    const [settings, suiteList, alertList] = await Promise.all([getSettings(), listSuites(), listAlerts()])
+    const [settings, suiteList] = await Promise.all([getSettings(), listSuites()])
     Object.assign(form, settings)
     suites.value = suiteList
     fillSuiteWeights(settings.suite_weights)
-    alerts.value = alertList
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
@@ -323,13 +278,6 @@ onMounted(async () => {
 /* 320px standard-input tier for short identifiers (§4). */
 .judge-input {
   width: 320px;
-}
-/* Delivery outcome maps to the semantic status palette (§3). */
-.sent-ok {
-  color: var(--hs-success);
-}
-.sent-fail {
-  color: var(--hs-danger);
 }
 .field-hint {
   margin-left: var(--hs-space-3);
@@ -374,23 +322,5 @@ onMounted(async () => {
 .field-static {
   font-size: var(--hs-text-md);
   color: var(--hs-text-secondary);
-}
-/* A recorded-but-unsent event (skipped comparison) reads neutral. */
-.sent-skip {
-  color: var(--hs-text-secondary);
-}
-/* Batch deep link (GH #156): the brand action color, same as every other
-   console router-link. */
-.batch-link {
-  color: var(--hs-brand);
-  text-decoration: none;
-}
-/* Vendor family name (spec 0017 group alerts): long names truncate with
-   title hover carrying the full string (§6). */
-.vendor-cell {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

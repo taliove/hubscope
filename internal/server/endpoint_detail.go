@@ -9,7 +9,8 @@ import (
 	"github.com/taliove/hubscope/internal/store"
 )
 
-// Series query parameter bounds from api-contract.md.
+// Series query parameter bounds (the live contract is the issue/spec system;
+// this API's contract anchor is GH #160).
 const (
 	defaultSeriesHours = 24
 	maxSeriesHours     = 2160 // 90 days
@@ -66,11 +67,21 @@ func (s *Server) handleGetEndpointDetail(w http.ResponseWriter, r *http.Request)
 	}
 	result := stats.evaluate()
 
+	// Ping-monitored endpoints (spec 0018·端点退役 T1) produce no probe
+	// records, so the status machine would report healthy/暂无探测数据 — a
+	// verdict without evidence. Override to "unverified", the same
+	// no-health-evidence presentation identity the overview matrix applies
+	// (GH #160, appendix 17②).
+	status := string(result.Kind)
+	if store.IsPingProtocol(endpoint.Protocol) {
+		status = "unverified"
+	}
+
 	writeData(w, http.StatusOK, endpointDetailDTO{
 		endpointDTO:  toEndpointDTO(*endpoint),
 		ModelIDStr:   model.ModelID,
 		HubName:      hub.Name,
-		Status:       string(result.Kind),
+		Status:       status,
 		StatusReason: result.Reason,
 	})
 }

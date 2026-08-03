@@ -1,5 +1,8 @@
 <template>
-  <el-card shadow="never" class="live-feed-card">
+  <!-- Light container (GH #120, spec 0018 §13): the v2 Apple syntax — white
+       surface, 1px border, radius-lg, no shadow (the el-card wrapper is
+       retired, same translation as the progress grid). -->
+  <div class="feed-panel">
     <div class="feed-head">
       <span class="feed-title">实时动态</span>
       <span class="feed-note">题目级判分事件,随轮询增量刷新</span>
@@ -50,7 +53,7 @@
             <router-link
               v-if="isJudgeFailure(e)"
               class="feed-fix-link"
-              :to="{ path: '/admin', query: { tab: 'settings', item: 'judge_model' } }"
+              :to="{ path: '/settings', query: { tab: 'settings', item: 'judge_model' } }"
               @click.stop
             >检查裁判模型设置</router-link>
             <span class="feed-expand">{{ expanded.has(e.id) ? '▾' : '▸' }}</span>
@@ -101,7 +104,7 @@
         </div>
       </div>
     </div>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -193,11 +196,19 @@ function scoreClass(score: number | null): string {
 </script>
 
 <style scoped>
-/* Consumption-page density: 16px card padding via the variable
-   (ui-guidelines §2). */
-.live-feed-card {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+/* Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+   radius-lg, no shadow; the inner padding matches the Leaderboard's. */
+.feed-panel {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
+  margin-bottom: var(--hs-space-4);
+}
+@media (max-width: 1023px) {
+  .feed-panel {
+    padding: var(--hs-space-4);
+  }
 }
 .feed-head {
   display: flex;
@@ -335,14 +346,16 @@ function scoreClass(score: number | null): string {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Band-colored score numbers are text — the deepened *-text steps on the v2
+   palette (ScoreCell precedent: the v2 bases are graphic-tier). */
 .score-success {
-  color: var(--hs-success);
+  color: var(--hs-success-text);
 }
 .score-warning {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .score-danger {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .score-none {
   color: var(--hs-text-placeholder);

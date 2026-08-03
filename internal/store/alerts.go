@@ -127,7 +127,7 @@ func (db *DB) CreateAlertEvent(e AlertEvent) (AlertEvent, error) {
 // events (score_drop / score_drop_skipped have a NULL endpoint_id). It is
 // the super_admin / store-internal counterpart of ListAlertEventsByHub.
 func (db *DB) ListAlertEventsAll(limit int) ([]AlertEvent, error) {
-	return db.listAlertEvents(limit, 0)
+	return db.listAlertEvents(limit, 0, nil)
 }
 
 // ListAlertEventsByHub returns endpoint-bound alert events for a single hub,
@@ -137,13 +137,25 @@ func (db *DB) ListAlertEventsAll(limit int) ([]AlertEvent, error) {
 // tracked by a follow-up ticket; the endpoint_id JOIN through endpoints ->
 // models is the correct path today.
 func (db *DB) ListAlertEventsByHub(hubID int64, limit int) ([]AlertEvent, error) {
-	return db.listAlertEvents(limit, hubID)
+	return db.listAlertEvents(limit, hubID, nil)
+}
+
+// ListAlertEventsByKinds returns alert events of the given kinds, newest
+// first, across all hubs. It backs the anonymous public view of
+// GET /api/alerts (spec 0019, ui-guidelines appendix item 16): the whitelist
+// filter lives in the query itself so the limit window is never diluted by
+// hidden kinds — a handler post-filter could return fewer visible events
+// than requested and let an empty state impersonate a clean record.
+func (db *DB) ListAlertEventsByKinds(limit int, kinds []string) ([]AlertEvent, error) {
+	return db.listAlertEvents(limit, 0, kinds)
 }
 
 // listAlertEvents is the shared implementation. hubID is 0 for the unscoped
 // (all) variant — hub IDs are AUTOINCREMENT from 1, so 0 never matches — or
-// the hubID parameter for the hub-scoped variant.
-func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
+// the hubID parameter for the hub-scoped variant. kinds, when non-empty,
+// restricts the result to the given alert kinds (the anonymous public
+// whitelist); nil means no kind filter.
+func (db *DB) listAlertEvents(limit int, hubID int64, kinds []string) ([]AlertEvent, error) {
 	if limit <= 0 {
 		limit = defaultAlertLimit
 	}
@@ -151,29 +163,41 @@ func (db *DB) listAlertEvents(limit int, hubID int64) ([]AlertEvent, error) {
 		limit = maxAlertLimit
 	}
 
-	hubFilter := ""
+	var where []string
 	var args []interface{}
 	if hubID != 0 {
 		// Hub-scoped: only endpoint-bound alerts whose endpoint belongs to
 		// hubID. score_drop / score_drop_skipped events (endpoint_id IS NULL)
 		// have no hub ownership and are excluded — they belong to the
 		// global *All view (super_admin only).
-		hubFilter = `WHERE endpoint_id IN (
+		where = append(where, `endpoint_id IN (
 			SELECT e.id FROM endpoints e
 			JOIN models m ON m.id = e.model_id
 			WHERE m.hub_id = ?
-		)`
+		)`)
 		args = append(args, hubID)
+	}
+	if len(kinds) > 0 {
+		where = append(where, `kind IN (`+inPlaceholders(len(kinds))+`)`)
+		for _, k := range kinds {
+			args = append(args, k)
+		}
 	}
 	args = append(args, limit)
 
-	rows, err := db.conn.Query(`
+	query := `
 		SELECT id, endpoint_id, kind, message, sent_ok, created_at, group_key, campaign_id
 		FROM alert_events
-		`+hubFilter+`
-		ORDER BY created_at DESC, id DESC
+	`
+	if len(where) > 0 {
+		query += `WHERE ` + strings.Join(where, ` AND `) + `
+	`
+	}
+	query += `ORDER BY created_at DESC, id DESC
 		LIMIT ?
-	`, args...)
+	`
+
+	rows, err := db.conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

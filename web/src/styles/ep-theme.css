@@ -5,6 +5,12 @@
    light-N mixes white, dark-2 mixes black 20%; dark theme reverses, per
    EP's own dark/css-vars algorithm). The html.dark block must repeat every
    mapping because EP's dark/css-vars.css wins on specificity otherwise.
+   v2.0 (GH #110, spec 0018): the mapping structure is unchanged; every
+   value flows through var() references to the semantic layer and updates
+   automatically (brand blue #007AFF, three-state functional colors, Apple
+   neutrals); dark keys are kept with values temporarily mirroring light
+   (dark deferred, decision 10). EP serves admin-console complex widgets
+   only (decision 8).
    ========================================================================== */
 :root {
   /* Primary + derived steps. */
@@ -77,7 +83,7 @@
   --el-fill-color: var(--hs-bg-hover);
   --el-fill-color-light: var(--hs-bg-hover);
   --el-fill-color-lighter: var(--hs-bg-hover);
-  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-extra-light: var(--hs-bg-subtle);
   --el-fill-color-blank: var(--hs-bg-card);
   /* Scrim: the single overlay language is --hs-overlay-bg (DESIGN.md Overlay
      Scrim). EP 2.14 draws dialog/drawer scrims from --el-overlay-color-lighter
@@ -86,8 +92,8 @@
   --el-mask-color: var(--hs-overlay-bg);
   --el-overlay-color-lighter: var(--hs-overlay-bg);
 
-  /* Radius: controls default to radius-sm (4px); cards/dialogs use
-     radius-lg (8px) via the component selectors below. */
+  /* Radius: controls default to radius-sm (6px, Apple syntax); cards/dialogs
+     use radius-lg (12px) via the component selectors below. */
   --el-border-radius-base: var(--hs-radius-sm);
   --el-border-radius-small: var(--hs-radius-xs);
   --el-border-radius-round: var(--hs-radius-full);
@@ -99,8 +105,8 @@
 }
 
 /* Panels (cards, dialogs, message boxes) use the larger radius. Static
-   cards layer via their 1px border, not shadow (ui-guidelines §2 shadow
-   semantics — shadows only express clickable/overlay). */
+   cards layer via their 1px border, not shadow (shadows only express
+   clickable/overlay — the semantics carries over into v2.0). */
 .el-card,
 .el-dialog,
 .el-message-box {
@@ -175,8 +181,11 @@ body.el-popup-parent--hidden {
 }
 
 /* Dark theme: repeat the full mapping so the semantic overrides win over
-   EP's dark/css-vars.css (loaded before this file). Scoped to screen so
-   print/PDF exports always get the light mapping (ui-guidelines §2a). */
+   EP's dark/css-vars.css (loaded before this file). Dark deferred (spec
+   0018 decision 10): the semantic html.dark values temporarily mirror
+   light; this block's mapping structure stays and takes effect through the
+   semantic layer — zero edits here when the dark spec lands. Scoped to
+   screen so print/PDF exports always get the light mapping. */
 @media screen {
   html.dark {
   --el-color-primary: var(--hs-brand);
@@ -244,7 +253,7 @@ body.el-popup-parent--hidden {
   --el-fill-color: var(--hs-bg-hover);
   --el-fill-color-light: var(--hs-bg-hover);
   --el-fill-color-lighter: var(--hs-bg-hover);
-  --el-fill-color-extra-light: var(--hs-bg-page);
+  --el-fill-color-extra-light: var(--hs-bg-subtle);
   --el-fill-color-blank: var(--hs-bg-card);
   /* Scrim on dark grounds (same single-language mapping as the light block). */
   --el-mask-color: var(--hs-overlay-bg);

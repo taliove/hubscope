@@ -107,8 +107,13 @@ export interface ProbeRunResult {
   results: ProbeRecord[] // [non-streaming, streaming]
 }
 
-// Endpoint health states produced by the status machine.
-export type EndpointStatus = 'healthy' | 'degraded' | 'down' | 'failing'
+// Endpoint health values on the wire. The status machine produces the four
+// verdicts healthy/degraded/down/failing (W5); 'unverified' is NOT a state
+// machine output — it is the presentation identity of Ping-monitored
+// endpoints (images_*/video_generation produce no probe records, so there is
+// no health evidence; GH #160, ui-guidelines appendix 17⑥: never call it
+// 「未探测」).
+export type EndpointStatus = 'healthy' | 'degraded' | 'down' | 'failing' | 'unverified'
 
 // Structured degrade causes reported by the status machine (spec 0013).
 export type DegradeCause = 'availability' | 'latency'
@@ -171,6 +176,17 @@ export interface Overview {
   // null when no enabled endpoint has probes in the window.
   enabled_endpoints: number
   availability_24h: number | null
+  // Health index (spec 0018 decision 7, GH #111): health_score_24h is the
+  // availability_24h aggregate itself (backend single source of truth —
+  // the frontend displays, never derives); health_score_prev_24h is the
+  // same probe weighting over the previous 24h window; health_score_delta
+  // is their difference. Either side without data is null (delta null when
+  // either is) — never a fabricated 100%. probes_24h is the current
+  // window's total probe count across enabled endpoints.
+  health_score_24h: number | null
+  health_score_prev_24h: number | null
+  health_score_delta: number | null
+  probes_24h: number
 }
 
 // Endpoint detail page types (ticket 04).

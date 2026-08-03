@@ -12,8 +12,16 @@
 // internal/server/overview.go's groupAccumulator).
 import type { OverviewEntry } from '@/api/types'
 import { formatPercent, formatPercentDigits } from '@/utils/format'
-import { STATUS_LABELS, type HealthCounts, type HealthTone } from '@/utils/healthConclusion'
+import { type HealthCounts, type HealthTone, unverifiedNote } from '@/utils/healthConclusion'
 import { dotTier, type AvailabilityTier } from '@/utils/overviewDots'
+import {
+  displayStatusCounts,
+  statusLabel,
+  statusTone,
+  toDisplayStatus,
+  type DisplayStatus,
+  type DisplayTone,
+} from '@/utils/statusDisplay'
 
 // dotTier / aggregateDots24h / AvailabilityTier live in utils/overviewDots.ts
 // since spec 0017 (GH #64) so the group-level UptimeStrip shares the batch-59
@@ -134,25 +142,39 @@ export function summaryText(counts: HealthCounts, entries: OverviewEntry[], empt
   const availability = scopedAvailability(entries)
   let text: string
   if (counts.failing > 0) {
+    // "触发告警" is alert-EVENT wording (the Lark pipeline fired), not a
+    // status word — the event-category domain is untouched by the
+    // three-state display mapping (GH #113).
     text = `有 ${counts.failing} 个端点触发告警,建议立即处理`
   } else if (counts.down > 0) {
     const first = entries.find(e => e.status === 'down')
     text = first
-      ? `${counts.down} 个端点宕机,建议优先排查 ${first.model_id}`
-      : `${counts.down} 个端点宕机,建议优先排查`
+      ? `${counts.down} 个端点${statusLabel('down')},建议优先排查 ${first.model_id}`
+      : `${counts.down} 个端点${statusLabel('down')},建议优先排查`
   } else if (counts.degraded > 0) {
     const streak = longestDegradedStreak(entries)
     text = streak
-      ? `${streak.modelId} 持续降级约 ${streak.hours} 小时,建议排查上游`
-      : `${counts.degraded} 个端点降级,建议关注,暂不紧急`
+      ? `${streak.modelId} 持续${statusLabel('degraded')}约 ${streak.hours} 小时,建议排查上游`
+      : `${counts.degraded} 个端点${statusLabel('degraded')},建议关注,暂不紧急`
   } else if (availability !== null && availability < 0.95) {
-    text = `状态全部正常,但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
+    text = `状态全部${statusLabel('stable')},但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
   } else if (availability !== null) {
     text = '近 24 小时运行平稳,无需处理'
   } else {
-    // All green but the window has no probes: "平稳" would claim evidence we
+    // All stable but the window has no probes: "平稳" would claim evidence we
     // do not have, so state the fact and the gap.
-    text = '当前全部正常'
+    text = `当前全部${statusLabel('stable')}`
+  }
+  // GH #160 (main ruling 2026-08-03, same-source extension of the hero note
+  // — see healthConclusion.verdictUnverifiedNote): on a STABLE scope the
+  // one-liner must not swallow the no-evidence dimension, so the same
+  // neutral note the hero shows is appended inline (this line is already
+  // secondary gray — no separate span needed; the material has no hover).
+  // Only the stable tail appends: an abnormal/degraded sentence already
+  // points at the worst problem, and the distribution string's fourth
+  // segment discloses the unverified count there.
+  if (counts.failing === 0 && counts.down === 0 && counts.degraded === 0 && counts.unverified > 0) {
+    text += ` · ${unverifiedNote(counts)}`
   }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text
@@ -175,26 +197,45 @@ export interface SingleModelStatement {
 }
 
 // Statement under the availability number, replacing the aggregate verdict +
-// distribution: "降级 · 24h 可用率 80.0%". The rate clause degrades to a
-// no-data note when the window has no probes.
+// distribution: "降级 · 24h 可用率 80.0%". The leading word comes from
+// the display-layer mapping (down and failing both render 异常); the
+// rate clause degrades to a no-data note when the window has no probes.
+// GH #160: unverified gets its formal neutral identity (Ping endpoints never
+// have probe data, so the no-data clause is the standing form) — never the
+// 未知 defensive fallback, which stays reserved for out-of-domain values.
 export function singleModelStatement(entry: OverviewEntry, availability: number | null): SingleModelStatement {
   const rate = availability !== null ? `24h 可用率 ${formatPercent(availability)}` : '24h 内无探测数据'
+  const word = statusLabel(entry.status)
   switch (entry.status) {
     case 'healthy':
       return {
         text:
           availability !== null && availability < 0.95
-            ? `正常 · 24h 可用率仅 ${formatPercent(availability)},低于 95%`
-            : `正常 · ${rate}`,
+            ? `${word} · 24h 可用率仅 ${formatPercent(availability)},低于 95%`
+            : `${word} · ${rate}`,
         tone: 'healthy',
         failingChip: null,
       }
     case 'degraded':
-      return { text: `降级 · ${rate}`, tone: 'degraded', failingChip: null }
+      return { text: `${word} · ${rate}`, tone: 'degraded', failingChip: null }
     case 'down':
-      return { text: `宕机 · ${rate}`, tone: 'abnormal', failingChip: null }
+      return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: null }
     case 'failing':
-      return { text: `告警 · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+      // The chip copy is alert-event wording (event category, untouched);
+      // the status word itself has already merged into 异常.
+      return { text: `${word} · ${rate}`, tone: 'abnormal', failingChip: '含告警' }
+    case 'unverified':
+      // Formal identity (GH #160): 未验证 with the neutral tone — no
+      // evidence reads as neither good nor bad; never warning yellow.
+      return { text: `${word} · ${rate}`, tone: 'neutral', failingChip: null }
+    default:
+      // Defensive fallback (GH #159): the wire is untyped, so a runtime
+      // status outside the domain union must not return undefined and crash
+      // the share dialog. Same family as statusDisplay's UNKNOWN_DISPLAY:
+      // statusLabel already yields 未知, and the middle tone never reads as
+      // stable (false comfort) nor abnormal (false alarm). No fifth status
+      // word is invented here.
+      return { text: `${word} · ${rate}`, tone: 'degraded', failingChip: null }
   }
 }
 
@@ -202,39 +243,64 @@ export function singleModelStatement(entry: OverviewEntry, availability: number 
 // summaryText, with singular phrasing (no counts, no model name — the scope
 // chips already name the model).
 export function singleModelSummaryText(entry: OverviewEntry, availability: number | null): string {
+  // Defensive branch (GH #159): an out-of-union runtime status must not fall
+  // into the healthy chain below — "当前状态稳定" for an unknown endpoint
+  // is false comfort. State the fact neutrally, no verdict, no advice.
+  if (toDisplayStatus(entry.status) === null) {
+    return availability !== null
+      ? `状态未知,24h 可用率 ${formatPercent(availability)}`
+      : '状态未知;暂无 24 小时探测数据'
+  }
+  // Formal unverified wording (GH #160, share-materials brief): states the
+  // Ping-monitoring fact — no verdict, no advice; no evidence is neither an
+  // alarm nor a comfort. Ping endpoints never have probe data, so the
+  // wording stands regardless of the availability argument.
+  if (entry.status === 'unverified') {
+    return '状态未验证:该端点走 Ping 监测,不产生探测记录,暂无健康证据'
+  }
   let text: string
   if (entry.status === 'failing') {
     text = '触发告警,建议立即处理'
   } else if (entry.status === 'down') {
-    text = '宕机,建议优先排查'
+    text = `${statusLabel('down')},建议优先排查`
   } else if (entry.status === 'degraded') {
     const streak = longestDegradedStreak([entry])
-    text = streak ? `持续降级约 ${streak.hours} 小时,建议排查上游` : '降级,建议关注,暂不紧急'
+    text = streak
+      ? `持续${statusLabel('degraded')}约 ${streak.hours} 小时,建议排查上游`
+      : `${statusLabel('degraded')},建议关注,暂不紧急`
   } else if (availability !== null && availability < 0.95) {
-    text = `状态正常,但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
+    text = `状态${statusLabel('stable')},但 24h 可用率仅 ${formatPercent(availability)},建议持续观察`
   } else if (availability !== null) {
     text = '近 24 小时运行平稳,无需处理'
   } else {
-    text = '当前状态正常'
+    text = `当前状态${statusLabel('stable')}`
   }
   if (availability === null) text += ';暂无 24 小时探测数据'
   return text
 }
 
-// Distribution segment of the conclusion block: all four statuses always
-// listed (zero counts included) so "no failing" is confirmed at a glance
-// rather than inferred from absence.
+// Distribution segments of the conclusion block (3+1 display, GH #113;
+// fourth segment GH #160): the domain counts merge into the display states —
+// down + failing count together under 异常; unverified passes through
+// unmerged. All four segments are always listed (zero counts included) so a
+// clean dimension is confirmed at a glance rather than inferred from
+// absence — the unverified dimension is never silently omitted, and the
+// alert count stays disclosed by the event-worded "含 N 个告警" chip when
+// failing > 0.
 export interface DistributionSegment {
-  status: keyof HealthCounts
+  status: DisplayStatus
   label: string
+  tone: DisplayTone
   count: number
 }
 
 export function distributionSegments(counts: HealthCounts): DistributionSegment[] {
-  return (['healthy', 'degraded', 'down', 'failing'] as const).map(status => ({
+  const merged = displayStatusCounts(counts)
+  return (['stable', 'degraded', 'incident', 'unverified'] as const).map(status => ({
     status,
-    label: STATUS_LABELS[status],
-    count: counts[status],
+    label: statusLabel(status),
+    tone: statusTone(status),
+    count: merged[status],
   }))
 }
 

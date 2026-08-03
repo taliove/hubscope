@@ -290,6 +290,58 @@ func TestOverviewTransitionsViaRealProbes(t *testing.T) {
 	}
 }
 
+// TestOverviewEntryLatencySuccessOnly pins the entry p50/p95 display caliber
+// (GH #160, appendix 17③): failed-probe latency is time-to-failure and never
+// enters the percentile math; a window whose every probe failed reports null
+// p50/p95 (the success rate still reports 0 — no-evidence latency must not be
+// invented). The status-machine degradation judgment keeps its own all-sample
+// caliber (W5, appendix 17⑧) and is not under test here.
+func TestOverviewEntryLatencySuccessOnly(t *testing.T) {
+	db := openTempDB(t)
+
+	fakeNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server.New(db, server.WithNow(func() time.Time { return fakeNow }), server.WithSyncDiscovery()))
+	t.Cleanup(ts.Close)
+
+	stub := newStubHubServer()
+	defer stub.Close()
+	ids := createModelEndpoints(t, ts.URL, stub.URL, "model-latency-caliber")
+	mixedEp := int64(ids[0])
+	allFailEp := int64(ids[1])
+
+	// Mixed endpoint: two successes at 100/300ms and two failures at an
+	// extreme 9000ms. Under the old all-sample caliber the p50 would be 300;
+	// success-only yields p50=100, p95=300 over [100, 300].
+	failErr := "HTTP 503: boom"
+	seedProbe(t, db, mixedEp, false, 9000, &failErr, fakeNow.Add(-10*time.Minute))
+	seedProbe(t, db, mixedEp, false, 9000, &failErr, fakeNow.Add(-9*time.Minute))
+	seedProbe(t, db, mixedEp, true, 100, nil, fakeNow.Add(-8*time.Minute))
+	seedProbe(t, db, mixedEp, true, 300, nil, fakeNow.Add(-7*time.Minute))
+
+	// All-failed endpoint: every 24h probe failed — null percentiles, while
+	// the success rate still reports a real 0.
+	for i := 1; i <= 3; i++ {
+		seedProbe(t, db, allFailEp, false, 9000, &failErr, fakeNow.Add(-time.Duration(i)*time.Minute))
+	}
+
+	payload := fetchOverview(t, ts.URL)
+	mixed := findEntry(t, payload, mixedEp)
+	if mixed.P50Ms == nil || *mixed.P50Ms != 100 {
+		t.Fatalf("mixed: expected success-only p50 100, got %v", mixed.P50Ms)
+	}
+	if mixed.P95Ms == nil || *mixed.P95Ms != 300 {
+		t.Fatalf("mixed: expected success-only p95 300, got %v", mixed.P95Ms)
+	}
+
+	allFail := findEntry(t, payload, allFailEp)
+	if allFail.P50Ms != nil || allFail.P95Ms != nil {
+		t.Fatalf("all-failed: expected null p50/p95, got %v/%v", allFail.P50Ms, allFail.P95Ms)
+	}
+	if allFail.SuccessRate24h == nil || *allFail.SuccessRate24h != 0 {
+		t.Fatalf("all-failed: expected success rate 0, got %v", allFail.SuccessRate24h)
+	}
+}
+
 // TestOverviewWindowStats asserts the numeric 24h statistics and both
 // degraded rules (low success rate, latency above baseline) through the API.
 func TestOverviewWindowStats(t *testing.T) {
@@ -306,9 +358,12 @@ func TestOverviewWindowStats(t *testing.T) {
 	latEp := int64(ids[1])
 
 	// Endpoint A: 10 probes in the 24h window with latencies 100..1000ms and
-	// 2 failures. Rate 0.8 -> degraded by success rate; p50=500, p95=1000
-	// under nearest-rank percentiles. Failures are seeded first so the
-	// streak is broken and the rate rule decides.
+	// 2 failures. Rate 0.8 -> degraded by success rate. The entry p50/p95
+	// follow the success-only display caliber (GH #160, appendix 17③): the
+	// two failures' latencies (100/200) never enter the percentile math, so
+	// the eight successful probes (300..1000) give p50=600, p95=1000 under
+	// nearest-rank percentiles. Failures are seeded first so the streak is
+	// broken and the rate rule decides.
 	failErr := "HTTP 500: boom"
 	for i := 1; i <= 10; i++ {
 		ok := i > 2
@@ -324,8 +379,8 @@ func TestOverviewWindowStats(t *testing.T) {
 	if entry.SuccessRate24h == nil || *entry.SuccessRate24h != 0.8 {
 		t.Fatalf("expected 24h success rate 0.8, got %v", entry.SuccessRate24h)
 	}
-	if entry.P50Ms == nil || *entry.P50Ms != 500 {
-		t.Fatalf("expected p50 500, got %v", entry.P50Ms)
+	if entry.P50Ms == nil || *entry.P50Ms != 600 {
+		t.Fatalf("expected p50 600 (success-only), got %v", entry.P50Ms)
 	}
 	if entry.P95Ms == nil || *entry.P95Ms != 1000 {
 		t.Fatalf("expected p95 1000, got %v", entry.P95Ms)

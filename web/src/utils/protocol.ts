@@ -10,6 +10,10 @@ import type { Protocol } from '@/api/types'
 // anthropic/openai keep their existing colors (issue AC); the image
 // protocols are neutral info so they neither claim the red/yellow status
 // semantics nor get confused with the chat families.
+// v2 palette (GH #110/#119, spec 0018): success resolves to #34C759 green
+// and warning to #FF9500 orange via ep-theme.css — the two chat families
+// stay color-distinct and the family-distinction semantics carry over
+// unchanged (the GH #34 status-color tension stays registered, not revoked).
 const PROTOCOL_TAG_TYPES: Record<Protocol, TagProps['type']> = {
   anthropic: 'success',
   openai: 'warning',

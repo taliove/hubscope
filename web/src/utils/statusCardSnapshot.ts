@@ -4,7 +4,8 @@
 // `group` marks a per-group share (ticket 59): the card leads its scope
 // chips with it so a group subset never reads as the global picture.
 // Ticket 60.5: single-model snapshots include hubName and evalSummary.
-import type { EndpointStatus, OverviewEntry, Protocol, ModelEvalSummary } from '@/api/types'
+import type { OverviewEntry, Protocol, ModelEvalSummary } from '@/api/types'
+import type { DisplayStatus } from '@/utils/statusDisplay'
 
 // Grouping dimension of a per-group share (identical to the Dashboard
 // grouping selector values).
@@ -14,7 +15,14 @@ export interface StatusCardSnapshot {
   entries: OverviewEntry[] // scoped set, disabled endpoints included
   keyword: string
   protocol: Protocol | ''
-  status: EndpointStatus | ''
+  // Vendor (供应商) filter of the Dashboard toolbar (GH #131): carried into
+  // the scope chips so a family-narrowed card never reads as the global
+  // picture (every active filter shows up as a chip, one none missing).
+  family?: string
+  // The Dashboard status filter speaks display states (GH #113): the scope
+  // chip names 稳定/降级/异常 and the filter matches down+failing
+  // together under incident.
+  status: DisplayStatus | ''
   group: { dimension: GroupDimension; key: string } | null
   generatedAt: string // ISO timestamp of the open/generation moment
   // Single-model specific fields (only populated when entries.length === 1).

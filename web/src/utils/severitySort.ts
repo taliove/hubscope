@@ -6,12 +6,15 @@
 // abnormal detail) references it instead of re-declaring the ordering.
 import type { EndpointStatus, OverviewEntry, OverviewGroup } from '@/api/types'
 
-// Severity rank: lower = more severe = earlier on the board.
+// Severity rank: lower = more severe = earlier on the board. GH #160 ruling
+// ④: unverified sits between degraded and healthy — no evidence is not an
+// alarm, but it is not "good" either.
 export const SEVERITY_RANK: Record<EndpointStatus, number> = {
   failing: 0,
   down: 1,
   degraded: 2,
-  healthy: 3,
+  unverified: 3,
+  healthy: 4,
 }
 
 // The same severity caliber as an ordered LIST (GH #55): consumed wherever
@@ -20,13 +23,18 @@ export const SEVERITY_RANK: Record<EndpointStatus, number> = {
 // (strip mild→severe, header its own priority list); they now share this
 // single source so the board has one severity caliber, heavy→light. The
 // test suite asserts this array stays consistent with SEVERITY_RANK.
-export const SEVERITY_ORDER: EndpointStatus[] = ['failing', 'down', 'degraded', 'healthy']
+export const SEVERITY_ORDER: EndpointStatus[] = ['failing', 'down', 'degraded', 'unverified', 'healthy']
 
 // Rank of a disabled endpoint — and of a group with no enabled entries:
 // sinks below every enabled rank. A disabled endpoint is out of service by
 // admin choice; it must never compete for the first screen, and a disabled
 // down endpoint must never lift its group's rank.
-export const DISABLED_RANK = 4
+//
+// (GH #136: the model list's availability ordering moved to
+// utils/modelList.ts sortListEntries — multi-key, direction-aware. The
+// retired GH #131「weakest-first」fixed ordering became the rate-asc branch
+// there; this module keeps the severity rank table both consume.)
+export const DISABLED_RANK = 5
 
 // entryRank is the per-endpoint rank: disabled always DISABLED_RANK
 // whatever the status machine says.

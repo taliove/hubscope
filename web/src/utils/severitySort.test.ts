@@ -56,12 +56,22 @@ function makeSection(key: string, entries: OverviewEntry[]): GroupSection {
 }
 
 describe('SEVERITY_RANK / entryRank', () => {
-  it('ranks failing above down above degraded above healthy', () => {
+  it('ranks failing above down above degraded above unverified above healthy', () => {
     expect(SEVERITY_RANK.failing).toBeLessThan(SEVERITY_RANK.down)
     expect(SEVERITY_RANK.down).toBeLessThan(SEVERITY_RANK.degraded)
-    expect(SEVERITY_RANK.degraded).toBeLessThan(SEVERITY_RANK.healthy)
+    expect(SEVERITY_RANK.degraded).toBeLessThan(SEVERITY_RANK.unverified)
+    expect(SEVERITY_RANK.unverified).toBeLessThan(SEVERITY_RANK.healthy)
     expect(entryRank(makeEntry('a', 'failing'))).toBe(SEVERITY_RANK.failing)
     expect(entryRank(makeEntry('b', 'healthy'))).toBe(SEVERITY_RANK.healthy)
+  })
+
+  // GH #160 ruling ④: unverified ranks heavier than healthy but lighter
+  // than degraded — no evidence is not an alarm, but it is not "good"
+  // either.
+  it('pins the exact rank table with unverified inserted (GH #160)', () => {
+    expect(SEVERITY_RANK).toEqual({ failing: 0, down: 1, degraded: 2, unverified: 3, healthy: 4 })
+    expect(SEVERITY_ORDER).toEqual(['failing', 'down', 'degraded', 'unverified', 'healthy'])
+    expect(DISABLED_RANK).toBe(5)
   })
 
   // GH #55: SEVERITY_ORDER is the list-form single source consumed by the

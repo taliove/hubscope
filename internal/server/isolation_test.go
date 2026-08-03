@@ -236,6 +236,20 @@ func TestPerHubIsolationSweep(t *testing.T) {
 		t.Errorf("anonymous /api/models: expected 401, got %d", anonModels.StatusCode)
 	}
 
+	// Anonymous /api/alerts is public but whitelisted to the four incident
+	// narrative kinds (spec 0019, appendix item 16): both hubs' down events
+	// are visible (global scope, same as anonymous overview), while the
+	// hub-less score_drop event is constructionally excluded by the
+	// whitelist. The full eleven-kind whitelist assertions live in
+	// alerts_public_test.go.
+	anonAlerts := getBody(t, anonClient, ts.URL+"/api/alerts")
+	if !strings.Contains(anonAlerts, alertMarkerA) || !strings.Contains(anonAlerts, alertMarkerB) {
+		t.Errorf("anonymous /api/alerts: expected global scope with both hub markers, got %q", anonAlerts)
+	}
+	if strings.Contains(anonAlerts, alertGlobalMarker) {
+		t.Errorf("anonymous /api/alerts: response leaks hub-less global event (%q present)", alertGlobalMarker)
+	}
+
 	// Public detail routes stay cross-hub accessible (spec 0005 decision 5):
 	// a Hub-A admin can fetch Hub-B's endpoint detail and eval summary without
 	// a 404, because status board detail is public. Pinning this prevents a

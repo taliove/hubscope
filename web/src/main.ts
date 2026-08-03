@@ -12,6 +12,9 @@ import { ElCollapseItem } from 'element-plus/es/components/collapse/index'
 import { ElDialog } from 'element-plus/es/components/dialog/index'
 import { ElDivider } from 'element-plus/es/components/divider/index'
 import { ElDrawer } from 'element-plus/es/components/drawer/index'
+import { ElDropdown } from 'element-plus/es/components/dropdown/index'
+import { ElDropdownItem } from 'element-plus/es/components/dropdown/index'
+import { ElDropdownMenu } from 'element-plus/es/components/dropdown/index'
 import { ElEmpty } from 'element-plus/es/components/empty/index'
 import { ElForm } from 'element-plus/es/components/form/index'
 import { ElFormItem } from 'element-plus/es/components/form/index'
@@ -44,6 +47,9 @@ import 'element-plus/es/components/collapse-item/style/css'
 import 'element-plus/es/components/dialog/style/css'
 import 'element-plus/es/components/divider/style/css'
 import 'element-plus/es/components/drawer/style/css'
+import 'element-plus/es/components/dropdown/style/css'
+import 'element-plus/es/components/dropdown-item/style/css'
+import 'element-plus/es/components/dropdown-menu/style/css'
 import 'element-plus/es/components/empty/style/css'
 import 'element-plus/es/components/form/style/css'
 import 'element-plus/es/components/form-item/style/css'
@@ -80,6 +86,18 @@ import './styles/print.css'
 import router from './router'
 import App from './App.vue'
 
+// v1 dark-mode residue cleanup (GH #112, spec 0018 decision 10): the theme
+// toggle (utils/theme.ts) and the anti-FOUC script are gone, but a v1
+// session may have left the `hs:dark` localStorage key and the html.dark
+// class behind — scrub both once at boot so the light-first rebuild never
+// forks on a stale preference. The dark spec reintroduces its own flow.
+document.documentElement.classList.remove('dark')
+try {
+  localStorage.removeItem('hs:dark')
+} catch {
+  /* storage unavailable (private mode) — nothing persisted anyway */
+}
+
 const app = createApp(App)
 app.use(router)
 const epComponents = [
@@ -92,6 +110,9 @@ const epComponents = [
   ElDialog,
   ElDivider,
   ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElEmpty,
   ElForm,
   ElFormItem,

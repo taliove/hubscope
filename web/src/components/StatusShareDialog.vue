@@ -21,6 +21,7 @@
           :entries="snapshot.entries"
           :keyword="snapshot.keyword"
           :protocol="snapshot.protocol"
+          :family="snapshot.family"
           :status="snapshot.status"
           :group="snapshot.group"
           :generated-at="snapshot.generatedAt"
@@ -44,6 +45,7 @@
       :entries="snapshot.entries"
       :keyword="snapshot.keyword"
       :protocol="snapshot.protocol"
+      :family="snapshot.family"
       :status="snapshot.status"
       :group="snapshot.group"
       :generated-at="snapshot.generatedAt"
@@ -80,7 +82,7 @@
 // scroll-capped preview cannot be the capture source. Failures keep the
 // buttons usable — the buttons themselves are the retry path
 // (ui-guidelines §6). GH #93: variant toggle (full/compact) defaults based on
-// viewport width at open time (<768px → compact). GH #94: responsive dialog
+// viewport width at open time (<1024px → compact). GH #94: responsive dialog
 // width (min(752px, 94vw)) + preview scales the card via transform when the
 // available space is narrower than the card's outer box (722 or 482).
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
@@ -301,7 +303,7 @@ function onClosed() {
   max-height: 62vh;
   /* GH #94: The preview background and padding frame the scaled card as a
      "card on a desk" (ui-guidelines §5 弹窗预览). */
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   padding: var(--hs-space-4);
   border-radius: var(--hs-radius-lg);
 }

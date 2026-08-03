@@ -14,6 +14,10 @@ description: 前端开发流程:设计评审(按需调 plan 的 UI 评审子能�
    - 长文本(模型名/Hub 名/错误)截断与 hover 全显;
    - 加载/空/错误三态;
    - 轮询 `setInterval` 配对清理;组件内 tabs 不加 lazy(保轮询事件,见 ticket 19);
-   - 汇总卡等可点元素有反馈态(可再点取消,见 ticket fix fc8bdb6)。
+   - 汇总卡等可点元素有反馈态(可再点取消,见 ticket fix fc8bdb6);
+   - **页面 h1 = 侧边栏标签**(GH #118 裁决,ui-guidelines §4:状态概览/Benchmark/评估中心/模型管理/故障记录/系统设置;描述性短语退居 lede;深链页 h1 为对象名不受管辖);
+   - **跨组件样式覆盖不写 `:deep(.祖先类)`**(GH #121 check HIGH-1 沉淀,ui-guidelines §4:scoped 作用域 ID 只父→子,子组件选择器构造性匹配不到祖先类,是死选择器;变体覆盖只走 ① 子组件 prop 绑自身类 或 ② 父组件 `.ancestor :deep(.child)`);
+   - EP el-icon 大尺寸经 font-size 缩放,不用容器 width/height(glyph 按 1em 渲染,容器只撑盒——GH #138 check HIGH-1)。
+   - 自造模态面三件套齐备(GH #116 登记:focus trap utils/focusTrap.ts + ESC/scrim/按钮统一关闭 + 焦点归还触发元素)。
 4. **验证**:`cd web && pnpm typecheck && pnpm build`;之后交 check agent 的前端维度复核。
 5. **闭环**:前端改动也要跑 `make test`(embed 进二进制,构建失败会卡门禁);视觉类改动建议 `make dev` 起服务截图自验。

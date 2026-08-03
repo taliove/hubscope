@@ -1,5 +1,7 @@
 <template>
-  <el-card shadow="never" class="ops-card">
+  <!-- Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+       radius-lg, no shadow; the EP complex parts inside stay token-driven. -->
+  <div class="ops-panel">
     <div class="panel-header">
       <div class="card-title">评估批次</div>
       <el-button type="primary" :disabled="tracking" @click="triggerDialogVisible = true">触发评估</el-button>
@@ -46,7 +48,7 @@
       @triggered="startTracking"
     />
     <EvalRunDetailDialog :run-id="detailRunId" :suites="suites" @close="detailRunId = null" />
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -192,9 +194,14 @@ onBeforeUnmount(stopPolling)
 </script>
 
 <style scoped>
-/* Admin console compact density: 12px card padding (ui-guidelines §2). */
-.ops-card {
-  --el-card-padding: 12px;
+/* Light container (GH #120, v2 Apple syntax): white surface, 1px border,
+   radius-lg, no shadow. The compact working density is carried by the EP
+   tables and forms inside, not by a tighter card padding. */
+.ops-panel {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
 }
 .panel-header {
   display: flex;

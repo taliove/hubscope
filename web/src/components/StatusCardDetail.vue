@@ -2,7 +2,8 @@
   <div>
     <!-- Detail: abnormal rows (status + name + 24h rate, reason, dots) /
          all-healthy statement / empty wording, then the healthy roster
-         (GH #92) and the one-sentence 小结. -->
+         (GH #92) and the one-sentence 小结. Status words come from the
+         display-layer mapping (GH #113), never literals. -->
     <template v-if="emptyText">
       <div class="detail-empty">{{ emptyText }}</div>
     </template>
@@ -11,7 +12,7 @@
         <div class="detail-title">异常明细</div>
         <div v-for="entry in topAbnormal" :key="entry.endpoint_id" class="detail-item">
           <div class="detail-row">
-            <span class="row-status" :class="`st-${entry.status}`">{{ STATUS_LABELS[entry.status] }}</span>
+            <span class="row-status" :class="`st-${statusTone(entry.status)}`">{{ statusLabel(entry.status) }}</span>
             <span class="row-name" :title="`${entry.model_id} · ${entry.protocol}`">
               {{ entry.model_id }} · {{ entry.protocol }}
             </span>
@@ -37,12 +38,17 @@
       <!-- All-healthy statement (no abnormal entries): the explicit positive
            conclusion is the anti-fake counterpart of the abnormal list — kept
            WITHOUT the rate-range suffix (GH #92: the roster below carries the
-           per-entry rates, a superset of the range text). -->
-      <div v-else-if="singleModel" class="healthy-line detail-healthy">
-        当前状态<span class="healthy-word">正常</span>{{ rangeText }}
+           per-entry rates, a superset of the range text). The healthy word
+           itself comes from the display-layer mapping (GH #113). GH #160:
+           the statement belongs to the ALL-STABLE scope only — an unverified
+           endpoint has no health evidence, so a scope containing one never
+           reads 「全部 N 个端点稳定」; the distribution string's fourth
+           segment discloses the unverified count instead. -->
+      <div v-else-if="allStable && singleModel" class="healthy-line detail-healthy">
+        当前状态<span class="healthy-word">{{ stableWord }}</span>{{ rangeText }}
       </div>
-      <div v-else class="healthy-line detail-healthy">
-        全部 <span class="healthy-num">{{ entries.length }}</span> 个端点<span class="healthy-word">正常</span>
+      <div v-else-if="allStable" class="healthy-line detail-healthy">
+        全部 <span class="healthy-num">{{ entries.length }}</span> 个端点<span class="healthy-word">{{ stableWord }}</span>
       </div>
 
       <!-- Healthy roster (GH #92, share-materials brief): every healthy
@@ -53,7 +59,7 @@
            function; single-model mode has no "其余" and skips the section;
            an all-abnormal scope renders nothing (no fake empty state). -->
       <template v-if="!singleModel && roster.rows.length > 0">
-        <div class="detail-title">正常端点</div>
+        <div class="detail-title">{{ stableWord }}端点</div>
         <div class="roster-grid">
           <div v-for="entry in roster.rows" :key="entry.endpoint_id" class="roster-item">
             <span class="roster-name" :title="entry.model_id">{{ entry.model_id }}</span>
@@ -63,7 +69,7 @@
           </div>
         </div>
         <div v-if="roster.overflow > 0" class="detail-more">
-          另有 {{ roster.overflow }} 个正常端点未列出,详见状态板
+          另有 {{ roster.overflow }} 个{{ stableWord }}端点未列出,详见状态板
         </div>
       </template>
     </template>
@@ -91,7 +97,7 @@
 import { computed } from 'vue'
 import type { OverviewEntry } from '@/api/types'
 import { formatPercent } from '@/utils/format'
-import { STATUS_LABELS } from '@/utils/healthConclusion'
+import { statusLabel, statusTone, toDisplayStatus } from '@/utils/statusDisplay'
 import { availabilityTier, dotTier, healthyRangeText, healthyRoster } from '@/utils/statusCardSummary'
 import { SEVERITY_RANK } from '@/utils/severitySort'
 
@@ -100,19 +106,31 @@ const props = defineProps<{
   emptyText: string // non-empty renders the empty state instead of the list
   summary: string | null
   // Single-model mode (design ruling): no healthy roster (there is no
-  // remainder), and the all-healthy line drops the count ("当前状态正常").
+  // remainder), and the all-healthy line drops the count ("当前状态稳定",
+  // GH #113 three-state wording, GH #128 vocabulary).
   singleModel?: boolean
 }>()
+
+// The all-healthy word comes from the display-layer mapping like every
+// other status word (GH #113) — no literals in the template.
+const stableWord = statusLabel('stable')
 
 // Cap the abnormal list so a widespread outage cannot produce an unbounded
 // tall image; the footer origin is the escape hatch to the live board.
 const MAX_DETAIL_ROWS = 10
 
 // Severity table comes from the single source (utils/severitySort, GH #52);
-// the detail list keeps its own localeCompare name tie-break.
+// the detail list keeps its own localeCompare name tie-break. GH #160:
+// unverified endpoints are NOT abnormal (no evidence is not an alarm) — the
+// incident detail excludes them by the same display-state caliber; their
+// count is disclosed by the distribution string's fourth segment, never by
+// a second detail list.
 const abnormalEntries = computed(() =>
   props.entries
-    .filter(e => e.status !== 'healthy')
+    .filter(e => {
+      const display = toDisplayStatus(e.status)
+      return display === 'incident' || display === 'degraded'
+    })
     .sort(
       (a, b) =>
         SEVERITY_RANK[a.status] - SEVERITY_RANK[b.status] || a.model_id.localeCompare(b.model_id),
@@ -120,6 +138,13 @@ const abnormalEntries = computed(() =>
 )
 const topAbnormal = computed(() => abnormalEntries.value.slice(0, MAX_DETAIL_ROWS))
 const overflowCount = computed(() => abnormalEntries.value.length - topAbnormal.value.length)
+// All-stable gate (GH #160): the positive statement asserts every enabled
+// entry is healthy — a scope holding even one unverified endpoint must not
+// read 「全部稳定」 (no evidence ≠ stable). The roster below still lists the
+// genuinely healthy entries of a mixed scope under the 「稳定端点」 title.
+const allStable = computed(
+  () => props.entries.length > 0 && props.entries.every(e => e.status === 'healthy'),
+)
 // Healthy roster (GH #92): sort + cap live in the pure function so the
 // component stays presentational.
 const roster = computed(() => healthyRoster(props.entries))
@@ -129,7 +154,8 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 
 <style scoped>
 .divider {
-  border-top: 1px solid var(--hs-border);
+  /* Hairline rhythm (GH #121, same line-lightening as GH #118). */
+  border-top: 1px solid var(--hs-border-light);
 }
 .detail-title {
   font-size: var(--hs-text-sm);
@@ -141,7 +167,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   padding: var(--hs-space-2) 0;
 }
 .detail-item + .detail-item {
-  border-top: 1px solid var(--hs-border);
+  border-top: 1px solid var(--hs-border-light);
 }
 .detail-row {
   display: flex;
@@ -151,23 +177,23 @@ const rangeText = computed(() => healthyRangeText(props.entries))
 }
 .row-status {
   flex: none;
-  width: 28px;
+  /* Three-state words are up to 4 chars (稳定, GH #113 / GH #128) — the
+     old 2-char 28px column widens; the reason/dots indent below tracks it. */
+  width: 56px;
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
-/* GH #69 text/graphics split: the status word is text — deepened grade
-   (the dot strip below keeps the base green as a graphic fill). */
-.st-healthy {
+/* Row status words: text channel → *-text grades (GH #69 text/graphics
+   split; GH #113 tone slots success/warning/danger). Only abnormal rows
+   render here, so success never appears — kept for completeness. */
+.st-success {
   color: var(--hs-success-text);
 }
-.st-degraded {
-  color: var(--hs-warning);
+.st-warning {
+  color: var(--hs-warning-text);
 }
-.st-down {
-  color: var(--hs-danger);
-}
-.st-failing {
-  color: var(--hs-status-failing);
+.st-danger {
+  color: var(--hs-danger-text);
 }
 .row-name {
   flex: 1;
@@ -185,24 +211,26 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   font-size: var(--hs-text-sm);
   font-weight: 600;
 }
-/* GH #69: success as TEXT always consumes the deepened text grade (the base
-   green is graphics-only); dots (.seg-ok) keep the base as graphic fills. */
+/* Rate figures are text: the *-text grade of each slot (GH #69
+ * text/graphics split; on the v2 palette the warning/danger bases are
+ * graphic-tier and fail as text, GH #121). The per-endpoint dots below
+ * keep the bases as graphic fills. */
 .av-ok {
   color: var(--hs-success-text);
 }
 .av-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .av-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .av-none {
   color: var(--hs-text-placeholder);
 }
 .row-reason {
-  /* Aligns with the name column (28px status + 12px gap); clamped to two
+  /* Aligns with the name column (56px status + 12px gap); clamped to two
      lines — a static export has no hover to reveal the rest. */
-  margin: var(--hs-space-1) 0 0 40px;
+  margin: var(--hs-space-1) 0 0 68px;
   font-size: var(--hs-text-xs);
   color: var(--hs-text-secondary);
   display: -webkit-box;
@@ -214,7 +242,7 @@ const rangeText = computed(() => healthyRangeText(props.entries))
   /* Same left indent as the reason so the timeline aligns under the name. */
   display: flex;
   gap: 2px;
-  margin: var(--hs-space-1) 0 0 40px;
+  margin: var(--hs-space-1) 0 0 68px;
 }
 .dot-slot {
   flex: 1 1 0;

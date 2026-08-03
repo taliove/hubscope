@@ -1,11 +1,11 @@
-// Client-side ranking/filtering for the public eval board (/board, ticket
-// 81, spec 0010): the public endpoint serves the newest settled campaign's
-// full report once; the page ranks and filters it locally. sortRows mirrors
-// the server caliber exactly (internal/server/report_scoring.go
-// sortReportRows): judged-incomplete rows last regardless of the column
-// (spec 0014 coverage gate), unscored models last within the complete
-// group, scores descending, ties by model_id lexicographic — never a second
-// ranking caliber.
+// Client-side ranking/filtering for the public Benchmark page (/benchmark,
+// ticket 81, spec 0010 — renamed from /board in the v2 IA, GH #112/#118):
+// the public endpoint serves the newest settled campaign's full report
+// once; the page ranks and filters it locally. sortRows mirrors the server
+// caliber exactly (internal/server/report_scoring.go sortReportRows):
+// judged-incomplete rows last regardless of the column (spec 0014 coverage
+// gate), unscored models last within the complete group, scores descending,
+// ties by model_id lexicographic — never a second ranking caliber.
 import type { ReportRow } from '@/api/types'
 
 // scoreOf reads the ranking column: the total for "total", the suite score

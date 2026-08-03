@@ -13,6 +13,14 @@ BACKUP_DIR=${BACKUP_DIR:-$DATA_DIR/hubscope-backups}
 CONTAINER_NAME=hubscope
 PORT=${PORT:-8080}
 HOST_IP=${HOST_IP:-192.168.1.101}
+# Local curl checks (health check, asset hash) must not go through HOST_IP
+# when it is a wildcard bind: 0.0.0.0 is routable on Linux but traffic to it
+# can be intercepted by local proxy tools (e.g. mihomo TUN), which breaks
+# curl mid-deploy. The container is always local, so check via loopback.
+HEALTH_HOST=$HOST_IP
+if [ "$HOST_IP" = "0.0.0.0" ] || [ "$HOST_IP" = "::" ]; then
+  HEALTH_HOST=127.0.0.1
+fi
 OPS_DIR=${OPS_DIR:-/opt/hubscope/bin}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -229,7 +237,10 @@ health_check() {
   local healthy=0
   for i in {1..30}; do
     local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
+    # `|| true`: a transient curl failure (connection refused / recv error
+    # while the app is still booting) must be retried, not abort the deploy
+    # under set -e.
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HEALTH_HOST:$PORT/healthz" 2>/dev/null || true)
     if [ "$code" = "200" ]; then
       log_success "Health check passed (attempt $i)"
       healthy=1
@@ -301,7 +312,7 @@ verify_deployment() {
   echo ""
   echo "3. Frontend assets:"
   local asset_hash
-  asset_hash=$(curl -s "http://$HOST_IP:$PORT/" | grep -o 'index-[^"]*\.js' | head -1)
+  asset_hash=$(curl -s --max-time 5 "http://$HEALTH_HOST:$PORT/" 2>/dev/null | grep -o 'index-[^"]*\.js' | head -1 || true)
   echo "   $asset_hash"
 
   # Check database size
@@ -311,7 +322,11 @@ verify_deployment() {
 
   echo ""
   log_success "Deployment completed successfully!"
-  log_info "Access: http://$HOST_IP:$PORT/"
+  if [ "$HEALTH_HOST" != "$HOST_IP" ]; then
+    log_info "Access: http://$HEALTH_HOST:$PORT/ (bound to $HOST_IP — reachable on all host interfaces)"
+  else
+    log_info "Access: http://$HOST_IP:$PORT/"
+  fi
 }
 
 # Cleanup old images (keep last 3 versions, delete older than 7 days)
@@ -462,7 +477,7 @@ rollback() {
   local healthy=0
   for i in {1..30}; do
     local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HOST_IP:$PORT/healthz" 2>/dev/null)
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://$HEALTH_HOST:$PORT/healthz" 2>/dev/null || true)
     if [ "$code" = "200" ]; then
       log_success "Rollback successful (attempt $i)"
       healthy=1

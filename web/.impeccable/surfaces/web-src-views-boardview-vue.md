@@ -2,29 +2,32 @@
 version: 1
 slug: "web-src-views-boardview-vue"
 primary_target: "web/src/views/BoardView.vue"
-related_targets: ["web/src/components/Leaderboard.vue","web/src/components/ScoreCell.vue"]
+related_targets: ["web/src/components/Leaderboard.vue","web/src/components/ScoreCell.vue","web/src/utils/boardSort.ts"]
 ---
 
-# /board 公开榜单 — 表面简报
+# /benchmark 公开榜单(v2 重建)— 表面简报
+
+> **v2 重写(2026-08-01,GH #122):** /board 演进为 /benchmark(GH #112 IA;/board 客户端重定向保活),Apple 产品对比页气质重构(GH #118,spec 0018 §13)。
 
 ## 范围与模式
-- 模式:**Operate**(公开消费页);route `/board`,未登录直达,与状态板并列为公开侧第二页。
-- 读者:外部接收者(未登录)——判断「哪个模型好、数据可不可信」。
+- 模式:**Operate**(公开消费页);route `/benchmark`,未登录直达,与状态概览并列为公开侧两页之一;壳内渲染。
+- 读者:外部接收者(未登录)——判断「哪个模型适合什么场景、数据可不可信」。
 
-## 页面构成
-1. AppHeader(公开侧形态,同 Dashboard 简报)
-2. 页头:`评估榜单` 标题行(xl/600,工具风层级,非营销 hero)+ 批次 meta 行(GH #57,2026-07-29 落地):「批次 #N · 定时/手动 · 完成于|失败于 YYYY-MM-DD HH:mm」(done→完成于、failed→失败于,防作假口径;finished_at null 时时间整段省略;仅 report 已加载分支渲染,loading/error/空态不渲染;sm/secondary 中性不着色,无底色无边框;触发词走 evalWording.campaignTriggerLabel、时间走 format.formatTimeMinute)
-3. running-note(仅运行中批次时):「新一批评估进行中,当前展示已完成批次」(sm secondary,无底色无边框;批次号由上方 meta 行承担,不重复)
-4. Leaderboard(shared 口径「保存图片」)
-5. PublicFooter
+## 页面构成(自上而下)
+1. **页头:** h1「**Benchmark**」(3xl 页面标题档——「页面 h1 = 侧边栏标签」惯例,GH #118 裁决;「评估榜单」保留为描述性短语)+ lede 一行(md secondary:「不同模型适合什么场景:同一套考题,各能力维度逐项对比。」)
+2. **批次 meta 行**(GH #57 沿置):「批次 #N · 定时/手动 · 完成于|失败于 YYYY-MM-DD HH:mm」(sm secondary 中性;done→完成于、failed→失败于,防作假口径;finished_at null 时时间整段省略;仅 report 已加载分支渲染)
+3. **running-note**(仅运行中批次):「新一批评估进行中,当前展示已完成批次」(sm secondary,无底色无边框,静态不轮询)
+4. **Leaderboard**(shared 口径「保存图片」,`selectable=false`)
+5. 三态:加载 skeleton(el-skeleton rows=8,轻容器 state-block)/ 错误 el-alert + 重试 / 无 settle 批次空态「暂无已完成的评估批次」(running 时附提示行,轻容器 state-block)
 
-## 边界(ticket 81 登记,spec 0010)
-恒显**最新 settle 批次**矩阵榜单(复用 Leaderboard 组件);列头排序 + family 筛选 + 保存图片**全部客户端完成**(公开端点一次性返回完整 report;sortRows 镜像服务端口径——null 沉底/降序/model_id 字典序 + 判分不完整恒沉底,禁第二排序口径);**无批次切换、无行下钻(行不可点,selectable prop)、无 live 榜单、无轮询**;无 settle 批次 → 空态「暂无已完成的评估批次」(running 时附提示行)。未登录态网络面板零 session API 调用(auth status 除外)。Leaderboard 组件完整规格(矩阵/live 半成品/判分不完整/ScoreCell)在评估域简报建立前仍以 ui-guidelines §5 为准。
+## 边界(ticket 81 沿置,spec 0010)
+恒显**最新 settle 批次**矩阵榜单;列头排序 + family 筛选 + 保存图片**全部客户端完成**(公开端点一次性返回完整 report,不接参数;`utils/boardSort.ts` 的 `sortRows` 镜像服务端口径——null 沉底/降序/model_id 字典序 + 判分不完整恒沉底,禁第二排序口径;`familyOptionsOf` 取自未过滤全集,选项不随选择塌缩);**无批次切换、无行下钻、无 live 榜单、无轮询**。未登录态网络面板零 session API 调用。Leaderboard 组件完整规格(矩阵/live 半成品/判分不完整/ScoreCell/窄屏卡片式)以 ui-guidelines §5 与 share-materials brief 为准。
 
-## 体检基线与已排改进
-- critique 基线 26/36(2026-07-29):页面不标批次身份/时效(P1)、公开读者零解释层(P1)、涨跌理解依赖记忆桥(P2)、排序无可发现性(P2)、状态不进 URL(P3)。
-- 已排票:#57(批次 meta 行)✅ 已完成(2026-07-29,规格已并入上方构成)。
+## v2 视觉(GH #118)
+- 轻容器语法:榜单外壳 = 白面 + 1px 描边 + radius-lg + 无阴影,桌面 padding 24/32、窄屏 16(Leaderboard 组件内 media query)。
+- Apple 对比页框架:标题承担层级,lede 答「这页是什么」;无营销 hero。
+- **矩阵行 hover 上浮豁免(GH #118 main 裁决):** hairline 分隔的行上浮会破坏共享 grid 基线与 3px 仪式竖条几何;行可点性由 hover 填充 `--hs-brand-soft` + 指针承担(本页行不可点,豁免为组件级口径)。
+- 文字场景 *-text 阶(档色分数、涨跌箭头);前 3 名仪式重译为蓝品牌(3px brand 竖条 + 名次大字)。
 
 ## 未决(另立批次)
-- 解释层(一句话副标题 + 工具条图例 popover,与 ScoreCell tooltip 同源)、列头排序常驻弱化指示、视图状态 URL 深链、空态期望管理(「评估多久跑一次」)。
-- 词表待裁决:family 筛选 UI 文案「系列」 vs 状态板分组 chip 词表「厂商」不一致,随语义手册定稿统一。
+- 解释层(一句话副标题扩展/图例)、视图状态 URL 深链、空态期望管理(「评估多久跑一次」)。

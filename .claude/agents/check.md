@@ -48,7 +48,9 @@ HubScope 的独立验证代理。你不是代码的作者,只负责挑错与验�
    - 定时器/轮询是否在组件卸载时清理(setInterval 配对 clearInterval);
    - Element Plus 组件用法是否符合版本 API;
    - 语义色、状态词表、组件复用是否符合规范(如状态展示必须复用 StatusBadge);
-   - 机械检测 findings 复核:impeccable detector 与 check-tokens.sh 报告的 findings 是否属实/已处置(误报经 ignore 机制登记,不静默)。
+   - **`:deep(.祖先类)` 死选择器拦截(GH #121 HIGH-1 沉淀,ui-guidelines §4):** 子组件 scoped 样式内出现 `:deep(.祖先类)` 一律 HIGH——scoped 作用域 ID 只父→子附加,该选择器构造性永不命中;合法写法仅「子组件 prop 绑自身类」或「父组件 `.ancestor :deep(.child)`」;注意漏网形态(同批已清组件外的其余组件可能残留);
+   - **页面 h1 = 侧边栏标签核对(GH #118,ui-guidelines §4):** 一级页面 h1 文案与侧边栏 IA 词一致;深链页(对象名 h1)豁免;
+   - 机械检测 findings 复核:impeccable detector 与 check-tokens.sh 报告的 findings 是否属实/已处置(误报经 ignore 机制登记,不静默)。复跑 detector 类工具作证据时必须带一个负向注入对照(注入一处明知违规,证明通道活着)——「恒零」不是证据(GH #122 check MEDIUM-2:detect.mjs CLI 在本仓 web/ 布局下不加载 design system,复验须走 hook 路径)。
 4. **契约核对** — `web/src/api/types.ts` 与后端 dto 字段是否一致(类型、可空、命名)。
 
 **不做:**

@@ -3,11 +3,12 @@
     <!-- Hero panel (single-model mode, design ruling): availability leads at
          display size; a single-status statement replaces the aggregate
          verdict + distribution (the scope is one endpoint — counts would be
-         noise). Failing keeps its static double-encoding (orange dot + the
-         count-less "含告警" chip). The right column carries eval data; the
-         panel stays put (with a no-data line) when the model was never
-         evaluated. The failing chip copy comes from the statement object
-         (null unless failing), so no status wording lives in the template. -->
+         noise). The alert event keeps its static chip (event-worded
+         "含告警", danger slot — failing has no fourth display color, GH #113).
+         The right column carries eval data; the panel stays put (with a
+         no-data line) when the model was never evaluated. The chip copy
+         comes from the statement object (null unless failing), so no status
+         wording lives in the template. -->
     <div class="hero-panel">
       <div class="hero-left">
         <span class="metric-label">
@@ -106,7 +107,7 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .hero-panel {
   display: flex;
   align-items: stretch;
-  background: var(--hs-bg-page);
+  background: var(--hs-bg-subtle);
   border-radius: var(--hs-radius-lg);
   /* Horizontal 20px is the material canvas constant (share-materials brief),
      not grid spacing; vertical values consume --hs-space-* (GH #95). */
@@ -132,7 +133,8 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 .metric-divider {
   width: 1px;
-  background: var(--hs-border);
+  /* Hairline tier (GH #121 line-lightening, same as GH #118). */
+  background: var(--hs-border-light);
   margin: 0 20px;
 }
 /* Compact variant: narrower divider margin. */
@@ -153,12 +155,19 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 }
 .hero-big {
   margin-top: var(--hs-space-1);
-  font-size: var(--hs-text-display);
+  /* v2 hero tier (GH #121, spec 0018 §14): same typesetting as the overview
+     StatusHero (72px, weight 600, tight tracking, tabular digits); the
+     legacy display tier is retired. This panel only ever mounts at the full
+     720 width (single-model + compact is the endpoint small card, a
+     separate template in StatusCard.vue), so no compact tier is needed. */
+  font-size: var(--hs-text-hero);
   font-weight: 600;
   line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .metric-unit {
-  font-size: var(--hs-text-md);
+  font-size: var(--hs-text-xl);
   font-weight: 400;
   color: var(--hs-text-secondary);
   margin-left: var(--hs-space-1);
@@ -175,28 +184,35 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
 .statement-text {
   font-weight: 600;
 }
-/* GH #69 text/graphics split: statement/availability words are text —
-   success as text consumes the deepened text grade. */
+/* Statement words: text channel → the *-text grade of each slot (GH #69
+   text/graphics split; graphic/text division, GH #113). */
 .vc-healthy {
   color: var(--hs-success-text);
 }
 .vc-degraded {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .vc-abnormal {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
+/* Neutral tier (GH #160, unverified statement): placeholder grade — no
+   functional hue by design (no evidence reads as neither good nor bad). */
+.vc-neutral {
+  color: var(--hs-text-placeholder);
+}
+/* Alert chip + dot (event-worded "含告警"): failing has no separate display
+   color in the three-state world — both take the danger slot. */
 .alert-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-  background: var(--hs-status-failing);
+  background: var(--hs-danger);
 }
 .failing-chip {
   font-size: var(--hs-text-xs);
-  color: var(--hs-status-failing);
-  border: 1px solid var(--hs-status-failing);
+  color: var(--hs-danger-text);
+  border: 1px solid var(--hs-danger-text);
   border-radius: var(--hs-radius-sm);
   background: var(--hs-bg-card);
   padding: 0 var(--hs-space-2);
@@ -229,15 +245,18 @@ const overflowCount = computed(() => (props.evalSummary?.suite_scores.length ?? 
   font-size: var(--hs-text-xs);
   color: var(--hs-text-placeholder);
 }
-/* Availability tier colors (ui-guidelines §3) */
+/* Availability tier colors: text channel → the *-text grade of each slot
+ * (GH #69 text/graphics split; on the v2 palette the warning/danger bases
+ * are graphic-tier and fail as text, GH #121). The segment strips keep the
+ * bases as graphic fills. */
 .av-ok {
   color: var(--hs-success-text);
 }
 .av-partial {
-  color: var(--hs-warning);
+  color: var(--hs-warning-text);
 }
 .av-fail {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .av-none {
   color: var(--hs-text-placeholder);

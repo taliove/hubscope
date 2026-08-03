@@ -1,8 +1,9 @@
 // Composable backing the Dashboard: polls GET /api/overview on a fixed
-// interval and exposes the entries, group aggregates, and per-status counts.
-import { ref, computed, onBeforeUnmount, type Ref } from 'vue'
+// interval and exposes the entries, group aggregates, and the backend global
+// figures.
+import { ref, onBeforeUnmount, type Ref } from 'vue'
 import { fetchOverview } from '@/api/overview'
-import type { OverviewEntry, OverviewGroup, EndpointStatus } from '@/api/types'
+import type { OverviewEntry, OverviewGroup } from '@/api/types'
 import { createVisibilityPoll, type VisibilityPollHandle } from '@/utils/visibilityPoll'
 
 // How often the dashboard refreshes, in milliseconds. Exported so the health
@@ -22,6 +23,15 @@ export function useOverview() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Global aggregates (GH #115): the backend is the single source of truth
+  // for the health index, its day-over-day delta, the probe count and the
+  // enabled-endpoint population — the dashboard displays, never derives.
+  const enabledEndpoints = ref(0)
+  const availability24h: Ref<number | null> = ref(null)
+  const healthScore24h: Ref<number | null> = ref(null)
+  const healthScoreDelta: Ref<number | null> = ref(null)
+  const probes24h = ref(0)
+
   let poll: VisibilityPollHandle | null = null
 
   async function reload() {
@@ -33,6 +43,11 @@ export function useOverview() {
       byCapability.value = overview.by_capability ?? []
       byProtocol.value = overview.by_protocol ?? []
       generatedAt.value = overview.generated_at
+      enabledEndpoints.value = overview.enabled_endpoints
+      availability24h.value = overview.availability_24h
+      healthScore24h.value = overview.health_score_24h
+      healthScoreDelta.value = overview.health_score_delta
+      probes24h.value = overview.probes_24h
       error.value = null
     } catch (err) {
       // Keep the last good data on screen; just surface the failure.
@@ -58,19 +73,21 @@ export function useOverview() {
 
   onBeforeUnmount(stop)
 
-  // Count entries per status for the summary row.
-  const statusCounts = computed<Record<EndpointStatus, number>>(() => {
-    const counts: Record<EndpointStatus, number> = {
-      healthy: 0,
-      degraded: 0,
-      down: 0,
-      failing: 0,
-    }
-    for (const entry of entries.value) {
-      counts[entry.status] += 1
-    }
-    return counts
-  })
-
-  return { entries, byFamily, byCapability, byProtocol, generatedAt, loading, error, statusCounts, reload, start, stop }
+  return {
+    entries,
+    byFamily,
+    byCapability,
+    byProtocol,
+    generatedAt,
+    loading,
+    error,
+    enabledEndpoints,
+    availability24h,
+    healthScore24h,
+    healthScoreDelta,
+    probes24h,
+    reload,
+    start,
+    stop,
+  }
 }

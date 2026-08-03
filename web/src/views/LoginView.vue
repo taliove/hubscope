@@ -2,7 +2,8 @@
   <div class="login-page">
     <div class="login-stack">
       <!-- Brand block above the card (ui-guidelines §2b): BrandMark +
-           Wordmark (display step) + subtitle; the page renders no AppHeader. -->
+           Wordmark (display step) + subtitle; the page renders outside the
+           sidebar shell (route meta.bare, GH #112). -->
       <div class="login-brand">
         <div class="login-brand-row">
           <BrandMark class="login-mark" />
@@ -84,6 +85,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ApiError } from '@/api/client'
 import { fetchCaptcha, login } from '@/api/auth'
+import { dispatchAuthChanged } from '@/utils/authEvents'
 import BrandMark from '@/components/BrandMark.vue'
 import Wordmark from '@/components/Wordmark.vue'
 
@@ -190,7 +192,14 @@ async function onSubmit() {
         : {}),
     })
     resetCaptcha()
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
+    // Notify the shell's auth listeners (GH #148). This page renders
+    // outside the shell (meta.bare), so the sidebar is normally unmounted
+    // and the event is a harmless no-op — it is kept for same-page edges
+    // and to keep the emit contract symmetric with AppTopbar's logout.
+    dispatchAuthChanged()
+    // Default landing after a direct login (no redirect query): the system
+    // settings console (GH #119 — was /admin before AdminView retired).
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/settings'
     router.replace(redirect)
   } catch (err) {
     const apiErr = err instanceof ApiError ? err : null

@@ -6,6 +6,7 @@
 #   - web/src/styles/*            令牌定义层,字面量是本职工作
 #   - components/BrandMark.vue    渐变 stop 表现属性(snapdom 兜底,§2b 登记)
 #   - utils/chartColors.ts        ECharts 色板 JS 镜像(§3 登记)
+#   - utils/vendorIcon.ts vendorIcon.test.ts         供应商品牌色外部资产(§5 供应商图标条登记,BrandMark 同类)
 #   - --el-card-padding           密度档既定机制(§2 间距条目)
 # 只报不拦(exit 0),findings 经 additionalContext 注入会话。
 set -u
@@ -18,15 +19,17 @@ case "$file" in
   *) exit 0 ;;
 esac
 
-# 豁免文件:令牌定义层与两处登记例外
+# 豁免文件:令牌定义层与三处登记例外
 case "$file" in
-  */web/src/styles/*|*/web/src/components/BrandMark.vue|*/web/src/utils/chartColors.ts) exit 0 ;;
+  */web/src/styles/*|*/web/src/components/BrandMark.vue|*/web/src/utils/chartColors.ts|*/web/src/utils/vendorIcon.ts|*/web/src/utils/vendorIcon.test.ts) exit 0 ;;
 esac
 
 [ -f "$file" ] || exit 0
 
-# 去注释行与锚点引用(href="#..." 非色值),减少误报
-filtered=$(grep -vE '^[[:space:]]*(//|/\*|\*|<!--)' "$file" | sed 's/href="#[^"]*"//g' || true)
+# 去注释行与锚点引用(href="#..." 非色值),减少误报;再剥 issue 引用
+# 「GH #NNN」——块注释续行(无 * 前缀)里的票号会撞 3 位 hex 字面量
+# (如 GH #113 → "#113" 命中 3-hex 模式,GH #121/#118 等一大批误报)。
+filtered=$(grep -vE '^[[:space:]]*(//|/\*|\*|<!--)' "$file" | sed 's/href="#[^"]*"//g; s/GH #[0-9][0-9]*//g' || true)
 
 findings=""
 hex_hits=$(printf '%s\n' "$filtered" | grep -nE '#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})([^0-9a-zA-Z]|$)|rgba?\(' | head -5 || true)

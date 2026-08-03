@@ -50,6 +50,30 @@ const ALERT_KIND_TAG_TYPES: Record<AlertKind, TagProps['type']> = {
   retired: 'info',
 }
 
+// ALERT_KINDS lists every kind in the union — the keys of the exhaustive
+// Record above, so the type system keeps this list in sync automatically
+// (PROTOCOLS precedent in protocol.ts, GH #38 single-source discipline).
+// Filter dropdowns (the /alerts timeline type filter, GH #117) render from
+// this single source instead of hand-listing values. Labels and tag types
+// stay untouched — this is an additive export, not a vocabulary change.
+export const ALERT_KINDS = Object.keys(ALERT_KIND_LABELS) as AlertKind[]
+
+// spec 0019 (GH #142): /alerts went public — the anonymous payload only
+// carries the four incident-narrative kinds (the server enforces that
+// boundary, ui-guidelines appendix item 16). The anonymous type filter
+// therefore lists exactly these four: offering the seven ops-pipeline kinds
+// an anonymous reader can never match would be dishonest UI (alerts surface
+// brief). The subset is derived from ALERT_KINDS so declaration order stays
+// the single source; the logged-in filter keeps the full eleven-kind list.
+const PUBLIC_ALERT_KIND_SET = new Set<AlertKind>(['down', 'recovered', 'group_down', 'group_recovered'])
+
+// visibleKindOptions returns the type-filter option set for the /alerts
+// timeline: four incident-narrative kinds for anonymous visitors, the full
+// vocabulary for authenticated readers.
+export function visibleKindOptions(authed: boolean): AlertKind[] {
+  return authed ? ALERT_KINDS : ALERT_KINDS.filter((k) => PUBLIC_ALERT_KIND_SET.has(k))
+}
+
 // alertKindLabel returns the Chinese display word for an alert event kind.
 // Unknown/null kinds fall back to a placeholder (role.ts precedent) so the
 // UI never renders a bare technical kind string to admin readers.

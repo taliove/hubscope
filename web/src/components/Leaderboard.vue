@@ -1,5 +1,10 @@
 <template>
-  <el-card shadow="never" class="leaderboard-card">
+  <!-- Light container (GH #118, spec 0018 §13): the v2 Apple syntax — white
+       surface, 1px border, radius-lg, no shadow (static containers never
+       take a shadow). The el-card wrapper is retired; /eval and
+       /report/:token inherit the same container (visual-only change, the
+       props/events seam is untouched). -->
+  <div class="leaderboard">
     <!-- Toolbar (spec 0009): family filter + baseline note + share entry.
          The dimension radio and sort select are gone — every dimension is
          on screen at once and the column headers are the ranking control.
@@ -33,7 +38,7 @@
         v-model="family"
         size="small"
         clearable
-        placeholder="全部系列"
+        placeholder="全部厂商"
         class="family-select"
         @change="emitQuery"
       >
@@ -66,7 +71,7 @@
          expansion per §4). Live mode ranks by the half-scored total
          descending (GH #40) and shows the position in a de-emphasized
          style; null-total rows keep the placeholder dash. GH #94: narrow
-         viewport (<= 767px) switches to a card-style list (column headers
+         viewport (<= 1023px) switches to a card-style list (column headers
          never render; sorting goes through the toolbar select). -->
     <div v-if="!isNarrow" class="matrix-board">
       <div class="lb-grid lb-header" :style="gridStyle">
@@ -186,7 +191,7 @@
       </div>
     </div>
 
-    <!-- GH #94: Card-style list for narrow viewports (<= 767px). Each row
+    <!-- GH #94: Card-style list for narrow viewports (<= 1023px). Each row
          becomes a vertical card block: row 1 = rank (with top-3 rail ceremony)
          + model name + total (xl ink + 6px band bar); row 2 = delta (when
          baseline is comparable); dimension grid = 2 columns, each cell renders
@@ -266,10 +271,12 @@
       </div>
     </div>
 
-    <!-- Share-image dialog; the snapshot freezes at open time so a report
-         refresh cannot swap the data between preview and export. -->
+    <!-- Share-image dialog (GH #118: the OLD EvalCard material stays until
+         T12 rebuilds the share materials — transitional); the snapshot
+         freezes at open time so a report refresh cannot swap the data
+         between preview and export. -->
     <EvalShareDialog v-model:visible="shareVisible" :snapshot="shareSnapshot" :shared="shared" />
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -309,7 +316,17 @@ import { useBreakpoint } from '@/composables/useBreakpoint'
 // scores (the gate takes ranking eligibility, never the judged facts). The
 // "判分不完整,缺 N/M 维度" watermark rides a second line under the model
 // name; the server already sank these rows below every complete one (the
-// /board client mirrors that caliber in utils/boardSort).
+// /benchmark client mirrors that caliber in utils/boardSort).
+//
+// v2 visual rebuild (GH #118, spec 0018 §13): the el-card wrapper becomes a
+// light container (white surface, 1px border, radius-lg, no shadow), the
+// header separator steps down to the hairline tier, hover feedback fades
+// via the shared transition token, and text scenarios move to the deepened
+// *-text steps (the v2 danger base is graphic-tier). The top-3 ceremony
+// (3px brand rail + one-size-up rank) retranslates onto the blue brand
+// unchanged — the token swap already carried it. Every anti-fake caliber
+// above is untouched: band colors, watermark width rule, delta baseline
+// wording, incomplete dash/watermark/sink, live half-scored mode.
 const props = withDefaults(
   defineProps<{
     report: CampaignReport
@@ -321,8 +338,9 @@ const props = withDefaults(
     // Shared report page (/report/:token): the share-image entry copy reads
     // "保存图片" for the recipient reader (ticket 76, ui-guidelines §5).
     shared?: boolean
-    // Public board (/board, ticket 81): rows are not clickable — the public
-    // page has no trend drill-down. Default true; /eval behavior unchanged.
+    // Public board (/benchmark, renamed from /board in the v2 IA — GH #118,
+    // ticket 81): rows are not clickable — the public page has no trend
+    // drill-down. Default true; /eval behavior unchanged.
     selectable?: boolean
   }>(),
   { live: false, view: 'grid', shared: false, selectable: true },
@@ -412,7 +430,7 @@ function totalWidth(score: number): string {
 // fully-failed batch never reads as "deleted models don't rank". Live mode
 // points back to the progress grid (ui-guidelines §5).
 const emptyDescription = computed(() => {
-  if (family.value) return `系列 ${family.value} 下暂无上榜模型`
+  if (family.value) return `厂商 ${family.value} 下暂无上榜模型`
   if (props.live) return '暂无已判分模型,可在进度网格查看运行状态'
   if (props.report.status === 'failed') return '暂无上榜模型:评估运行全部失败'
   return '暂无上榜模型:已删除模型不上榜'
@@ -457,11 +475,21 @@ function deltaTitle(row: ReportRow): string {
 </script>
 
 <style scoped>
-/* Consumption-page density: 16px card padding via the variable, never a
-   :deep(.el-card__body) override (ui-guidelines §2). */
-.leaderboard-card {
-  --el-card-padding: 16px;
-  margin-bottom: 16px;
+/* Light container (GH #118, spec 0018 §13): white surface, 1px border,
+   radius-lg, no shadow — the AlertsView timeline-panel precedent. Generous
+   inner padding (the comparison page breathes); narrow viewports tighten it
+   (GH #94 single breakpoint, EvalProgressGrid media-query precedent). */
+.leaderboard {
+  background: var(--hs-bg-card);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: var(--hs-space-5) var(--hs-space-6);
+  margin-bottom: var(--hs-space-4);
+}
+@media (max-width: 1023px) {
+  .leaderboard {
+    padding: var(--hs-space-4);
+  }
 }
 .toolbar {
   display: flex;
@@ -491,13 +519,14 @@ function deltaTitle(row: ReportRow): string {
   column-gap: 12px;
   align-items: center;
 }
-/* Table polish (ticket 82, spec 0010): a 1px hairline under the header and
-   between rows replaces the bare gap; rows breathe at a fixed 46px (the
-   fifteen-rows-per-viewport sweet spot). */
+/* Table polish (ticket 82, spec 0010; GH #118 line-lightening): the header
+   separator steps down to the hairline tier (border-light) — the comparison
+   page keeps one loud line nowhere; separation is rhythm, not rules. Rows
+   breathe at a fixed 46px (the fifteen-rows-per-viewport sweet spot). */
 .lb-header {
   margin-bottom: 0;
   padding-bottom: var(--hs-space-2);
-  border-bottom: 1px solid var(--hs-border);
+  border-bottom: 1px solid var(--hs-border-light);
   /* Matches the rows' transparent 3px rail so header columns share the
      rows' x positions exactly (matrix alignment invariant). */
   border-left: 3px solid transparent;
@@ -554,6 +583,9 @@ function deltaTitle(row: ReportRow): string {
   /* The 3px left border is the top-3 ceremony rail (transparent for every
      other rank so column x positions never shift); see .rank-top-rail. */
   border-left: 3px solid transparent;
+  /* v2.0 §15 hover feedback fades in (semantics.css zeroes the transition
+     under reduced motion). */
+  transition: background-color var(--hs-transition);
 }
 .row + .row {
   border-top: 1px solid var(--hs-border-light);
@@ -618,6 +650,9 @@ function deltaTitle(row: ReportRow): string {
   flex: 1;
   min-width: 0;
   font-size: var(--hs-text-md);
+  /* Comparison-page hierarchy (GH #118): the model name is the row's primary
+     key — md/600 ink, same treatment as the v2 ModelStatusList name cell. */
+  font-weight: 600;
   color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -661,12 +696,14 @@ function deltaTitle(row: ReportRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
+/* GH #69 text/graphics split + GH #118 v2-palette text step: the delta
+   arrow is text — deepened grade; the v2 danger base is graphic-tier
+   (3.55:1), so the down arrow takes the text step. */
 .delta-up {
   color: var(--hs-success-text);
 }
 .delta-down {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .delta-flat {
   color: var(--hs-text-placeholder);
@@ -676,11 +713,13 @@ function deltaTitle(row: ReportRow): string {
   color: var(--hs-text-placeholder);
   white-space: nowrap;
 }
+/* Text scenario on the v2 palette (GH #118): the failed count takes the
+   deepened danger text step — the base is graphic-tier. */
 .live-failed {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 
-/* GH #94: Card-style list for narrow viewports (<= 767px). Each row becomes
+/* GH #94: Card-style list for narrow viewports (<= 1023px). Each row becomes
    a vertical card block with 1px hairlines between blocks (matching the
    matrix row rhythm). The top-3 rail ceremony stays on (3px brand left
    border), and the rank/total/delta caliber is identical to the matrix. */
@@ -693,6 +732,7 @@ function deltaTitle(row: ReportRow): string {
   /* The 3px left border is the top-3 ceremony rail (transparent for every
      other rank so the layout never shifts). */
   border-left: 3px solid transparent;
+  transition: background-color var(--hs-transition);
 }
 .card-item + .card-item {
   border-top: 1px solid var(--hs-border-light);
@@ -738,6 +778,9 @@ function deltaTitle(row: ReportRow): string {
   flex: 1;
   min-width: 0;
   font-size: var(--hs-text-md);
+  /* Comparison-page hierarchy (GH #118): the model name is the row's primary
+     key — md/600 ink, same treatment as the v2 ModelStatusList name cell. */
+  font-weight: 600;
   color: var(--hs-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -806,12 +849,13 @@ function deltaTitle(row: ReportRow): string {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-/* GH #69 text/graphics split: the delta arrow is text — deepened grade. */
+/* GH #69 text/graphics split + GH #118 v2-palette text step: the delta
+   arrow is text — deepened grade, danger on the text step. */
 .card-row-2 .delta.delta-up {
   color: var(--hs-success-text);
 }
 .card-row-2 .delta.delta-down {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 .card-row-2 .delta.delta-flat {
   color: var(--hs-text-placeholder);
@@ -832,6 +876,6 @@ function deltaTitle(row: ReportRow): string {
   margin-left: 32px;
 }
 .card-item .live-note .live-failed {
-  color: var(--hs-danger);
+  color: var(--hs-danger-text);
 }
 </style>
