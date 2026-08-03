@@ -35,3 +35,10 @@ export async function trialModel(modelId: number): Promise<ModelTrialResult> {
 export async function updateModelCapability(modelId: number, capability: string): Promise<Model> {
   return http.patch<Model>(`/models/${modelId}`, { capability })
 }
+
+// Flip a model's "join evaluations" switch (GH #170). Only batches
+// triggered after the flip see the new value: running batches snapshot
+// their members at creation.
+export async function updateModelEvalEnabled(modelId: number, evalEnabled: boolean): Promise<Model> {
+  return http.patch<Model>(`/models/${modelId}`, { eval_enabled: evalEnabled })
+}

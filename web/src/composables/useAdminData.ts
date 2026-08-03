@@ -12,6 +12,8 @@ export interface EndpointRow {
   modelOrigin: string // "manual" | "discovered"
   modelFamily: string // vendor series, "other" when unmatched
   modelCapability: string // "chat" | "image" | "video" | ... (editable, GH #105)
+  modelStatus: string // "active" | "retired"
+  modelEvalEnabled: boolean // "join evaluations" switch (GH #170)
 }
 
 // A model with zero endpoints: invisible in the endpoint table, managed via
@@ -41,6 +43,8 @@ export function useAdminData() {
           modelOrigin: model.origin,
           modelFamily: model.family,
           modelCapability: model.capability,
+          modelStatus: model.status,
+          modelEvalEnabled: model.eval_enabled,
         })
       }
     }

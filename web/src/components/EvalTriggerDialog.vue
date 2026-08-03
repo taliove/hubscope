@@ -31,6 +31,9 @@
             <div class="model-option">
               <span class="model-option-name">{{ m.model_id }}</span>
               <span v-if="m.capability !== 'chat'" class="model-option-hint">非对话模型不能参与评估</span>
+              <!-- GH #170: opted-out models stay selectable here because a
+                   manual trigger is the explicit override path. -->
+              <span v-else-if="!m.eval_enabled" class="model-option-hint">已关闭「参与评估」,手动触发仍将执行</span>
             </div>
           </el-option>
         </el-select>
@@ -41,21 +44,22 @@
         <!-- Disabled buttons swallow pointer events, so the reason tooltip
              needs a wrapper span. -->
         <el-tooltip
-          :disabled="chatModelCount > 0"
-          content="暂无可参与评估的对话模型"
+          :disabled="evalModelCount > 0"
+          content="暂无参与评估的对话模型(均已在模型管理中关闭「参与评估」)"
           placement="top"
         >
           <span>
             <el-button
               type="warning"
               plain
-              :disabled="submitting || chatModelCount === 0"
+              :disabled="submitting || evalModelCount === 0"
               @click="onFullSweep"
             >
               一键全量评估
             </el-button>
           </span>
         </el-tooltip>
+        <span class="footer-count">将评估 {{ evalModelCount }} 个模型</span>
         <div class="footer-actions">
           <el-button @click="close">取消</el-button>
           <el-button
@@ -100,7 +104,12 @@ const suiteId = ref<number | null>(null)
 const selectedModelIds = ref<number[]>([])
 const submitting = ref(false)
 
-const chatModelCount = computed(() => props.models.filter(m => m.capability === 'chat').length)
+// GH #170: the full sweep and the weekly batch only cover active chat
+// models whose "join evaluations" switch is on; the footer surfaces that
+// count so the operator sees the blast radius before firing.
+const evalModelCount = computed(
+  () => props.models.filter(m => m.capability === 'chat' && m.status === 'active' && m.eval_enabled).length
+)
 
 // Retired suites (question-bank v3, ADR 0010) stay in the library for
 // history but are not offered for new triggers.
@@ -212,7 +221,7 @@ async function onTrigger() {
 async function onFullSweep() {
   try {
     await ElMessageBox.confirm(
-      `将对全部评估集 × ${chatModelCount.value} 个对话模型发起评估,确认继续?`,
+      `将对全部评估集 × ${evalModelCount.value} 个对话模型发起评估,确认继续?`,
       '一键全量评估',
       { confirmButtonText: '开始评估', cancelButtonText: '取消', type: 'warning' }
     )
@@ -257,5 +266,11 @@ async function onFullSweep() {
 }
 .footer-actions .el-button + .el-button {
   margin-left: 0;
+}
+.footer-count {
+  font-size: var(--hs-text-sm);
+  color: var(--hs-text-secondary);
+  margin-left: 12px;
+  white-space: nowrap;
 }
 </style>

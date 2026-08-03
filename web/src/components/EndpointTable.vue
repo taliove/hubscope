@@ -33,6 +33,21 @@
           </el-button>
         </template>
       </el-table-column>
+      <el-table-column label="参与评估" width="90">
+        <template #default="{ row }">
+          <!-- GH #170: the switch only means something for active chat
+               models (the sweep / weekly batch population); every other
+               row shows a dash. -->
+          <el-switch
+            v-if="row.modelStatus === 'active' && row.modelCapability === 'chat'"
+            :model-value="row.modelEvalEnabled"
+            size="small"
+            :loading="evalTogglingId === row.modelDbId"
+            @change="(value: boolean) => onToggleEval(row.modelDbId, row.modelName, value)"
+          />
+          <span v-else class="eval-switch-na">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="协议" width="120">
         <template #default="{ row }">
           <el-tag :type="protocolTagType(row.endpoint.protocol)" size="small">
@@ -124,6 +139,20 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="参与评估" width="90">
+          <template #default="{ row }">
+            <!-- GH #170: same rule as the endpoint table — the switch only
+                 means something for active chat models. -->
+            <el-switch
+              v-if="row.model.status === 'active' && row.model.capability === 'chat'"
+              :model-value="row.model.eval_enabled"
+              size="small"
+              :loading="evalTogglingId === row.model.id"
+              @change="(value: boolean) => onToggleEval(row.model.id, row.model.model_id, value)"
+            />
+            <span v-else class="eval-switch-na">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -199,7 +228,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { triggerProbe, listProbeHistory } from '@/api/probes'
 import { deleteEndpoint, pruneDeadEndpoints, updateEndpoint } from '@/api/endpoints'
-import { deleteModel, trialModel, updateModelCapability } from '@/api/models'
+import { deleteModel, trialModel, updateModelCapability, updateModelEvalEnabled } from '@/api/models'
 import type { ProbeRecord } from '@/api/types'
 import { protocolTagType } from '@/utils/protocol'
 import type { EndpointRow, EndpointlessModelRow } from '@/composables/useAdminData'
@@ -215,6 +244,7 @@ const deletingId = ref<number | null>(null)
 const deletingModelId = ref<number | null>(null)
 const trialingId = ref<number | null>(null)
 const pruning = ref(false)
+const evalTogglingId = ref<number | null>(null)
 const probeVisible = ref(false)
 const probeResults = ref<ProbeRecord[]>([])
 
@@ -254,6 +284,27 @@ async function onSaveCapability() {
     ElMessage.error((err as Error).message)
   } finally {
     capabilitySaving.value = false
+  }
+}
+
+// GH #170: the "join evaluations" switch is model-level, so several
+// endpoint rows of one model render it together; a flip reloads the list so
+// every row of the model settles on the new state (same full-reload
+// discipline as the capability save, GH #105).
+async function onToggleEval(modelDbId: number, modelName: string, value: boolean) {
+  evalTogglingId.value = modelDbId
+  try {
+    await updateModelEvalEnabled(modelDbId, value)
+    ElMessage.success(
+      value
+        ? `模型「${modelName}」已加入自动评估`
+        : `模型「${modelName}」已退出自动评估(手动触发仍可显式选中)`
+    )
+    emit('changed')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    evalTogglingId.value = null
   }
 }
 
@@ -411,6 +462,9 @@ async function onTrial(row: EndpointlessModelRow) {
 <style scoped>
 .capability-tag {
   margin-right: var(--hs-space-1);
+}
+.eval-switch-na {
+  color: var(--hs-text-placeholder);
 }
 .capability-dialog-hint {
   font-size: var(--hs-text-sm);

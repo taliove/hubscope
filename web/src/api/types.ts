@@ -32,6 +32,10 @@ export interface Model {
   status: string // "active" | "retired"
   capability: string // "chat" | "embedding" | "image" | "audio" | ...
   family: string // vendor series: "gpt" | "claude" | "qwen" | ... | "other"
+  // "Join evaluations" switch (GH #170): only eval-enabled active chat
+  // models enter full sweeps and the weekly batch; manual single-suite
+  // triggers may still name the model explicitly.
+  eval_enabled: boolean
   endpoints: Endpoint[]
 }
 
