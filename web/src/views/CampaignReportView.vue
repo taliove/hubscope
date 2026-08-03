@@ -130,6 +130,7 @@
           @select="openTrend"
           @cell-select="onCellSelect"
         />
+        <EvalValueBoard v-if="costViewEnabled && reportView === 'cost'" :report="report" />
         <EvalCostMatrix v-if="costViewEnabled && reportView === 'cost'" :report="report" />
 
         <!-- Cost detail table (GH #42, console-only): one row per model x
