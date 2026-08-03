@@ -430,22 +430,6 @@ func (h *evalStubHub) releaseModel(model string) {
 	}
 }
 
-// moveModelGateAfter atomically releases the model's current gate and
-// installs a new one that freezes its responses once its recorded
-// completion-call count passes n. The handoff happens under the stub lock,
-// so no call can slip through between release and re-arm — unlike
-// releaseModel + blockModelAfter, which opens a scheduler-dependent window
-// (ticket 100: deterministic mid-flight stepping without polling races).
-func (h *evalStubHub) moveModelGateAfter(model string, n int) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if gate, ok := h.modelGates[model]; ok {
-		close(gate)
-	}
-	h.gateAfter[model] = n
-	h.modelGates[model] = make(chan struct{})
-}
-
 // callTotal reports how many completion calls the model made in total (any
 // prompt), including calls currently blocked on a gate.
 func (h *evalStubHub) callTotal(model string) int {

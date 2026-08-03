@@ -173,6 +173,12 @@ type evalCell struct {
 // done when every cell executed, failed when the context was canceled with
 // cells unstarted. It returns after all cells executed or the context was
 // canceled (in-flight cells always run to completion).
+//
+// Cells are fed model-major (GH #169, the #161/#166 map decision): every
+// suite of model 1, then every suite of model 2, and so on. A model's hub
+// pressure and failure cadence (circuit breaker, retry) stay contiguous
+// instead of being spread across the whole campaign, and a broken model is
+// found after its first suite instead of burning one cell per suite.
 func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) {
 	defaultSamples := e.resolveDefaultSampleCount()
 
@@ -208,17 +214,21 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	}
 
 	remaining := map[int64]int{}
-	var cells []evalCell
 	for _, prep := range prepared {
 		remaining[prep.run.ID] = len(modelDBIDs)
-		for _, modelDBID := range modelDBIDs {
-			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
-		}
 		// A run with no models has no cells to wait for: it evaluates
 		// nothing and finishes done immediately (the serial executor's
 		// zero-model outcome).
 		if len(modelDBIDs) == 0 {
 			e.finishPreparedRun(prep, "done")
+		}
+	}
+	// GH #169: model-major cell order — the pool takes a model's whole suite
+	// list before the next model's first cell.
+	var cells []evalCell
+	for _, modelDBID := range modelDBIDs {
+		for _, prep := range prepared {
+			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
 		}
 	}
 

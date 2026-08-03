@@ -15,10 +15,10 @@ import (
 )
 
 // setEvalConcurrency writes the eval_concurrency setting through the API.
-// Tests whose stub-gate scenarios pin the pre-GH-#26 serial execution order
-// (suite by suite, model by model) set 1 so cell scheduling stays
-// deterministic; the concurrency behavior itself is pinned by the tests in
-// this file.
+// Tests whose stub-gate scenarios pin the serial execution order (model by
+// model since GH #169, suite by suite inside each model) set 1 so cell
+// scheduling stays deterministic; the concurrency behavior itself is pinned
+// by the tests in this file.
 func setEvalConcurrency(t *testing.T, base string, n int) {
 	t.Helper()
 	resp := doPut(t, base+"/api/settings", map[string]interface{}{
@@ -165,14 +165,60 @@ func TestEvalConcurrencyOneRunsSerially(t *testing.T) {
 	}
 }
 
+// TestEvalModelMajorCellOrder pins the GH #169 cell feed order (the
+// #161/#166 map decision): the pool takes every suite of model 1 before
+// model 2's first cell. Five seeded suites x two models make ten cells;
+// with the default pool of 4 the first four cells in flight must all be
+// smart-model's. The stub freezes smart-model from its first call, so the
+// freeze point is deterministic — four recorded smart-model calls with all
+// workers blocked, zero chat-two calls. Under the old suite-major order two
+// of the four in-flight cells would be chat-two's, and they would answer
+// (chat-two is not gated), so its call count would already pass 0.
+func TestEvalModelMajorCellOrder(t *testing.T) {
+	// Async eval: observes the frozen pool mid-sweep (smart-model's first
+	// calls blocked on the model gate); drained by releaseModel +
+	// waitCampaignStatus(done).
+	ts, stub, _ := setupAsyncEvalEnv(t)
+	createEvalModel(t, ts.URL, stub.URL, "smart-model")
+	createEvalModel(t, ts.URL, stub.URL, "chat-two")
+
+	stub.resetCalls()
+	stub.blockModel("smart-model")
+	t.Cleanup(func() { stub.releaseModel("smart-model") })
+
+	campaign := triggerFullSweep(t, ts.URL)
+	campaignID := int64(campaign["id"].(float64))
+
+	waitFor(t, "four smart-model cells filling the pool", func() bool {
+		return stub.callTotal("smart-model") >= 4
+	})
+	// The pool holds exactly four cells — all blocked on smart-model's gate,
+	// all model 1's. The fifth smart-model cell cannot start (no free
+	// worker), so the count stays at the pool capacity.
+	if got := stub.callTotal("smart-model"); got != 4 {
+		t.Errorf("smart-model calls at freeze = %d, want 4 (pool capacity, all model-1 cells)", got)
+	}
+	if got := stub.callTotal("chat-two"); got != 0 {
+		t.Errorf("chat-two calls at freeze = %d, want 0 (model 2 must not start before model 1's suites)", got)
+	}
+
+	stub.releaseModel("smart-model")
+	final := waitCampaignStatus(t, ts.URL, campaignID, "done", "failed")
+	if final["status"] != "done" {
+		t.Fatalf("campaign status = %v, want done", final["status"])
+	}
+}
+
 // TestCancelStopsNewCells pins the pool's cancellation guarantee (GH #26):
 // once the context is canceled, no worker takes a new cell. The freeze
 // construction is deterministic — smart-model's last mmlu call is
 // blocked mid-flight, the cancel lands while the worker is still inside that
 // cell, so the next loop iteration provably starts with a canceled context.
 // The observable of a stolen cell is not the (ctx-aborted, possibly unsent)
-// answer call but its persisted rows: a stolen chat-two cell would record
-// null results for every case, so chat-two must have zero result rows.
+// answer call but its persisted rows: under the GH #169 model-major order
+// the next cell in line is smart-model's agieval_zh cell, so a stolen cell
+// would record null smart-model rows in the second run and burn extra
+// smart-model calls — both must stay at zero.
 func TestCancelStopsNewCells(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "cancel-cells.db"))
 	if err != nil {
@@ -194,11 +240,11 @@ func TestCancelStopsNewCells(t *testing.T) {
 	setEvalConcurrency(t, ts.URL, 1)
 
 	stub.resetCalls()
-	// Freeze the last call of smart-model's first cell: with the pool at 1,
-	// chat-two's cell is next in line, and the blocked call guarantees the
-	// cancel lands before the worker could take it. The first run covers
-	// mmlu (first suite in bank order), so the cell costs exactly its
-	// enabled-case count of calls.
+	// Freeze the last call of smart-model's first cell: with the pool at 1
+	// and model-major order (GH #169), smart-model's agieval_zh cell is next
+	// in line, and the blocked call guarantees the cancel lands before the
+	// worker could take it. The first run covers mmlu (first suite in bank
+	// order), so the cell costs exactly its enabled-case count of calls.
 	firstCellCalls := enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
 	stub.blockModelAfter("smart-model", firstCellCalls-1)
 	t.Cleanup(func() { stub.releaseModel("smart-model") })
@@ -235,12 +281,16 @@ func TestCancelStopsNewCells(t *testing.T) {
 	})
 	campaigns := listCampaigns(t, ts.URL)
 	campaignID := int64(campaigns[0]["id"].(float64))
+	if got := stub.callTotal("smart-model"); got != firstCellCalls {
+		t.Errorf("smart-model calls = %d, want %d (a canceled pool must not take new cells)", got, firstCellCalls)
+	}
 	if got := stub.callTotal("chat-two"); got != 0 {
-		t.Errorf("chat-two calls = %d, want 0 (a canceled pool must not take new cells)", got)
+		t.Errorf("chat-two calls = %d, want 0 (model 2's cells come last under model-major order)", got)
 	}
 
-	// A stolen chat-two cell would have persisted null results for every
-	// case of the first run; chat-two must not appear there at all.
+	// A stolen smart-model agieval_zh cell would have persisted null results
+	// for every case of the second run; every run after the first must be
+	// empty for both models.
 	campaign := getCampaign(t, ts.URL, campaignID)
 	runs := campaignRuns(t, campaign)
 	if len(runs) == 0 {
@@ -248,10 +298,17 @@ func TestCancelStopsNewCells(t *testing.T) {
 	}
 	firstRunID := int64(runs[0]["id"].(float64))
 	detail := runDetail(t, ts.URL, firstRunID)
-	if got := resultsByModel(detail, "chat-two"); len(got) != 0 {
-		t.Errorf("chat-two has %d result rows in run %d, want 0 (stolen cell)", len(got), firstRunID)
-	}
 	if got := resultsByModel(detail, "smart-model"); len(got) != firstCellCalls {
 		t.Errorf("smart-model has %d result rows in run %d, want its %d recorded cases", len(got), firstRunID, firstCellCalls)
+	}
+	for _, run := range runs[1:] {
+		runID := int64(run["id"].(float64))
+		detail := runDetail(t, ts.URL, runID)
+		if got := resultsByModel(detail, "smart-model"); len(got) != 0 {
+			t.Errorf("smart-model has %d result rows in run %d, want 0 (stolen cell)", len(got), runID)
+		}
+		if got := resultsByModel(detail, "chat-two"); len(got) != 0 {
+			t.Errorf("chat-two has %d result rows in run %d, want 0 (stolen cell)", len(got), runID)
+		}
 	}
 }
