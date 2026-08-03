@@ -4,7 +4,28 @@
   <div class="ops-panel">
     <div class="panel-header">
       <div class="card-title">评估批次</div>
-      <el-button type="primary" :disabled="tracking" @click="triggerDialogVisible = true">触发评估</el-button>
+      <div class="header-actions">
+        <!-- Disabled buttons swallow pointer events, so the reason tooltip
+             needs a wrapper span. -->
+        <el-tooltip
+          :disabled="sweepModelCount > 0"
+          content="暂无参与评估的对话模型(均已在模型管理中关闭「参与评估」)"
+          placement="bottom"
+        >
+          <span>
+            <el-button
+              type="warning"
+              plain
+              :disabled="tracking || sweeping || sweepModelCount === 0"
+              :loading="sweeping"
+              @click="onFullSweep"
+            >
+              一键全量
+            </el-button>
+          </span>
+        </el-tooltip>
+        <el-button type="primary" :disabled="tracking" @click="triggerDialogVisible = true">触发评估</el-button>
+      </div>
     </div>
 
     <el-alert
@@ -55,13 +76,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/client'
-import { listEvalRuns, listSuites } from '@/api/evals'
+import { listEvalRuns, listSuites, createFullSweep } from '@/api/evals'
 import { cancelCampaign, getCampaign, listCampaigns } from '@/api/campaigns'
 import { listModels } from '@/api/models'
 import EvalCampaignList from '@/components/EvalCampaignList.vue'
 import EvalTriggerDialog from '@/components/EvalTriggerDialog.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import { createVisibilityPoll } from '@/utils/visibilityPoll'
+import { friendlyTriggerError } from '@/utils/evalTrigger'
 import type { Campaign, EvalRun, Model, Suite } from '@/api/types'
 
 // Eval operations panel (admin console): manual triggering, live progress of
@@ -80,6 +102,38 @@ const detailRunId = ref<number | null>(null)
 const trackedCampaign = ref<Campaign | null>(null)
 const tracking = ref(false)
 let pollHandle: { clear(): void } | null = null
+
+// One-click full sweep (empty POST /evals body): every enabled suite x
+// every active chat model whose "join evaluations" switch is on (GH #170).
+const sweepModelCount = computed(
+  () => models.value.filter(m => m.capability === 'chat' && m.status === 'active' && m.eval_enabled).length
+)
+const sweepSuiteCount = computed(() => suites.value.filter(s => s.enabled).length)
+const sweeping = ref(false)
+
+// The sweep costs a whole evaluation round — confirm the blast radius
+// (duration and token cost) before firing; a success feeds the same
+// tracking loop as a dialog trigger.
+async function onFullSweep() {
+  try {
+    await ElMessageBox.confirm(
+      `将评估 ${sweepModelCount.value} 个模型 × ${sweepSuiteCount.value} 个评估集,耗时较长并产生模型调用成本,确认继续?`,
+      '一键全量评估',
+      { confirmButtonText: '开始评估', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // dismissed — no feedback needed
+  }
+  sweeping.value = true
+  try {
+    const campaign = await createFullSweep()
+    startTracking(campaign)
+  } catch (err) {
+    ElMessage.error(friendlyTriggerError(err))
+  } finally {
+    sweeping.value = false
+  }
+}
 
 const pollIntervalMs = 1500
 
@@ -208,6 +262,13 @@ onBeforeUnmount(stopPolling)
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+.header-actions .el-button + .el-button {
+  margin-left: 0;
 }
 .card-title {
   font-size: var(--hs-text-md);

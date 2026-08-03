@@ -351,11 +351,14 @@ func validateCase(c store.Case) error {
 }
 
 // createEvalRequest is the body for POST /api/evals. model_ids holds model
-// database IDs (not model ID strings). suite_id omitted (zero) means a full
-// sweep: every suite against every active chat-capable model, and model_ids
-// is ignored.
+// database IDs (not model ID strings). suite_id omitted (zero) means a sweep
+// over the enabled-suite rotation; suite_ids narrows that rotation to an
+// explicit subset (all-invalid is a 400) and model_ids replaces the
+// eval_enabled candidate list with an explicit model set (each must exist
+// and be chat-capable). Both empty keeps the legacy full sweep unchanged.
 type createEvalRequest struct {
 	SuiteID  int64   `json:"suite_id"`
+	SuiteIDs []int64 `json:"suite_ids"`
 	ModelIDs []int64 `json:"model_ids"`
 }
 
@@ -393,7 +396,13 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SuiteID == 0 {
-		s.handleFullSweep(w, r, judgeModel)
+		// The untouched empty body stays on the legacy sweep; an explicit
+		// suite and/or model selection takes the filtered path.
+		if len(req.SuiteIDs) == 0 && len(req.ModelIDs) == 0 {
+			s.handleFullSweep(w, r, judgeModel)
+		} else {
+			s.handleFilteredSweep(w, r, judgeModel, req)
+		}
 		return
 	}
 
@@ -460,6 +469,82 @@ func (s *Server) handleCreateEval(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("suite_id=%d models=%d judge=%q", req.SuiteID, len(req.ModelIDs), judgeModel), "accepted")
+	s.writeCampaignCreated(w, campaign.ID)
+}
+
+// handleFilteredSweep is the sweep path with an explicit suite and/or model
+// selection: suite_ids narrows the evaluation rotation (ListEnabledSuites
+// filtered; none matching is a 400), model_ids replaces the eval_enabled
+// candidate list with an explicit set validated to the single-suite caliber
+// (each must exist and be chat-capable). The untouched empty body never
+// reaches here — it stays on handleFullSweep.
+func (s *Server) handleFilteredSweep(w http.ResponseWriter, r *http.Request, judgeModel string, req createEvalRequest) {
+	modelIDs := req.ModelIDs
+	if len(modelIDs) == 0 {
+		var err error
+		modelIDs, err = s.db.ListActiveChatModelIDs()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list models")
+			return
+		}
+	} else {
+		for _, id := range modelIDs {
+			model, err := s.db.GetModel(id)
+			if err != nil {
+				writeError(w, http.StatusNotFound, fmt.Sprintf("model %d not found", id))
+				return
+			}
+			if model.Capability != "chat" {
+				writeError(w, http.StatusBadRequest,
+					fmt.Sprintf("model %d (%s) has capability %q and cannot be evaluated", id, model.ModelID, model.Capability))
+				return
+			}
+		}
+	}
+	if len(modelIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "no active chat-capable models to evaluate")
+		return
+	}
+
+	suites, err := s.db.ListEnabledSuites()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list suites")
+		return
+	}
+	if len(req.SuiteIDs) > 0 {
+		want := make(map[int64]bool, len(req.SuiteIDs))
+		for _, id := range req.SuiteIDs {
+			want[id] = true
+		}
+		var filtered []store.Suite
+		for _, suite := range suites {
+			if want[suite.ID] {
+				filtered = append(filtered, suite)
+			}
+		}
+		if len(filtered) == 0 {
+			writeError(w, http.StatusBadRequest, "suite_ids matched no enabled suite")
+			return
+		}
+		suites = filtered
+	}
+
+	campaign, err := s.db.CreateCampaign("manual", modelIDs, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create campaign")
+		return
+	}
+
+	// Detached context: the sweep outlives the request; state is polled.
+	// Tests may force synchronous execution via WithSyncEval.
+	if s.syncEval {
+		s.evaluator.RunCampaign(context.Background(), campaign.ID, "manual", suites, modelIDs, judgeModel)
+	} else {
+		go s.evaluator.RunCampaign(context.Background(), campaign.ID, "manual", suites, modelIDs, judgeModel)
+	}
+
+	s.audit(r, "eval.create", "campaign", strconv.FormatInt(campaign.ID, 10),
+		fmt.Sprintf("filtered sweep suites=%d models=%d judge=%q", len(suites), len(modelIDs), judgeModel), "accepted")
 	s.writeCampaignCreated(w, campaign.ID)
 }
 

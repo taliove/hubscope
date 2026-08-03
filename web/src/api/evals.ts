@@ -33,10 +33,18 @@ export async function getEvalRun(id: number): Promise<EvalRunDetail> {
   return http.get<EvalRunDetail>(`/evals/${id}`)
 }
 
-// Triggering an eval — single-suite or full sweep — creates a campaign; the
-// response is the created campaign (its runs may still be pending creation).
-export async function createEvalRun(suiteId: number, modelIds: number[]): Promise<CampaignDetail> {
-  return http.post<CampaignDetail>('/evals', { suite_id: suiteId, model_ids: modelIds })
+// Triggering an eval creates a campaign; the response is the created
+// campaign (its runs may still be pending creation). TriggerEvalPayload is
+// the sweep form: both lists omitted is the one-click full sweep, suite_ids
+// narrows the enabled-suite rotation, model_ids overrides the eval_enabled
+// candidate list (an omitted dimension takes its server default).
+export interface TriggerEvalPayload {
+  suite_ids?: number[]
+  model_ids?: number[]
+}
+
+export async function triggerEval(payload: TriggerEvalPayload): Promise<CampaignDetail> {
+  return http.post<CampaignDetail>('/evals', payload)
 }
 
 export async function createFullSweep(): Promise<CampaignDetail> {
