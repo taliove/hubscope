@@ -70,3 +70,42 @@ export function verdictTypeLabel(verdictType: string): string {
 export function isJudgeFailure(entry: Pick<LiveFeedEntry, 'verdict_type' | 'score'>): boolean {
   return entry.verdict_type === 'judge' && entry.score === null
 }
+
+// Feed outcome filter vocabulary (2026-08-03 live-feed filters): correct =
+// full marks, wrong = scored below full marks, unscored = judge/answer
+// failure (W7: null, never zero). The Record/Object.keys single-source
+// pattern keeps the select options and the predicate in lockstep.
+export type FeedOutcome = 'correct' | 'wrong' | 'unscored'
+
+export const FEED_OUTCOME_LABELS: Record<FeedOutcome, string> = {
+  correct: '正确',
+  wrong: '错误',
+  unscored: '未判分',
+}
+export const FEED_OUTCOMES = Object.keys(FEED_OUTCOME_LABELS) as FeedOutcome[]
+
+export interface FeedFilter {
+  model?: string
+  suite?: string
+  outcome?: FeedOutcome | ''
+}
+
+// filterLiveFeed applies the feed-head filters client-side: the feed is a
+// bounded increment (LIVE_FEED_CAP), so filtering the accumulated entries
+// needs no API round-trip. Empty facets match everything.
+export function filterLiveFeed(entries: LiveFeedEntry[], filter: FeedFilter): LiveFeedEntry[] {
+  return entries.filter((e) => {
+    if (filter.model && e.model_id !== filter.model) return false
+    if (filter.suite && e.suite_key !== filter.suite) return false
+    switch (filter.outcome) {
+      case 'correct':
+        return e.score === 1
+      case 'wrong':
+        return e.score !== null && e.score < 1
+      case 'unscored':
+        return e.score === null
+      default:
+        return true
+    }
+  })
+}

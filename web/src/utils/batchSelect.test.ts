@@ -39,12 +39,12 @@ describe('resolveInitialBatchId', () => {
     expect(resolveInitialBatchId(list, 5)).toBe(5)
   })
 
-  it('falls back to the newest done batch when no query is given (direct /eval visit)', () => {
-    expect(resolveInitialBatchId(list, null)).toBe(4)
+  it('leads with the newest batch overall when no query is given (2026-08-03 ruling)', () => {
+    expect(resolveInitialBatchId(list, null)).toBe(5)
   })
 
-  it('falls back to the newest done batch when the query batch is gone', () => {
-    expect(resolveInitialBatchId(list, 99)).toBe(4)
+  it('leads with the newest batch overall when the query batch is gone', () => {
+    expect(resolveInitialBatchId(list, 99)).toBe(5)
   })
 
   it('falls back to the newest batch of any state when none is done', () => {

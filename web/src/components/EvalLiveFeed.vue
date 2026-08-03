@@ -6,6 +6,19 @@
     <div class="feed-head">
       <span class="feed-title">实时动态</span>
       <span class="feed-note">题目级判分事件,随轮询增量刷新</span>
+      <!-- Feed filters (2026-08-03): model / suite / outcome, client-side
+           over the accumulated increment — no API round-trip. -->
+      <span class="feed-filters">
+        <el-select v-model="filterModel" size="small" clearable placeholder="全部模型" class="feed-filter">
+          <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
+        </el-select>
+        <el-select v-model="filterSuite" size="small" clearable placeholder="全部维度" class="feed-filter">
+          <el-option v-for="s in suiteOptions" :key="s.key" :label="s.name" :value="s.key" />
+        </el-select>
+        <el-select v-model="filterOutcome" size="small" clearable placeholder="全部结果" class="feed-filter">
+          <el-option v-for="o in FEED_OUTCOMES" :key="o" :label="FEED_OUTCOME_LABELS[o]" :value="o" />
+        </el-select>
+      </span>
     </div>
 
     <!-- Error state: reason plus a retry entry (ui-guidelines §6). The
@@ -31,7 +44,12 @@
          verdict) fetched on demand per result id; the expansion set is
          keyed by entry id so polling prepends never collapse an open row. -->
     <div v-if="entries.length > 0" class="feed-list">
-      <div v-for="e in displayEntries" :key="e.id" class="feed-item">
+      <el-empty
+        v-if="filteredEntries.length === 0"
+        description="没有符合筛选条件的判分事件"
+        :image-size="60"
+      />
+      <div v-for="e in filteredEntries" :key="e.id" class="feed-item">
         <div class="feed-row feed-row-clickable" @click="toggle(e.id)">
           <span class="feed-time">{{ formatClockTime(e.created_at) }}</span>
           <span class="feed-model" :title="e.model_id">{{ e.model_id }}</span>
@@ -112,7 +130,7 @@ import { computed, ref } from 'vue'
 import type { LiveFeedEntry, LiveFeedResultDetail } from '@/api/types'
 import { getCampaignLiveFeedResult } from '@/api/campaigns'
 import { formatClockTime, formatMs, formatScore } from '@/utils/format'
-import { liveFeedDisplay, isJudgeFailure, toggleExpansion, verdictTypeLabel } from '@/utils/liveFeed'
+import { filterLiveFeed, isJudgeFailure, liveFeedDisplay, toggleExpansion, verdictTypeLabel, FEED_OUTCOMES, FEED_OUTCOME_LABELS, type FeedOutcome } from '@/utils/liveFeed'
 import { scoreBand } from '@/utils/scoreTier'
 
 // EvalLiveFeed is the running batch's case-level event stream (issue #17):
@@ -140,7 +158,25 @@ const emit = defineEmits<{
   (e: 'retry'): void
 }>()
 
-const displayEntries = computed(() => liveFeedDisplay(props.entries))
+// Feed-head filters (2026-08-03): applied over the ordered display list;
+// options derive from the accumulated entries, so a filter never offers a
+// value that cannot match.
+const filterModel = ref('')
+const filterSuite = ref('')
+const filterOutcome = ref<FeedOutcome | ''>('')
+const modelOptions = computed(() => [...new Set(props.entries.map((e) => e.model_id))].sort())
+const suiteOptions = computed(() => {
+  const seen = new Map<string, string>()
+  for (const e of props.entries) if (!seen.has(e.suite_key)) seen.set(e.suite_key, e.suite_name)
+  return [...seen.entries()].map(([key, name]) => ({ key, name }))
+})
+const filteredEntries = computed(() =>
+  filterLiveFeed(liveFeedDisplay(props.entries), {
+    model: filterModel.value,
+    suite: filterSuite.value,
+    outcome: filterOutcome.value,
+  }),
+)
 
 // Expansion state, keyed by entry id (GH #41). Details and errors are Maps
 // so a failed fetch only marks its own expansion; every update replaces the
@@ -212,9 +248,18 @@ function scoreClass(score: number | null): string {
 }
 .feed-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
+}
+.feed-filters {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+}
+.feed-filter {
+  width: 140px;
 }
 .feed-title {
   font-size: var(--hs-text-lg);

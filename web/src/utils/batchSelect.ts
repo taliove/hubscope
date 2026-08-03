@@ -16,13 +16,14 @@ export function parseBatchQuery(raw: string | (string | null)[] | null | undefin
 }
 
 // Pick the initially selected batch: the query-specified one when it
-// exists in the list, otherwise the established default — the newest done
-// campaign, falling back to the newest batch of any state so a running
-// first batch still shows its progress.
+// exists in the list, otherwise the newest batch overall (2026-08-03 user
+// ruling — a freshly triggered running batch leads, so the page follows
+// the action; the list is newest-first), falling back to the newest done
+// batch only when the newest entry somehow cannot be shown.
 export function resolveInitialBatchId(
   campaigns: ReadonlyArray<Pick<Campaign, 'id' | 'status'>>,
   requestedId: number | null,
 ): number | null {
   if (requestedId !== null && campaigns.some((c) => c.id === requestedId)) return requestedId
-  return (campaigns.find((c) => c.status === 'done') ?? campaigns[0])?.id ?? null
+  return (campaigns[0] ?? campaigns.find((c) => c.status === 'done'))?.id ?? null
 }

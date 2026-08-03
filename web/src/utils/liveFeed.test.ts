@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJudgeFailure, LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, toggleExpansion, verdictTypeLabel } from './liveFeed'
+import { filterLiveFeed, isJudgeFailure, LIVE_FEED_CAP, liveFeedCursor, liveFeedDisplay, mergeLiveFeed, toggleExpansion, verdictTypeLabel } from './liveFeed'
 import type { LiveFeedEntry } from '@/api/types'
 
 function entry(id: number): LiveFeedEntry {
@@ -107,5 +107,27 @@ describe('toggleExpansion', () => {
   it('keeps existing expansions keyed by id — new entries never collapse them', () => {
     const open = toggleExpansion(new Set([3, 9]), 12)
     expect([...open].sort((a, b) => a - b)).toEqual([3, 9, 12])
+  })
+})
+
+describe('filterLiveFeed', () => {
+  const entries = [
+    { id: 1, model_id: 'm1', suite_key: 'mmlu', suite_name: '知识', case_id: 1, case_prompt: 'p', verdict_type: 'rule', score: 1, latency_ms: 1, created_at: '2026-08-03T00:00:01Z' },
+    { id: 2, model_id: 'm1', suite_key: 'gsm8k', suite_name: '推理', case_id: 2, case_prompt: 'p', verdict_type: 'rule', score: 0.4, latency_ms: 1, created_at: '2026-08-03T00:00:02Z' },
+    { id: 3, model_id: 'm2', suite_key: 'mmlu', suite_name: '知识', case_id: 3, case_prompt: 'p', verdict_type: 'judge', score: null, latency_ms: 1, created_at: '2026-08-03T00:00:03Z' },
+  ]
+
+  it('filters by model, suite and outcome independently', () => {
+    expect(filterLiveFeed(entries, { model: 'm2' }).map((e) => e.id)).toEqual([3])
+    expect(filterLiveFeed(entries, { suite: 'mmlu' }).map((e) => e.id)).toEqual([1, 3])
+    expect(filterLiveFeed(entries, { outcome: 'correct' }).map((e) => e.id)).toEqual([1])
+    expect(filterLiveFeed(entries, { outcome: 'wrong' }).map((e) => e.id)).toEqual([2])
+    expect(filterLiveFeed(entries, { outcome: 'unscored' }).map((e) => e.id)).toEqual([3])
+  })
+
+  it('composes facets and matches everything when empty', () => {
+    expect(filterLiveFeed(entries, { model: 'm1', outcome: 'wrong' }).map((e) => e.id)).toEqual([2])
+    expect(filterLiveFeed(entries, {})).toHaveLength(3)
+    expect(filterLiveFeed(entries, { outcome: '' })).toHaveLength(3)
   })
 })
