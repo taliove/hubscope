@@ -162,7 +162,7 @@ const form = reactive<AppSettings>({
   judge_model: 'claude-opus-4-8',
   default_sample_count: 1,
   eval_concurrency: 4,
-  eval_campaign_budget_minutes: 120,
+  eval_campaign_budget_minutes: 60,
   suite_weights: {},
   quiet_hours_enabled: false,
   quiet_hours_start: 23,

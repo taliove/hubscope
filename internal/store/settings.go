@@ -69,10 +69,11 @@ const (
 	// MaxEvalConcurrency caps the eval worker pool; beyond this hub load and
 	// latency distortion grow without meaningful speedup.
 	MaxEvalConcurrency = 16
-	// DefaultEvalCampaignBudgetMin bounds a batch to two hours out of the
-	// box (GH #153): a half-dead Hub can no longer hold a campaign for
-	// hours through 120s-per-request stalls.
-	DefaultEvalCampaignBudgetMin = 120
+	// DefaultEvalCampaignBudgetMin bounds a batch to one hour out of the
+	// box (GH #153 introduced the budget; GH #171 converges the default to
+	// the user's "every batch inside an hour" target): a half-dead Hub can
+	// no longer hold a campaign for hours through 120s-per-request stalls.
+	DefaultEvalCampaignBudgetMin = 60
 	// MaxEvalCampaignBudgetMin caps the campaign budget at one week.
 	MaxEvalCampaignBudgetMin = 10080
 	// DefaultQuietHoursEnabled keeps alerting loud out of the box: quiet
