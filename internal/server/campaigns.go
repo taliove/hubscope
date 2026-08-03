@@ -98,7 +98,41 @@ func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
 	for _, c := range campaigns {
 		dtos = append(dtos, toCampaignDTO(c))
 	}
+	if err := s.fillActiveCampaignUnits(dtos); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load campaign unit progress")
+		return
+	}
 	writeData(w, http.StatusOK, dtos)
+}
+
+// fillActiveCampaignUnits attaches the judged-unit aggregate to every
+// active campaign in the list (2026-08-03 sidebar pill caliber): runs
+// settle late under model-major feeding, so the live progress of a running
+// batch is judged cases over expected cases. The GH #153 mutex means at
+// most one campaign is active, so the extra aggregate query is singular.
+func (s *Server) fillActiveCampaignUnits(dtos []campaignDTO) error {
+	for i := range dtos {
+		if dtos[i].Status != store.CampaignStatusRunning && dtos[i].Status != store.CampaignStatusPending {
+			continue
+		}
+		runs, err := s.db.ListEvalRunsByCampaign(dtos[i].ID)
+		if err != nil {
+			return err
+		}
+		runIDs := make([]int64, len(runs))
+		for j, run := range runs {
+			runIDs[j] = run.ID
+		}
+		units, err := s.db.GetRunUnitProgress(runIDs)
+		if err != nil {
+			return err
+		}
+		for _, u := range units {
+			dtos[i].Progress.JudgedUnits += u.DoneUnits
+			dtos[i].Progress.ExpectedUnits += u.TotalUnits
+		}
+	}
+	return nil
 }
 
 // handleGetCampaign handles GET /api/campaigns/{id}: the campaign, its

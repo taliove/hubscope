@@ -33,7 +33,7 @@ function makeReport(overrides: Partial<CampaignReport> = {}): CampaignReport {
     started_at: '2026-07-27T08:00:00Z',
     finished_at: '2026-07-27T09:00:00Z',
     created_at: '2026-07-27T08:00:00Z',
-    progress: { total: 4, done: 4, failed: 0, running: 0 },
+    progress: { total: 4, done: 4, failed: 0, running: 0, judged_units: 0, expected_units: 0 },
     suites: [makeSuite('reasoning', '推理'), makeSuite('coding', '编码')],
     weights: { reasoning: 1, coding: 1 },
     rows: [makeRow('model-a'), makeRow('model-b')],
@@ -59,7 +59,7 @@ describe('buildEvalCardSnapshot scope chips', () => {
     const report = makeReport({
       trigger: 'scheduled',
       status: 'failed',
-      progress: { total: 4, done: 2, failed: 2, running: 0 },
+      progress: { total: 4, done: 2, failed: 2, running: 0, judged_units: 0, expected_units: 0 },
     })
     const snapshot = buildEvalCardSnapshot(report, defaultQuery)
     expect(snapshot.chips[0]).toEqual({ label: '批次', value: '#42 · 定时 · 失败' })
@@ -119,7 +119,7 @@ describe('buildEvalCardSnapshot failed warning', () => {
   it('carries the page-alert wording for a failed batch', () => {
     const report = makeReport({
       status: 'failed',
-      progress: { total: 4, done: 1, failed: 3, running: 0 },
+      progress: { total: 4, done: 1, failed: 3, running: 0, judged_units: 0, expected_units: 0 },
     })
     const snapshot = buildEvalCardSnapshot(report, defaultQuery)
     expect(snapshot.failedWarning).toBe('批次有 3 个评估运行失败,榜单仅统计已完成的评估集')

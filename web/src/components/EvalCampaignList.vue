@@ -101,7 +101,7 @@ const campaignGroups = computed(() => {
         started_at: null,
         finished_at: null,
         created_at: first.started_at,
-        progress: { total: orphans.length, done, failed, running },
+        progress: { total: orphans.length, done, failed, running, judged_units: 0, expected_units: 0 },
       },
       runs: orphans,
     })

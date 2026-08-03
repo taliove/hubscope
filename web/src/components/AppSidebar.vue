@@ -31,7 +31,7 @@
            the items while the footer stays put. -->
       <button v-if="user && activeBatch" type="button" class="batch-entry" @click="goToActiveBatch">
         <Loading class="batch-icon" />
-        <span>批次运行中 {{ activeBatch.progress.done + activeBatch.progress.failed }}/{{ activeBatch.progress.total }}</span>
+        <span>批次运行中 {{ batchProgressText }}</span>
       </button>
     </nav>
 
@@ -158,6 +158,16 @@ async function refreshAuth() {
 // is advisory: fetch failures stay silent and simply hide it.
 const activeBatch = ref<Campaign | null>(null)
 let batchPoll: VisibilityPollHandle | null = null
+
+// Pill progress text (2026-08-03): judged units when the backend fills them
+// (runs settle late under model-major, so run counts pin at 0); the run
+// count stays as the fallback for an empty rotation.
+const batchProgressText = computed(() => {
+  const p = activeBatch.value?.progress
+  if (!p) return ''
+  if (p.expected_units > 0) return `${p.judged_units}/${p.expected_units}`
+  return `${p.done + p.failed}/${p.total}`
+})
 
 function stopBatchPolling() {
   batchPoll?.clear()

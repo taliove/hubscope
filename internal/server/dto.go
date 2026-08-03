@@ -330,12 +330,18 @@ func deref(s *string) string {
 	return *s
 }
 
-// campaignProgressDTO is the per-status run-count aggregate of a campaign.
+// campaignProgressDTO is the per-status run-count aggregate of a campaign,
+// plus the judged-unit aggregate for active campaigns (2026-08-03 sidebar
+// pill caliber: judged units, since runs settle late under model-major).
 type campaignProgressDTO struct {
 	Total   int `json:"total"`
 	Done    int `json:"done"`
 	Failed  int `json:"failed"`
 	Running int `json:"running"`
+	// JudgedUnits/ExpectedUnits are filled only for running/pending
+	// campaigns; zero on settled ones.
+	JudgedUnits   int `json:"judged_units"`
+	ExpectedUnits int `json:"expected_units"`
 }
 
 // campaignDTO is the API representation of a Campaign with its run-count

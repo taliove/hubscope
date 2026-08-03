@@ -290,6 +290,10 @@ export interface CampaignProgress {
   done: number
   failed: number
   running: number
+  // Judged-unit aggregate, filled only for active campaigns (2026-08-03
+  // sidebar pill caliber); zero on settled ones.
+  judged_units: number
+  expected_units: number
 }
 
 export interface Campaign {
@@ -439,6 +443,22 @@ export interface CampaignCostRow {
   latency_ms: number
   input_tokens: number | null
   output_tokens: number | null
+}
+
+// Targeted retry (retry-units): one (model, case) unit of a settled batch
+// to re-evaluate. Only null-score units are accepted; judged units are
+// skipped and never re-asked (W7).
+export interface RetryUnitItem {
+  model_db_id: number
+  case_id: number
+}
+
+// Retry-units response: accepted units were null-score and are re-running
+// (the batch returns to running); skipped units were already judged or
+// unknown to the campaign.
+export interface RetryUnitsAck {
+  accepted: number
+  skipped: number
 }
 
 // Public eval board (ticket 81, spec 0010): GET /api/public/eval/board —
