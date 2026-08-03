@@ -10,8 +10,32 @@ import (
 )
 
 // RetryFailedResults re-evaluates every failed (null-score) result of a
-// campaign (GH #28). The caller reopens the campaign to running before
-// invoking it — reopening also migrates every run holding null-score results
+// campaign (GH #28) — the unrestricted form of retryNullScoreCells.
+func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
+	e.retryNullScoreCells(ctx, campaignID, nil)
+}
+
+// RetryUnits re-evaluates an explicit set of (model, case) units of a
+// campaign (retry-units, the targeted sibling of GH #28's retry-failed).
+// The caller reopens the campaign with ReopenCampaignForUnitRetry before
+// invoking it — only runs holding at least one requested null-score unit
+// rejoin execution — and this method drives those runs' requested failed
+// cells through the same bounded pool, run finishing and settle path as a
+// batch retry. Units whose score is no longer null by execution time simply
+// match no null row and produce no cell, so a judged result is never
+// re-asked (W7); units the campaign never recorded behave the same way.
+func (e *Evaluator) RetryUnits(ctx context.Context, campaignID int64, units []store.RetryUnit) {
+	set := make(map[store.RetryUnit]struct{}, len(units))
+	for _, u := range units {
+		set[u] = struct{}{}
+	}
+	e.retryNullScoreCells(ctx, campaignID, set)
+}
+
+// retryNullScoreCells is the shared retry driver behind RetryFailedResults
+// (units == nil: every null-score unit) and RetryUnits (an explicit unit
+// set). The caller reopens the campaign to running before invoking it —
+// reopening also migrates every run holding a retrievable null-score result
 // back to running (GH #39) — and this method fans the failed (run × model)
 // cells out through the same bounded pool as a normal batch, finishes each
 // reopened run when its cells complete, and settles the campaign once — so
@@ -22,7 +46,8 @@ import (
 // all executed finishes done regardless of how many retried cases failed
 // again (a null score is a result, never a run failure), and a run whose
 // cells were dropped by context cancellation finishes failed. Runs without
-// failed results were left untouched by the reopen and stay untouched here.
+// retrievable failed results were left untouched by the reopen and stay
+// untouched here.
 //
 // Only null-score units are touched: each case's old null row is deleted
 // right before its fresh evaluation (DeleteNullScoreResult hardcodes
@@ -30,7 +55,7 @@ import (
 // null row. Scored results are never read for rewriting, let alone modified
 // (W7). Cases not yet attempted keep their null rows, so an interrupted
 // retry stays retryable.
-func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
+func (e *Evaluator) retryNullScoreCells(ctx context.Context, campaignID int64, units map[store.RetryUnit]struct{}) {
 	// Registered for operator cancel (GH #152), same as a fresh batch.
 	ctx = e.registerCancel(ctx, campaignID)
 	defer e.unregisterCancel(campaignID)
@@ -61,9 +86,21 @@ func (e *Evaluator) RetryFailedResults(ctx context.Context, campaignID int64) {
 			}
 			continue
 		}
+		if units != nil {
+			// Targeted retry: restrict to the requested units. A run holding
+			// none of them was left untouched by the reopen (its EXISTS guard
+			// uses the same unit set) and stays untouched here.
+			requested := make([]store.NullScoreCell, 0, len(nulls))
+			for _, n := range nulls {
+				if _, ok := units[store.RetryUnit{ModelDBID: n.ModelDBID, CaseID: n.CaseID}]; ok {
+					requested = append(requested, n)
+				}
+			}
+			nulls = requested
+		}
 		if len(nulls) == 0 {
-			// ReopenCampaignForRetry left this run untouched (GH #39):
-			// nothing to re-evaluate, nothing to finish.
+			// The reopen left this run untouched (GH #39): nothing to
+			// re-evaluate, nothing to finish.
 			continue
 		}
 		// Group the failed cases by model, preserving first-seen order.

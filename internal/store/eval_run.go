@@ -588,6 +588,57 @@ func (db *DB) ListNullScoreCells(runID int64) ([]NullScoreCell, error) {
 	return out, rows.Err()
 }
 
+// RetryUnit identifies one (model, case) unit a targeted retry is asked to
+// re-evaluate (retry-units, the single-unit sibling of GH #28's batch
+// retry-failed). Unlike NullScoreCell it carries no model string: it is a
+// request-side selector, not a stored row.
+type RetryUnit struct {
+	ModelDBID int64
+	CaseID    int64
+}
+
+// retryUnitWhere builds an OR-of-ANDs WHERE fragment over the (model_db_id,
+// case_id) pairs plus its args, against the aliased eval_results columns.
+// Callers pass 1..N units (bounded at the handler boundary); an empty slice
+// would produce an empty clause and is a programming error.
+func retryUnitWhere(alias string, units []RetryUnit) (string, []interface{}) {
+	parts := make([]string, 0, len(units))
+	args := make([]interface{}, 0, 2*len(units))
+	for _, u := range units {
+		parts = append(parts, "("+alias+".model_db_id = ? AND "+alias+".case_id = ?)")
+		args = append(args, u.ModelDBID, u.CaseID)
+	}
+	return strings.Join(parts, " OR "), args
+}
+
+// CampaignNullScoreUnits returns the subset of the requested units that
+// currently hold a failed (null-score) result in the campaign — exactly the
+// units a targeted retry will re-evaluate. Units with a judged (non-null)
+// score and units the campaign never recorded are both absent (W7: only
+// null scores are retryable); the handler reports them as skipped.
+func (db *DB) CampaignNullScoreUnits(campaignID int64, units []RetryUnit) (map[RetryUnit]struct{}, error) {
+	where, args := retryUnitWhere("res", units)
+	rows, err := db.conn.Query(`
+		SELECT res.model_db_id, res.case_id FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		WHERE r.campaign_id = ? AND res.score IS NULL AND (`+where+`)
+	`, append([]interface{}{campaignID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[RetryUnit]struct{}, len(units))
+	for rows.Next() {
+		var u RetryUnit
+		if err := rows.Scan(&u.ModelDBID, &u.CaseID); err != nil {
+			return nil, err
+		}
+		out[u] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
 // DeleteNullScoreResult removes the failed (null-score) result row of one
 // (run, model, case) unit, immediately before its re-evaluation inserts the
 // fresh row (GH #28). The score IS NULL clause is deliberately hardcoded —

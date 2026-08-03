@@ -283,6 +283,49 @@ func (db *DB) ReopenCampaignForRetry(id int64) (bool, error) {
 	return true, nil
 }
 
+// ReopenCampaignForUnitRetry is the targeted-retry (retry-units) twin of
+// ReopenCampaignForRetry: the same state-guarded settled → running campaign
+// migration (a concurrent retry loses the race instead of double-firing),
+// but only member runs holding at least one of the requested null-score
+// units rejoin execution — a run whose failed results were not requested
+// keeps its terminal state, the same guard that keeps clean done runs
+// untouched under the batch retry (GH #39). It returns false when the
+// campaign was not settled.
+func (db *DB) ReopenCampaignForUnitRetry(id int64, units []RetryUnit) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	where, args := retryUnitWhere("res", units)
+	if _, err := tx.Exec(`
+		UPDATE eval_runs SET status = 'running', finished_at = NULL
+		WHERE campaign_id = ? AND status IN ('done', 'failed')
+		AND EXISTS (
+			SELECT 1 FROM eval_results res
+			WHERE res.eval_run_id = eval_runs.id AND res.score IS NULL
+			AND (`+where+`)
+		)
+	`, append([]interface{}{id}, args...)...); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CountCampaignNullScoreResults counts the campaign's failed results — the
 // eval_results rows whose score IS NULL across every member run (GH #28). It
 // is the retry-failed precondition and the report's failed_results field.
