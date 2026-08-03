@@ -338,7 +338,7 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	ts, stub, _ := setupAsyncEvalEnv(t)
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
-	stub.markBroken("alpha-model", true)
+	stub.markCaseBroken("alpha-model", true)
 
 	// Gamma joins the sweep as a discovered model and retires mid-flight:
 	// the shared board must drop it (store-layer filter inheritance).
@@ -353,15 +353,16 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	setEvalConcurrency(t, ts.URL, 1)
 
 	stub.resetCalls()
-	stub.blockModelAfter("beta-model", 407)
+	// 3 probe-gate rounds (GH #174) precede beta's case calls.
+	stub.blockModelAfter("beta-model", 410)
 	t.Cleanup(func() { stub.releaseModel("beta-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Beta's 408th call being recorded proves the freeze point: the campaign
+	// Beta's 411th call being recorded proves the freeze point: the campaign
 	// is running with results already on record.
-	waitFor(t, "beta's 408th call reaching the stub", func() bool {
-		return stub.callTotal("beta-model") >= 408
+	waitFor(t, "beta's 411th call reaching the stub", func() bool {
+		return stub.callTotal("beta-model") >= 411
 	})
 
 	link := createShareLink(t, ts.URL, campaignID)

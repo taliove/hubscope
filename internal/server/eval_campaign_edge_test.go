@@ -66,7 +66,9 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 	// overshoot the threshold first.
 	stub.resetCalls()
 	mmluCalls := enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
-	stub.blockModelAfter("chat-three", mmluCalls)
+	// chat-three's probe stage costs three calls before its first case
+	// (GH #174); the freeze lands at the same suite boundary as before.
+	stub.blockModelAfter("chat-three", 3+mmluCalls)
 	t.Cleanup(func() { stub.releaseModel("chat-three") })
 
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday

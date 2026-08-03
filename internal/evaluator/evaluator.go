@@ -33,6 +33,18 @@ const circuitBreakerThreshold = 5
 // answers, the Hub side is hopeless and unstarted cells are dropped.
 const campaignAbortCells = 3
 
+// Probe gate (spec 0020, GH #174): before the first case burns, every
+// selected model is sampled probeGateRounds times with a tiny completion
+// call; each round gets its own short timeout so a hung model cannot hold
+// the gate, and probing fans out under a small cap.
+const (
+	probeGateRounds    = 3
+	probeGateTimeout   = 30 * time.Second
+	probeGateMaxTokens = 16
+	probeGateParallel  = 8
+	probeGatePrompt    = "ping"
+)
+
 // Evaluator executes eval runs and persists per-case results.
 //
 // AfterCampaign, when set, is invoked once after a campaign settles to
@@ -194,6 +206,33 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Probe gate (spec 0020, GH #174): measure every selected model's
+	// reachability before the first case burns. Unreachable models leave
+	// the feed — no cells, no dead rows — and an all-unreachable batch
+	// fails every run with the gate reason instead of settling an empty
+	// success. The gate runs inside the campaign budget: probing is part
+	// of the batch's wall clock.
+	reachable := e.probeGate(ctx, prepared, modelDBIDs)
+	// A nil gate means the context was canceled mid-probe: the outcome is
+	// meaningless, so feed everything and let the canceled pool drop every
+	// cell — the standard tail then fails the runs with the cancellation
+	// reason instead of a bogus gate verdict.
+	feed := modelDBIDs
+	if reachable != nil {
+		feed = make([]int64, 0, len(modelDBIDs))
+		for _, id := range modelDBIDs {
+			if reachable[id] {
+				feed = append(feed, id)
+			}
+		}
+		if len(feed) == 0 && len(modelDBIDs) > 0 {
+			for _, prep := range prepared {
+				e.failPreparedRun(prep, "probe gate: every selected model unreachable")
+			}
+			return
+		}
+	}
+
 	var deadline time.Time
 	if budget := e.resolveCampaignBudgetMinutes(); budget > 0 {
 		deadline = e.now().Add(time.Duration(budget) * time.Minute)
@@ -215,18 +254,18 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 
 	remaining := map[int64]int{}
 	for _, prep := range prepared {
-		remaining[prep.run.ID] = len(modelDBIDs)
+		remaining[prep.run.ID] = len(feed)
 		// A run with no models has no cells to wait for: it evaluates
 		// nothing and finishes done immediately (the serial executor's
 		// zero-model outcome).
-		if len(modelDBIDs) == 0 {
+		if len(feed) == 0 {
 			e.finishPreparedRun(prep, "done")
 		}
 	}
 	// GH #169: model-major cell order — the pool takes a model's whole suite
 	// list before the next model's first cell.
 	var cells []evalCell
-	for _, modelDBID := range modelDBIDs {
+	for _, modelDBID := range feed {
 		for _, prep := range prepared {
 			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
 		}
@@ -516,6 +555,111 @@ func (e *Evaluator) warnJudgeUnreachable(prepared []*preparedRun, modelDBIDs []i
 			}
 		}
 	}
+}
+
+// probeGate measures each selected model's reachability before any case
+// burns (spec 0020, GH #174): probeGateRounds small completion calls per
+// model, models probed in parallel under a small cap. The outcome decides
+// the cell feed — an unreachable model is skipped without cells or result
+// rows (the GH #154 retired-model form) — and is named in every run's
+// task log. Outcomes live only in the returned map and the task logs:
+// they never touch the probes table or the status machine (W5 — an eval
+// probe is not monitoring). Models that cannot be probed (gone, retired,
+// no enabled chat endpoint) stay reachable so evalModel's existing
+// setup-failure paths report them unchanged.
+func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) map[int64]bool {
+	reachable := make(map[int64]bool, len(modelDBIDs))
+	type probeTarget struct {
+		id       int64
+		hub      *store.Hub
+		protocol string
+		modelID  string
+	}
+	var targets []probeTarget
+	for _, id := range modelDBIDs {
+		reachable[id] = true
+		model, err := e.db.GetModel(id)
+		if err != nil || model.Status == "retired" {
+			continue
+		}
+		hub, err := e.db.GetHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		endpoints, err := e.db.ListEndpointsByModelID(id)
+		if err != nil {
+			continue
+		}
+		protocol, ok := selectProtocol(endpoints)
+		if !ok {
+			continue
+		}
+		targets = append(targets, probeTarget{id: id, hub: hub, protocol: protocol, modelID: model.ModelID})
+	}
+
+	var mu sync.Mutex
+	// The gate fans out under the same hub-pressure budget as the cell
+	// pool (capped by probeGateParallel): an admin who dialed
+	// eval_concurrency down to 1 asked for serial pressure, probes
+	// included.
+	parallel := e.resolveEvalConcurrency()
+	if parallel > probeGateParallel {
+		parallel = probeGateParallel
+	}
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+	for _, tgt := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if e.probeModel(ctx, tgt.hub, tgt.protocol, tgt.modelID) {
+				return
+			}
+			// A canceled context makes the probe outcome meaningless:
+			// never stamp a model unreachable on a canceled round — the
+			// caller aborts the whole gate instead.
+			if ctx.Err() != nil {
+				return
+			}
+			mu.Lock()
+			reachable[tgt.id] = false
+			mu.Unlock()
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
+					"model %s unreachable at probe gate (0/%d), skipped: no cases burned",
+					tgt.modelID, probeGateRounds))
+			}
+		}()
+	}
+	wg.Wait()
+	if ctx.Err() != nil {
+		return nil
+	}
+	return reachable
+}
+
+// probeModel takes probeGateRounds reachability samples of one model — the
+// full round count, never an early exit: the sample set doubles as the
+// model's stability signal (spec 0020), and a fixed cost keeps batch
+// call-count accounting deterministic. Reachable means at least one
+// success; each round gets its own timeout so a hung model cannot stall
+// the gate.
+func (e *Evaluator) probeModel(ctx context.Context, hub *store.Hub, protocol, modelID string) bool {
+	successes := 0
+	for range probeGateRounds {
+		if ctx.Err() != nil {
+			return false
+		}
+		rctx, cancel := context.WithTimeout(ctx, probeGateTimeout)
+		res := e.client.Complete(rctx, hub.BaseURL, hub.Token, protocol, modelID, probeGatePrompt, probeGateMaxTokens)
+		cancel()
+		if res.OK {
+			successes++
+		}
+	}
+	return successes > 0
 }
 
 // resolveCampaignBudgetMinutes reads the campaign wall-clock budget from

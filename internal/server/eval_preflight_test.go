@@ -45,14 +45,20 @@ func TestEvalSkipsDownModelPreflight(t *testing.T) {
 	if probed == 0 {
 		t.Fatal("down-model has no enabled endpoints to drive down")
 	}
+	// The hub recovers before the eval (GH #174): the probe gate samples
+	// the model live and admits it (3 probe calls), so the stale board's
+	// down caliber stays the pre-flight skip's job — the two layers pin
+	// exactly their own signals.
+	stub.markBroken("down-model", false)
 	stub.resetCalls()
 
 	runID := triggerEval(t, ts.URL, suiteID, downID, smartID)
 	run := waitEvalDone(t, ts.URL, runID)
 
-	// The skip fires before the case loop: not a single answer call.
-	if got := stub.callTotal("down-model"); got != 0 {
-		t.Errorf("down-model completion calls = %d, want 0 (pre-flight skip)", got)
+	// The gate's three probe rounds are the only calls: the pre-flight
+	// skip fires before the case loop, so no answer call ever happens.
+	if got := stub.callTotal("down-model"); got != 3 {
+		t.Errorf("down-model completion calls = %d, want 3 (probe gate rounds only, then pre-flight skip)", got)
 	}
 	// No dead rows are stamped for the skipped model (GH #154 precedent).
 	if res := resultsByModel(run, "down-model"); len(res) != 0 {
@@ -117,8 +123,8 @@ func TestEvalRunsFailingNotDownModel(t *testing.T) {
 	if results[0]["score"] != 1.0 {
 		t.Errorf("recover-model score = %v, want 1", results[0]["score"])
 	}
-	if got := stub.callTotal("recover-model"); got != 1 {
-		t.Errorf("recover-model completion calls = %d, want 1 (no skip)", got)
+	if got := stub.callTotal("recover-model"); got != 4 {
+		t.Errorf("recover-model completion calls = %d, want 4 (3 probe gate rounds + 1 case call, no skip)", got)
 	}
 	task := waitTaskStatus(t, ts.URL, runID, "success")
 	logs := taskLogs(t, getTaskDetail(t, ts.URL, int64(task["id"].(float64))))

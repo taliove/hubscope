@@ -111,10 +111,11 @@ func TestEvalJudge(t *testing.T) {
 // circuit reason instead.
 func TestEvalModelFailure(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
-	// Register while the hub is healthy (creation trial-probes), then break
-	// the model: every eval call 503s from here on.
+	// Register while the hub is healthy (creation trial-probes), then make
+	// the model fail at case time: it passes the probe gate (GH #174) but
+	// every case call 503s from here on.
 	modelID := createEvalModel(t, ts.URL, stub.URL, "flaky-model")
-	stub.markBroken("flaky-model", true)
+	stub.markCaseBroken("flaky-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)

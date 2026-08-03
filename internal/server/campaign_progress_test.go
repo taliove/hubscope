@@ -84,22 +84,26 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
-	stub.markBroken("gamma-model", true)
+	stub.markCaseBroken("gamma-model", true)
 	// Serial cell order (GH #26 pool at 1, GH #169 model-major): gamma's
 	// call count gates suite boundaries only under a deterministic
-	// model→suite order.
+	// model→suite order. Case-broken (GH #174): gamma passes the probe
+	// gate and fails at case time, burning the same per-cell circuit
+	// budget as the old fully-broken shape.
 	setEvalConcurrency(t, ts.URL, 1)
 	stub.resetCalls()
-	stub.blockModelAfter("gamma-model", 42)
+	// 3 probe rounds + 4 suites x 10-call circuit budget + ifeval's first
+	// case (2 attempts): the 46th call is ifeval's second case.
+	stub.blockModelAfter("gamma-model", 45)
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Gamma's 43rd call being recorded proves the freeze point: gamma is
+	// Gamma's 46th call being recorded proves the freeze point: gamma is
 	// blocked on its second ifeval case, the four earlier suites settled
 	// for everyone.
-	waitFor(t, "gamma's 43rd call reaching the stub", func() bool {
-		return stub.callTotal("gamma-model") >= 43
+	waitFor(t, "gamma's 46th call reaching the stub", func() bool {
+		return stub.callTotal("gamma-model") >= 46
 	})
 
 	report := getCampaignReport(t, ts.URL, campaignID, "")

@@ -55,17 +55,19 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
 	setEvalConcurrency(t, ts.URL, 1)
-	stub.blockModel("gamma-model")
+	// Gamma's three probe-gate rounds pass (GH #174); its first answer
+	// call blocks.
+	stub.blockModelAfter("gamma-model", 3)
 	stub.resetCalls()
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Gamma's first call reaching the stub proves the freeze point: the
+	// Gamma's first answer call reaching the stub proves the freeze point: the
 	// first run is in flight with alpha and beta fully recorded and gamma
 	// untouched.
 	waitFor(t, "gamma's first answer call reaching the stub", func() bool {
-		return stub.callTotal("gamma-model") >= 1
+		return stub.callTotal("gamma-model") >= 4
 	})
 
 	report := getCampaignReport(t, ts.URL, campaignID, "")
@@ -117,13 +119,15 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 	// Serial cell order (GH #26 pool at 1): alpha's cell completes before
 	// gamma's first blocked call, so the freeze point is deterministic.
 	setEvalConcurrency(t, ts.URL, 1)
-	stub.blockModel("gamma-model")
+	// Gamma's three probe-gate rounds pass (GH #174); its first answer
+	// call blocks.
+	stub.blockModelAfter("gamma-model", 3)
 	stub.resetCalls()
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 
 	triggerEval(t, ts.URL, suiteID, alphaID, gammaID)
 	waitFor(t, "gamma's first answer call reaching the stub", func() bool {
-		return stub.callTotal("gamma-model") >= 1
+		return stub.callTotal("gamma-model") >= 4
 	})
 
 	campaigns := listCampaigns(t, ts.URL)

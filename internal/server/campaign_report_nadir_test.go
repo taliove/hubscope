@@ -76,7 +76,7 @@ func TestCampaignReportNadirNormalization(t *testing.T) {
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	createEvalModel(t, ts.URL, stub.URL, "dumb-model")
 	createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 
 	// mmlu is seeded with nadir 0.25 (random-guess floor of its four-option
 	// cases). Replace its case set with four exact-rule cases the stub

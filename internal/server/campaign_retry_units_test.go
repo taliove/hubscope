@@ -50,7 +50,7 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 	// Custom exact-rule bank (two cases in mmlu): the default stub answer
 	// scores 1 once the model recovers, so a refill is observable as
 	// null -> 1.
@@ -78,7 +78,7 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 	scoredCase := int64(smartBefore[0]["case_id"].(float64))
 
 	// The model recovers before the retry, so the retried unit refills.
-	stub.markBroken("broken-model", false)
+	stub.markCaseBroken("broken-model", false)
 
 	// One null unit plus one already-scored unit: accepted=1, skipped=1.
 	resp := postRetryUnits(t, ts.URL, campaignID, []map[string]int64{
@@ -231,7 +231,7 @@ func TestRetryUnitsRequiresSettledCampaignAndMutex(t *testing.T) {
 	ts, stub, _ := setupAsyncEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	// Campaign A settles done with the broken model's null-score units.

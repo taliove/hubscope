@@ -159,17 +159,21 @@ func TestCampaignTrends(t *testing.T) {
 	// Editing the case bumps the question bank one version.
 	patchCase(t, ts.URL, trendCaseID, map[string]interface{}{"prompt": "只回复 pong，别的什么都不要说"})
 
-	// Campaign 2 on v2 with the model broken: answers fail, scores stay
-	// unjudged (null) — the trend point must remain visible, not vanish.
-	stub.markBroken("smart-model", true)
+	// Campaign 2 on v2 with the model failing at case time (GH #174: it
+	// passes the probe gate, then every case call 503s): answers fail,
+	// scores stay unjudged (null) — the trend point must remain visible,
+	// not vanish.
+	stub.markCaseBroken("smart-model", true)
 	run2 := triggerEval(t, ts.URL, instructionID, modelID)
 	waitEvalDone(t, ts.URL, run2)
 	c2 := int64(getEvalRun(t, ts.URL, run2)["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, c2, store.CampaignStatusDone)
 
-	// One failing probe round while the model is broken.
+	// One failing probe round while the model fails cases (the monitoring
+	// prober's prompt is not the gate's, so the case-broken model fails
+	// monitoring probes too).
 	probeEndpointOnce(t, ts.URL, endpointID, false)
-	stub.markBroken("smart-model", false)
+	stub.markCaseBroken("smart-model", false)
 
 	trends := getCampaignTrends(t, ts.URL, c2, fmt.Sprintf("model=%d", modelID))
 

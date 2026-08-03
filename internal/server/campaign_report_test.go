@@ -126,7 +126,7 @@ func TestCampaignReportWeightingAndSorting(t *testing.T) {
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	createEvalModel(t, ts.URL, stub.URL, "dumb-model")
 	createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 	// One custom exact-rule case per rotation suite: the smart model scores
 	// 100 everywhere, the dumb model 0, the broken one nothing.
 	installCustomBank(t, ts.URL, db, oneCasePerSuite())

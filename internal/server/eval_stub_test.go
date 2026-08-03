@@ -29,6 +29,11 @@ type evalStubHub struct {
 	bad map[string]bool
 	// broken marks models whose calls fail with HTTP 503.
 	broken map[string]bool
+	// caseBroken marks models that pass the probe gate but fail every
+	// non-probe call with HTTP 503 (GH #174): the backstop scenarios
+	// (circuit breaker, all-dead abort) need a model the gate admits —
+	// a fully broken model never reaches a case any more.
+	caseBroken map[string]bool
 	// gate, when non-nil, blocks every response until released; tests use it
 	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
 	gate chan struct{}
@@ -72,6 +77,7 @@ func newEvalStubHub() *evalStubHub {
 		callCounts: map[string]int{},
 		bad:        map[string]bool{},
 		broken:     map[string]bool{},
+		caseBroken: map[string]bool{},
 		answerSeq:  map[string][]string{},
 		judgeSeq:   map[string][]string{},
 		failNext:   map[string]int{},
@@ -157,6 +163,15 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{"message": "No available providers for this model"},
+		})
+		return
+	}
+	// Case-broken models answer the probe gate's prompt (staying inside the
+	// batch) and fail everything else.
+	if h.caseBroken[req.Model] && prompt != evalProbePrompt {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]string{"message": "case-scoped failure"},
 		})
 		return
 	}
@@ -311,6 +326,23 @@ func (h *evalStubHub) sawModel(model string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.calls[model]) > 0
+}
+
+// evalProbePrompt mirrors the evaluator's probeGatePrompt constant: the
+// prompt the probe gate samples a model with. Case-broken models must
+// answer it (they pass the gate) while failing every case prompt.
+const evalProbePrompt = "ping"
+
+// markCaseBroken makes the model fail every non-probe completion call with
+// HTTP 503: it passes the probe gate but fails at case time — the shape
+// every post-gate backstop scenario (circuit breaker, all-dead abort,
+// null-score retry) needs since GH #174. false lifts the break (the
+// monitoring prober's prompt differs from the gate's, so a case-broken
+// model still fails monitoring probe rounds).
+func (h *evalStubHub) markCaseBroken(model string, broken bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.caseBroken[model] = broken
 }
 
 // markBad flips a model between correct (false) and always-wrong (true)
