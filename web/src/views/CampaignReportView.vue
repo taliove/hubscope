@@ -59,14 +59,31 @@
         <template v-else>
           <EvalBoardHeader v-model:view="viewMode" :report="report" />
           <EvalProgressGrid v-show="viewMode === 'grid'" :report="report" />
+          <!-- Scores|cost switch (console + cost payload only): the cost
+               view is the model x suite latency/token matrix, available on
+               running and settled batches alike (the cells carry the sums
+               in both). Neutral metrics, never quality-colored. -->
+          <el-radio-group
+            v-if="costViewEnabled && viewMode === 'scores'"
+            v-model="reportView"
+            size="small"
+            class="report-view-switch no-print"
+          >
+            <el-radio-button value="scores">分数</el-radio-button>
+            <el-radio-button value="cost">成本</el-radio-button>
+          </el-radio-group>
           <Leaderboard
-            v-show="viewMode === 'scores'"
+            v-show="viewMode === 'scores' && (!costViewEnabled || reportView === 'scores')"
             :key="report.id"
             :report="report"
             :family-options="familyOptions"
             live
             @query="onQuery"
             @select="openTrend"
+          />
+          <EvalCostMatrix
+            v-if="costViewEnabled && viewMode === 'scores' && reportView === 'cost'"
+            :report="report"
           />
         </template>
       </template>
@@ -84,10 +101,23 @@
           </template>
         </el-alert>
 
+        <!-- Scores|cost switch on the settled board (console + cost
+             payload only); the 运行成本明细 table below stays untouched. -->
+        <el-radio-group
+          v-if="costViewEnabled"
+          v-model="reportView"
+          size="small"
+          class="report-view-switch no-print"
+        >
+          <el-radio-button value="scores">分数</el-radio-button>
+          <el-radio-button value="cost">成本</el-radio-button>
+        </el-radio-group>
+
         <!-- Shared settle board (issue #10, option A ruling): rows are not
              clickable — drill-down is console-only, same caliber as /board.
              The console view keeps the default selectable=true. -->
         <Leaderboard
+          v-show="!costViewEnabled || reportView === 'scores'"
           :report="report"
           :family-options="familyOptions"
           :shared="shared"
@@ -96,6 +126,7 @@
           @select="openTrend"
           @cell-select="onCellSelect"
         />
+        <EvalCostMatrix v-if="costViewEnabled && reportView === 'cost'" :report="report" />
 
         <!-- Cost detail table (GH #42, console-only): one row per model x
              suite run — status, latency, input/output tokens. Neutral
@@ -141,7 +172,10 @@
         :run-id="drilldownRunId"
         :model-id="drilldownModelId"
         :suites="drilldownSuites"
+        :retryable="true"
+        :model-db-ids="modelDbIdMap"
         @close="drilldownRunId = null"
+        @retried="onDialogRetried"
       />
     </template>
   </div>
@@ -157,6 +191,7 @@ import { getCampaign, getCampaignReport, retryCampaignFailed } from '@/api/campa
 import { listSuites } from '@/api/evals'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
 import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
+import EvalCostMatrix from '@/components/EvalCostMatrix.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -261,6 +296,13 @@ const familyOptions = ref<string[]>([])
 // leaderboard. The shared view never switches (read-only grid).
 const viewMode = ref<EvalBoardView>('scores')
 
+// Report content view (scores|cost): the cost matrix is the model x suite
+// latency/token view over the report cells, offered on running and settled
+// batches alike — but only on the console when the payload carries cost
+// fields (the shared/public payloads omit them, so no switch renders).
+const reportView = ref<'scores' | 'cost'>('scores')
+const costViewEnabled = computed(() => !shared && report.value?.cost !== undefined)
+
 // In shared mode the campaign id only arrives with the report payload.
 const displayCampaignId = computed(() => (shared ? (report.value?.id ?? '—') : authedCampaignId))
 
@@ -324,6 +366,22 @@ async function onCellSelect({ row, suiteKey }: { row: ReportRow; suiteKey: strin
   drilldownModelId.value = row.model_id
   drilldownSuites.value = suitesCache
   drilldownRunId.value = runId
+}
+
+// model_id → model_db_id lookup for the run detail dialog's targeted
+// retry, built from the report rows (the run detail payload carries only
+// the model string).
+const modelDbIdMap = computed(() => {
+  const map: Record<string, number> = {}
+  for (const row of report.value?.rows ?? []) map[row.model_id] = row.model_db_id
+  return map
+})
+
+// A retry launched from the run detail dialog reverts the batch to running:
+// drop the drill-down's run cache and reload, which re-arms the polling.
+function onDialogRetried() {
+  runsCache = null
+  void reload()
 }
 
 function statusLabel(status: CampaignStatus): string {
@@ -492,6 +550,11 @@ onMounted(reload)
 }
 .failed-link:hover {
   color: var(--hs-brand-hover);
+}
+/* Scores|cost switch: floats above the board like the grid header's own
+   switch (EvalBoardHeader precedent). */
+.report-view-switch {
+  margin-bottom: var(--hs-space-4);
 }
 /* Cost detail table (GH #42): the title row carries the batch summary at
    the right, same secondary caliber as the grid's card-top line. */

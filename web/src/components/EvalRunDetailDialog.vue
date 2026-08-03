@@ -19,6 +19,13 @@
           <span>开始:{{ formatTime(detail.started_at) }}</span>
           <span>结束:{{ formatTime(detail.finished_at) }}</span>
           <span>聚合分:{{ formatScore(detail.score === null ? null : detail.score * 100) }}</span>
+          <!-- Targeted retry entries: only when the parent marks the batch
+               retryable (settled, console). The per-row buttons re-run one
+               failed unit; this entry re-runs every failed unit of the
+               batch (existing retry-failed). Scored results never move. -->
+          <el-button v-if="retryable" size="small" :loading="retryingAll" @click="onRetryAll">
+            重跑全部失败项
+          </el-button>
         </div>
         <el-table :data="visibleResults" row-key="id" max-height="480">
           <el-table-column type="expand">
@@ -59,6 +66,20 @@
           <el-table-column label="延迟" width="90" align="right">
             <template #default="{ row }">{{ formatMs(row.latency_ms) }}</template>
           </el-table-column>
+          <el-table-column v-if="retryable" label="操作" width="80" align="center">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.score === null && unitRetryable(row)"
+                size="small"
+                text
+                type="primary"
+                :loading="retryingResultId === row.id"
+                @click="onRetryUnit(row)"
+              >
+                重跑
+              </el-button>
+            </template>
+          </el-table-column>
         </el-table>
       </template>
     </div>
@@ -67,22 +88,35 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { getEvalRun } from '@/api/evals'
+import { retryCampaignFailed, retryCampaignUnits } from '@/api/campaigns'
 import { formatMs, formatScore, formatTime } from '@/utils/format'
-import type { EvalRunDetail, Suite } from '@/api/types'
+import type { EvalResult, EvalRunDetail, Suite } from '@/api/types'
 
 // Run detail dialog: per-case prompt, model answer, score, and the judge's
 // reasoning, grouped in an expandable table. The optional modelId filter
 // (GH #156 block 4) narrows the table to one model — the leaderboard cell
 // drill-down's shape; omitted, the dialog shows every model of the run
 // (EvalOpsPanel usage, unchanged).
+//
+// Targeted retry (retry-units): when the parent passes retryable (a settled
+// batch on the console) plus modelDbIds (model_id → model_db_id, from the
+// report rows), each failed (null-score) row gets a 重跑 button re-running
+// exactly that unit, and the meta row carries a 重跑全部失败项 entry (the
+// existing batch retry-failed). A successful retry reverts the batch to
+// running, so the dialog closes after notifying the parent (retried) — the
+// parent reloads and re-arms its polling.
 const props = defineProps<{
   runId: number | null
   suites: Suite[]
   modelId?: string | null
+  retryable?: boolean
+  modelDbIds?: Record<string, number>
 }>()
 
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; retried: [] }>()
 
 const detail = ref<EvalRunDetail | null>(null)
 const loading = ref(false)
@@ -158,6 +192,77 @@ function scoreClass(score: number | null): string {
   if (score >= 0.8) return 'score-high'
   if (score >= 0.5) return 'score-mid'
   return 'score-low'
+}
+
+// A failed row is retryable only when its model resolves to a database id
+// (deleted models stay visible as history but cannot be re-asked).
+function unitRetryable(row: EvalResult): boolean {
+  return (props.modelDbIds?.[row.model_id] ?? 0) > 0
+}
+
+const retryingResultId = ref<number | null>(null)
+const retryingAll = ref(false)
+
+// Re-run exactly this row's (model, case) unit. The server skips it with a
+// count when a concurrent judge already scored it — then there is nothing
+// to refresh, so the dialog stays open on that answer.
+async function onRetryUnit(row: EvalResult) {
+  if (!detail.value) return
+  const modelDbId = props.modelDbIds?.[row.model_id]
+  if (!modelDbId) return
+  try {
+    await ElMessageBox.confirm(
+      `将重新评估「${row.model_id}」的这道题(只补这一道未判分的题,已判分结果不变),期间批次回到运行中。`,
+      '重跑失败项',
+      { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // cancelled — no feedback needed
+  }
+  retryingResultId.value = row.id
+  try {
+    const ack = await retryCampaignUnits(detail.value.campaign_id, [
+      { model_db_id: modelDbId, case_id: row.case_id },
+    ])
+    if (ack.accepted === 0) {
+      ElMessage.info('该项已有判分结果,无需重跑')
+      return
+    }
+    ElMessage.success('已发起重跑,批次回到运行中')
+    emit('retried')
+    emit('close')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    retryingResultId.value = null
+  }
+}
+
+// Re-run every failed unit of the batch (the existing retry-failed path),
+// same confirm + feedback caliber as the report header's entry.
+async function onRetryAll() {
+  if (!detail.value) return
+  const campaignId = detail.value.campaign_id
+  try {
+    await ElMessageBox.confirm(
+      `将重新评估批次 #${campaignId} 的全部失败项(只补未判分的题目,已判分结果不变),期间批次回到运行中。`,
+      '重跑全部失败项',
+      { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // cancelled — no feedback needed
+  }
+  retryingAll.value = true
+  try {
+    await retryCampaignFailed(campaignId)
+    ElMessage.success(`已发起批次 #${campaignId} 的失败项重跑`)
+    emit('retried')
+    emit('close')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    retryingAll.value = false
+  }
 }
 </script>
 

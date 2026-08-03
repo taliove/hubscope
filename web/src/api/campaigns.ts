@@ -8,6 +8,8 @@ import type {
   LiveFeedEntry,
   LiveFeedResultDetail,
   PublicEvalBoard,
+  RetryUnitItem,
+  RetryUnitsAck,
 } from './types'
 
 export async function listCampaigns(): Promise<Campaign[]> {
@@ -65,6 +67,13 @@ export async function getCampaignLiveFeedResult(campaignId: number, resultId: nu
 // results. The batch returns to running; scored results are never touched.
 export async function retryCampaignFailed(id: number): Promise<CampaignDetail> {
   return http.post<CampaignDetail>(`/campaigns/${id}/retry-failed`)
+}
+
+// Retry-units (targeted retry): re-evaluate explicit (model, case) units of
+// a settled batch. Only null-score units are accepted (the batch returns to
+// running); judged units are skipped and counted, never re-asked (W7).
+export async function retryCampaignUnits(id: number, items: RetryUnitItem[]): Promise<RetryUnitsAck> {
+  return http.post<RetryUnitsAck>(`/campaigns/${id}/retry-units`, { items })
 }
 
 // Cancel (GH #152): stop a running batch — in-flight cells run to
