@@ -192,10 +192,22 @@ type evalRunDTO struct {
 	// JuryModels carries the run's jury snapshot verbatim (spec 0020 /
 	// ADR 0016): policy plus per-model judges; null for pre-jury runs.
 	JuryModels json.RawMessage `json:"jury_models"`
-	Status     string          `json:"status"`
-	StartedAt  string          `json:"started_at"`
-	FinishedAt *string         `json:"finished_at"`
-	Score      *float64        `json:"score"`
+	// EstimatedCost carries the run's estimated cost split
+	// {"exam":x,"judge":y} (GH #178); null when unset or when some
+	// component's price is not registered.
+	EstimatedCost json.RawMessage `json:"estimated_cost"`
+	Status        string          `json:"status"`
+	StartedAt     string          `json:"started_at"`
+	FinishedAt    *string         `json:"finished_at"`
+	Score         *float64        `json:"score"`
+}
+
+// judgeVoteDTO is one jury vote on one sample (GH #178).
+type judgeVoteDTO struct {
+	SampleNo   int      `json:"sample_no"`
+	Slot       int      `json:"slot"`
+	JudgeModel string   `json:"judge_model"`
+	Score      *float64 `json:"score"`
 }
 
 // evalResultDTO is the API representation of an EvalResult. ModelDeleted
@@ -213,6 +225,12 @@ type evalResultDTO struct {
 	InputTokens    *int     `json:"input_tokens"`
 	OutputTokens   *int     `json:"output_tokens"`
 	ModelDeleted   bool     `json:"model_deleted"`
+	// JudgeScores carries the case's per-jury-slot votes from its latest
+	// answer attempts (GH #178); empty for rule verdicts. Spread is the
+	// max-min disagreement across the case's non-null votes, absent when
+	// fewer than two votes scored.
+	JudgeScores []judgeVoteDTO `json:"judge_scores,omitempty"`
+	Spread      *float64       `json:"spread,omitempty"`
 }
 
 // latestScoreDTO is the API representation of a (suite, model) pair's most
@@ -294,18 +312,19 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 		finishedAt = &s
 	}
 	return evalRunDTO{
-		ID:           r.ID,
-		CampaignID:   r.CampaignID,
-		SuiteID:      r.SuiteID,
-		SuiteVersion: r.SuiteVersion,
-		Nadir:        r.Nadir,
-		Trigger:      r.Trigger,
-		JudgeModel:   r.JudgeModel,
-		JuryModels:   juryRawMessage(r.JuryModels),
-		Status:       r.Status,
-		StartedAt:    r.StartedAt.Format(time.RFC3339),
-		FinishedAt:   finishedAt,
-		Score:        score,
+		ID:            r.ID,
+		CampaignID:    r.CampaignID,
+		SuiteID:       r.SuiteID,
+		SuiteVersion:  r.SuiteVersion,
+		Nadir:         r.Nadir,
+		Trigger:       r.Trigger,
+		JudgeModel:    r.JudgeModel,
+		JuryModels:    juryRawMessage(r.JuryModels),
+		EstimatedCost: juryRawMessage(r.EstimatedCost),
+		Status:        r.Status,
+		StartedAt:     r.StartedAt.Format(time.RFC3339),
+		FinishedAt:    finishedAt,
+		Score:         score,
 	}
 }
 

@@ -27,9 +27,10 @@ type EvalRun struct {
 	// JuryModels snapshots the run's jury selection (JSON: policy + per-model
 	// judges; spec 0020 / ADR 0016). Empty for pre-jury single-judge runs.
 	JuryModels string
-	// EstimatedCost accumulates the run's estimated USD cost; nil when some
-	// component's price is not registered (never read as zero).
-	EstimatedCost *float64
+	// EstimatedCost holds the run's estimated cost as a JSON split
+	// {"exam":x,"judge":y}; empty when unset or when some component's price
+	// is not registered (GH #178).
+	EstimatedCost string
 }
 
 // LatestEvalScore is the aggregate score of the most recent done run for one
@@ -96,8 +97,7 @@ const evalRunColumns = `id, campaign_id, suite_id, suite_version, nadir, "trigge
 func scanEvalRun(s rowScanner) (EvalRun, error) {
 	var r EvalRun
 	var startedAt string
-	var finishedAt, juryModels sql.NullString
-	var estimatedCost sql.NullFloat64
+	var finishedAt, juryModels, estimatedCost sql.NullString
 	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Nadir, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt, &juryModels, &estimatedCost); err != nil {
 		return EvalRun{}, err
 	}
@@ -107,9 +107,7 @@ func scanEvalRun(s rowScanner) (EvalRun, error) {
 		r.FinishedAt = &t
 	}
 	r.JuryModels = juryModels.String
-	if estimatedCost.Valid {
-		r.EstimatedCost = &estimatedCost.Float64
-	}
+	r.EstimatedCost = estimatedCost.String
 	return r, nil
 }
 

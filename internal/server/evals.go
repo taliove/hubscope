@@ -587,6 +587,51 @@ func (s *Server) handleListEvals(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, dtos)
 }
 
+// latestAttemptVotes filters a cell's votes down to the latest attempt of
+// each sample: a retried sample's earlier votes never reach the breakdown.
+func latestAttemptVotes(votes []store.JudgeVote) []store.JudgeVote {
+	latest := map[int]int{}
+	for _, v := range votes {
+		if v.Attempt > latest[v.SampleNo] {
+			latest[v.SampleNo] = v.Attempt
+		}
+	}
+	var out []store.JudgeVote
+	for _, v := range votes {
+		if v.Attempt == latest[v.SampleNo] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// juryBreakdown renders a cell's votes for the API and computes the spread:
+// the max-min disagreement across non-null votes, nil when fewer than two
+// votes scored.
+func juryBreakdown(votes []store.JudgeVote) ([]judgeVoteDTO, *float64) {
+	out := make([]judgeVoteDTO, 0, len(votes))
+	lo, hi := 0.0, 0.0
+	scored := 0
+	for _, v := range votes {
+		out = append(out, judgeVoteDTO{SampleNo: v.SampleNo, Slot: v.Slot, JudgeModel: v.JudgeModel, Score: v.Score})
+		if v.Score == nil {
+			continue
+		}
+		if scored == 0 || *v.Score < lo {
+			lo = *v.Score
+		}
+		if scored == 0 || *v.Score > hi {
+			hi = *v.Score
+		}
+		scored++
+	}
+	if scored < 2 {
+		return out, nil
+	}
+	spread := hi - lo
+	return out, &spread
+}
+
 // handleGetEval handles GET /api/evals/{id}, including per-case results.
 func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
@@ -612,10 +657,23 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load eval results")
 		return
 	}
+	votes, err := s.db.ListJudgeVotesByRun(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load judge votes")
+		return
+	}
+	votesByCell := map[[2]int64][]store.JudgeVote{}
+	for _, v := range votes {
+		votesByCell[[2]int64{v.ModelDBID, v.CaseID}] = append(votesByCell[[2]int64{v.ModelDBID, v.CaseID}], v)
+	}
 
 	resultDTOs := make([]evalResultDTO, 0, len(results))
 	for _, res := range results {
-		resultDTOs = append(resultDTOs, toEvalResultDTO(res))
+		dto := toEvalResultDTO(res)
+		if cellVotes := latestAttemptVotes(votesByCell[[2]int64{res.ModelDBID, res.CaseID}]); len(cellVotes) > 0 {
+			dto.JudgeScores, dto.Spread = juryBreakdown(cellVotes)
+		}
+		resultDTOs = append(resultDTOs, dto)
 	}
 
 	writeData(w, http.StatusOK, evalRunDetailDTO{

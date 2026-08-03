@@ -81,7 +81,9 @@ const judgeTimeout = 60 * time.Second
 // judgeVerdict calls the judge model through the same hub/protocol as the
 // evaluated model and parses its JSON verdict. A judge call failure or an
 // unparseable judge response yields a nil score (unjudged), never a 0.
-func (e *Evaluator) judgeVerdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string) {
+// The token usage rides along for per-judge cost accounting (GH #178);
+// either side may be nil when the hub does not report usage.
+func (e *Evaluator) judgeVerdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string, *int, *int) {
 	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 	defer cancel()
 	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, judgeModel, buildJudgePrompt(c, answer), evalMaxTokens)
@@ -90,14 +92,14 @@ func (e *Evaluator) judgeVerdict(ctx context.Context, hub *store.Hub, protocol, 
 		if res.ErrorSummary != nil {
 			detail = "judge call failed: " + *res.ErrorSummary
 		}
-		return nil, detail
+		return nil, detail, res.InputTokens, res.OutputTokens
 	}
 
 	score, reason, err := parseJudgeResponse(res.Text)
 	if err != nil {
-		return nil, fmt.Sprintf("judge parse failed: %v (raw: %s)", err, truncateRunes(res.Text, 200))
+		return nil, fmt.Sprintf("judge parse failed: %v (raw: %s)", err, truncateRunes(res.Text, 200)), res.InputTokens, res.OutputTokens
 	}
-	return scorePtr(score), "judge: " + reason
+	return scorePtr(score), "judge: " + reason, res.InputTokens, res.OutputTokens
 }
 
 // buildJudgePrompt assembles rubric + question + answer for the judge.

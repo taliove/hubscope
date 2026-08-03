@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -89,6 +90,43 @@ func scanEvalAnswers(rows *sql.Rows) ([]EvalAnswer, error) {
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// JudgeVote is one judge score joined with its answer's cell coordinates —
+// the run detail's per-case jury breakdown (GH #178).
+type JudgeVote struct {
+	ModelDBID  int64
+	CaseID     int64
+	SampleNo   int
+	Attempt    int
+	Slot       int
+	JudgeModel string
+	Score      *float64
+}
+
+// ListJudgeVotesByRun returns every judge vote of one run with its cell
+// coordinates, ordered for per-case assembly.
+func (db *DB) ListJudgeVotesByRun(runID int64) ([]JudgeVote, error) {
+	rows, err := db.conn.Query(`
+		SELECT a.model_db_id, a.case_id, a.sample_no, a.attempt, js.slot, js.judge_model, js.score
+		FROM eval_judge_scores js
+		JOIN eval_answers a ON a.id = js.answer_id
+		WHERE a.eval_run_id = ?
+		ORDER BY a.model_db_id, a.case_id, a.sample_no, a.attempt, js.slot
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []JudgeVote
+	for rows.Next() {
+		var v JudgeVote
+		if err := rows.Scan(&v.ModelDBID, &v.CaseID, &v.SampleNo, &v.Attempt, &v.Slot, &v.JudgeModel, &v.Score); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }
@@ -184,23 +222,19 @@ func (db *DB) GetEvalRunJuryModels(runID int64) (string, error) {
 	return jury.String, nil
 }
 
-// SetEvalRunEstimatedCost sets the run's accumulated estimated cost. A nil
-// cost means some component's price is not registered (spec 0020: rendered
-// as "price not registered", never as zero).
-func (db *DB) SetEvalRunEstimatedCost(runID int64, cost *float64) error {
-	_, err := db.conn.Exec(`UPDATE eval_runs SET estimated_cost = ? WHERE id = ?`, cost, runID)
+// SetEvalRunEstimatedCost stores the run's estimated cost as a JSON split
+// {"exam":x,"judge":y} (spec 0020, GH #178). NULL means some component's
+// price or token usage is not registered — rendered as "price not
+// registered", never as a partial sum.
+func (db *DB) SetEvalRunCost(runID int64, exam, judge *float64) error {
+	if exam == nil || judge == nil {
+		_, err := db.conn.Exec(`UPDATE eval_runs SET estimated_cost = NULL WHERE id = ?`, runID)
+		return err
+	}
+	raw, err := json.Marshal(map[string]float64{"exam": *exam, "judge": *judge})
+	if err != nil {
+		return err
+	}
+	_, err = db.conn.Exec(`UPDATE eval_runs SET estimated_cost = ? WHERE id = ?`, string(raw), runID)
 	return err
-}
-
-// GetEvalRunEstimatedCost returns the run's estimated cost, nil when unset
-// or when a component price was not registered.
-func (db *DB) GetEvalRunEstimatedCost(runID int64) (*float64, error) {
-	var cost sql.NullFloat64
-	if err := db.conn.QueryRow(`SELECT estimated_cost FROM eval_runs WHERE id = ?`, runID).Scan(&cost); err != nil {
-		return nil, err
-	}
-	if !cost.Valid {
-		return nil, nil
-	}
-	return &cost.Float64, nil
 }

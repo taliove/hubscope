@@ -69,6 +69,11 @@ type Evaluator struct {
 	// stop any of them.
 	cancelMu sync.Mutex
 	cancels  map[int64]context.CancelFunc
+
+	// livePipelines maps a running campaign to its judge-stage pipeline
+	// (GH #178): the campaign report reads the live queue depth of both
+	// stages from it.
+	livePipelines sync.Map // int64 → *pipeline
 }
 
 // New creates an Evaluator backed by the given store and hub client.
@@ -281,6 +286,12 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 
 	var completed, dead int
 	p.runJudgePool(ctx, budgetExceeded)
+	p.setCellsTotal(len(cells))
+	if len(prepared) > 0 {
+		campaignID := prepared[0].run.CampaignID
+		e.livePipelines.Store(campaignID, p)
+		defer e.livePipelines.Delete(campaignID)
+	}
 	e.runCellPool(ctx, cells, func() bool {
 		if budgetExceeded() {
 			stop("campaign budget exceeded")
@@ -288,7 +299,9 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		}
 		return false
 	}, func(cctx context.Context, cell evalCell) {
+		p.noteCellStart()
 		answered := e.evalModel(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+		p.noteCellDone()
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
 		done := remaining[cell.prep.run.ID] == 0
@@ -866,6 +879,18 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 	}
 }
 
+// LiveQueueDepth reports the running campaign's queue state across both
+// pipeline stages (GH #178); ok is false when no batch is executing for
+// the campaign on this process.
+func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, ok bool) {
+	v, ok := e.livePipelines.Load(campaignID)
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	examPending, examInflight, judgePending, judgeInflight = v.(*pipeline).queueDepth()
+	return examPending, examInflight, judgePending, judgeInflight, true
+}
+
 // resolveJudgeConcurrency reads the judge-stage pool size from settings,
 // clamped to [1, store.MaxEvalConcurrency] (GH #176). Read failures fall
 // back to the built-in default.
@@ -1015,6 +1040,7 @@ func (e *Evaluator) evalCase(ctx context.Context, p *pipeline, prep *preparedRun
 			continue
 		}
 		answered = true
+		p.recordExamCost(run.ID, model.ModelID, out.inputTokens, out.outputTokens)
 		p.recordAnswer(run.ID, model.ID, c.ID, out.latencyMs, out.inputTokens, out.outputTokens, *out.answer)
 		if c.VerdictType == "rule" {
 			score, detail := ruleVerdict(c, *out.answer, profile)

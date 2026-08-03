@@ -168,7 +168,7 @@ func (e *Evaluator) recoverCase(ctx context.Context, run *store.EvalRun, c store
 				details = append(details, voteDetail(judgeModel, votes[slot], ""))
 				continue
 			}
-			score, _ := e.judgeVerdict(ctx, hub, protocol, judgeModel, c, *a.AnswerText)
+			score, _, _, _ := e.judgeVerdict(ctx, hub, protocol, judgeModel, c, *a.AnswerText)
 			if _, err := e.db.CreateEvalJudgeScore(store.EvalJudgeScore{
 				AnswerID: a.ID, Slot: slot, JudgeModel: judgeModel, Score: score,
 			}); err != nil {

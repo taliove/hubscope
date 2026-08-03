@@ -140,7 +140,7 @@ func TestListUnderJudgedAnswers(t *testing.T) {
 }
 
 // TestEvalRunJuryAndCostColumns pins the new eval_runs columns: unset reads
-// come back empty/nil, writes round-trip, and a nil cost stays NULL (the
+// come back empty, writes round-trip, and a nil component stays NULL (the
 // "price not registered" caliber).
 func TestEvalRunJuryAndCostColumns(t *testing.T) {
 	db := openTestDB(t)
@@ -149,8 +149,12 @@ func TestEvalRunJuryAndCostColumns(t *testing.T) {
 	if jury, err := db.GetEvalRunJuryModels(run.ID); err != nil || jury != "" {
 		t.Fatalf("unset jury should read empty, got %q, %v", jury, err)
 	}
-	if cost, err := db.GetEvalRunEstimatedCost(run.ID); err != nil || cost != nil {
-		t.Fatalf("unset cost should read nil, got %v, %v", cost, err)
+	reloaded, err := db.GetEvalRun(run.ID)
+	if err != nil {
+		t.Fatalf("reload run: %v", err)
+	}
+	if reloaded.EstimatedCost != "" {
+		t.Fatalf("unset cost should read empty, got %q", reloaded.EstimatedCost)
 	}
 
 	juryJSON := `{"policy":"balanced","judges":["qwen3-235b","deepseek-v3","qwen3-30b-a3b"]}`
@@ -161,22 +165,69 @@ func TestEvalRunJuryAndCostColumns(t *testing.T) {
 		t.Fatalf("jury round-trip: got %q, %v", jury, err)
 	}
 
-	cost := 1.23
-	if err := db.SetEvalRunEstimatedCost(run.ID, &cost); err != nil {
+	exam, judge := 1.23, 0.45
+	if err := db.SetEvalRunCost(run.ID, &exam, &judge); err != nil {
 		t.Fatalf("set cost: %v", err)
 	}
-	if got, err := db.GetEvalRunEstimatedCost(run.ID); err != nil || got == nil || *got != 1.23 {
-		t.Fatalf("cost round-trip: got %v, %v", got, err)
+	reloaded, err = db.GetEvalRun(run.ID)
+	if err != nil {
+		t.Fatalf("reload run: %v", err)
 	}
-	if err := db.SetEvalRunEstimatedCost(run.ID, nil); err != nil {
+	if reloaded.EstimatedCost != `{"exam":1.23,"judge":0.45}` {
+		t.Fatalf("cost round-trip: got %q", reloaded.EstimatedCost)
+	}
+	if err := db.SetEvalRunCost(run.ID, nil, nil); err != nil {
 		t.Fatalf("null cost: %v", err)
 	}
-	if got, err := db.GetEvalRunEstimatedCost(run.ID); err != nil || got != nil {
-		t.Fatalf("null cost must read nil, got %v, %v", got, err)
+	reloaded, _ = db.GetEvalRun(run.ID)
+	if reloaded.EstimatedCost != "" {
+		t.Fatalf("null cost must read empty, got %q", reloaded.EstimatedCost)
 	}
 }
 
-// TestEvalAnswerMigrationIdempotent re-opens the same database file: the
+// TestCampaignCostRowsAvgTPS pins the GH #178 speed aggregate: the cost
+// row's avg_tps is output tokens per second over the model's answered
+// samples of the run, null when every answer was sub-millisecond.
+func TestCampaignCostRowsAvgTPS(t *testing.T) {
+	db := openTestDB(t)
+	run, model := setupEvalRunForAnswers(t, db)
+	text := "x"
+	if _, err := db.CreateEvalAnswer(EvalAnswer{
+		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
+		CaseID: 1, SampleNo: 1, Status: EvalAnswerAnswered, AnswerText: &text,
+		LatencyMs: 2000, OutputTokens: new(400),
+	}); err != nil {
+		t.Fatalf("seed slow answer: %v", err)
+	}
+	if _, err := db.CreateEvalAnswer(EvalAnswer{
+		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
+		CaseID: 2, SampleNo: 1, Status: EvalAnswerAnswered, AnswerText: &text,
+		LatencyMs: 1000, OutputTokens: new(200),
+	}); err != nil {
+		t.Fatalf("seed fast answer: %v", err)
+	}
+	// A result row puts the model on the cost board.
+	score := 1.0
+	if _, err := db.CreateEvalResult(EvalResult{
+		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
+		CaseID: 1, Score: &score, VerdictProfile: VerdictProfileV2,
+	}); err != nil {
+		t.Fatalf("seed result: %v", err)
+	}
+
+	rows, err := db.ListCampaignCostRows(run.CampaignID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("cost rows: %v (n=%d)", err, len(rows))
+	}
+	if rows[0].AvgTPS == nil {
+		t.Fatal("avg_tps must be computed from measured answers")
+	}
+	// (400 + 200) tokens / (2000 + 1000) ms * 1000 = 200 tps.
+	if got := *rows[0].AvgTPS; got < 199.9 || got > 200.1 {
+		t.Errorf("avg_tps = %v, want 200", got)
+	}
+}
+
 // CREATE TABLE IF NOT EXISTS statements and the ensureColumn path must both
 // be no-ops on an already-migrated database.
 func TestEvalAnswerMigrationIdempotent(t *testing.T) {

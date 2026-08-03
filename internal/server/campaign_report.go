@@ -78,6 +78,18 @@ type costRowDTO struct {
 	LatencyMs    int64  `json:"latency_ms"`
 	InputTokens  *int64 `json:"input_tokens"`
 	OutputTokens *int64 `json:"output_tokens"`
+	// AvgTPS is the model's mean output speed in the run (GH #178); null
+	// when it produced no answer.
+	AvgTPS *float64 `json:"avg_tps"`
+}
+
+// queueDepthDTO is the live queue state of a running campaign's pipeline
+// (GH #178, console-only): exam = answer-call cells, judge = jury votes.
+type queueDepthDTO struct {
+	ExamPending   int `json:"exam_pending"`
+	ExamInflight  int `json:"exam_inflight"`
+	JudgePending  int `json:"judge_pending"`
+	JudgeInflight int `json:"judge_inflight"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -98,6 +110,9 @@ type campaignReportDTO struct {
 	FailedResults int                `json:"failed_results"`
 	Cost          *campaignCostDTO   `json:"cost,omitempty"`
 	CostRows      []costRowDTO       `json:"cost_rows,omitempty"`
+	// QueueDepth is the live two-stage queue state (GH #178), present only
+	// while the campaign is executing on this process.
+	QueueDepth *queueDepthDTO `json:"queue_depth,omitempty"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -319,6 +334,7 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 				LatencyMs:    cr.LatencyMs,
 				InputTokens:  cr.InputTokens,
 				OutputTokens: cr.OutputTokens,
+				AvgTPS:       cr.AvgTPS,
 			})
 		}
 	}
@@ -332,7 +348,27 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		FailedResults: failedResults,
 		Cost:          cost,
 		CostRows:      costRows,
+		QueueDepth:    s.liveQueueDepth(id, campaign.Status),
 	}, nil
+}
+
+// liveQueueDepth reads the campaign's pipeline queue state while it is
+// executing; nil on settled campaigns or when the batch is not running on
+// this process.
+func (s *Server) liveQueueDepth(campaignID int64, status string) *queueDepthDTO {
+	if status != store.CampaignStatusRunning {
+		return nil
+	}
+	examPending, examInflight, judgePending, judgeInflight, ok := s.evaluator.LiveQueueDepth(campaignID)
+	if !ok {
+		return nil
+	}
+	return &queueDepthDTO{
+		ExamPending:   examPending,
+		ExamInflight:  examInflight,
+		JudgePending:  judgePending,
+		JudgeInflight: judgeInflight,
+	}
 }
 
 // reportBaseline resolves the previous done campaign and, when it covered

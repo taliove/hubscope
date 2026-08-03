@@ -12,10 +12,12 @@ package evaluator
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -82,6 +84,23 @@ type pipeline struct {
 	judgePending map[int64]int               // outstanding judge jobs per run
 	cellsDone    map[int64]bool
 	finished     map[int64]bool
+	costs        map[int64]*costState // per-run estimated USD cost (GH #178)
+	overrides    []registry.Override
+
+	// Live queue accounting for the running campaign's report (GH #178):
+	// exam counters track the cell pool, judge counters the vote flow.
+	examTotal, examStarted, examDone    int
+	judgeOffered, judgeTaken, judgeDone int
+}
+
+// costState accumulates one run's estimated cost: exam (answer calls) and
+// judge (jury calls) portions. unknown marks any component whose price or
+// token usage is unregistered — the run's cost then reads as NULL ("price
+// not registered"), never as a partial sum presented as complete.
+type costState struct {
+	exam    float64
+	judge   float64
+	unknown bool
 }
 
 func newPipeline(e *Evaluator, prepared []*preparedRun) *pipeline {
@@ -94,11 +113,13 @@ func newPipeline(e *Evaluator, prepared []*preparedRun) *pipeline {
 		judgePending: map[int64]int{},
 		cellsDone:    map[int64]bool{},
 		finished:     map[int64]bool{},
+		costs:        map[int64]*costState{},
 	}
 	for _, prep := range prepared {
 		p.preps[prep.run.ID] = prep
 	}
 	p.finishRun = func(prep *preparedRun) { e.finishPreparedRun(prep, "done") }
+	p.overrides = e.resolveRegistryOverrides()
 	return p
 }
 
@@ -207,6 +228,9 @@ func (p *pipeline) enqueueVotes(ctx context.Context, job judgeJob, judges []stri
 		case <-ctx.Done():
 			return
 		case p.jobs <- j:
+			p.mu.Lock()
+			p.judgeOffered++
+			p.mu.Unlock()
 		}
 	}
 }
@@ -232,24 +256,33 @@ func (p *pipeline) runJudgePool(ctx context.Context, guard func() bool) {
 					if !ok {
 						return
 					}
+					p.mu.Lock()
+					p.judgeTaken++
+					p.mu.Unlock()
 					p.executeJudge(ctx, job)
+					p.mu.Lock()
+					p.judgeDone++
+					p.mu.Unlock()
 				}
 			}
 		}()
 	}
 }
 
-// closeJudgeQueue stops the feed and waits for in-flight judge calls.
+// closeJudgeQueue stops the feed, waits for in-flight judge calls, and
+// persists every run's cost estimate.
 func (p *pipeline) closeJudgeQueue() {
 	close(p.jobs)
 	p.wg.Wait()
+	p.flushCosts()
 }
 
 // executeJudge performs one judge call, records its row, and folds the
 // vote. The call is never retried (W7): a failed judge leaves a NULL score
 // row for its slot.
 func (p *pipeline) executeJudge(ctx context.Context, job judgeJob) {
-	score, detail := p.e.judgeVerdict(ctx, job.hub, job.protocol, job.judgeModel, job.c, job.answerText)
+	score, detail, inTok, outTok := p.e.judgeVerdict(ctx, job.hub, job.protocol, job.judgeModel, job.c, job.answerText)
+	p.recordJudgeCost(job.prep.run.ID, job.judgeModel, inTok, outTok)
 	if _, err := p.e.db.CreateEvalJudgeScore(store.EvalJudgeScore{
 		AnswerID:   job.answerID,
 		Slot:       job.slot,
@@ -338,6 +371,104 @@ func (p *pipeline) isFinished(runID int64) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.finished[runID]
+}
+
+// setCellsTotal records how many exam cells the batch will run.
+func (p *pipeline) setCellsTotal(n int) {
+	p.mu.Lock()
+	p.examTotal = n
+	p.mu.Unlock()
+}
+
+// noteCellStart / noteCellDone track the cell pool's occupancy.
+func (p *pipeline) noteCellStart() {
+	p.mu.Lock()
+	p.examStarted++
+	p.mu.Unlock()
+}
+
+func (p *pipeline) noteCellDone() {
+	p.mu.Lock()
+	p.examDone++
+	p.mu.Unlock()
+}
+
+// queueDepth snapshots the live queue state of both stages (GH #178).
+func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeInflight int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.examTotal - p.examStarted, p.examStarted - p.examDone,
+		p.judgeOffered - p.judgeTaken, p.judgeTaken - p.judgeDone
+}
+
+// setCellsTotal is wired by the batch executor; the retry path leaves the
+// exam counters at zero (its report surface is the progress grid).
+
+// costFor returns (creating on first use) the run's cost accumulator.
+func (p *pipeline) costFor(runID int64) *costState {
+	cs, ok := p.costs[runID]
+	if !ok {
+		cs = &costState{}
+		p.costs[runID] = cs
+	}
+	return cs
+}
+
+// callCostUSD prices one call against the registry: nil when the model's
+// price is unregistered or the hub reported no token usage.
+func (p *pipeline) callCostUSD(modelID string, inTok, outTok *int) *float64 {
+	info := registry.Lookup(modelID, p.overrides)
+	if info.PriceIn == nil || info.PriceOut == nil || inTok == nil || outTok == nil {
+		return nil
+	}
+	cost := (float64(*inTok)**info.PriceIn + float64(*outTok)**info.PriceOut) / 1e6
+	return &cost
+}
+
+// recordExamCost folds one answer call's cost into the run.
+func (p *pipeline) recordExamCost(runID int64, modelID string, inTok, outTok *int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cs := p.costFor(runID)
+	if cost := p.callCostUSD(modelID, inTok, outTok); cost != nil {
+		cs.exam += *cost
+	} else {
+		cs.unknown = true
+	}
+}
+
+// recordJudgeCost folds one jury call's cost into the run.
+func (p *pipeline) recordJudgeCost(runID int64, judgeModel string, inTok, outTok *int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cs := p.costFor(runID)
+	if cost := p.callCostUSD(judgeModel, inTok, outTok); cost != nil {
+		cs.judge += *cost
+	} else {
+		cs.unknown = true
+	}
+}
+
+// flushCosts persists every run's accumulated estimate: NULL when any
+// component was unpriceable (GH #178), else the exam/judge split.
+func (p *pipeline) flushCosts() {
+	p.mu.Lock()
+	costs := make(map[int64]costState, len(p.costs))
+	for runID, cs := range p.costs {
+		costs[runID] = *cs
+	}
+	p.mu.Unlock()
+	for runID, cs := range costs {
+		if cs.unknown {
+			if err := p.e.db.SetEvalRunCost(runID, nil, nil); err != nil {
+				slog.Error("evaluator: null estimated cost", "run_id", runID, "error", err)
+			}
+			continue
+		}
+		if err := p.e.db.SetEvalRunCost(runID, &cs.exam, &cs.judge); err != nil {
+			slog.Error("evaluator: persist estimated cost", "run_id", runID, "error", err)
+		}
+	}
 }
 
 // voteDetail renders one judge's vote for the case detail string, keeping
