@@ -30,14 +30,15 @@ type endpointDTO struct {
 
 // modelDTO is the API representation of a Model with its endpoints.
 type modelDTO struct {
-	ID         int64         `json:"id"`
-	HubID      int64         `json:"hub_id"`
-	ModelID    string        `json:"model_id"`
-	Origin     string        `json:"origin"`
-	Status     string        `json:"status"`
-	Capability string        `json:"capability"`
-	Family     string        `json:"family"`
-	Endpoints  []endpointDTO `json:"endpoints"`
+	ID          int64         `json:"id"`
+	HubID       int64         `json:"hub_id"`
+	ModelID     string        `json:"model_id"`
+	Origin      string        `json:"origin"`
+	Status      string        `json:"status"`
+	Capability  string        `json:"capability"`
+	Family      string        `json:"family"`
+	EvalEnabled bool          `json:"eval_enabled"`
+	Endpoints   []endpointDTO `json:"endpoints"`
 }
 
 // probeDTO is the API representation of a ProbeRecord.
@@ -101,14 +102,15 @@ func toModelDTO(m store.Model, endpoints []store.Endpoint) modelDTO {
 		eps = append(eps, toEndpointDTO(e))
 	}
 	return modelDTO{
-		ID:         m.ID,
-		HubID:      m.HubID,
-		ModelID:    m.ModelID,
-		Origin:     m.Origin,
-		Status:     m.Status,
-		Capability: m.Capability,
-		Family:     m.Family,
-		Endpoints:  eps,
+		ID:          m.ID,
+		HubID:       m.HubID,
+		ModelID:     m.ModelID,
+		Origin:      m.Origin,
+		Status:      m.Status,
+		Capability:  m.Capability,
+		Family:      m.Family,
+		EvalEnabled: m.EvalEnabled,
+		Endpoints:   eps,
 	}
 }
 

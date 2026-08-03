@@ -25,7 +25,12 @@ type Model struct {
 	Status     string
 	Capability string
 	Family     string
-	CreatedAt  time.Time
+	// EvalEnabled is the "join evaluations" switch (GH #170): only
+	// eval-enabled models enter the candidate set of full sweeps and the
+	// weekly batch. A manual single-suite trigger may still name the model
+	// explicitly. Meaningful for active chat models only.
+	EvalEnabled bool
+	CreatedAt   time.Time
 }
 
 // Endpoint represents a model-protocol combination
@@ -90,15 +95,17 @@ func scanEndpoint(s rowScanner) (Endpoint, error) {
 }
 
 // modelColumns is the canonical column list for scanning a Model.
-const modelColumns = "id, hub_id, model_id, origin, status, capability, family, created_at"
+const modelColumns = "id, hub_id, model_id, origin, status, capability, family, eval_enabled, created_at"
 
 // scanModel scans a row containing modelColumns into a Model.
 func scanModel(s rowScanner) (Model, error) {
 	var m Model
+	var evalEnabled int
 	var createdAt string
-	if err := s.Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &m.Family, &createdAt); err != nil {
+	if err := s.Scan(&m.ID, &m.HubID, &m.ModelID, &m.Origin, &m.Status, &m.Capability, &m.Family, &evalEnabled, &createdAt); err != nil {
 		return Model{}, err
 	}
+	m.EvalEnabled = evalEnabled == 1
 	m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return m, nil
 }
@@ -162,14 +169,15 @@ func (db *DB) CreateModel(hubID int64, modelID string, protocols []string) (*Mod
 	}
 
 	return &Model{
-		ID:         modelDBID,
-		HubID:      hubID,
-		ModelID:    modelID,
-		Origin:     "manual",
-		Status:     "active",
-		Capability: capability,
-		Family:     family,
-		CreatedAt:  now,
+		ID:          modelDBID,
+		HubID:       hubID,
+		ModelID:     modelID,
+		Origin:      "manual",
+		Status:      "active",
+		Capability:  capability,
+		Family:      family,
+		EvalEnabled: true,
+		CreatedAt:   now,
 	}, nil
 }
 
@@ -207,6 +215,19 @@ func (db *DB) ModelExistsOnHub(hubID int64, modelID string) (bool, error) {
 		"SELECT COUNT(*) FROM models WHERE hub_id = ? AND model_id = ? AND status != 'retired'",
 		hubID, modelID).Scan(&n)
 	return n > 0, err
+}
+
+// SetModelEvalEnabled flips the model's "join evaluations" switch
+// (GH #170). The next full sweep / weekly batch re-reads the candidate set,
+// so the change only affects batches triggered after it; members of an
+// already-running batch are snapshotted at creation and unaffected.
+func (db *DB) SetModelEvalEnabled(id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := db.conn.Exec("UPDATE models SET eval_enabled = ? WHERE id = ?", v, id)
+	return err
 }
 
 // SetModelCapability updates a model's capability tag ("chat" / "non_chat").
@@ -271,14 +292,15 @@ func (db *DB) ListModelsByHub(hubID int64) ([]Model, error) {
 }
 
 // ListActiveChatModelIDs returns the database IDs of all active,
-// chat-capable models that have at least one enabled endpoint — the
-// population a full evaluation sweep covers. Models without an enabled
-// endpoint are excluded: they cannot be called at all, so sweeping them
-// would only record "no enabled endpoint" failures for every case.
+// chat-capable, eval-enabled (GH #170) models that have at least one
+// enabled endpoint — the population a full evaluation sweep covers. Models
+// without an enabled endpoint are excluded: they cannot be called at all,
+// so sweeping them would only record "no enabled endpoint" failures for
+// every case.
 func (db *DB) ListActiveChatModelIDs() ([]int64, error) {
 	rows, err := db.conn.Query(`
 		SELECT id FROM models
-		WHERE status = 'active' AND capability = 'chat'
+		WHERE status = 'active' AND capability = 'chat' AND eval_enabled = 1
 			AND EXISTS (SELECT 1 FROM endpoints e WHERE e.model_id = models.id AND e.enabled = 1)
 		ORDER BY id`)
 	if err != nil {

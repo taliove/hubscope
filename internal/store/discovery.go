@@ -25,22 +25,25 @@ func (db *DB) CreateDiscoveredModel(hubID int64, modelID, capability, family str
 			return nil, false, err
 		}
 		return &Model{
-			ID:         id,
-			HubID:      hubID,
-			ModelID:    modelID,
-			Origin:     "discovered",
-			Status:     "active",
-			Capability: capability,
-			Family:     family,
-			CreatedAt:  now,
+			ID:          id,
+			HubID:       hubID,
+			ModelID:     modelID,
+			Origin:      "discovered",
+			Status:      "active",
+			Capability:  capability,
+			Family:      family,
+			EvalEnabled: true,
+			CreatedAt:   now,
 		}, true, nil
 	}
 	if !isUniqueViolation(err) {
 		return nil, false, err
 	}
 
-	// Already registered. Reactivate when retired, refresh the
-	// classification, then return the stored row.
+	// Already registered. Reactivate when retired and refresh the
+	// classification, then return the stored row. eval_enabled is
+	// deliberately not rewritten (GH #170): an admin's opt-out survives
+	// every discovery sync.
 	if _, err := db.conn.Exec(
 		"UPDATE models SET status = 'active', capability = ?, family = ? WHERE hub_id = ? AND model_id = ?",
 		capability, family, hubID, modelID,

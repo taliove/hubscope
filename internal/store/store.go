@@ -90,6 +90,7 @@ func (db *DB) migrate() error {
 			status TEXT NOT NULL DEFAULT 'active',
 			capability TEXT NOT NULL DEFAULT 'chat',
 			family TEXT NOT NULL DEFAULT 'other',
+			eval_enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			FOREIGN KEY (hub_id) REFERENCES hubs(id),
 			UNIQUE(hub_id, model_id)
@@ -335,6 +336,12 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.ensureColumn("models", "family", "TEXT NOT NULL DEFAULT 'other'"); err != nil {
+		return err
+	}
+	// GH #170: the "join evaluations" switch. Default 1 keeps every
+	// pre-existing model in the sweep population — the upgrade is opt-out,
+	// never silently opt-in for models the admin already manages.
+	if err := db.ensureColumn("models", "eval_enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
 	// Ticket 21: suite versioning + per-case sampling.

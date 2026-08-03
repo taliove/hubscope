@@ -191,20 +191,25 @@ func (s *Server) listModelsForScope(scope int64) ([]store.Model, error) {
 	}
 }
 
-// patchModelRequest is the body for PATCH /api/models/{id}. Only capability
-// is editable (spec 0018 T7): changing it triggers endpoint set reconciliation.
+// patchModelRequest is the body for PATCH /api/models/{id}. capability is
+// editable per spec 0018 T7 (changing it triggers endpoint set
+// reconciliation); eval_enabled is the GH #170 "join evaluations" switch.
+// At least one field must be present.
 type patchModelRequest struct {
-	Capability *string `json:"capability"`
+	Capability  *string `json:"capability"`
+	EvalEnabled *bool   `json:"eval_enabled"`
 }
 
 // validCapabilities is the set of capabilities accepted by PATCH /api/models/{id}.
 var validCapabilities = map[string]bool{"chat": true, "image": true, "video": true}
 
-// handlePatchModel handles PATCH /api/models/{id}. It updates the model's
-// capability and reconciles the endpoint set: protocols the new capability
-// implies but are missing get created (chat trials, image/video trial-free);
-// protocols the old capability had but the new one does not get disabled
-// (history preserved). Spec 0018 T7 (GH #105).
+// handlePatchModel handles PATCH /api/models/{id}. It accepts two
+// independent fields (at least one required): eval_enabled, the GH #170
+// "join evaluations" switch, a plain flip; and capability, whose change
+// reconciles the endpoint set — protocols the new capability implies but
+// are missing get created (chat trials, image/video trial-free), protocols
+// the old capability had but the new one does not get disabled (history
+// preserved). Spec 0018 T7 (GH #105).
 func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
 	id, err := parseIDParam(r, "id")
 	if err != nil {
@@ -224,76 +229,110 @@ func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Capability == nil {
-		writeError(w, http.StatusBadRequest, "capability is required")
+	if req.Capability == nil && req.EvalEnabled == nil {
+		writeError(w, http.StatusBadRequest, "at least one of capability or eval_enabled is required")
 		return
 	}
-	newCap := strings.TrimSpace(*req.Capability)
-	if !validCapabilities[newCap] {
-		writeError(w, http.StatusBadRequest, "capability must be one of: chat, image, video")
-		return
-	}
-	// Note: no early return when newCap == model.Capability. Reconciliation is
-	// idempotent, and a same-capability PATCH is the repair path for legacy
-	// endpoint drift — e.g. pre-GH #100 image models still holding surplus
-	// chat endpoints (which keep burning probe requests). One click fixes it.
 
-	oldCap := model.Capability
-	if err := s.db.SetModelCapability(model.ID, newCap); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update capability")
-		return
-	}
-	model.Capability = newCap
+	auditDetails := []string{}
 
-	// Reconcile endpoint set: create missing, disable surplus.
-	newProtocols := hubclient.ProtocolsForCapability(newCap)
-
-	existing, err := s.db.ListEndpointsByModelID(model.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load endpoints")
-		return
-	}
-	have := make(map[string]bool, len(existing))
-	for _, ep := range existing {
-		have[ep.Protocol] = true
-	}
-
-	// Create missing endpoints for the new capability's protocols.
-	missing := []string{}
-	for _, protocol := range newProtocols {
-		if !have[protocol] {
-			missing = append(missing, protocol)
+	// GH #170: the eval switch is a plain flip. It only narrows the
+	// candidate set read at batch creation, so it affects batches
+	// triggered after the change; members of a running batch were
+	// snapshotted when it was created.
+	if req.EvalEnabled != nil {
+		if err := s.db.SetModelEvalEnabled(model.ID, *req.EvalEnabled); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update eval_enabled")
+			return
 		}
-	}
-	created := []string{}
-	if len(missing) > 0 {
-		// Chat protocols need trial; image/video are trial-free.
-		chatSet := make(map[string]bool)
-		for _, p := range modelProtocols {
-			chatSet[p] = true
+		if *req.EvalEnabled != model.EvalEnabled {
+			auditDetails = append(auditDetails, fmt.Sprintf("eval_enabled %t→%t", model.EvalEnabled, *req.EvalEnabled))
 		}
-		trialNeeded := []string{}
-		trialFree := []string{}
-		for _, p := range missing {
-			if chatSet[p] {
-				trialNeeded = append(trialNeeded, p)
-			} else {
-				trialFree = append(trialFree, p)
+		model.EvalEnabled = *req.EvalEnabled
+	}
+
+	if req.Capability != nil {
+		newCap := strings.TrimSpace(*req.Capability)
+		if !validCapabilities[newCap] {
+			writeError(w, http.StatusBadRequest, "capability must be one of: chat, image, video")
+			return
+		}
+		// Note: no early return when newCap == model.Capability. Reconciliation is
+		// idempotent, and a same-capability PATCH is the repair path for legacy
+		// endpoint drift — e.g. pre-GH #100 image models still holding surplus
+		// chat endpoints (which keep burning probe requests). One click fixes it.
+
+		oldCap := model.Capability
+		if err := s.db.SetModelCapability(model.ID, newCap); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update capability")
+			return
+		}
+		model.Capability = newCap
+
+		// Reconcile endpoint set: create missing, disable surplus.
+		newProtocols := hubclient.ProtocolsForCapability(newCap)
+
+		existing, err := s.db.ListEndpointsByModelID(model.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load endpoints")
+			return
+		}
+		have := make(map[string]bool, len(existing))
+		for _, ep := range existing {
+			have[ep.Protocol] = true
+		}
+
+		// Create missing endpoints for the new capability's protocols.
+		missing := []string{}
+		for _, protocol := range newProtocols {
+			if !have[protocol] {
+				missing = append(missing, protocol)
 			}
 		}
-
-		// Trial chat protocols (if any) — image/video are trial-free.
-		if len(trialNeeded) > 0 {
-			hub, err := s.db.GetHub(model.HubID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to load hub")
-				return
+		created := []string{}
+		if len(missing) > 0 {
+			// Chat protocols need trial; image/video are trial-free.
+			chatSet := make(map[string]bool)
+			for _, p := range modelProtocols {
+				chatSet[p] = true
 			}
-			working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, trialNeeded)
-			for _, protocol := range working {
+			trialNeeded := []string{}
+			trialFree := []string{}
+			for _, p := range missing {
+				if chatSet[p] {
+					trialNeeded = append(trialNeeded, p)
+				} else {
+					trialFree = append(trialFree, p)
+				}
+			}
+
+			// Trial chat protocols (if any) — image/video are trial-free.
+			if len(trialNeeded) > 0 {
+				hub, err := s.db.GetHub(model.HubID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "failed to load hub")
+					return
+				}
+				working, failures := s.trialProtocols(r.Context(), *hub, model.ModelID, trialNeeded)
+				for _, protocol := range working {
+					ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true)
+					if err != nil {
+						slog.Error("model patch: create endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
+						continue
+					}
+					if isNew {
+						_ = s.db.ApplyCreationDefaults(ep.ID, protocol)
+						created = append(created, protocol)
+					}
+				}
+				_ = failures // trial failures are not fatal — model still saved
+			}
+
+			// Trial-free: directly create image/video endpoints.
+			for _, protocol := range trialFree {
 				ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true)
 				if err != nil {
-					slog.Error("model patch: create endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
+					slog.Error("model patch: create trial-free endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
 					continue
 				}
 				if isNew {
@@ -301,41 +340,30 @@ func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
 					created = append(created, protocol)
 				}
 			}
-			_ = failures // trial failures are not fatal — model still saved
 		}
 
-		// Trial-free: directly create image/video endpoints.
-		for _, protocol := range trialFree {
-			ep, isNew, err := s.db.CreateEndpoint(model.ID, protocol, true)
-			if err != nil {
-				slog.Error("model patch: create trial-free endpoint", "model_id", model.ID, "protocol", protocol, "error", err)
-				continue
+		// Disable surplus endpoints: protocols the old capability had but the
+		// new one does not (history preserved, not deleted).
+		disabled := []string{}
+		for _, ep := range existing {
+			stillNeeded := false
+			for _, p := range newProtocols {
+				if ep.Protocol == p {
+					stillNeeded = true
+					break
+				}
 			}
-			if isNew {
-				_ = s.db.ApplyCreationDefaults(ep.ID, protocol)
-				created = append(created, protocol)
+			if !stillNeeded && ep.Enabled {
+				if _, err := s.db.SetEndpointEnabled(ep.ID, false); err != nil {
+					slog.Error("model patch: disable surplus endpoint", "endpoint_id", ep.ID, "error", err)
+					continue
+				}
+				disabled = append(disabled, ep.Protocol)
 			}
 		}
-	}
 
-	// Disable surplus endpoints: protocols the old capability had but the
-	// new one does not (history preserved, not deleted).
-	disabled := []string{}
-	for _, ep := range existing {
-		stillNeeded := false
-		for _, p := range newProtocols {
-			if ep.Protocol == p {
-				stillNeeded = true
-				break
-			}
-		}
-		if !stillNeeded && ep.Enabled {
-			if _, err := s.db.SetEndpointEnabled(ep.ID, false); err != nil {
-				slog.Error("model patch: disable surplus endpoint", "endpoint_id", ep.ID, "error", err)
-				continue
-			}
-			disabled = append(disabled, ep.Protocol)
-		}
+		auditDetails = append(auditDetails,
+			fmt.Sprintf("capability %s→%s created=%v disabled=%v", oldCap, newCap, created, disabled))
 	}
 
 	endpoints, err := s.db.ListEndpointsByModelID(model.ID)
@@ -344,9 +372,11 @@ func (s *Server) handlePatchModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(auditDetails) == 0 {
+		auditDetails = append(auditDetails, "no change")
+	}
 	s.audit(r, "model.patch", "model", strconv.FormatInt(model.ID, 10),
-		fmt.Sprintf("model_id=%q capability %s→%s created=%v disabled=%v",
-			model.ModelID, oldCap, newCap, created, disabled), "success")
+		fmt.Sprintf("model_id=%q %s", model.ModelID, strings.Join(auditDetails, " ")), "success")
 	s.InvalidateOverview()
 	writeData(w, http.StatusOK, toModelDTO(*model, endpoints))
 }
