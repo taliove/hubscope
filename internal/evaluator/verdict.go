@@ -28,7 +28,7 @@ func ruleVerdict(c store.Case, answer, profile string) (*float64, string) {
 	// mcq has its own extraction-and-match caliber (ADR 0013) and reports
 	// extraction failures distinctly, so it bypasses the generic switch.
 	if mode == "mcq" {
-		return mcqVerdict(expected, answer)
+		return mcqVerdict(c.Prompt, expected, answer)
 	}
 	// numeric likewise (ticket 95): ####-marker/last-line extraction with
 	// separator/sign/decimal normalization, conservative on failure.
