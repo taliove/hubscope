@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -20,6 +21,7 @@ type settingsDTO struct {
 	AlertEnabled          bool               `json:"alert_enabled"`
 	ScoreDropAlertEnabled bool               `json:"score_drop_alert_enabled"`
 	JudgeModel            string             `json:"judge_model"`
+	JuryPolicy            string             `json:"jury_policy"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
 	EvalConcurrency       int                `json:"eval_concurrency"`
 	EvalCampaignBudgetMin int                `json:"eval_campaign_budget_minutes"`
@@ -45,6 +47,7 @@ type settingsPatch struct {
 	AlertEnabled           *bool               `json:"alert_enabled"`
 	ScoreDropAlertEnabled  *bool               `json:"score_drop_alert_enabled"`
 	JudgeModel             *string             `json:"judge_model"`
+	JuryPolicy             *string             `json:"jury_policy"`
 	DefaultSampleCount     *int                `json:"default_sample_count"`
 	EvalConcurrency        *int                `json:"eval_concurrency"`
 	EvalCampaignBudgetMin  *int                `json:"eval_campaign_budget_minutes"`
@@ -69,6 +72,9 @@ func (s *Server) readSettings() (settingsDTO, error) {
 		return dto, err
 	}
 	if dto.JudgeModel, err = s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel); err != nil {
+		return dto, err
+	}
+	if dto.JuryPolicy, err = s.db.GetSetting(store.SettingJuryPolicy, store.DefaultJuryPolicy); err != nil {
 		return dto, err
 	}
 	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
@@ -196,6 +202,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if patch.JuryPolicy != nil && *patch.JuryPolicy != "" && !evaluator.ValidJuryPolicy(*patch.JuryPolicy) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("jury_policy must be one of balanced, speed, iq, cost; got %q", *patch.JuryPolicy))
+		return
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -211,6 +223,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}},
 		{store.SettingJudgeModel, func() error {
 			return s.db.SetSetting(store.SettingJudgeModel, *patch.JudgeModel)
+		}},
+		{store.SettingJuryPolicy, func() error {
+			return s.db.SetSetting(store.SettingJuryPolicy, *patch.JuryPolicy)
 		}},
 		{store.SettingDefaultSampleCount, func() error {
 			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
@@ -246,6 +261,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		patch.AlertEnabled != nil,
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
+		patch.JuryPolicy != nil,
 		patch.DefaultSampleCount != nil,
 		patch.EvalConcurrency != nil,
 		patch.EvalCampaignBudgetMin != nil,

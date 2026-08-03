@@ -16,6 +16,8 @@ export interface AppSettings {
   alert_enabled: boolean
   score_drop_alert_enabled: boolean
   judge_model: string
+  // Jury ranking strategy (spec 0020 / GH #175).
+  jury_policy: 'balanced' | 'speed' | 'iq' | 'cost'
   default_sample_count: number
   // Eval worker-pool size: how many (suite × model) cells run at once
   // (GH #26); 1-16, default 4.

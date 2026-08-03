@@ -24,6 +24,12 @@ type EvalRun struct {
 	Status       string
 	StartedAt    time.Time
 	FinishedAt   *time.Time
+	// JuryModels snapshots the run's jury selection (JSON: policy + per-model
+	// judges; spec 0020 / ADR 0016). Empty for pre-jury single-judge runs.
+	JuryModels string
+	// EstimatedCost accumulates the run's estimated USD cost; nil when some
+	// component's price is not registered (never read as zero).
+	EstimatedCost *float64
 }
 
 // LatestEvalScore is the aggregate score of the most recent done run for one
@@ -80,20 +86,25 @@ type EvalResult struct {
 
 // evalRunColumns is the canonical eval_runs column list. "trigger" is a
 // reserved SQLite keyword and must stay quoted.
-const evalRunColumns = `id, campaign_id, suite_id, suite_version, nadir, "trigger", judge_model, status, started_at, finished_at`
+const evalRunColumns = `id, campaign_id, suite_id, suite_version, nadir, "trigger", judge_model, status, started_at, finished_at, jury_models, estimated_cost`
 
 // scanEvalRun scans one eval_runs row.
 func scanEvalRun(s rowScanner) (EvalRun, error) {
 	var r EvalRun
 	var startedAt string
-	var finishedAt sql.NullString
-	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Nadir, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
+	var finishedAt, juryModels sql.NullString
+	var estimatedCost sql.NullFloat64
+	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Nadir, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt, &juryModels, &estimatedCost); err != nil {
 		return EvalRun{}, err
 	}
 	r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
 	if finishedAt.Valid {
 		t, _ := time.Parse(time.RFC3339, finishedAt.String)
 		r.FinishedAt = &t
+	}
+	r.JuryModels = juryModels.String
+	if estimatedCost.Valid {
+		r.EstimatedCost = &estimatedCost.Float64
 	}
 	return r, nil
 }

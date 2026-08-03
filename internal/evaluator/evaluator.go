@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/taliove/hubscope/internal/hubclient"
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -211,17 +212,19 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	// the feed — no cells, no dead rows — and an all-unreachable batch
 	// fails every run with the gate reason instead of settling an empty
 	// success. The gate runs inside the campaign budget: probing is part
-	// of the batch's wall clock.
-	reachable := e.probeGate(ctx, prepared, modelDBIDs)
+	// of the batch's wall clock. The probe population includes jury
+	// candidates on the same hubs (GH #175): the jury ranking needs their
+	// measured speed, and a candidate is cheap to sample.
+	samples := e.probeGate(ctx, prepared, modelDBIDs, e.juryProbePopulation(modelDBIDs))
 	// A nil gate means the context was canceled mid-probe: the outcome is
 	// meaningless, so feed everything and let the canceled pool drop every
 	// cell — the standard tail then fails the runs with the cancellation
 	// reason instead of a bogus gate verdict.
 	feed := modelDBIDs
-	if reachable != nil {
+	if samples != nil {
 		feed = make([]int64, 0, len(modelDBIDs))
 		for _, id := range modelDBIDs {
-			if reachable[id] {
+			if samples[id].reachable {
 				feed = append(feed, id)
 			}
 		}
@@ -231,6 +234,10 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 			}
 			return
 		}
+		// Jury selection (spec 0020, GH #175): one jury per subject from
+		// its own hub's reachable candidates, ranked by the configured
+		// policy; the snapshot lands on every run before the first cell.
+		e.selectJuries(prepared, feed, samples)
 	}
 
 	var deadline time.Time
@@ -557,27 +564,43 @@ func (e *Evaluator) warnJudgeUnreachable(prepared []*preparedRun, modelDBIDs []i
 	}
 }
 
+// probeSample is what the gate learned about one model: reachability (at
+// least one successful round), the successful-round count, and the average
+// measured output speed. Jury selection consumes tps (spec 0020); the cell
+// feed consumes reachable.
+type probeSample struct {
+	reachable bool
+	successes int
+	tps       float64
+}
+
 // probeGate measures each selected model's reachability before any case
 // burns (spec 0020, GH #174): probeGateRounds small completion calls per
 // model, models probed in parallel under a small cap. The outcome decides
-// the cell feed — an unreachable model is skipped without cells or result
-// rows (the GH #154 retired-model form) — and is named in every run's
-// task log. Outcomes live only in the returned map and the task logs:
-// they never touch the probes table or the status machine (W5 — an eval
-// probe is not monitoring). Models that cannot be probed (gone, retired,
-// no enabled chat endpoint) stay reachable so evalModel's existing
-// setup-failure paths report them unchanged.
-func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, modelDBIDs []int64) map[int64]bool {
-	reachable := make(map[int64]bool, len(modelDBIDs))
+// the cell feed — an unreachable subject is skipped without cells or
+// result rows (the GH #154 retired-model form) — and is named in every
+// run's task log. probeIDs may exceed subjectIDs (jury candidates on the
+// same hubs, GH #175): candidates are sampled for the jury ranking but
+// never gate anything. Outcomes live only in the returned map and the
+// task logs: they never touch the probes table or the status machine
+// (W5 — an eval probe is not monitoring). Models that cannot be probed
+// (gone, retired, no enabled chat endpoint) stay reachable so evalModel's
+// existing setup-failure paths report them unchanged.
+func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, subjectIDs, probeIDs []int64) map[int64]probeSample {
+	subjects := make(map[int64]bool, len(subjectIDs))
+	for _, id := range subjectIDs {
+		subjects[id] = true
+	}
 	type probeTarget struct {
 		id       int64
 		hub      *store.Hub
 		protocol string
 		modelID  string
 	}
+	samples := make(map[int64]probeSample, len(probeIDs))
 	var targets []probeTarget
-	for _, id := range modelDBIDs {
-		reachable[id] = true
+	for _, id := range probeIDs {
+		samples[id] = probeSample{reachable: true}
 		model, err := e.db.GetModel(id)
 		if err != nil || model.Status == "retired" {
 			continue
@@ -614,18 +637,19 @@ func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, mode
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			if e.probeModel(ctx, tgt.hub, tgt.protocol, tgt.modelID) {
-				return
-			}
-			// A canceled context makes the probe outcome meaningless:
-			// never stamp a model unreachable on a canceled round — the
-			// caller aborts the whole gate instead.
+			sample := e.probeModel(ctx, tgt.hub, tgt.protocol, tgt.modelID)
 			if ctx.Err() != nil {
+				// A canceled context makes the probe outcome meaningless:
+				// never stamp a model unreachable on a canceled round —
+				// the caller aborts the whole gate instead.
 				return
 			}
 			mu.Lock()
-			reachable[tgt.id] = false
+			samples[tgt.id] = sample
 			mu.Unlock()
+			if sample.reachable || !subjects[tgt.id] {
+				return
+			}
 			for _, prep := range prepared {
 				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
 					"model %s unreachable at probe gate (0/%d), skipped: no cases burned",
@@ -637,29 +661,198 @@ func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, mode
 	if ctx.Err() != nil {
 		return nil
 	}
-	return reachable
+	return samples
 }
 
 // probeModel takes probeGateRounds reachability samples of one model — the
 // full round count, never an early exit: the sample set doubles as the
-// model's stability signal (spec 0020), and a fixed cost keeps batch
-// call-count accounting deterministic. Reachable means at least one
+// model's stability and speed signal (spec 0020), and a fixed cost keeps
+// batch call-count accounting deterministic. Reachable means at least one
 // success; each round gets its own timeout so a hung model cannot stall
 // the gate.
-func (e *Evaluator) probeModel(ctx context.Context, hub *store.Hub, protocol, modelID string) bool {
-	successes := 0
+func (e *Evaluator) probeModel(ctx context.Context, hub *store.Hub, protocol, modelID string) probeSample {
+	var sample probeSample
+	var tpsSum float64
+	var tpsRounds int
 	for range probeGateRounds {
 		if ctx.Err() != nil {
-			return false
+			return probeSample{}
 		}
 		rctx, cancel := context.WithTimeout(ctx, probeGateTimeout)
 		res := e.client.Complete(rctx, hub.BaseURL, hub.Token, protocol, modelID, probeGatePrompt, probeGateMaxTokens)
 		cancel()
-		if res.OK {
-			successes++
+		if !res.OK {
+			continue
+		}
+		sample.successes++
+		// A sub-millisecond localhost round is a success too — it just
+		// carries no speed signal.
+		if res.LatencyMs > 0 {
+			outTokens := probeGateMaxTokens
+			if res.OutputTokens != nil && *res.OutputTokens > 0 {
+				outTokens = *res.OutputTokens
+			}
+			tpsSum += float64(outTokens) / (float64(res.LatencyMs) / 1000)
+			tpsRounds++
 		}
 	}
-	return successes > 0
+	sample.reachable = sample.successes > 0
+	if tpsRounds > 0 {
+		sample.tps = tpsSum / float64(tpsRounds)
+	}
+	return sample
+}
+
+// juryProbePopulation returns the probe population for a batch (spec 0020,
+// GH #175): the selected subjects plus every other non-retired chat model
+// on their hubs — the jury candidate pool. Candidates are probed for the
+// ranking inputs (reachability, measured speed) but never gate anything.
+func (e *Evaluator) juryProbePopulation(modelDBIDs []int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	add := func(id int64) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, id := range modelDBIDs {
+		add(id)
+	}
+	hubs := map[int64]bool{}
+	for _, id := range modelDBIDs {
+		model, err := e.db.GetModel(id)
+		if err != nil || hubs[model.HubID] {
+			continue
+		}
+		hubs[model.HubID] = true
+		models, err := e.db.ListModelsByHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			if m.Status == "retired" {
+				continue
+			}
+			endpoints, err := e.db.ListEndpointsByModelID(m.ID)
+			if err != nil {
+				continue
+			}
+			if _, ok := selectProtocol(endpoints); ok {
+				add(m.ID)
+			}
+		}
+	}
+	return out
+}
+
+// resolveJuryPolicy reads the configured jury policy, falling back to the
+// default on read failure or an unknown stored value.
+func (e *Evaluator) resolveJuryPolicy() string {
+	policy, err := e.db.GetSetting(store.SettingJuryPolicy, store.DefaultJuryPolicy)
+	if err != nil || !ValidJuryPolicy(policy) {
+		if err != nil {
+			slog.Error("evaluator: read jury_policy setting, using default", "error", err)
+		}
+		return store.DefaultJuryPolicy
+	}
+	return policy
+}
+
+// resolveRegistryOverrides reads the administrator's registry overrides;
+// a corrupt stored value falls back to the built-in table (the settings
+// read path's fail-open caliber).
+func (e *Evaluator) resolveRegistryOverrides() []registry.Override {
+	raw, err := e.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		slog.Error("evaluator: read model_registry_overrides, using built-ins", "error", err)
+		return nil
+	}
+	overrides, err := registry.ParseOverrides(raw)
+	if err != nil {
+		slog.Error("evaluator: corrupt model_registry_overrides, using built-ins", "error", err)
+		return nil
+	}
+	return overrides
+}
+
+// selectJuries picks one jury per subject (spec 0020, GH #175): candidates
+// are the subject's own-hub reachable chat models, ranked by the configured
+// policy over registry IQ, gate-measured speed and registry price. The
+// subject is excluded when at least three alternatives exist; a short or
+// self-including jury is logged, never fatal. Every run snapshots the full
+// selection before its first cell (ADR 0016), and the task log names the
+// judges so a surprising pick is visible before the cases burn.
+func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples map[int64]probeSample) {
+	policy := e.resolveJuryPolicy()
+	overrides := e.resolveRegistryOverrides()
+
+	// Hub candidates are shared across subjects on the same hub.
+	byHub := map[int64][]juryCandidate{}
+	subjects := map[int64]*store.Model{}
+	for _, id := range feed {
+		model, err := e.db.GetModel(id)
+		if err != nil {
+			continue
+		}
+		subjects[id] = model
+		if _, done := byHub[model.HubID]; done {
+			continue
+		}
+		var cands []juryCandidate
+		models, err := e.db.ListModelsByHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			sample, probed := samples[m.ID]
+			if !probed || !sample.reachable {
+				continue
+			}
+			info := registry.Lookup(m.ModelID, overrides)
+			cands = append(cands, juryCandidate{
+				ModelDBID: m.ID,
+				ModelID:   m.ModelID,
+				IQ:        info.IQ,
+				PriceIn:   info.PriceIn,
+				PriceOut:  info.PriceOut,
+				TPS:       sample.tps,
+			})
+		}
+		byHub[model.HubID] = cands
+	}
+
+	juries := map[int64]jurySelection{}
+	for id, model := range subjects {
+		sel := selectJury(byHub[model.HubID], policy, model.ModelID)
+		juries[id] = sel
+		switch {
+		case len(sel.Judges) == 0:
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
+					"model %s: no reachable jury candidates on its hub — judge cases will stay unjudged", model.ModelID))
+			}
+		default:
+			note := ""
+			if sel.SelfIncluded {
+				note = " WARNING: subject serves on its own jury (self-preference bias)"
+			}
+			if len(sel.Judges) < 3 {
+				note += fmt.Sprintf(" short jury: %d judge(s)", len(sel.Judges))
+			}
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogInfo, fmt.Sprintf(
+					"model %s jury (%s): %s%s", model.ModelID, policy, strings.Join(sel.Judges, ", "), note))
+			}
+		}
+	}
+
+	snapshot := jurySnapshotJSON(policy, juries)
+	for _, prep := range prepared {
+		if err := e.db.SetEvalRunJuryModels(prep.run.ID, snapshot); err != nil {
+			slog.Error("evaluator: snapshot jury on run", "run_id", prep.run.ID, "error", err)
+		}
+	}
 }
 
 // resolveCampaignBudgetMinutes reads the campaign wall-clock budget from

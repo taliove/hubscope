@@ -182,17 +182,20 @@ type suiteDTO struct {
 // against. CampaignID groups the run into its evaluation batch (added by
 // ticket 29; additive, never changed in place).
 type evalRunDTO struct {
-	ID           int64    `json:"id"`
-	CampaignID   int64    `json:"campaign_id"`
-	SuiteID      int64    `json:"suite_id"`
-	SuiteVersion int      `json:"suite_version"`
-	Nadir        float64  `json:"nadir"`
-	Trigger      string   `json:"trigger"`
-	JudgeModel   string   `json:"judge_model"`
-	Status       string   `json:"status"`
-	StartedAt    string   `json:"started_at"`
-	FinishedAt   *string  `json:"finished_at"`
-	Score        *float64 `json:"score"`
+	ID           int64   `json:"id"`
+	CampaignID   int64   `json:"campaign_id"`
+	SuiteID      int64   `json:"suite_id"`
+	SuiteVersion int     `json:"suite_version"`
+	Nadir        float64 `json:"nadir"`
+	Trigger      string  `json:"trigger"`
+	JudgeModel   string  `json:"judge_model"`
+	// JuryModels carries the run's jury snapshot verbatim (spec 0020 /
+	// ADR 0016): policy plus per-model judges; null for pre-jury runs.
+	JuryModels json.RawMessage `json:"jury_models"`
+	Status     string          `json:"status"`
+	StartedAt  string          `json:"started_at"`
+	FinishedAt *string         `json:"finished_at"`
+	Score      *float64        `json:"score"`
 }
 
 // evalResultDTO is the API representation of an EvalResult. ModelDeleted
@@ -298,11 +301,21 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 		Nadir:        r.Nadir,
 		Trigger:      r.Trigger,
 		JudgeModel:   r.JudgeModel,
+		JuryModels:   juryRawMessage(r.JuryModels),
 		Status:       r.Status,
 		StartedAt:    r.StartedAt.Format(time.RFC3339),
 		FinishedAt:   finishedAt,
 		Score:        score,
 	}
+}
+
+// juryRawMessage wraps a stored jury snapshot for the API: empty stays null
+// (pre-jury runs), anything else is passed through verbatim.
+func juryRawMessage(snapshot string) json.RawMessage {
+	if snapshot == "" {
+		return nil
+	}
+	return json.RawMessage(snapshot)
 }
 
 // toEvalResultDTO maps a store.EvalResult to the API representation.

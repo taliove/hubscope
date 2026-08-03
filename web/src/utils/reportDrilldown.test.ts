@@ -49,6 +49,7 @@ function run(partial: Partial<EvalRun> & { id: number; suite_id: number }): Eval
     nadir: 0,
     trigger: 'manual',
     judge_model: 'judge',
+    jury_models: null,
     status: 'done',
     started_at: '2026-08-01T00:00:00Z',
     finished_at: '2026-08-01T00:01:00Z',

@@ -411,7 +411,7 @@ func (db *DB) HasUnfinishedCampaign() (bool, error) {
 // campaigns serve as baselines, matching the reporting unit semantics.
 func (db *DB) PreviousDoneCampaignRun(campaignID, suiteID int64) (*EvalRun, error) {
 	r, err := scanEvalRun(db.conn.QueryRow(`
-		SELECT r.id, r.campaign_id, r.suite_id, r.suite_version, r.nadir, r."trigger", r.judge_model, r.status, r.started_at, r.finished_at
+		SELECT r.id, r.campaign_id, r.suite_id, r.suite_version, r.nadir, r."trigger", r.judge_model, r.status, r.started_at, r.finished_at, r.jury_models, r.estimated_cost
 		FROM eval_runs r
 		JOIN campaigns c ON c.id = r.campaign_id
 		WHERE c.status = ? AND r.status = 'done' AND r.suite_id = ? AND r.campaign_id < ?

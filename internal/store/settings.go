@@ -52,6 +52,9 @@ const (
 	// {match, iq_tier?, price_in?, price_out?} entries; overrides merge
 	// field-by-field over the shipped table.
 	SettingModelRegistryOverrides = "model_registry_overrides"
+	// SettingJuryPolicy selects the jury ranking strategy (spec 0020):
+	// balanced, speed, iq, or cost.
+	SettingJuryPolicy = "jury_policy"
 )
 
 // Default setting values applied when a key has never been written.
@@ -63,6 +66,8 @@ const (
 	DefaultScoreDropAlertEnabled = true
 	// DefaultJudgeModel matches the eval contract default judge.
 	DefaultJudgeModel = "claude-opus-4-8"
+	// DefaultJuryPolicy ranks jury candidates on the balanced mix (spec 0020).
+	DefaultJuryPolicy = "balanced"
 	// DefaultSampleCount answers each case once unless configured otherwise.
 	DefaultSampleCount = 1
 	// MaxSampleCount bounds per-case sampling to keep run cost predictable.

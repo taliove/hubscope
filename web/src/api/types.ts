@@ -275,6 +275,9 @@ export interface EvalRun {
   nadir: number // run-level snapshot of the suite's normalization constant (ADR 0009)
   trigger: EvalTrigger
   judge_model: string
+  // Jury snapshot (spec 0020 / ADR 0016): policy plus per-model judges
+  // (keys are model DB IDs); null for pre-jury single-judge runs.
+  jury_models: { policy: string; juries: Record<string, string[]> } | null
   status: EvalRunStatus
   started_at: string // RFC3339
   finished_at: string | null

@@ -160,6 +160,7 @@ const form = reactive<AppSettings>({
   alert_enabled: true,
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
+  jury_policy: 'balanced',
   default_sample_count: 1,
   eval_concurrency: 4,
   eval_campaign_budget_minutes: 60,
