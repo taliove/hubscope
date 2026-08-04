@@ -707,11 +707,18 @@ func jurySummaryOf(votes []store.JudgeVote, overrides []registry.Override) []jur
 			t.fails++
 		}
 		info := registry.Lookup(v.JudgeModel, overrides)
-		if info.PriceIn == nil || info.PriceOut == nil || v.InputTokens == nil || v.OutputTokens == nil {
+		if info.PriceIn == nil || info.PriceOut == nil {
 			t.unknown = true
 			continue
 		}
-		t.cost += (float64(*v.InputTokens)**info.PriceIn + float64(*v.OutputTokens)**info.PriceOut) / 1e6
+		in, out := 0, 0
+		if v.InputTokens != nil {
+			in = *v.InputTokens
+		}
+		if v.OutputTokens != nil {
+			out = *v.OutputTokens
+		}
+		t.cost += (float64(in)**info.PriceIn + float64(out)**info.PriceOut) / 1e6
 	}
 	out := make([]jurySummaryDTO, 0, len(order))
 	for _, judge := range order {

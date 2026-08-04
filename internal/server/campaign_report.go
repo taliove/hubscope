@@ -479,14 +479,21 @@ func (s *Server) registryOverrides() []registry.Override {
 }
 
 // examCostOf prices one cost row's answer tokens against the registry:
-// null when the model's price is unregistered or the run recorded no
-// tokens (GH #178).
+// null when the model's price is unregistered; unreported token usage
+// counts as zero (unmetered, not unknown) — spec 0020.
 func examCostOf(cr store.CampaignCostRow, overrides []registry.Override) *float64 {
 	info := registry.Lookup(cr.ModelID, overrides)
-	if info.PriceIn == nil || info.PriceOut == nil || cr.InputTokens == nil || cr.OutputTokens == nil {
+	if info.PriceIn == nil || info.PriceOut == nil {
 		return nil
 	}
-	cost := (float64(*cr.InputTokens)**info.PriceIn + float64(*cr.OutputTokens)**info.PriceOut) / 1e6
+	in, out := int64(0), int64(0)
+	if cr.InputTokens != nil {
+		in = *cr.InputTokens
+	}
+	if cr.OutputTokens != nil {
+		out = *cr.OutputTokens
+	}
+	cost := (float64(in)**info.PriceIn + float64(out)**info.PriceOut) / 1e6
 	return &cost
 }
 

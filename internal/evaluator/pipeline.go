@@ -443,13 +443,22 @@ func (p *pipeline) costFor(runID int64) *costState {
 }
 
 // callCostUSD prices one call against the registry: nil when the model's
-// price is unregistered or the hub reported no token usage.
+// price is unregistered. A hub that reports no token usage contributes
+// zero tokens to the estimate (unmetered, not unknown) — only an
+// unregistered price voids the run's estimate (spec 0020).
 func (p *pipeline) callCostUSD(modelID string, inTok, outTok *int) *float64 {
 	info := registry.Lookup(modelID, p.overrides)
-	if info.PriceIn == nil || info.PriceOut == nil || inTok == nil || outTok == nil {
+	if info.PriceIn == nil || info.PriceOut == nil {
 		return nil
 	}
-	cost := (float64(*inTok)**info.PriceIn + float64(*outTok)**info.PriceOut) / 1e6
+	in, out := 0, 0
+	if inTok != nil {
+		in = *inTok
+	}
+	if outTok != nil {
+		out = *outTok
+	}
+	cost := (float64(in)**info.PriceIn + float64(out)**info.PriceOut) / 1e6
 	return &cost
 }
 

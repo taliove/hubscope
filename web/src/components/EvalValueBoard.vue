@@ -21,6 +21,15 @@ interface ValueRow {
 
 const estimated = computed(() => props.report.estimated_cost ?? null)
 
+// The KPI totals only render when at least one run is priced: an
+// all-unknown batch reads "—" (nothing measured), never "$0.0000"
+// (which would read as free).
+const priced = computed(() => {
+  const e = estimated.value
+  if (!e) return false
+  return e.exam > 0 || e.judge > 0 || e.unknown_runs === 0
+})
+
 const avgTps = computed(() => {
   const vals = (props.report.cost_rows ?? [])
     .map((r) => r.avg_tps)
@@ -80,7 +89,7 @@ function fmtScore(v: number | null): string {
       <div class="kpi">
         <div class="kpi-label">估算总成本</div>
         <div class="kpi-big">
-          {{ estimated ? `$${(estimated.exam + estimated.judge).toFixed(4)}` : '—' }}
+          {{ estimated && priced ? `$${(estimated.exam + estimated.judge).toFixed(4)}` : '—' }}
         </div>
         <div v-if="estimated && estimated.unknown_runs > 0" class="kpi-sub warn">
           {{ estimated.unknown_runs }} 个 Run 价格未登记
@@ -88,12 +97,12 @@ function fmtScore(v: number | null): string {
       </div>
       <div class="kpi">
         <div class="kpi-label">考试成本</div>
-        <div class="kpi-big">{{ estimated ? `$${estimated.exam.toFixed(4)}` : '—' }}</div>
+        <div class="kpi-big">{{ estimated && priced ? `$${estimated.exam.toFixed(4)}` : '—' }}</div>
         <div class="kpi-sub">答题调用(被评模型侧)</div>
       </div>
       <div class="kpi">
         <div class="kpi-label">裁判成本</div>
-        <div class="kpi-big">{{ estimated ? `$${estimated.judge.toFixed(4)}` : '—' }}</div>
+        <div class="kpi-big">{{ estimated && priced ? `$${estimated.judge.toFixed(4)}` : '—' }}</div>
         <div class="kpi-sub">3 票/答案(裁判团侧)</div>
       </div>
       <div class="kpi">
