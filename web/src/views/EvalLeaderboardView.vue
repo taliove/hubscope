@@ -181,7 +181,7 @@
       </el-tab-pane>
       <el-tab-pane label="评估运营" name="ops">
         <div class="tab-stack">
-          <EvalOpsPanel />
+          <EvalOpsPanel @triggered="onTriggered" />
         </div>
       </el-tab-pane>
       <el-tab-pane label="题库" name="cases">
@@ -502,8 +502,16 @@ async function reload() {
   armPolling()
 }
 
-function switchBatch(id: number) {
-  selectedId.value = id
+// A freshly triggered batch switches straight to the live board (probe
+// gate, both queues) — never trigger-and-nothing-happens (2026-08-04 UX
+// ruling).
+async function onTriggered(campaign: Campaign) {
+  activeTab.value = 'board'
+  await loadCampaigns()
+  switchBatch(campaign.id)
+}
+
+function switchBatch(id: number) {  selectedId.value = id
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []

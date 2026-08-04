@@ -219,8 +219,16 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	// success. The gate runs inside the campaign budget: probing is part
 	// of the batch's wall clock. The probe population includes jury
 	// candidates on the same hubs (GH #175): the jury ranking needs their
-	// measured speed, and a candidate is cheap to sample.
-	samples := e.probeGate(ctx, prepared, modelDBIDs, e.juryProbePopulation(modelDBIDs))
+	// measured speed, and a candidate is cheap to sample. The pipeline is
+	// registered before the gate so the probe stage is visible in the
+	// report's live queue depth — never an invisible preamble.
+	p := newPipeline(e, prepared)
+	if len(prepared) > 0 {
+		campaignID := prepared[0].run.CampaignID
+		e.livePipelines.Store(campaignID, p)
+		defer e.livePipelines.Delete(campaignID)
+	}
+	samples := e.probeGate(ctx, p, prepared, modelDBIDs, e.juryProbePopulation(modelDBIDs))
 	// A nil gate means the context was canceled mid-probe: the outcome is
 	// meaningless, so feed everything and let the canceled pool drop every
 	// cell — the standard tail then fails the runs with the cancellation
@@ -264,7 +272,6 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		return !deadline.IsZero() && !e.now().Before(deadline)
 	}
 
-	p := newPipeline(e, prepared)
 	remaining := map[int64]int{}
 	for _, prep := range prepared {
 		remaining[prep.run.ID] = len(feed)
@@ -287,11 +294,6 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	var completed, dead int
 	p.runJudgePool(ctx, budgetExceeded)
 	p.setCellsTotal(len(cells))
-	if len(prepared) > 0 {
-		campaignID := prepared[0].run.CampaignID
-		e.livePipelines.Store(campaignID, p)
-		defer e.livePipelines.Delete(campaignID)
-	}
 	e.runCellPool(ctx, cells, func() bool {
 		if budgetExceeded() {
 			stop("campaign budget exceeded")
@@ -607,7 +609,7 @@ type probeSample struct {
 // (W5 — an eval probe is not monitoring). Models that cannot be probed
 // (gone, retired, no enabled chat endpoint) stay reachable so evalModel's
 // existing setup-failure paths report them unchanged.
-func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, subjectIDs, probeIDs []int64) map[int64]probeSample {
+func (e *Evaluator) probeGate(ctx context.Context, p *pipeline, prepared []*preparedRun, subjectIDs, probeIDs []int64) map[int64]probeSample {
 	subjects := make(map[int64]bool, len(subjectIDs))
 	for _, id := range subjectIDs {
 		subjects[id] = true
@@ -650,6 +652,7 @@ func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, subj
 	if parallel > probeGateParallel {
 		parallel = probeGateParallel
 	}
+	p.setProbeTotal(len(targets))
 	sem := make(chan struct{}, parallel)
 	var wg sync.WaitGroup
 	for _, tgt := range targets {
@@ -659,6 +662,7 @@ func (e *Evaluator) probeGate(ctx context.Context, prepared []*preparedRun, subj
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			sample := e.probeModel(ctx, tgt.hub, tgt.protocol, tgt.modelID)
+			p.noteProbeDone()
 			if ctx.Err() != nil {
 				// A canceled context makes the probe outcome meaningless:
 				// never stamp a model unreachable on a canceled round —
@@ -908,15 +912,16 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 }
 
 // LiveQueueDepth reports the running campaign's queue state across both
-// pipeline stages (GH #178) plus per-model judge progress (GH #179); ok is
-// false when no batch is executing for the campaign on this process.
-func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, perModel []ModelQueueDepth, ok bool) {
+// pipeline stages (GH #178) plus per-model judge progress (GH #179) and
+// the probe stage's completion; ok is false when no batch is executing
+// for the campaign on this process.
+func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, perModel []ModelQueueDepth, probeDone, probeTotal int, ok bool) {
 	v, ok := e.livePipelines.Load(campaignID)
 	if !ok {
-		return 0, 0, 0, 0, nil, false
+		return 0, 0, 0, 0, nil, 0, 0, false
 	}
-	examPending, examInflight, judgePending, judgeInflight, perModel = v.(*pipeline).queueDepth()
-	return examPending, examInflight, judgePending, judgeInflight, perModel, true
+	examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal = v.(*pipeline).queueDepth()
+	return examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal, true
 }
 
 // ModelQueueDepth is one subject's judge-stage progress on the live report.

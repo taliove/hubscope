@@ -94,6 +94,9 @@ type pipeline struct {
 	judgeOffered, judgeTaken, judgeDone int
 	judgeOfferedByModel                 map[int64]int
 	judgeDoneByModel                    map[int64]int
+	// Probe-stage counters: the gate's model probes are the batch's first
+	// visible stage, not an invisible preamble (2026-08-04 UX ruling).
+	probeTotal, probeDone int
 }
 
 // costState accumulates one run's estimated cost: exam (answer calls) and
@@ -382,6 +385,20 @@ func (p *pipeline) isFinished(runID int64) bool {
 	return p.finished[runID]
 }
 
+// setProbeTotal records how many models the gate will probe.
+func (p *pipeline) setProbeTotal(n int) {
+	p.mu.Lock()
+	p.probeTotal = n
+	p.mu.Unlock()
+}
+
+// noteProbeDone marks one model's probe rounds complete.
+func (p *pipeline) noteProbeDone() {
+	p.mu.Lock()
+	p.probeDone++
+	p.mu.Unlock()
+}
+
 // setCellsTotal records how many exam cells the batch will run.
 func (p *pipeline) setCellsTotal(n int) {
 	p.mu.Lock()
@@ -410,8 +427,9 @@ type modelQueueDepth struct {
 }
 
 // queueDepth snapshots the live queue state of both stages (GH #178) plus
-// the per-model judge progress (GH #179).
-func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeInflight int, perModel []modelQueueDepth) {
+// the per-model judge progress (GH #179) and the probe stage's completion
+// (done/total; done == 0 && total == 0 means the gate has not started).
+func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeInflight int, perModel []modelQueueDepth, probeDoneN, probeTotalN int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	examPending = p.examTotal - p.examStarted
@@ -426,7 +444,7 @@ func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeI
 		})
 	}
 	sort.Slice(perModel, func(a, b int) bool { return perModel[a].ModelDBID < perModel[b].ModelDBID })
-	return examPending, examInflight, judgePending, judgeInflight, perModel
+	return examPending, examInflight, judgePending, judgeInflight, perModel, p.probeDone, p.probeTotal
 }
 
 // setCellsTotal is wired by the batch executor; the retry path leaves the

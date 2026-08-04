@@ -90,6 +90,13 @@ import type { Campaign, EvalRun, Model, Suite } from '@/api/types'
 // the tracked campaign, and the campaign-grouped run history. The panel
 // fetches its own data so the admin view's resource data flow stays
 // untouched; a settled campaign reloads everything.
+const emit = defineEmits<{
+  // A fresh batch was accepted: the parent switches to the live board so
+  // the probe gate and both queues are visible from the first second
+  // (2026-08-04 UX ruling — never trigger-and-nothing-happens).
+  triggered: [campaign: Campaign]
+}>()
+
 const suites = ref<Suite[]>([])
 const models = ref<Model[]>([])
 const runs = ref<EvalRun[]>([])
@@ -182,6 +189,7 @@ async function reload() {
 function startTracking(campaign: Campaign) {
   trackedCampaign.value = campaign
   tracking.value = true
+  emit('triggered', campaign)
   stopPolling()
   pollHandle = createVisibilityPoll(
     async () => {

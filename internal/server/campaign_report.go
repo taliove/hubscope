@@ -100,6 +100,11 @@ type queueDepthDTO struct {
 	JudgePending  int             `json:"judge_pending"`
 	JudgeInflight int             `json:"judge_inflight"`
 	Models        []modelQueueDTO `json:"models"`
+	// ProbeDone/ProbeTotal track the probe gate's completion: while
+	// ProbeDone < ProbeTotal the batch is still probing (2026-08-04 UX
+	// ruling — the probe stage is visible, never an invisible preamble).
+	ProbeDone  int `json:"probe_done"`
+	ProbeTotal int `json:"probe_total"`
 }
 
 // modelQueueDTO is one subject's judge-stage progress.
@@ -504,7 +509,7 @@ func (s *Server) liveQueueDepth(campaignID int64, status string) *queueDepthDTO 
 	if status != store.CampaignStatusRunning {
 		return nil
 	}
-	examPending, examInflight, judgePending, judgeInflight, perModel, ok := s.evaluator.LiveQueueDepth(campaignID)
+	examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal, ok := s.evaluator.LiveQueueDepth(campaignID)
 	if !ok {
 		return nil
 	}
@@ -518,6 +523,8 @@ func (s *Server) liveQueueDepth(campaignID int64, status string) *queueDepthDTO 
 		JudgePending:  judgePending,
 		JudgeInflight: judgeInflight,
 		Models:        models,
+		ProbeDone:     probeDone,
+		ProbeTotal:    probeTotal,
 	}
 }
 

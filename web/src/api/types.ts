@@ -473,6 +473,9 @@ export interface QueueDepth {
   judge_pending: number
   judge_inflight: number
   models: { model_db_id: number; judge_done: number; judge_total: number }[]
+  // Probe-gate completion (probe_done < probe_total = still probing).
+  probe_done: number
+  probe_total: number
 }
 
 // One probed model's gate outcome from the jury snapshot (GH #179).

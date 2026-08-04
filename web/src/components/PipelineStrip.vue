@@ -21,6 +21,16 @@ const examTotal = computed(() => props.report.rows.length * props.report.suites.
 
 const progress = computed(() => props.report.progress)
 
+// The probe gate is the batch's first visible stage: while it runs the
+// node shows live completion instead of a bare checkmark that only
+// appears after the fact (2026-08-04 UX ruling).
+const probing = computed(() => {
+  const d = depth.value
+  return d !== null && d.probe_total > 0 && d.probe_done < d.probe_total
+})
+const probeDone = computed(() => depth.value?.probe_done ?? 0)
+const probeTotal = computed(() => depth.value?.probe_total ?? 0)
+
 interface MonitorRow {
   model: string
   probeOk: boolean | null // null = no probe data (pre-jury batch)
@@ -76,10 +86,13 @@ function pct(done: number, total: number): number {
 
 <template>
   <div v-if="depth" class="pipeline-strip">
-    <div class="pipe-node done">
+    <div class="pipe-node" :class="probing ? 'active' : 'done'">
       <div class="node-title">刺探门控</div>
-      <div class="node-big">✓</div>
-      <div class="node-sub">不可达模型已跳过</div>
+      <div class="node-big" v-if="probing">
+        {{ probeDone }}<span class="dim">/{{ probeTotal }}</span>
+      </div>
+      <div class="node-big" v-else>✓</div>
+      <div class="node-sub">{{ probing ? '实测通断/速度/稳定性' : '不可达模型已跳过' }}</div>
     </div>
     <div class="pipe-link" />
     <div class="pipe-node active">
