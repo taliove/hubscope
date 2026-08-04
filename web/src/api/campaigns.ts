@@ -82,3 +82,9 @@ export async function retryCampaignUnits(id: number, items: RetryUnitItem[]): Pr
 export async function cancelCampaign(id: number): Promise<void> {
   return http.post<void>(`/campaigns/${id}/cancel`)
 }
+
+// Confirm the jury plan of a manual batch parked at the confirmation gate
+// (2026-08-04 ruling); unconfirmed batches auto-start at the deadline.
+export async function confirmJury(id: number): Promise<void> {
+  return http.post<void>(`/campaigns/${id}/confirm-jury`)
+}

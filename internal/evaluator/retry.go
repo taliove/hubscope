@@ -174,6 +174,131 @@ func (e *Evaluator) retryNullScoreCells(ctx context.Context, campaignID int64, u
 	e.SettleCampaign(ctx, campaignID)
 }
 
+// RetryAnsweredUnits re-answers and re-judges the requested units that
+// already hold a result row (2026-08-04 ruling): the operator picked them
+// explicitly, so any score — not just nulls — is re-asked. settled=true
+// drives the reopen → re-settle path of a finished batch; settled=false
+// means the campaign is executing on this process and the retry's fresh
+// results simply land into the in-flight batch (no reopen, no settle, no
+// run finishing — the batch owns its lifecycle).
+func (e *Evaluator) RetryAnsweredUnits(ctx context.Context, campaignID int64, units []store.RetryUnit, settled bool) {
+	ctx = e.registerCancel(ctx, campaignID)
+	defer e.unregisterCancel(campaignID)
+
+	runs, err := e.db.ListEvalRunsByCampaign(campaignID)
+	if err != nil {
+		slog.Error("evaluator: load campaign runs for retry-any", "campaign_id", campaignID, "error", err)
+		return
+	}
+	runBySuite := map[int64]*store.EvalRun{}
+	for i := range runs {
+		runBySuite[runs[i].SuiteID] = &runs[i]
+	}
+	defaultSamples := e.resolveDefaultSampleCount()
+
+	type cellKey struct {
+		run   *store.EvalRun
+		model int64
+	}
+	byCell := map[cellKey][]store.Case{}
+	var order []cellKey
+	for _, u := range units {
+		c, err := e.db.GetCase(u.CaseID)
+		if err != nil {
+			slog.Error("evaluator: retry-any skips missing case", "case_id", u.CaseID, "error", err)
+			continue
+		}
+		if !c.Enabled {
+			slog.Info("evaluator: retry-any skips disabled case", "case_id", u.CaseID)
+			continue
+		}
+		run := runBySuite[c.SuiteID]
+		if run == nil {
+			slog.Error("evaluator: retry-any case outside the campaign", "case_id", u.CaseID)
+			continue
+		}
+		key := cellKey{run: run, model: u.ModelDBID}
+		if _, seen := byCell[key]; !seen {
+			order = append(order, key)
+		}
+		byCell[key] = append(byCell[key], *c)
+	}
+
+	var cells []evalCell
+	var preps []*preparedRun
+	for _, key := range order {
+		prep := &preparedRun{run: key.run, cases: byCell[key]}
+		preps = append(preps, prep)
+		cells = append(cells, evalCell{prep: prep, modelDBID: key.model})
+	}
+
+	p := newPipeline(e, preps)
+	if settled {
+		p.finishRun = func(prep *preparedRun) { e.finishRetriedRun(prep.run.ID, "done") }
+	} else {
+		// The in-flight batch owns its runs' lifecycle; the retry only
+		// lands fresh results.
+		p.finishRun = func(*preparedRun) {}
+	}
+	p.runJudgePool(ctx, nil)
+	e.runCellPool(ctx, cells, nil, func(cctx context.Context, cell evalCell) {
+		e.retryModelAny(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, defaultSamples)
+		p.markCellsDone(cell.prep.run.ID)
+	})
+	p.closeJudgeQueue()
+
+	if settled {
+		for _, prep := range preps {
+			if !p.isFinished(prep.run.ID) {
+				e.finishRetriedRun(prep.run.ID, "failed")
+			}
+		}
+		e.SettleCampaign(ctx, campaignID)
+	}
+}
+
+// retryModelAny re-evaluates one (run, model) cell's requested cases,
+// deleting each unit's prior result regardless of score (2026-08-04
+// ruling). Same setup guards as retryModel.
+func (e *Evaluator) retryModelAny(ctx context.Context, p *pipeline, prep *preparedRun, modelDBID int64, cases []store.Case, defaultSamples int) {
+	model, err := e.db.GetModel(modelDBID)
+	if err != nil {
+		slog.Error("evaluator: retry-any skips model", "model_db_id", modelDBID, "error", err)
+		return
+	}
+	if model.Status == "retired" {
+		slog.Info("evaluator: retry-any skips retired model", "model", model.ModelID)
+		return
+	}
+	hub, err := e.db.GetHub(model.HubID)
+	if err != nil {
+		slog.Error("evaluator: retry-any skips model, hub gone", "model", model.ModelID, "error", err)
+		return
+	}
+	endpoints, err := e.db.ListEndpointsByModelID(modelDBID)
+	if err != nil {
+		slog.Error("evaluator: retry-any skips model, endpoints unloadable", "model", model.ModelID, "error", err)
+		return
+	}
+	protocol, ok := selectProtocol(endpoints)
+	if !ok {
+		slog.Error("evaluator: retry-any skips model, no enabled endpoint", "model", model.ModelID)
+		return
+	}
+
+	for _, c := range cases {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := e.db.DeleteUnitResult(prep.run.ID, modelDBID, c.ID); err != nil {
+			slog.Error("evaluator: delete result before retry-any", "run_id", prep.run.ID,
+				"model_db_id", modelDBID, "case_id", c.ID, "error", err)
+			continue
+		}
+		e.evalCase(ctx, p, prep, hub, protocol, model, c, nil, defaultSamples)
+	}
+}
+
 // finishRetriedRun stamps the retry's terminal status onto a reopened run
 // (GH #39). Retry runs carry no task-center mirror — the original run's task
 // settled with it — so this is a plain store transition.

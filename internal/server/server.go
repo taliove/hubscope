@@ -99,6 +99,26 @@ func WithAlertClock(clock scheduler.Clock) Option {
 	}
 }
 
+// WithEvalClock drives the evaluator's timers (the jury-confirmation
+// countdown) off the given clock — tests advance a scheduler.FakeClock
+// instead of waiting out the real 60s (W4).
+func WithEvalClock(clock scheduler.Clock) Option {
+	return func(s *Server) {
+		s.evaluator.NewConfirmTimer = func(d time.Duration) evaluator.ConfirmTimer {
+			return clock.NewTimer(d)
+		}
+	}
+}
+
+// WithJuryConfirmTimeout enables the manual-batch jury confirmation gate
+// (2026-08-04 ruling) with the given auto-start timeout. Production wires
+// 60s; the default (0) keeps the gate off so tests opt in explicitly.
+func WithJuryConfirmTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		s.evaluator.ConfirmTimeout = d
+	}
+}
+
 // WithRateLimits overrides the per-IP rate-limit tiers. Zero tiers leave
 // that class of traffic unlimited (used by tests).
 func WithRateLimits(limits RateLimits) Option {
@@ -361,6 +381,7 @@ func (s *Server) routes() chi.Router {
 				r.Post("/campaigns/{id}/retry-failed", s.handleRetryCampaignFailed)
 				r.Post("/campaigns/{id}/retry-units", s.handleRetryCampaignUnits)
 				r.Post("/campaigns/{id}/cancel", s.handleCancelCampaign)
+				r.Post("/campaigns/{id}/confirm-jury", s.handleConfirmJury)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})

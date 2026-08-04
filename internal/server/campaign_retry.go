@@ -130,8 +130,9 @@ func (s *Server) handleRetryCampaignUnits(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if campaign.Status != store.CampaignStatusDone && campaign.Status != store.CampaignStatusFailed {
-		writeError(w, http.StatusConflict, "campaign is not settled")
+	if campaign.Status != store.CampaignStatusDone && campaign.Status != store.CampaignStatusFailed &&
+		campaign.Status != store.CampaignStatusRunning {
+		writeError(w, http.StatusConflict, "campaign is not running or settled")
 		return
 	}
 
@@ -161,50 +162,59 @@ func (s *Server) handleRetryCampaignUnits(w http.ResponseWriter, r *http.Request
 		units = append(units, u)
 	}
 
-	nullUnits, err := s.db.CampaignNullScoreUnits(campaign.ID, units)
+	// Retry-any (2026-08-04 ruling): a unit with any recorded answer —
+	// scored or not — is re-answered and re-judged on request. A unit
+	// without a row is mid-flight or pending; the batch answers it anyway,
+	// so it is skipped, never double-fired.
+	answeredUnits, err := s.db.CampaignAnsweredUnits(campaign.ID, units)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to inspect campaign results")
 		return
 	}
-	accepted := make([]store.RetryUnit, 0, len(nullUnits))
+	accepted := make([]store.RetryUnit, 0, len(answeredUnits))
 	for _, u := range units {
-		if _, ok := nullUnits[u]; ok {
+		if _, ok := answeredUnits[u]; ok {
 			accepted = append(accepted, u)
 		}
 	}
 	resp := retryUnitsResponse{Accepted: len(accepted), Skipped: len(units) - len(accepted)}
 	if len(accepted) == 0 {
-		// Every requested unit is already judged: nothing to re-run, no
-		// state change — the counts are the whole answer.
 		writeData(w, http.StatusOK, resp)
 		return
 	}
 
-	// Cross-campaign mutex (GH #153): retrying on top of another active
-	// campaign would stack a second cell pool on the Hub.
-	active, err := s.db.HasUnfinishedCampaign()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check active campaigns")
-		return
-	}
-	if active {
-		writeError(w, http.StatusConflict, "an evaluation campaign is already running")
-		return
-	}
-
-	reopened, err := s.db.ReopenCampaignForUnitRetry(campaign.ID, accepted)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reopen campaign")
-		return
-	}
-	if !reopened {
-		// Lost a concurrent retry race: the other request owns the rerun.
-		writeError(w, http.StatusConflict, "campaign is not settled")
+	settled := campaign.Status != store.CampaignStatusRunning
+	if settled {
+		// Cross-campaign mutex (GH #153): retrying on top of another active
+		// campaign would stack a second cell pool on the Hub.
+		active, err := s.db.HasUnfinishedCampaign()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check active campaigns")
+			return
+		}
+		if active {
+			writeError(w, http.StatusConflict, "an evaluation campaign is already running")
+			return
+		}
+		reopened, err := s.db.ReopenCampaignForUnitRetryAny(campaign.ID, accepted)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to reopen campaign")
+			return
+		}
+		if !reopened {
+			// Lost a concurrent retry race: the other request owns the rerun.
+			writeError(w, http.StatusConflict, "campaign is not settled")
+			return
+		}
+	} else if !s.evaluator.IsExecuting(campaign.ID) {
+		// A running campaign the process does not own (stale row from a
+		// crash) cannot accept live retries.
+		writeError(w, http.StatusConflict, "campaign is not actively executing")
 		return
 	}
 
 	exec := func() {
-		s.evaluator.RetryUnits(context.Background(), campaign.ID, accepted)
+		s.evaluator.RetryAnsweredUnits(context.Background(), campaign.ID, accepted, settled)
 	}
 	if s.syncEval {
 		exec()
@@ -215,6 +225,27 @@ func (s *Server) handleRetryCampaignUnits(w http.ResponseWriter, r *http.Request
 	s.audit(r, "eval.retry_units", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("accepted=%d skipped=%d", resp.Accepted, resp.Skipped), "accepted")
 	writeData(w, http.StatusAccepted, resp)
+}
+
+// handleConfirmJury handles POST /api/campaigns/{id}/confirm-jury
+// (2026-08-04 ruling): the operator approves the probe outcomes and jury
+// of a manually triggered batch waiting at the confirmation gate. A batch
+// not at the gate conflicts.
+func (s *Server) handleConfirmJury(w http.ResponseWriter, r *http.Request) {
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
+		return
+	}
+	if campaign.Status != store.CampaignStatusRunning {
+		writeError(w, http.StatusConflict, "campaign is not running")
+		return
+	}
+	if !s.evaluator.ConfirmCampaign(campaign.ID) {
+		writeError(w, http.StatusConflict, "campaign is not awaiting jury confirmation")
+		return
+	}
+	s.audit(r, "eval.confirm_jury", "campaign", strconv.FormatInt(campaign.ID, 10), "", "accepted")
+	writeData(w, http.StatusOK, map[string]bool{"confirmed": true})
 }
 
 // handleCancelCampaign handles POST /api/campaigns/{id}/cancel (GH #152):

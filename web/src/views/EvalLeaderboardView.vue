@@ -114,17 +114,10 @@
                 <!-- Live two-stage queue state (GH #179 view A): probe
                      gate → exam → judge → median, fed by queue_depth. -->
                 <PipelineStrip :report="report" />
-                <EvalBoardHeader v-model:view="viewMode" :report="report" />
-                <EvalProgressGrid v-show="viewMode === 'grid'" :report="report" />
-                <Leaderboard
-                  v-show="viewMode === 'scores'"
-                  :key="report.id"
-                  :report="report"
-                  :family-options="familyOptions"
-                  live
-                  @query="onQuery"
-                  @select="openTrend"
-                />
+                <!-- One unified model table (2026-08-04 review): probe,
+                     progress, live scores, speed and cost fused; per-suite
+                     detail lives in the row's drawer. -->
+                <EvalLiveBoard :report="report" @cell-select="onCellSelect" />
                 <!-- Case-level live feed (issue #17): console-only, refreshed by
                      the page's own poll timer; unmounts at settle (historical
                      batches never show it — the simple form of the brief's
@@ -173,7 +166,16 @@
                 :run-id="drilldownRunId"
                 :model-id="drilldownModelId"
                 :suites="drilldownSuites"
+                :retryable="true"
                 @close="drilldownRunId = null"
+                @retried="onDialogRetried"
+              />
+              <!-- Manual batches pause at the jury gate: show the plan,
+                   auto-start at the 60s deadline (2026-08-04 ruling). -->
+              <JuryConfirmDialog
+                v-if="juryConfirmReport"
+                :report="juryConfirmReport"
+                @close="dismissJuryConfirm"
               />
             </template>
           </template>
@@ -201,13 +203,13 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { listCampaigns, getCampaign, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
 import { listSuites } from '@/api/evals'
 import { fetchAuthStatus, type AuthUser } from '@/api/auth'
-import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
-import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import PipelineStrip from '@/components/PipelineStrip.vue'
+import EvalLiveBoard from '@/components/EvalLiveBoard.vue'
+import JuryConfirmDialog from '@/components/JuryConfirmDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
@@ -520,6 +522,24 @@ async function onTriggered(campaign: Campaign) {
   activeTab.value = 'board'
   await loadCampaigns()
   switchBatch(campaign.id)
+}
+
+// A retry launched from the run detail dialog lands fresh results in the
+// batch: reload, which re-arms the polling.
+function onDialogRetried() {
+  void reload()
+}
+
+// The jury-confirmation dialog shows once per batch (2026-08-04 ruling):
+// dismissed or auto-started batches keep running without it.
+const confirmDismissed = ref(new Set<number>())
+const juryConfirmReport = computed(() => {
+  const r = report.value
+  if (!r || !r.awaiting_confirmation) return null
+  return confirmDismissed.value.has(r.id) ? null : r
+})
+function dismissJuryConfirm() {
+  if (report.value) confirmDismissed.value.add(report.value.id)
 }
 
 function switchBatch(id: number) {  selectedId.value = id

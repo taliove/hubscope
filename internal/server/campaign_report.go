@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 
 	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/registry"
@@ -125,12 +126,15 @@ type estimatedCostDTO struct {
 }
 
 // juryInfoDTO is the campaign-level jury summary for the ops monitor table
-// (GH #179): the policy, the judge panel, and every probed model's gate
-// outcome, merged from the batch's run snapshots.
+// (GH #179): the policy, the judge panel, every probed model's gate
+// outcome, and — per subject — its own exactly-≤3 judges (2026-08-04
+// review: never display the union, it reads as a 4-5 judge jury).
 type juryInfoDTO struct {
 	Policy string                         `json:"policy"`
 	Judges []string                       `json:"judges"`
 	Probe  map[string]evaluator.JuryProbe `json:"probe"`
+	// Juries maps a subject's model DB ID (string) to its judges.
+	Juries map[string][]string `json:"juries"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -160,6 +164,10 @@ type campaignReportDTO struct {
 	// QueueDepth is the live two-stage queue state (GH #178), present only
 	// while the campaign is executing on this process.
 	QueueDepth *queueDepthDTO `json:"queue_depth,omitempty"`
+	// AwaitingConfirmation marks a manual batch paused at the jury
+	// confirmation gate (2026-08-04 ruling); the console shows the
+	// confirm dialog while true.
+	AwaitingConfirmation bool `json:"awaiting_confirmation,omitempty"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -415,6 +423,8 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		EstimatedCost: estimated,
 		QueueDepth:    queueDepth,
 		Jury:          juryInfo,
+		AwaitingConfirmation: !shared && campaign.Status == store.CampaignStatusRunning &&
+			s.evaluator.AwaitingConfirmation(id),
 	}, nil
 }
 
@@ -433,7 +443,12 @@ func campaignJuryInfo(runs []store.EvalRun, shared bool) *juryInfoDTO {
 		}
 		judges := map[string]bool{}
 		var panel []string
-		for _, js := range juries {
+		mergedJuries := map[string][]string{}
+		for id, js := range juries {
+			key := strconv.FormatInt(id, 10)
+			if _, ok := mergedJuries[key]; !ok {
+				mergedJuries[key] = js
+			}
 			for _, j := range js {
 				if !judges[j] {
 					judges[j] = true
@@ -442,7 +457,7 @@ func campaignJuryInfo(runs []store.EvalRun, shared bool) *juryInfoDTO {
 			}
 		}
 		sort.Strings(panel)
-		return &juryInfoDTO{Policy: policy, Judges: panel, Probe: probe}
+		return &juryInfoDTO{Policy: policy, Judges: panel, Probe: probe, Juries: mergedJuries}
 	}
 	return nil
 }

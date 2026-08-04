@@ -5,12 +5,14 @@
      cost view. Unknown prices are named, never zeroed. -->
 <script setup lang="ts">
 import { computed } from 'vue'
+import VendorTile from '@/components/VendorTile.vue'
 import type { CampaignReport } from '@/api/types'
 
 const props = defineProps<{ report: CampaignReport }>()
 
 interface ValueRow {
   model: string
+  family: string
   score: number | null
   tps: number | null
   examCost: number | null
@@ -62,6 +64,7 @@ const rows = computed<ValueRow[]>(() => {
     const p = probe[r.model_id]
     return {
       model: r.model_id,
+      family: r.family,
       score,
       tps: t && t.n > 0 ? t.sum / t.n : null,
       examCost,
@@ -129,7 +132,7 @@ function fmtScore(v: number | null): string {
         <tbody>
           <tr v-for="(r, i) in rows" :key="r.model">
             <td class="rank">{{ r.perPoint === null ? '—' : i + 1 }}</td>
-            <td class="mono">{{ r.model }}</td>
+            <td class="mono"><VendorTile :family="r.family" /> {{ r.model }}</td>
             <td class="score">{{ fmtScore(r.score) }}</td>
             <td>
               <div class="tpsbar">

@@ -436,6 +436,9 @@ export interface CampaignReport extends Campaign {
   // Jury panel + probe outcomes (GH #179, console-only); absent on
   // pre-jury batches.
   jury?: JuryInfo
+  // Manual batch parked at the jury confirmation gate (2026-08-04
+  // ruling); the console shows the plan-confirm dialog while true.
+  awaiting_confirmation?: boolean
 }
 
 // Batch-level cost summary (GH #42): Σ latency / Σ input / Σ output tokens
@@ -487,10 +490,12 @@ export interface JuryProbe {
 }
 
 // Campaign-level jury panel + probe outcomes (GH #179, console-only).
+// juries maps each subject's model DB ID (string) to its own ≤3 judges.
 export interface JuryInfo {
   policy: string
   judges: string[]
   probe: Record<string, JuryProbe>
+  juries: Record<string, string[]>
 }
 
 // Targeted retry (retry-units): one (model, case) unit of a settled batch
@@ -566,6 +571,8 @@ export interface ShareLink {
 export interface EvalResult {
   id: number
   model_id: string // the model identifier string
+  model_db_id: number
+  family: string
   case_id: number
   answer_text: string | null
   score: number | null // null when the case could not be judged

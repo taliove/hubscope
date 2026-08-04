@@ -74,11 +74,39 @@ type Evaluator struct {
 	// (GH #178): the campaign report reads the live queue depth of both
 	// stages from it.
 	livePipelines sync.Map // int64 → *pipeline
+
+	// Jury confirmation gate (2026-08-04 ruling): a manually triggered
+	// batch pauses after the probe gate and jury selection until the
+	// operator confirms or the timeout auto-starts it. confirmCh carries
+	// the release, awaitingConfirm backs the API surface.
+	ConfirmTimeout  time.Duration
+	NewConfirmTimer func(d time.Duration) ConfirmTimer
+	confirmCh       map[int64]chan struct{}
+	awaitingConfirm map[int64]bool
 }
+
+// ConfirmTimer is a single-fire countdown (the scheduler.Timer shape,
+// redeclared here to keep the import direction one-way).
+type ConfirmTimer interface {
+	C() <-chan time.Time
+	Stop()
+}
+
+// realConfirmTimer adapts *time.Timer for production.
+type realConfirmTimer struct{ t *time.Timer }
+
+func (r realConfirmTimer) C() <-chan time.Time { return r.t.C }
+func (r realConfirmTimer) Stop()               { r.t.Stop() }
 
 // New creates an Evaluator backed by the given store and hub client.
 func New(db *store.DB, client *hubclient.Client) *Evaluator {
-	return &Evaluator{db: db, client: client, cancels: map[int64]context.CancelFunc{}}
+	return &Evaluator{
+		db:              db,
+		client:          client,
+		cancels:         map[int64]context.CancelFunc{},
+		confirmCh:       map[int64]chan struct{}{},
+		awaitingConfirm: map[int64]bool{},
+	}
 }
 
 // registerCancel derives a cancelable context for one campaign's execution
@@ -112,6 +140,82 @@ func (e *Evaluator) CancelCampaign(campaignID int64) bool {
 		cancel()
 	}
 	return ok
+}
+
+// IsExecuting reports whether the campaign is executing on this process —
+// the live-retry admission check (2026-08-04 ruling).
+func (e *Evaluator) IsExecuting(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	_, ok := e.cancels[campaignID]
+	return ok
+}
+
+// AwaitingConfirmation reports whether the campaign is paused at the jury
+// confirmation gate (2026-08-04 ruling; manual batches only).
+func (e *Evaluator) AwaitingConfirmation(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	return e.awaitingConfirm[campaignID]
+}
+
+// ConfirmCampaign releases the jury confirmation gate immediately. It
+// reports false when the campaign is not awaiting confirmation.
+func (e *Evaluator) ConfirmCampaign(campaignID int64) bool {
+	e.cancelMu.Lock()
+	ch, ok := e.confirmCh[campaignID]
+	e.cancelMu.Unlock()
+	if !ok {
+		return false
+	}
+	close(ch)
+	return true
+}
+
+// awaitJuryConfirmation holds a manually triggered batch after the probe
+// gate and jury selection (2026-08-04 ruling): the operator reviews the
+// probe outcomes and the jury, then confirms — or the timeout starts the
+// batch automatically. Scheduled batches never pause.
+func (e *Evaluator) awaitJuryConfirmation(ctx context.Context, campaignID int64, prepared []*preparedRun) {
+	timeout := e.ConfirmTimeout
+	if timeout <= 0 {
+		return // gate disabled (tests; production wires 60s)
+	}
+	newTimer := e.NewConfirmTimer
+	if newTimer == nil {
+		newTimer = func(d time.Duration) ConfirmTimer { return realConfirmTimer{time.NewTimer(d)} }
+	}
+
+	ch := make(chan struct{})
+	e.cancelMu.Lock()
+	e.confirmCh[campaignID] = ch
+	e.awaitingConfirm[campaignID] = true
+	e.cancelMu.Unlock()
+	for _, prep := range prepared {
+		prep.task.log(store.TaskLogInfo, fmt.Sprintf(
+			"awaiting jury confirmation (auto-start in %ds)", int(timeout.Seconds())))
+	}
+	defer func() {
+		e.cancelMu.Lock()
+		delete(e.confirmCh, campaignID)
+		delete(e.awaitingConfirm, campaignID)
+		e.cancelMu.Unlock()
+	}()
+
+	timer := newTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		for _, prep := range prepared {
+			prep.task.log(store.TaskLogInfo, "jury confirmed by operator, batch starts")
+		}
+	case <-timer.C():
+		for _, prep := range prepared {
+			prep.task.log(store.TaskLogInfo, "jury confirmation timed out, batch auto-started")
+		}
+	case <-ctx.Done():
+		// Canceled at the gate: the standard tail reports the reason.
+	}
 }
 
 // now returns the current time from the injected clock, defaulting to the
@@ -251,6 +355,12 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		// its own hub's reachable candidates, ranked by the configured
 		// policy; the snapshot lands on every run before the first cell.
 		e.selectJuries(prepared, feed, samples)
+		// Manual batches pause here for the operator's jury confirmation
+		// (2026-08-04 ruling) when the deployment enables the gate;
+		// scheduled batches always run straight through.
+		if e.ConfirmTimeout > 0 && len(prepared) > 0 && prepared[0].run.Trigger == "manual" {
+			e.awaitJuryConfirmation(ctx, prepared[0].run.CampaignID, prepared)
+		}
 	}
 
 	var deadline time.Time

@@ -665,6 +665,56 @@ func (db *DB) DeleteNullScoreResult(runID, modelDBID, caseID int64) error {
 	return err
 }
 
+// CampaignAnsweredUnits returns the subset of the requested units that
+// already hold a result row of ANY score (2026-08-04 retry-any ruling):
+// only those are re-answerable on demand — a unit without a row is
+// mid-flight or pending and the running batch will answer it anyway.
+func (db *DB) CampaignAnsweredUnits(campaignID int64, units []RetryUnit) (map[RetryUnit]struct{}, error) {
+	where, args := retryUnitWhere("res", units)
+	rows, err := db.conn.Query(`
+		SELECT res.model_db_id, res.case_id FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		WHERE r.campaign_id = ? AND (`+where+`)
+	`, append([]interface{}{campaignID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[RetryUnit]struct{}, len(units))
+	for rows.Next() {
+		var u RetryUnit
+		if err := rows.Scan(&u.ModelDBID, &u.CaseID); err != nil {
+			return nil, err
+		}
+		out[u] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
+// DeleteUnitResult removes a unit's result row regardless of score —
+// exclusively for the operator-initiated re-answer flow (2026-08-04
+// ruling), which re-answers and re-judges on explicit request. Contrast
+// DeleteNullScoreResult (W7): the null-only guard there stays hardcoded;
+// this method must never be called from any path but the retry-any one.
+func (db *DB) DeleteUnitResult(runID, modelDBID, caseID int64) error {
+	_, err := db.conn.Exec(`
+		DELETE FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ?
+	`, runID, modelDBID, caseID)
+	return err
+}
+
+// HasResult reports whether the unit holds any result row.
+func (db *DB) HasResult(runID, modelDBID, caseID int64) (bool, error) {
+	var n int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ?
+	`, runID, modelDBID, caseID).Scan(&n)
+	return n > 0, err
+}
+
 // HasScheduledEvalRunSince reports whether any scheduled eval run started at
 // or after the given time. The weekly worker uses it to stay idempotent
 // across restarts inside the Sunday window.

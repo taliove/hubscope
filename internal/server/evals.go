@@ -669,8 +669,15 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resultDTOs := make([]evalResultDTO, 0, len(results))
+	families := map[int64]string{}
 	for _, res := range results {
+		if _, ok := families[res.ModelDBID]; !ok {
+			if m, err := s.db.GetModel(res.ModelDBID); err == nil {
+				families[res.ModelDBID] = m.Family
+			}
+		}
 		dto := toEvalResultDTO(res)
+		dto.Family = families[res.ModelDBID]
 		if cellVotes := latestAttemptVotes(votesByCell[[2]int64{res.ModelDBID, res.CaseID}]); len(cellVotes) > 0 {
 			dto.JudgeScores, dto.Spread = juryBreakdown(cellVotes)
 		}

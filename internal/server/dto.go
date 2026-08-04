@@ -226,6 +226,8 @@ type judgeVoteDTO struct {
 type evalResultDTO struct {
 	ID             int64    `json:"id"`
 	ModelID        string   `json:"model_id"`
+	ModelDBID      int64    `json:"model_db_id"`
+	Family         string   `json:"family"`
 	CaseID         int64    `json:"case_id"`
 	AnswerText     *string  `json:"answer_text"`
 	Score          *float64 `json:"score"`

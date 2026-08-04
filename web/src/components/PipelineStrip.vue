@@ -31,57 +31,7 @@ const probing = computed(() => {
 const probeDone = computed(() => depth.value?.probe_done ?? 0)
 const probeTotal = computed(() => depth.value?.probe_total ?? 0)
 
-interface MonitorRow {
-  model: string
-  probeOk: boolean | null // null = no probe data (pre-jury batch)
-  probeSucc: string
-  probeTps: number | null
-  examJudged: number
-  examExpected: number
-  judgeDone: number
-  judgeTotal: number
-  examCost: number | null
-}
 
-// The ops monitor table (prototype A): one row per batch member — probe
-// gate outcome, exam progress from the progress cells, judge progress from
-// the live queue, measured speed, and the registry-priced exam cost.
-const monitorRows = computed<MonitorRow[]>(() => {
-  const probe = props.report.jury?.probe ?? {}
-  const judgeByModel = new Map<number, { done: number; total: number }>()
-  for (const m of depth.value?.models ?? []) {
-    judgeByModel.set(m.model_db_id, { done: m.judge_done, total: m.judge_total })
-  }
-  const costByModel = new Map<string, { sum: number; unknown: boolean }>()
-  for (const cr of props.report.cost_rows ?? []) {
-    const c = costByModel.get(cr.model_id) ?? { sum: 0, unknown: false }
-    if (cr.exam_cost === null) c.unknown = true
-    else c.sum += cr.exam_cost
-    costByModel.set(cr.model_id, c)
-  }
-  return props.report.rows.map((r) => {
-    const p = probe[r.model_id]
-    const judged = r.cells.reduce((a, c) => a + c.judged_cases, 0)
-    const expected = r.cells.reduce((a, c) => a + c.expected_cases, 0)
-    const j = judgeByModel.get(r.model_db_id)
-    const c = costByModel.get(r.model_id)
-    return {
-      model: r.model_id,
-      probeOk: p ? p.ok : null,
-      probeSucc: p ? `${p.succ}/${p.rounds}` : '—',
-      probeTps: p && p.ok ? p.tps : null,
-      examJudged: judged,
-      examExpected: expected,
-      judgeDone: j?.done ?? 0,
-      judgeTotal: j?.total ?? 0,
-      examCost: c && !c.unknown ? c.sum : null,
-    }
-  })
-})
-
-function pct(done: number, total: number): number {
-  return total === 0 ? 0 : Math.round((done / total) * 100)
-}
 </script>
 
 <template>
@@ -118,44 +68,6 @@ function pct(done: number, total: number): number {
       </div>
       <div class="node-sub">Run 完成数</div>
     </div>
-  </div>
-
-  <!-- Jury strip: the batch's judge panel (GH #179). -->
-  <div v-if="depth && report.jury" class="jury-strip">
-    <span class="strip-label">裁判团({{ report.jury.policy }}):</span>
-    <span v-for="j in report.jury.judges" :key="j" class="judge-chip">{{ j }}</span>
-  </div>
-
-  <!-- Ops monitor table: one row per batch member. -->
-  <div v-if="depth && monitorRows.length > 0" class="monitor">
-    <table>
-      <thead>
-        <tr><th>模型</th><th>预检</th><th>答题</th><th>裁判</th><th>TPS</th><th>答题成本</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="m in monitorRows" :key="m.model" :class="{ skipped: m.probeOk === false }">
-          <td class="mono">{{ m.model }}</td>
-          <td>
-            <span v-if="m.probeOk === null" class="dim2">—</span>
-            <span v-else-if="m.probeOk" class="ok">✓ {{ m.probeSucc }}<template v-if="m.probeTps"> · {{ m.probeTps.toFixed(0) }} tps</template></span>
-            <span v-else class="bad">✗ {{ m.probeSucc }} 不可达,已跳过</span>
-          </td>
-          <td>
-            <div class="cellbar"><div class="cellbar-fill" :style="{ width: pct(m.examJudged, m.examExpected) + '%' }" /></div>
-            <span class="cellnum">{{ m.examJudged }}/{{ m.examExpected }}</span>
-          </td>
-          <td>
-            <template v-if="m.judgeTotal > 0">
-              <div class="cellbar"><div class="cellbar-fill judge" :style="{ width: pct(m.judgeDone, m.judgeTotal) + '%' }" /></div>
-              <span class="cellnum">{{ m.judgeDone }}/{{ m.judgeTotal }}</span>
-            </template>
-            <span v-else class="dim2">—</span>
-          </td>
-          <td>{{ m.probeTps === null ? '—' : m.probeTps.toFixed(0) }}</td>
-          <td>{{ m.examCost === null ? '未登记' : '$' + m.examCost.toFixed(4) }}</td>
-        </tr>
-      </tbody>
-    </table>
   </div>
 </template>
 

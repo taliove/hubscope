@@ -326,6 +326,46 @@ func (db *DB) ReopenCampaignForUnitRetry(id int64, units []RetryUnit) (bool, err
 	return true, nil
 }
 
+// ReopenCampaignForUnitRetryAny is the retry-any (2026-08-04 ruling)
+// variant of ReopenCampaignForUnitRetry: runs holding at least one
+// requested unit rejoin execution regardless of the unit's score — the
+// operator asked to re-answer and re-judge those answers. The state-guard
+// race semantics are unchanged.
+func (db *DB) ReopenCampaignForUnitRetryAny(id int64, units []RetryUnit) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	where, args := retryUnitWhere("res", units)
+	if _, err := tx.Exec(`
+		UPDATE eval_runs SET status = 'running', finished_at = NULL
+		WHERE campaign_id = ? AND status IN ('done', 'failed')
+		AND EXISTS (
+			SELECT 1 FROM eval_results res
+			WHERE res.eval_run_id = eval_runs.id
+			AND (`+where+`)
+		)
+	`, append([]interface{}{id}, args...)...); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CountCampaignNullScoreResults counts the campaign's failed results — the
 // eval_results rows whose score IS NULL across every member run (GH #28). It
 // is the retry-failed precondition and the report's failed_results field.
