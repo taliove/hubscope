@@ -84,3 +84,7 @@ Every type appears as at least one single-instruction row (72 single-instruction
 ## Immutability (W7)
 
 This subset is cast into the `ifeval` suite once and never edited. Changing the subset means retiring the suite and casting a new one (ADR 0007 / ADR 0013).
+
+## 2026-08-04 trim (100 -> 23)
+
+The shipped subset keeps 23 rows: one single-instruction case for each of the 22 ported instruction types plus the keywords:existence + punctuation:no_comma two-instruction case. The trim is coverage-first, not positional: the end-to-end per-checker test contract (TestIFEvalVerdictsPerInstructionType) outranks the round 20. Existing databases converge via the benchmark_trim_20 migration (prompt match, version bump).

@@ -379,8 +379,12 @@ func TestPreV3UpgradePurgesLegacySuites(t *testing.T) {
 		}
 		// The benchmark suites seed their 100-case frozen subsets on a
 		// database that predates them (ADR 0013).
-		if got := len(s["cases"].([]interface{})); got != 100 {
-			t.Errorf("benchmark suite %q has %d cases, want 100", s["key"], got)
+		want := 20
+		if s["key"] == "ifeval" {
+			want = 23
+		}
+		if got := len(s["cases"].([]interface{})); got != want {
+			t.Errorf("benchmark suite %q has %d cases, want %d", s["key"], got, want)
 		}
 	}
 	db.Close()

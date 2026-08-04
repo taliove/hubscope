@@ -353,16 +353,19 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 	setEvalConcurrency(t, ts.URL, 1)
 
 	stub.resetCalls()
-	// 3 probe-gate rounds (GH #174) precede beta's case calls.
-	stub.blockModelAfter("beta-model", 410)
+	// Freeze point arithmetic (20-case bank): alpha case-broken burns
+	// 3 probes + 5 suites x 10 circuit calls = 53; beta's 3 probes +
+	// 4 rule suites x 20 answers = 83, then ifeval's first seven cases
+	// settle one call each — the 91st call (ifeval case 8) blocks.
+	stub.blockModelAfter("beta-model", 90)
 	t.Cleanup(func() { stub.releaseModel("beta-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Beta's 411th call being recorded proves the freeze point: the campaign
+	// Beta's 91st call being recorded proves the freeze point: the campaign
 	// is running with results already on record.
-	waitFor(t, "beta's 411th call reaching the stub", func() bool {
-		return stub.callTotal("beta-model") >= 411
+	waitFor(t, "beta's 91st call reaching the stub", func() bool {
+		return stub.callTotal("beta-model") >= 91
 	})
 
 	link := createShareLink(t, ts.URL, campaignID)
@@ -427,14 +430,14 @@ func TestSharedReportHidesUnfinishedBoard(t *testing.T) {
 
 	// Cell states and coverage mirror the session grid's caliber: beta's
 	// four earlier suites are done and its ifeval is mid-flight (seven of
-	// a hundred judged); alpha has not started (all pending).
+	// 23 judged); alpha has not started (all pending).
 	alpha, beta := rows[0], rows[1]
 	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
-		assertCell(t, alpha, key, "pending", 0, 100)
-		assertCell(t, beta, key, "done", 100, 100)
+		assertCell(t, alpha, key, "pending", 0, 20)
+		assertCell(t, beta, key, "done", 20, 20)
 	}
-	assertCell(t, alpha, "ifeval", "pending", 0, 100)
-	assertCell(t, beta, "ifeval", "running", 7, 100)
+	assertCell(t, alpha, "ifeval", "pending", 0, 23)
+	assertCell(t, beta, "ifeval", "running", 7, 23)
 
 	// Settled: the shared view renders the same full board as the session
 	// view, cells included.

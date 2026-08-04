@@ -174,15 +174,15 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	// TestCampaignPartialFailureAggregatesFailed.
 	alpha, beta, gamma := rows[0], rows[1], rows[2]
 	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
-		assertCell(t, alpha, key, "done", 100, 100)
-		assertCell(t, beta, key, "done", 100, 100)
-		assertCell(t, gamma, key, "done", 0, 100)
+		assertCell(t, alpha, key, "done", 20, 20)
+		assertCell(t, beta, key, "done", 20, 20)
+		assertCell(t, gamma, key, "done", 0, 20)
 	}
 	// Alpha's and beta's ifeval results are complete inside the still-
 	// running run: their cells read done while gamma's is mid-flight.
-	assertCell(t, alpha, "ifeval", "done", 100, 100)
-	assertCell(t, beta, "ifeval", "done", 100, 100)
-	assertCell(t, gamma, "ifeval", "running", 0, 100)
+	assertCell(t, alpha, "ifeval", "done", 23, 23)
+	assertCell(t, beta, "ifeval", "done", 23, 23)
+	assertCell(t, gamma, "ifeval", "running", 0, 23)
 
 	// Settle: release gamma and let the sweep finish. The report then serves
 	// the full ranked board — alpha and beta tied at 0 (ties break by model
@@ -225,7 +225,11 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 			continue
 		}
 		for _, key := range benchmarkRotation {
-			assertCell(t, row, key, "done", 100, 100)
+			want := 20
+			if key == "ifeval" {
+				want = 23
+			}
+			assertCell(t, row, key, "done", want, want)
 		}
 	}
 }

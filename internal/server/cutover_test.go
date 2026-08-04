@@ -145,8 +145,12 @@ func TestCutoverFreshBankSeedsFiveEnabledBenchmarkSuites(t *testing.T) {
 		if s["capability"] != capability {
 			t.Errorf("suite %q capability = %v, want %q", key, s["capability"], capability)
 		}
-		if got := len(s["cases"].([]interface{})); got != 100 {
-			t.Errorf("suite %q cases = %d, want 100 (frozen subset)", key, got)
+		want := 20
+		if key == "ifeval" {
+			want = 23
+		}
+		if got := len(s["cases"].([]interface{})); got != want {
+			t.Errorf("suite %q cases = %d, want %d (frozen subset)", key, got, want)
 		}
 	}
 }

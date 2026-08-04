@@ -81,9 +81,9 @@ func TestFullSweepMembersPendingFromFirstRun(t *testing.T) {
 	if got := rowModelIDs(rows); len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("live board rows = %v, want every member %v (lexicographic, gamma pending)", got, want)
 	}
-	assertCell(t, rows[0], suiteKey, "done", 100, 100)
-	assertCell(t, rows[1], suiteKey, "done", 100, 100)
-	assertCell(t, rows[2], suiteKey, "pending", 0, 100)
+	assertCell(t, rows[0], suiteKey, "done", 20, 20)
+	assertCell(t, rows[1], suiteKey, "done", 20, 20)
+	assertCell(t, rows[2], suiteKey, "pending", 0, 20)
 
 	// Gamma has no results yet: no scores, no total.
 	gamma := rows[2]
@@ -142,8 +142,8 @@ func TestManualRunMembersMatchSelection(t *testing.T) {
 	if got := rowModelIDs(rows); len(got) != 2 || got[0] != "alpha-model" || got[1] != "gamma-model" {
 		t.Fatalf("live board rows = %v, want exactly the selected [alpha-model gamma-model]", got)
 	}
-	assertCell(t, rows[0], suiteKey, "done", 100, 100)
-	assertCell(t, rows[1], suiteKey, "pending", 0, 100)
+	assertCell(t, rows[0], suiteKey, "done", 20, 20)
+	assertCell(t, rows[1], suiteKey, "pending", 0, 20)
 
 	stub.releaseModel("gamma-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)

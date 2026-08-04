@@ -335,8 +335,8 @@ func TestIFEvalSuiteSeeded(t *testing.T) {
 	if suite["nadir"] != 0.0 {
 		t.Errorf("ifeval nadir = %v, want 0 (no random-guess floor; ticket 99 recalibrates)", suite["nadir"])
 	}
-	if len(cases) != 100 {
-		t.Fatalf("ifeval cases = %d, want 100 (frozen subset)", len(cases))
+	if len(cases) != 23 {
+		t.Fatalf("ifeval cases = %d, want 23 (22 instruction types + 1 combo)", len(cases))
 	}
 
 	ported := map[string]bool{}
@@ -374,8 +374,8 @@ func TestIFEvalSeedIdempotent(t *testing.T) {
 
 	ts, db := openSuitesServer(t, dbPath)
 	_, cases := ifevalSuiteCases(t, ts.URL)
-	if len(cases) != 100 {
-		t.Fatalf("first boot ifeval cases = %d, want 100", len(cases))
+	if len(cases) != 23 {
+		t.Fatalf("first boot ifeval cases = %d, want 23", len(cases))
 	}
 	// Admin curation: disable one case in place.
 	patchCase(t, ts.URL, cases[0].id, map[string]interface{}{"enabled": false})
@@ -384,8 +384,8 @@ func TestIFEvalSeedIdempotent(t *testing.T) {
 	ts2, db2 := openSuitesServer(t, dbPath)
 	defer db2.Close()
 	suite, cases2 := ifevalSuiteCases(t, ts2.URL)
-	if len(cases2) != 100 {
-		t.Errorf("second boot ifeval cases = %d, want 100 (no seed duplicates)", len(cases2))
+	if len(cases2) != 23 {
+		t.Errorf("second boot ifeval cases = %d, want 23 (no seed duplicates)", len(cases2))
 	}
 	if v := suite["version"]; v != 2.0 {
 		t.Errorf("ifeval version after reopen = %v, want 2 (seed must not rebump)", v)
@@ -399,8 +399,8 @@ func TestIFEvalSeedIdempotent(t *testing.T) {
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	_, cases3 := ifevalSuiteCases(t, ts3.URL)
-	if len(cases3) != 100 {
-		t.Errorf("third boot ifeval cases = %d, want still 100", len(cases3))
+	if len(cases3) != 23 {
+		t.Errorf("third boot ifeval cases = %d, want still 20", len(cases3))
 	}
 }
 
@@ -445,8 +445,8 @@ func TestIFEvalVerdictsPerInstructionType(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "ifeval-smart")
-	if len(smart) != 100 {
-		t.Fatalf("smart model has %d results, want 100", len(smart))
+	if len(smart) != 23 {
+		t.Fatalf("smart model has %d results, want 23", len(smart))
 	}
 	assertedSmart := 0
 	for _, r := range smart {
@@ -472,8 +472,8 @@ func TestIFEvalVerdictsPerInstructionType(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "ifeval-dumb")
-	if len(dumb) != 100 {
-		t.Fatalf("dumb model has %d results, want 100", len(dumb))
+	if len(dumb) != 23 {
+		t.Fatalf("dumb model has %d results, want 23", len(dumb))
 	}
 	for _, r := range dumb {
 		c, single := singleByID[int64(r["case_id"].(float64))]

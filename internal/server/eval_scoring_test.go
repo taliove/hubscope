@@ -126,8 +126,8 @@ func TestEvalModelFailure(t *testing.T) {
 	}
 
 	results := resultsByModel(run, "flaky-model")
-	if len(results) != 100 {
-		t.Fatalf("got %d results, want 100", len(results))
+	if len(results) != 20 {
+		t.Fatalf("got %d results, want 20", len(results))
 	}
 	var callFailed, circuit int
 	for _, r := range results {
@@ -147,8 +147,8 @@ func TestEvalModelFailure(t *testing.T) {
 			t.Errorf("verdict_detail should record the call failure or the circuit reason: %q", detail)
 		}
 	}
-	if callFailed != 5 || circuit != 95 {
-		t.Errorf("failure records: %d call failures + %d circuit-skipped, want 5 + 95", callFailed, circuit)
+	if callFailed != 5 || circuit != 15 {
+		t.Errorf("failure records: %d call failures + %d circuit-skipped, want 5 + 15", callFailed, circuit)
 	}
 	if run["score"] != nil {
 		t.Errorf("run score = %v, want null (nothing scored)", run["score"])

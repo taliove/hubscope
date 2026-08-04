@@ -162,13 +162,13 @@ func TestCampaignPartialFailureAggregatesFailed(t *testing.T) {
 		t.Fatalf("failed campaign report rows = %v, want all three models", rows)
 	}
 	for _, row := range rows {
-		assertCell(t, row, "mmlu", "done", 100, 100)
-		judged := 100
+		assertCell(t, row, "mmlu", "done", 20, 20)
+		judged := 20
 		if row["model_id"] == "chat-three" {
 			judged = 0
 		}
-		assertCell(t, row, "agieval_zh", "done", judged, 100)
-		assertCell(t, row, "gsm8k", "failed", judged, 100)
+		assertCell(t, row, "agieval_zh", "done", judged, 20)
+		assertCell(t, row, "gsm8k", "failed", judged, 20)
 	}
 }
 

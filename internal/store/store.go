@@ -566,6 +566,13 @@ func (db *DB) migrate() error {
 	if err := db.enableBenchmarkSuitesAtCutover(); err != nil {
 		return err
 	}
+	// GH #178-era scope cut: the five benchmark suites shrink from 100 to
+	// 20 cases each (systematic every-5th subsample, stratification
+	// preserved). Fresh databases seed 20 directly; this one-time migration
+	// converges databases that already cast the 100-row bank.
+	if err := db.trimBenchmarkSuitesToTwenty(); err != nil {
+		return err
+	}
 	// Mid-state fallback of the same cutover (GH #15): retire the v3 suites
 	// unconditionally, so databases whose generation-tracked retirement was
 	// short-circuited by pre-written purge tombstones still hand the v3

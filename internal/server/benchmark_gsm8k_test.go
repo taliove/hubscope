@@ -131,8 +131,8 @@ func TestGSM8KSuiteSeeded(t *testing.T) {
 	if suite["nadir"] != 0.0 {
 		t.Errorf("gsm8k nadir = %v, want 0 (open-ended numeric has no random-guess floor; ticket 99 calibrates)", suite["nadir"])
 	}
-	if len(cases) != 100 {
-		t.Fatalf("gsm8k cases = %d, want 100 (frozen subset)", len(cases))
+	if len(cases) != 20 {
+		t.Fatalf("gsm8k cases = %d, want 20 (frozen subset)", len(cases))
 	}
 
 	raw := suite["cases"].([]interface{})
@@ -191,8 +191,8 @@ func TestGSM8KSeedIdempotent(t *testing.T) {
 
 	ts, db := openSuitesServer(t, dbPath)
 	_, cases := gsm8kSuiteCases(t, ts.URL)
-	if len(cases) != 100 {
-		t.Fatalf("first boot gsm8k cases = %d, want 100", len(cases))
+	if len(cases) != 20 {
+		t.Fatalf("first boot gsm8k cases = %d, want 20", len(cases))
 	}
 	// Admin curation: disable one case in place.
 	patchCase(t, ts.URL, cases[0].id, map[string]interface{}{"enabled": false})
@@ -201,8 +201,8 @@ func TestGSM8KSeedIdempotent(t *testing.T) {
 	ts2, db2 := openSuitesServer(t, dbPath)
 	defer db2.Close()
 	suite, cases2 := gsm8kSuiteCases(t, ts2.URL)
-	if len(cases2) != 100 {
-		t.Errorf("second boot gsm8k cases = %d, want 100 (no seed duplicates)", len(cases2))
+	if len(cases2) != 20 {
+		t.Errorf("second boot gsm8k cases = %d, want 20 (no seed duplicates)", len(cases2))
 	}
 	if v := suite["version"]; v != 2.0 {
 		t.Errorf("gsm8k version after reopen = %v, want 2 (seed must not rebump)", v)
@@ -216,8 +216,8 @@ func TestGSM8KSeedIdempotent(t *testing.T) {
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	_, cases3 := gsm8kSuiteCases(t, ts3.URL)
-	if len(cases3) != 100 {
-		t.Errorf("third boot gsm8k cases = %d, want still 100", len(cases3))
+	if len(cases3) != 20 {
+		t.Errorf("third boot gsm8k cases = %d, want still 20", len(cases3))
 	}
 }
 
@@ -247,8 +247,8 @@ func TestGSM8KNumericRuleVerdicts(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "gsm8k-smart")
-	if len(smart) != 100 {
-		t.Fatalf("smart model has %d results, want 100", len(smart))
+	if len(smart) != 20 {
+		t.Fatalf("smart model has %d results, want 20", len(smart))
 	}
 	for _, r := range smart {
 		if r["score"] != 1.0 {
@@ -271,8 +271,8 @@ func TestGSM8KNumericRuleVerdicts(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "gsm8k-dumb")
-	if len(dumb) != 100 {
-		t.Fatalf("dumb model has %d results, want 100", len(dumb))
+	if len(dumb) != 20 {
+		t.Fatalf("dumb model has %d results, want 20", len(dumb))
 	}
 	for _, r := range dumb {
 		if r["score"] != 0.0 {
@@ -412,9 +412,9 @@ func TestGSM8KCampaignReportShowsReasoning(t *testing.T) {
 		t.Fatalf("row suite_scores missing: %v", row)
 	}
 	if scores["gsm8k"] != 100.0 {
-		t.Errorf("reasoning dimension (gsm8k) score = %v, want 100 (all correct, nadir-normalized)", scores["gsm8k"])
+		t.Errorf("reasoning dimension (gsm8k) score = %v, want 20 (all correct, nadir-normalized)", scores["gsm8k"])
 	}
 	if row["total_score"] != 100.0 {
-		t.Errorf("total_score = %v, want 100", row["total_score"])
+		t.Errorf("total_score = %v, want 20", row["total_score"])
 	}
 }

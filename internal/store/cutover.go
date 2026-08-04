@@ -1,11 +1,120 @@
 package store
 
-import "strings"
+import (
+	"database/sql"
+	"strings"
+)
 
 // benchmarkCutoverKey is the settings key recording that the ticket-99
 // benchmark cutover has run on this database.
 const benchmarkCutoverKey = "benchmark_cutover"
 
+// benchmarkTrimKey is the settings key recording that the 100→20 case trim
+// has run on this database.
+const benchmarkTrimKey = "benchmark_trim_20"
+
+// trimBenchmarkSuitesToTwenty converges databases that already cast the
+// 100-row benchmark bank onto the 20-case subsets. The trimmed files keep
+// every 5th row of the four stratified banks and a coverage-first
+// selection of ifeval (every ported instruction type stays represented);
+// the migration therefore cannot use a position grid — it keeps the
+// cases whose prompt is in the embedded subset, inside the suite's first
+// 100 enabled cases (seed order). Custom cases sit past the seed window
+// and stay untouched (seed discipline: admin edits are never reverted).
+// The suite version bumps once per trimmed suite (the trend breakpoint
+// caliber — a changed question bank never reads as a model change, ADR
+// 0007). One-time, settings-tracked, idempotent.
+func (db *DB) trimBenchmarkSuitesToTwenty() error {
+	done, err := db.GetSetting(benchmarkTrimKey, "")
+	if err != nil {
+		return err
+	}
+	if done != "" {
+		return nil
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, suite := range benchmarkSuites {
+		var suiteID int64
+		err := tx.QueryRow("SELECT id FROM suites WHERE key = ?", suite.key).Scan(&suiteID)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		rows, err := tx.Query(
+			"SELECT id, prompt FROM cases WHERE suite_id = ? AND enabled = 1 ORDER BY id LIMIT 100", suiteID)
+		if err != nil {
+			return err
+		}
+		type caseRow struct {
+			id     int64
+			prompt string
+		}
+		var bank []caseRow
+		for rows.Next() {
+			var cr caseRow
+			if err := rows.Scan(&cr.id, &cr.prompt); err != nil {
+				rows.Close()
+				return err
+			}
+			bank = append(bank, cr)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(bank) < 100 {
+			continue // fresh or already-trimmed bank: nothing to retire
+		}
+		keep := make(map[string]bool, len(suite.cases))
+		for _, c := range suite.cases {
+			keep[c.prompt] = true
+		}
+		var retire []int64
+		for _, cr := range bank {
+			if !keep[cr.prompt] {
+				retire = append(retire, cr.id)
+			}
+		}
+		if len(retire) == 0 {
+			continue
+		}
+		placeholders := make([]string, len(retire))
+		args := make([]interface{}, len(retire))
+		for i, id := range retire {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		if _, err := tx.Exec(
+			"UPDATE cases SET enabled = 0 WHERE id IN ("+strings.Join(placeholders, ",")+")", args...,
+		); err != nil {
+			return err
+		}
+		if err := bumpSuiteVersion(tx, suiteID); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec(
+		"INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')", benchmarkTrimKey,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// decision C (ticket 99): the five authoritative-benchmark suites join the
+// evaluation rotation. The generation-tracked seed mechanism has only a
+// retirement path (seeds.go clears enabled when retireAtGen passes); it has
+// no enable path, so the switch is this one-time, settings-tracked
+// migration:
 // enableBenchmarkSuitesAtCutover performs the deliberate switch of spec 0014
 // decision C (ticket 99): the five authoritative-benchmark suites join the
 // evaluation rotation. The generation-tracked seed mechanism has only a
