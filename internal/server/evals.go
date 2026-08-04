@@ -13,6 +13,7 @@ import (
 
 	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/evaluator/ifeval"
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -677,9 +678,51 @@ func (s *Server) handleGetEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, evalRunDetailDTO{
-		evalRunDTO: toEvalRunDTO(*run, averageScore(results, run.Nadir)),
-		Results:    resultDTOs,
+		evalRunDTO:  toEvalRunDTO(*run, averageScore(results, run.Nadir)),
+		Results:     resultDTOs,
+		JurySummary: jurySummaryOf(votes, s.registryOverrides()),
 	})
+}
+
+// jurySummaryOf tallies each judge's votes, failures and registry-priced
+// cost for the run detail (GH #179).
+func jurySummaryOf(votes []store.JudgeVote, overrides []registry.Override) []jurySummaryDTO {
+	type tally struct {
+		votes   int
+		fails   int
+		cost    float64
+		unknown bool
+	}
+	byJudge := map[string]*tally{}
+	var order []string
+	for _, v := range votes {
+		t, ok := byJudge[v.JudgeModel]
+		if !ok {
+			t = &tally{}
+			byJudge[v.JudgeModel] = t
+			order = append(order, v.JudgeModel)
+		}
+		t.votes++
+		if v.Score == nil {
+			t.fails++
+		}
+		info := registry.Lookup(v.JudgeModel, overrides)
+		if info.PriceIn == nil || info.PriceOut == nil || v.InputTokens == nil || v.OutputTokens == nil {
+			t.unknown = true
+			continue
+		}
+		t.cost += (float64(*v.InputTokens)**info.PriceIn + float64(*v.OutputTokens)**info.PriceOut) / 1e6
+	}
+	out := make([]jurySummaryDTO, 0, len(order))
+	for _, judge := range order {
+		t := byJudge[judge]
+		dto := jurySummaryDTO{JudgeModel: judge, Votes: t.votes, Fails: t.fails}
+		if !t.unknown {
+			dto.Cost = &t.cost
+		}
+		out = append(out, dto)
+	}
+	return out
 }
 
 // handleLatestEvals handles GET /api/evals/latest: for every (suite, model)

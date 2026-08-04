@@ -27,6 +27,17 @@
             重跑全部失败项
           </el-button>
         </div>
+        <!-- Jury rail (GH #179 view B「裁判席」): the panel's policy, and
+             per judge its vote count, failures and registry-priced cost. -->
+        <div v-if="detail.jury_summary && detail.jury_summary.length > 0" class="jury-rail">
+          <span class="rail-label">
+            裁判团<template v-if="detail.jury_models">({{ detail.jury_models.policy }})</template>
+          </span>
+          <span v-for="j in detail.jury_summary" :key="j.judge_model" class="jury-card">
+            <b>{{ j.judge_model }}</b>
+            <em>{{ j.votes }} 票 · 失败 {{ j.fails }} · {{ j.cost === null ? '价格未登记' : '$' + j.cost.toFixed(4) }}</em>
+          </span>
+        </div>
         <el-table :data="visibleResults" row-key="id" max-height="480">
           <el-table-column type="expand">
             <template #default="{ row }">
@@ -89,6 +100,28 @@
           <el-table-column label="得分" width="80" align="center">
             <template #default="{ row }">
               <span :class="scoreClass(row.score)">{{ formatScore(row.score === null ? null : row.score * 100) }}</span>
+            </template>
+          </el-table-column>
+          <!-- Per-judge vote columns (GH #179 view B): only judge-verdict
+               rows carry votes; rule rows render a dash. -->
+          <el-table-column
+            v-for="j in judgeColumns"
+            :key="j"
+            :label="j"
+            min-width="110"
+            align="center"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              <span :class="{ 'vote-fail-cell': voteIsFail(row, j) }">{{ voteFor(row, j) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="judgeColumns.length > 0" label="分歧" width="80" align="center">
+            <template #default="{ row }">
+              <span v-if="row.spread !== null && row.spread !== undefined" :class="{ 'spread-hot': row.spread > 0.12 }">
+                {{ row.spread.toFixed(2) }}
+              </span>
+              <span v-else class="dim">—</span>
             </template>
           </el-table-column>
           <el-table-column label="判定理由" min-width="200" show-overflow-tooltip>
@@ -223,6 +256,23 @@ function scoreClass(score: number | null): string {
   if (score >= 0.8) return 'score-high'
   if (score >= 0.5) return 'score-mid'
   return 'score-low'
+}
+
+// The jury's judge columns, in panel order (GH #179 view B).
+const judgeColumns = computed<string[]>(() => {
+  return (detail.value?.jury_summary ?? []).map(j => j.judge_model)
+})
+
+// One row's vote text for one judge column: per-sample scores joined, FAIL
+// for a failed judge call, a dash for rule-verdict rows.
+function voteFor(row: EvalResult, judge: string): string {
+  const votes = (row.judge_scores ?? []).filter(v => v.judge_model === judge)
+  if (votes.length === 0) return '—'
+  return votes.map(v => (v.score === null ? 'FAIL' : v.score.toFixed(2))).join(' / ')
+}
+
+function voteIsFail(row: EvalResult, judge: string): boolean {
+  return (row.judge_scores ?? []).some(v => v.judge_model === judge && v.score === null)
 }
 
 // A failed row is retryable only when its model resolves to a database id
@@ -379,5 +429,45 @@ async function onRetryAll() {
   font-style: normal;
   color: var(--hs-gray-500);
   margin-left: 6px;
+}
+.jury-rail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-3);
+  font-size: 13px;
+}
+.rail-label {
+  color: var(--hs-gray-700);
+  font-weight: 600;
+}
+.jury-card {
+  background: var(--hs-gray-50);
+  border: 1px solid var(--hs-gray-100);
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: inline-flex;
+  flex-direction: column;
+}
+.jury-card b {
+  color: var(--hs-gray-900);
+  font-size: 12px;
+}
+.jury-card em {
+  font-style: normal;
+  color: var(--hs-gray-500);
+  font-size: 12px;
+}
+.vote-fail-cell {
+  color: var(--hs-danger-text-base);
+  font-weight: 600;
+}
+.spread-hot {
+  color: var(--hs-danger-text-base);
+  font-weight: 600;
+}
+.dim {
+  color: var(--hs-gray-400);
 }
 </style>

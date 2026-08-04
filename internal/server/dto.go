@@ -202,6 +202,16 @@ type evalRunDTO struct {
 	Score         *float64        `json:"score"`
 }
 
+// jurySummaryDTO is one judge's tally inside a run (GH #179): votes cast,
+// failed calls, and the registry-priced cost of its calls (null when the
+// judge's price is unregistered or the hub reported no tokens).
+type jurySummaryDTO struct {
+	JudgeModel string   `json:"judge_model"`
+	Votes      int      `json:"votes"`
+	Fails      int      `json:"fails"`
+	Cost       *float64 `json:"cost"`
+}
+
 // judgeVoteDTO is one jury vote on one sample (GH #178).
 type judgeVoteDTO struct {
 	SampleNo   int      `json:"sample_no"`
@@ -245,10 +255,12 @@ type latestScoreDTO struct {
 	FinishedAt string   `json:"finished_at"`
 }
 
-// evalRunDetailDTO is an EvalRun plus its per-case results.
+// evalRunDetailDTO is an EvalRun plus its per-case results, with the
+// jury's per-judge tally when the run used a jury (GH #179).
 type evalRunDetailDTO struct {
 	evalRunDTO
-	Results []evalResultDTO `json:"results"`
+	Results     []evalResultDTO  `json:"results"`
+	JurySummary []jurySummaryDTO `json:"jury_summary,omitempty"`
 }
 
 // toLatestScoreDTO maps a store.LatestEvalScore to its API representation.

@@ -96,13 +96,16 @@ func TestJurySnapshotDeterministic(t *testing.T) {
 		7:  {Judges: []string{"a", "b"}},
 		12: {Judges: []string{"c"}},
 	}
-	first := jurySnapshotJSON(JuryPolicyBalanced, juries)
+	probes := map[string]probeSummaryDTO{
+		"a": {OK: true, Succ: 3, Rounds: 3, TPS: 88},
+	}
+	first := jurySnapshotJSON(JuryPolicyBalanced, juries, probes)
 	for range 10 {
-		if got := jurySnapshotJSON(JuryPolicyBalanced, juries); got != first {
+		if got := jurySnapshotJSON(JuryPolicyBalanced, juries, probes); got != first {
 			t.Fatalf("snapshot not deterministic: %q vs %q", got, first)
 		}
 	}
-	want := `{"juries":{"12":["c"],"7":["a","b"]},"policy":"balanced"}`
+	want := `{"juries":{"12":["c"],"7":["a","b"]},"policy":"balanced","probe":{"a":{"ok":true,"succ":3,"rounds":3,"tps":88}}}`
 	if first != want {
 		t.Errorf("snapshot = %s, want %s", first, want)
 	}

@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 
+	"github.com/taliove/hubscope/internal/evaluator"
 	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -90,11 +92,21 @@ type costRowDTO struct {
 
 // queueDepthDTO is the live queue state of a running campaign's pipeline
 // (GH #178, console-only): exam = answer-call cells, judge = jury votes.
+// Models carries the per-subject judge progress for the ops monitor table
+// (GH #179).
 type queueDepthDTO struct {
-	ExamPending   int `json:"exam_pending"`
-	ExamInflight  int `json:"exam_inflight"`
-	JudgePending  int `json:"judge_pending"`
-	JudgeInflight int `json:"judge_inflight"`
+	ExamPending   int             `json:"exam_pending"`
+	ExamInflight  int             `json:"exam_inflight"`
+	JudgePending  int             `json:"judge_pending"`
+	JudgeInflight int             `json:"judge_inflight"`
+	Models        []modelQueueDTO `json:"models"`
+}
+
+// modelQueueDTO is one subject's judge-stage progress.
+type modelQueueDTO struct {
+	ModelDBID  int64 `json:"model_db_id"`
+	JudgeDone  int   `json:"judge_done"`
+	JudgeTotal int   `json:"judge_total"`
 }
 
 // estimatedCostDTO is the campaign-level estimated cost split (GH #178,
@@ -105,6 +117,15 @@ type estimatedCostDTO struct {
 	Exam        float64 `json:"exam"`
 	Judge       float64 `json:"judge"`
 	UnknownRuns int     `json:"unknown_runs"`
+}
+
+// juryInfoDTO is the campaign-level jury summary for the ops monitor table
+// (GH #179): the policy, the judge panel, and every probed model's gate
+// outcome, merged from the batch's run snapshots.
+type juryInfoDTO struct {
+	Policy string                         `json:"policy"`
+	Judges []string                       `json:"judges"`
+	Probe  map[string]evaluator.JuryProbe `json:"probe"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -128,6 +149,9 @@ type campaignReportDTO struct {
 	// EstimatedCost is the campaign's registry-priced cost split (GH #178);
 	// session-only like the other cost fields.
 	EstimatedCost *estimatedCostDTO `json:"estimated_cost,omitempty"`
+	// Jury carries the batch's judge panel and probe outcomes (GH #179);
+	// session-only, null for pre-jury batches.
+	Jury *juryInfoDTO `json:"jury,omitempty"`
 	// QueueDepth is the live two-stage queue state (GH #178), present only
 	// while the campaign is executing on this process.
 	QueueDepth *queueDepthDTO `json:"queue_depth,omitempty"`
@@ -330,6 +354,7 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	var costRows []costRowDTO
 	var estimated *estimatedCostDTO
 	var queueDepth *queueDepthDTO
+	juryInfo := campaignJuryInfo(runs, shared)
 	if !shared {
 		queueDepth = s.liveQueueDepth(id, campaign.Status)
 	}
@@ -378,7 +403,37 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		// registry-priced estimate and the live queue state.
 		EstimatedCost: estimated,
 		QueueDepth:    queueDepth,
+		Jury:          juryInfo,
 	}, nil
+}
+
+// campaignJuryInfo merges the batch's jury snapshots: the policy and judge
+// panel from the first snapshotted run, probe outcomes keyed by model ID.
+// Console-only — the caller passes shared=false, and a jury-bearing caller
+// on the shared surface gets nil.
+func campaignJuryInfo(runs []store.EvalRun, shared bool) *juryInfoDTO {
+	if shared {
+		return nil
+	}
+	for _, run := range runs {
+		policy, juries, probe := evaluator.ParseJurySnapshot(run.JuryModels)
+		if juries == nil {
+			continue
+		}
+		judges := map[string]bool{}
+		var panel []string
+		for _, js := range juries {
+			for _, j := range js {
+				if !judges[j] {
+					judges[j] = true
+					panel = append(panel, j)
+				}
+			}
+		}
+		sort.Strings(panel)
+		return &juryInfoDTO{Policy: policy, Judges: panel, Probe: probe}
+	}
+	return nil
 }
 
 // campaignEstimatedCost sums every run's registry-priced split; runs with a
@@ -442,15 +497,20 @@ func (s *Server) liveQueueDepth(campaignID int64, status string) *queueDepthDTO 
 	if status != store.CampaignStatusRunning {
 		return nil
 	}
-	examPending, examInflight, judgePending, judgeInflight, ok := s.evaluator.LiveQueueDepth(campaignID)
+	examPending, examInflight, judgePending, judgeInflight, perModel, ok := s.evaluator.LiveQueueDepth(campaignID)
 	if !ok {
 		return nil
+	}
+	models := make([]modelQueueDTO, 0, len(perModel))
+	for _, m := range perModel {
+		models = append(models, modelQueueDTO{ModelDBID: m.ModelDBID, JudgeDone: m.JudgeDone, JudgeTotal: m.JudgeTotal})
 	}
 	return &queueDepthDTO{
 		ExamPending:   examPending,
 		ExamInflight:  examInflight,
 		JudgePending:  judgePending,
 		JudgeInflight: judgeInflight,
+		Models:        models,
 	}
 }
 

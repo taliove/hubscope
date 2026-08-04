@@ -37,13 +37,15 @@ const (
 // one row per (answer, jury slot). Score is nil when the judge call failed
 // (W7 — a failed judge never counts as zero).
 type EvalJudgeScore struct {
-	ID         int64
-	AnswerID   int64
-	Slot       int
-	JudgeModel string
-	Score      *float64
-	LatencyMs  int
-	CreatedAt  time.Time
+	ID           int64
+	AnswerID     int64
+	Slot         int
+	JudgeModel   string
+	Score        *float64
+	LatencyMs    int
+	InputTokens  *int
+	OutputTokens *int
+	CreatedAt    time.Time
 }
 
 // CreateEvalAnswer persists one answer attempt and returns its row ID.
@@ -67,9 +69,9 @@ func (db *DB) CreateEvalAnswer(a EvalAnswer) (int64, error) {
 func (db *DB) CreateEvalJudgeScore(s EvalJudgeScore) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.conn.Exec(`
-		INSERT INTO eval_judge_scores (answer_id, slot, judge_model, score, latency_ms, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, s.AnswerID, s.Slot, s.JudgeModel, s.Score, s.LatencyMs, now)
+		INSERT INTO eval_judge_scores (answer_id, slot, judge_model, score, latency_ms, input_tokens, output_tokens, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, s.AnswerID, s.Slot, s.JudgeModel, s.Score, s.LatencyMs, s.InputTokens, s.OutputTokens, now)
 	if err != nil {
 		return 0, err
 	}
@@ -95,22 +97,26 @@ func scanEvalAnswers(rows *sql.Rows) ([]EvalAnswer, error) {
 }
 
 // JudgeVote is one judge score joined with its answer's cell coordinates —
-// the run detail's per-case jury breakdown (GH #178).
+// the run detail's per-case jury breakdown (GH #178). Token usage feeds
+// the per-judge cost accounting (GH #179).
 type JudgeVote struct {
-	ModelDBID  int64
-	CaseID     int64
-	SampleNo   int
-	Attempt    int
-	Slot       int
-	JudgeModel string
-	Score      *float64
+	ModelDBID    int64
+	CaseID       int64
+	SampleNo     int
+	Attempt      int
+	Slot         int
+	JudgeModel   string
+	Score        *float64
+	InputTokens  *int
+	OutputTokens *int
 }
 
 // ListJudgeVotesByRun returns every judge vote of one run with its cell
 // coordinates, ordered for per-case assembly.
 func (db *DB) ListJudgeVotesByRun(runID int64) ([]JudgeVote, error) {
 	rows, err := db.conn.Query(`
-		SELECT a.model_db_id, a.case_id, a.sample_no, a.attempt, js.slot, js.judge_model, js.score
+		SELECT a.model_db_id, a.case_id, a.sample_no, a.attempt, js.slot, js.judge_model, js.score,
+			js.input_tokens, js.output_tokens
 		FROM eval_judge_scores js
 		JOIN eval_answers a ON a.id = js.answer_id
 		WHERE a.eval_run_id = ?
@@ -123,7 +129,8 @@ func (db *DB) ListJudgeVotesByRun(runID int64) ([]JudgeVote, error) {
 	var out []JudgeVote
 	for rows.Next() {
 		var v JudgeVote
-		if err := rows.Scan(&v.ModelDBID, &v.CaseID, &v.SampleNo, &v.Attempt, &v.Slot, &v.JudgeModel, &v.Score); err != nil {
+		if err := rows.Scan(&v.ModelDBID, &v.CaseID, &v.SampleNo, &v.Attempt, &v.Slot, &v.JudgeModel, &v.Score,
+			&v.InputTokens, &v.OutputTokens); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

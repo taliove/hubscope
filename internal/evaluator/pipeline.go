@@ -89,8 +89,11 @@ type pipeline struct {
 
 	// Live queue accounting for the running campaign's report (GH #178):
 	// exam counters track the cell pool, judge counters the vote flow.
+	// The by-model judge maps feed the ops monitor table (GH #179).
 	examTotal, examStarted, examDone    int
 	judgeOffered, judgeTaken, judgeDone int
+	judgeOfferedByModel                 map[int64]int
+	judgeDoneByModel                    map[int64]int
 }
 
 // costState accumulates one run's estimated cost: exam (answer calls) and
@@ -105,15 +108,17 @@ type costState struct {
 
 func newPipeline(e *Evaluator, prepared []*preparedRun) *pipeline {
 	p := &pipeline{
-		e:            e,
-		jobs:         make(chan judgeJob),
-		preps:        map[int64]*preparedRun{},
-		aggs:         map[[3]int64]*caseAggregate{},
-		votes:        map[[4]int64]*sampleVotes{},
-		judgePending: map[int64]int{},
-		cellsDone:    map[int64]bool{},
-		finished:     map[int64]bool{},
-		costs:        map[int64]*costState{},
+		e:                   e,
+		jobs:                make(chan judgeJob),
+		preps:               map[int64]*preparedRun{},
+		aggs:                map[[3]int64]*caseAggregate{},
+		votes:               map[[4]int64]*sampleVotes{},
+		judgePending:        map[int64]int{},
+		cellsDone:           map[int64]bool{},
+		finished:            map[int64]bool{},
+		costs:               map[int64]*costState{},
+		judgeOfferedByModel: map[int64]int{},
+		judgeDoneByModel:    map[int64]int{},
 	}
 	for _, prep := range prepared {
 		p.preps[prep.run.ID] = prep
@@ -219,6 +224,7 @@ func (p *pipeline) enqueueVotes(ctx context.Context, job judgeJob, judges []stri
 	p.mu.Lock()
 	p.votes[key] = &sampleVotes{expected: len(judges), scores: make([]*float64, len(judges))}
 	p.judgePending[job.prep.run.ID] += len(judges)
+	p.judgeOfferedByModel[job.model.ID] += len(judges)
 	p.mu.Unlock()
 	for slot, judgeModel := range judges {
 		j := job
@@ -262,6 +268,7 @@ func (p *pipeline) runJudgePool(ctx context.Context, guard func() bool) {
 					p.executeJudge(ctx, job)
 					p.mu.Lock()
 					p.judgeDone++
+					p.judgeDoneByModel[job.model.ID]++
 					p.mu.Unlock()
 				}
 			}
@@ -284,10 +291,12 @@ func (p *pipeline) executeJudge(ctx context.Context, job judgeJob) {
 	score, detail, inTok, outTok := p.e.judgeVerdict(ctx, job.hub, job.protocol, job.judgeModel, job.c, job.answerText)
 	p.recordJudgeCost(job.prep.run.ID, job.judgeModel, inTok, outTok)
 	if _, err := p.e.db.CreateEvalJudgeScore(store.EvalJudgeScore{
-		AnswerID:   job.answerID,
-		Slot:       job.slot,
-		JudgeModel: job.judgeModel,
-		Score:      score,
+		AnswerID:     job.answerID,
+		Slot:         job.slot,
+		JudgeModel:   job.judgeModel,
+		Score:        score,
+		InputTokens:  inTok,
+		OutputTokens: outTok,
 	}); err != nil {
 		job.prep.task.log(store.TaskLogWarn, fmt.Sprintf("persist judge score for answer %d slot %d: %v", job.answerID, job.slot, err))
 	}
@@ -393,12 +402,31 @@ func (p *pipeline) noteCellDone() {
 	p.mu.Unlock()
 }
 
-// queueDepth snapshots the live queue state of both stages (GH #178).
-func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeInflight int) {
+// modelQueueDepth is one subject's judge-stage progress (GH #179).
+type modelQueueDepth struct {
+	ModelDBID  int64
+	JudgeDone  int
+	JudgeTotal int
+}
+
+// queueDepth snapshots the live queue state of both stages (GH #178) plus
+// the per-model judge progress (GH #179).
+func (p *pipeline) queueDepth() (examPending, examInflight, judgePending, judgeInflight int, perModel []modelQueueDepth) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.examTotal - p.examStarted, p.examStarted - p.examDone,
-		p.judgeOffered - p.judgeTaken, p.judgeTaken - p.judgeDone
+	examPending = p.examTotal - p.examStarted
+	examInflight = p.examStarted - p.examDone
+	judgePending = p.judgeOffered - p.judgeTaken
+	judgeInflight = p.judgeTaken - p.judgeDone
+	for modelID, total := range p.judgeOfferedByModel {
+		perModel = append(perModel, modelQueueDepth{
+			ModelDBID:  modelID,
+			JudgeDone:  p.judgeDoneByModel[modelID],
+			JudgeTotal: total,
+		})
+	}
+	sort.Slice(perModel, func(a, b int) bool { return perModel[a].ModelDBID < perModel[b].ModelDBID })
+	return examPending, examInflight, judgePending, judgeInflight, perModel
 }
 
 // setCellsTotal is wired by the batch executor; the retry path leaves the

@@ -248,6 +248,8 @@ func (db *DB) migrate() error {
 		judge_model TEXT NOT NULL,
 		score REAL,
 		latency_ms INTEGER NOT NULL DEFAULT 0,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
 		created_at TEXT NOT NULL,
 		FOREIGN KEY (answer_id) REFERENCES eval_answers(id)
 	);
@@ -463,6 +465,13 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.ensureColumn("eval_answers", "attempt", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	// GH #179: judge-call token usage for per-judge cost accounting.
+	if err := db.ensureColumn("eval_judge_scores", "input_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_judge_scores", "output_tokens", "INTEGER NULL"); err != nil {
 		return err
 	}
 	if err := db.backfillRunCampaigns(); err != nil {

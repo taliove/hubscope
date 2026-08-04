@@ -767,6 +767,34 @@ func (e *Evaluator) juryProbePopulation(modelDBIDs []int64) []int64 {
 	return out
 }
 
+// probeSummaries renders every probed model's gate outcome for the jury
+// snapshot (GH #179), keyed by model ID.
+func probeSummaries(subjects map[int64]*store.Model, byHub map[int64][]juryCandidate, samples map[int64]probeSample) map[string]probeSummaryDTO {
+	names := map[int64]string{}
+	for id, m := range subjects {
+		names[id] = m.ModelID
+	}
+	for _, cands := range byHub {
+		for _, c := range cands {
+			names[c.ModelDBID] = c.ModelID
+		}
+	}
+	out := map[string]probeSummaryDTO{}
+	for id, sample := range samples {
+		name, ok := names[id]
+		if !ok {
+			continue
+		}
+		out[name] = probeSummaryDTO{
+			OK:     sample.reachable,
+			Succ:   sample.successes,
+			Rounds: probeGateRounds,
+			TPS:    sample.tps,
+		}
+	}
+	return out
+}
+
 // resolveJuryPolicy reads the configured jury policy, falling back to the
 // default on read failure or an unknown stored value.
 func (e *Evaluator) resolveJuryPolicy() string {
@@ -868,7 +896,7 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 		}
 	}
 
-	snapshot := jurySnapshotJSON(policy, juries)
+	snapshot := jurySnapshotJSON(policy, juries, probeSummaries(subjects, byHub, samples))
 	for _, prep := range prepared {
 		if err := e.db.SetEvalRunJuryModels(prep.run.ID, snapshot); err != nil {
 			slog.Error("evaluator: snapshot jury on run", "run_id", prep.run.ID, "error", err)
@@ -880,16 +908,19 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 }
 
 // LiveQueueDepth reports the running campaign's queue state across both
-// pipeline stages (GH #178); ok is false when no batch is executing for
-// the campaign on this process.
-func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, ok bool) {
+// pipeline stages (GH #178) plus per-model judge progress (GH #179); ok is
+// false when no batch is executing for the campaign on this process.
+func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, perModel []ModelQueueDepth, ok bool) {
 	v, ok := e.livePipelines.Load(campaignID)
 	if !ok {
-		return 0, 0, 0, 0, false
+		return 0, 0, 0, 0, nil, false
 	}
-	examPending, examInflight, judgePending, judgeInflight = v.(*pipeline).queueDepth()
-	return examPending, examInflight, judgePending, judgeInflight, true
+	examPending, examInflight, judgePending, judgeInflight, perModel = v.(*pipeline).queueDepth()
+	return examPending, examInflight, judgePending, judgeInflight, perModel, true
 }
+
+// ModelQueueDepth is one subject's judge-stage progress on the live report.
+type ModelQueueDepth = modelQueueDepth
 
 // resolveJudgeConcurrency reads the judge-stage pool size from settings,
 // clamped to [1, store.MaxEvalConcurrency] (GH #176). Read failures fall
@@ -1074,7 +1105,7 @@ func (e *Evaluator) evalCase(ctx context.Context, p *pipeline, prep *preparedRun
 // exists at all: legacy runs (no snapshot) fall back to the single
 // judge_model and keep the V2 caliber.
 func (e *Evaluator) judgesFor(run *store.EvalRun, modelDBID int64) ([]string, bool) {
-	_, juries := parseJurySnapshot(run.JuryModels)
+	_, juries, _ := ParseJurySnapshot(run.JuryModels)
 	if juries == nil {
 		return []string{run.JudgeModel}, false
 	}

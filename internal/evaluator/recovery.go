@@ -34,7 +34,7 @@ func (e *Evaluator) RecoverInterruptedRuns(ctx context.Context) {
 		if run.Status == "running" {
 			continue // a live batch on this process, not crash residue
 		}
-		_, juries := parseJurySnapshot(run.JuryModels)
+		_, juries, _ := ParseJurySnapshot(run.JuryModels)
 		if juries == nil {
 			continue // pre-pipeline run: nothing to recover
 		}

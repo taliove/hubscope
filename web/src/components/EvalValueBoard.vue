@@ -15,6 +15,8 @@ interface ValueRow {
   tps: number | null
   examCost: number | null
   perPoint: number | null
+  probeOk: boolean | null
+  probeText: string
 }
 
 const estimated = computed(() => props.report.estimated_cost ?? null)
@@ -42,17 +44,21 @@ const rows = computed<ValueRow[]>(() => {
     else c.sum += cr.exam_cost
     costByModel.set(cr.model_id, c)
   }
+  const probe = props.report.jury?.probe ?? {}
   const out: ValueRow[] = props.report.rows.map((r) => {
     const t = tpsByModel.get(r.model_id)
     const c = costByModel.get(r.model_id)
     const examCost = c && !c.unknown ? c.sum : null
     const score = r.total_score
+    const p = probe[r.model_id]
     return {
       model: r.model_id,
       score,
       tps: t && t.n > 0 ? t.sum / t.n : null,
       examCost,
       perPoint: examCost !== null && score !== null && score > 0 ? examCost / score : null,
+      probeOk: p ? p.ok : null,
+      probeText: p ? (p.ok ? `✓ ${p.succ}/${p.rounds} · ${p.tps.toFixed(0)} tps` : `✗ ${p.succ}/${p.rounds} 不可达`) : '—',
     }
   })
   return out.sort((a, b) => (a.perPoint ?? 9e9) - (b.perPoint ?? 9e9))
@@ -95,6 +101,11 @@ function fmtScore(v: number | null): string {
         <div class="kpi-big">{{ avgTps === null ? '—' : avgTps.toFixed(0) }}</div>
         <div class="kpi-sub">output tokens / 答题延迟</div>
       </div>
+      <div class="kpi" :class="{ warn: (estimated?.unknown_runs ?? 0) > 0 }">
+        <div class="kpi-label">价格未登记</div>
+        <div class="kpi-big">{{ estimated?.unknown_runs ?? 0 }}</div>
+        <div class="kpi-sub">未登记 Run 的成本不计入合计</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -103,7 +114,7 @@ function fmtScore(v: number | null): string {
         <thead>
           <tr>
             <th>#</th><th>模型</th><th>总分</th><th>TPS</th>
-            <th>考试成本</th><th>每分成本</th>
+            <th>考试成本</th><th>每分成本</th><th>刺探</th>
           </tr>
         </thead>
         <tbody>
@@ -119,9 +130,15 @@ function fmtScore(v: number | null): string {
             </td>
             <td>{{ fmtCost(r.examCost) }}</td>
             <td class="perpoint">{{ r.perPoint === null ? '—' : `$${r.perPoint.toFixed(5)}` }}</td>
+            <td class="probe" :class="{ bad: r.probeOk === false }">{{ r.probeText }}</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="footnote">
+      成本按模型登记表公开牌价估算(输入/输出 token 分项计价),牌价随发版更新,管理员可在设置中覆盖;
+      未登记价格的模型成本记「价格未登记」,不按 0 计入合计。TPS 为非流式口径(output tokens / 延迟),无 TTFT。
     </div>
   </div>
 </template>
@@ -150,6 +167,10 @@ function fmtScore(v: number | null): string {
 .kpi-label {
   font-size: 12px;
   color: var(--hs-gray-500);
+}
+.kpi.warn {
+  border-color: #ffe1c2;
+  background: #fffaf5;
 }
 .kpi-big {
   font-size: 24px;
@@ -231,5 +252,17 @@ td {
   margin-left: 6px;
   font-size: 12px;
   color: var(--hs-gray-500);
+}
+.probe {
+  font-size: 12px;
+  color: var(--hs-success-text-base);
+}
+.probe.bad {
+  color: var(--hs-danger-text-base);
+}
+.footnote {
+  font-size: 12px;
+  color: var(--hs-gray-500);
+  line-height: 1.8;
 }
 </style>

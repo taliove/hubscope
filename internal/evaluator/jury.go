@@ -134,20 +134,29 @@ func containsModel(cands []juryCandidate, modelID string) bool {
 	return false
 }
 
-// parseJurySnapshot decodes a stored jury snapshot into the policy and the
-// per-model judge lists (keys are model DB IDs). An empty or corrupt
-// snapshot yields nil juries — callers then ride the legacy single-judge
-// path (pre-jury runs).
-func parseJurySnapshot(raw string) (string, map[int64][]string) {
+// JuryProbe is one probed model's gate outcome as stored in the snapshot.
+type JuryProbe struct {
+	OK     bool    `json:"ok"`
+	Succ   int     `json:"succ"`
+	Rounds int     `json:"rounds"`
+	TPS    float64 `json:"tps"`
+}
+
+// ParseJurySnapshot decodes a stored jury snapshot into the policy, the
+// per-model judge lists (keys are model DB IDs), and the probe outcomes
+// keyed by model ID. An empty or corrupt snapshot yields nil juries —
+// callers then ride the legacy single-judge path (pre-jury runs).
+func ParseJurySnapshot(raw string) (string, map[int64][]string, map[string]JuryProbe) {
 	if raw == "" {
-		return "", nil
+		return "", nil, nil
 	}
 	var payload struct {
-		Policy string              `json:"policy"`
-		Juries map[string][]string `json:"juries"`
+		Policy string               `json:"policy"`
+		Juries map[string][]string  `json:"juries"`
+		Probe  map[string]JuryProbe `json:"probe"`
 	}
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return "", nil
+		return "", nil, nil
 	}
 	juries := make(map[int64][]string, len(payload.Juries))
 	for k, v := range payload.Juries {
@@ -157,19 +166,30 @@ func parseJurySnapshot(raw string) (string, map[int64][]string) {
 		}
 		juries[id] = v
 	}
-	return payload.Policy, juries
+	return payload.Policy, juries, payload.Probe
 }
 
-// jurySnapshotJSON renders the run's jury snapshot (ADR 0016): the policy
-// plus, per evaluated model, the judges selected for it. The snapshot makes
-// every verdict attributable to the jury that produced it. Map keys marshal
-// in sorted order, so the snapshot is deterministic.
-func jurySnapshotJSON(policy string, juries map[int64]jurySelection) string {
+// probeSummaryDTO is one model's probe-gate outcome inside the jury
+// snapshot (GH #179): the ops views read reachability and measured speed
+// from it long after the batch settled.
+type probeSummaryDTO struct {
+	OK     bool    `json:"ok"`
+	Succ   int     `json:"succ"`
+	Rounds int     `json:"rounds"`
+	TPS    float64 `json:"tps"`
+}
+
+// jurySnapshotJSON renders the run's jury snapshot (ADR 0016): the policy,
+// per evaluated model the judges selected for it, and every probed model's
+// gate outcome. The snapshot makes every verdict attributable to the jury
+// that produced it. Map keys marshal in sorted order, so the snapshot is
+// deterministic.
+func jurySnapshotJSON(policy string, juries map[int64]jurySelection, probes map[string]probeSummaryDTO) string {
 	jm := map[string][]string{}
 	for modelDBID, sel := range juries {
 		jm[strconv.FormatInt(modelDBID, 10)] = sel.Judges
 	}
-	raw, err := json.Marshal(map[string]any{"policy": policy, "juries": jm})
+	raw, err := json.Marshal(map[string]any{"policy": policy, "juries": jm, "probe": probes})
 	if err != nil {
 		return ""
 	}

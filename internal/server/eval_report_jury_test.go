@@ -46,6 +46,24 @@ func TestRunDetailJuryBreakdown(t *testing.T) {
 			t.Errorf("rule case %v must not carry judge_scores", rm["case_id"])
 		}
 	}
+
+	// The jury tally rides the run detail: every judge with its vote count
+	// and priced cost (GH #179).
+	summary, _ := run["jury_summary"].([]interface{})
+	if len(summary) != 3 {
+		t.Fatalf("jury_summary = %v, want 3 judges", summary)
+	}
+	for _, j := range summary {
+		jm := j.(map[string]interface{})
+		if votes, _ := jm["votes"].(float64); votes != 1 {
+			t.Errorf("judge %v votes = %v, want 1", jm["judge_model"], votes)
+		}
+		// This run registered IQ only: the judge's price is unregistered,
+		// so its cost reads null (never zero).
+		if cost, ok := jm["cost"].(float64); ok && cost == 0 {
+			t.Errorf("judge %v cost = 0, want null when the price is unregistered", jm["judge_model"])
+		}
+	}
 }
 
 // TestRunEstimatedCost pins the GH #178 cost accounting: priced components
@@ -183,6 +201,24 @@ func TestCampaignEstimatedCostSummary(t *testing.T) {
 	}
 	if unknown, _ := estimated["unknown_runs"].(float64); unknown != 0 {
 		t.Errorf("unknown_runs = %v, want 0 (every component priced)", unknown)
+	}
+
+	// The report carries the jury panel and probe outcomes (GH #179).
+	jury, _ := report["jury"].(map[string]interface{})
+	if jury == nil {
+		t.Fatal("report must carry the jury panel")
+	}
+	if jury["policy"] != "iq" {
+		t.Errorf("jury policy = %v, want iq", jury["policy"])
+	}
+	judges, _ := jury["judges"].([]interface{})
+	if len(judges) != 3 {
+		t.Errorf("jury judges = %v, want 3", judges)
+	}
+	probe, _ := jury["probe"].(map[string]interface{})
+	subjProbe, _ := probe["subject"].(map[string]interface{})
+	if subjProbe["ok"] != true || subjProbe["succ"] != 3.0 {
+		t.Errorf("subject probe = %v, want ok with 3 successful rounds", subjProbe)
 	}
 
 	rows, _ := report["cost_rows"].([]interface{})
