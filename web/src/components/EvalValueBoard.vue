@@ -123,7 +123,7 @@ function fmtScore(v: number | null): string {
         <thead>
           <tr>
             <th>#</th><th>模型</th><th>总分</th><th>TPS</th>
-            <th>考试成本</th><th>每分成本</th><th>刺探</th>
+            <th>答题成本</th><th>每分成本</th><th>预检</th>
           </tr>
         </thead>
         <tbody>

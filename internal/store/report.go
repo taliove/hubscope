@@ -196,13 +196,26 @@ func (db *DB) CampaignVerdictProfiles(campaignID int64) (map[int64]string, error
 // (unjudged cases) never enter the average — SQLite AVG skips NULLs, the
 // same convention as the read-time run aggregation.
 func (db *DB) ListCampaignSuiteScores(campaignID int64) ([]CampaignSuiteScore, error) {
+	return db.listCampaignSuiteScores(campaignID, "r.status = 'done'")
+}
+
+// ListCampaignLiveSuiteScores additionally counts running runs (GH #179,
+// 2026-08-04 UX ruling): a model's partial suite score is visible as soon
+// as its first case settles — "跑了一题就算分". The cells' coverage markers
+// already name the judging denominator, so the partial mean never poses as
+// complete.
+func (db *DB) ListCampaignLiveSuiteScores(campaignID int64) ([]CampaignSuiteScore, error) {
+	return db.listCampaignSuiteScores(campaignID, "r.status IN ('done', 'running')")
+}
+
+func (db *DB) listCampaignSuiteScores(campaignID int64, statusFilter string) ([]CampaignSuiteScore, error) {
 	rows, err := db.conn.Query(`
 		SELECT res.model_db_id, res.model_id, m.family, s.key, AVG(res.score)
 		FROM eval_runs r
 		JOIN eval_results res ON res.eval_run_id = r.id
 		JOIN suites s ON s.id = r.suite_id
 		JOIN models m ON m.id = res.model_db_id
-		WHERE r.campaign_id = ? AND r.status = 'done' AND m.status != 'retired'
+		WHERE r.campaign_id = ? AND `+statusFilter+` AND m.status != 'retired'
 		GROUP BY res.model_db_id, r.suite_id
 		ORDER BY res.model_db_id, r.suite_id
 	`, campaignID)

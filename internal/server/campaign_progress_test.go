@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/taliove/hubscope/internal/store"
@@ -137,21 +138,23 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 		}
 	}
 
-	// Unscored suites drop out of the totals (numerator and denominator
-	// alike): gamma judged nothing (null total), alpha and beta average
-	// their four scored suites only — ifeval is not done and must not
-	// dilute the total.
+	// Live caliber (2026-08-04 ruling): a suite's score lands as soon as
+	// its cases settle — "跑了一题就算分". Alpha and beta finished ifeval
+	// with 4 of 23 passing (default answers): suite score 400/23, total
+	// the five-suite mean (80/23). Gamma judged nothing (null total).
 	if rows[2]["total_score"] != nil {
 		t.Errorf("gamma total_score = %v, want null (nothing judged)", rows[2]["total_score"])
 	}
 	for _, row := range rows[:2] {
 		scores, _ := row["suite_scores"].(map[string]interface{})
-		if scores["ifeval"] != nil {
-			t.Errorf("model %v ifeval score = %v, want null (suite still running)", row["model_id"], scores["ifeval"])
+		ifeval, _ := scores["ifeval"].(float64)
+		if math.Abs(ifeval-400.0/23) > 1e-9 {
+			t.Errorf("model %v ifeval score = %v, want %v (4/23 passing, live partial)", row["model_id"], scores["ifeval"], 400.0/23)
 		}
-		if row["total_score"] != 0.0 {
-			t.Errorf("model %v total_score = %v, want 0 (mean of the four done suites, all scored 0 by the default answers)",
-				row["model_id"], row["total_score"])
+		total, _ := row["total_score"].(float64)
+		if math.Abs(total-80.0/23) > 1e-9 {
+			t.Errorf("model %v total_score = %v, want %v (mean with the live ifeval score)",
+				row["model_id"], row["total_score"], 80.0/23)
 		}
 	}
 	assertRowTotals(t, report)

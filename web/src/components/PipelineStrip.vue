@@ -87,36 +87,36 @@ function pct(done: number, total: number): number {
 <template>
   <div v-if="depth" class="pipeline-strip">
     <div class="pipe-node" :class="probing ? 'active' : 'done'">
-      <div class="node-title">刺探门控</div>
+      <div class="node-title">跑前预检</div>
       <div class="node-big" v-if="probing">
         {{ probeDone }}<span class="dim">/{{ probeTotal }}</span>
       </div>
       <div class="node-big" v-else>✓</div>
-      <div class="node-sub">{{ probing ? '实测通断/速度/稳定性' : '不可达模型已跳过' }}</div>
+      <div class="node-sub">{{ probing ? '实测每个模型的通断与速度' : '不通的模型已跳过' }}</div>
     </div>
     <div class="pipe-link" />
     <div class="pipe-node active">
-      <div class="node-title">考试池</div>
+      <div class="node-title">答题</div>
       <div class="node-big">
         {{ examDone }}<span class="dim">/{{ examTotal }}</span>
       </div>
-      <div class="node-sub">队列 {{ depth.exam_pending }} · 在飞 {{ depth.exam_inflight }}</div>
+      <div class="node-sub">排队 {{ depth.exam_pending }} · 进行中 {{ depth.exam_inflight }}</div>
     </div>
     <div class="pipe-link" />
     <div class="pipe-node active">
-      <div class="node-title">裁判池 ×3 票</div>
+      <div class="node-title">裁判打分(3 票)</div>
       <div class="node-big">
-          {{ depth.judge_inflight }}<span class="dim"> 在飞</span>
+          {{ depth.judge_inflight }}<span class="dim"> 进行中</span>
       </div>
-      <div class="node-sub">积压 {{ depth.judge_pending }}</div>
+      <div class="node-sub">排队 {{ depth.judge_pending }}</div>
     </div>
     <div class="pipe-link" />
     <div class="pipe-node">
-      <div class="node-title">中位数聚合</div>
+      <div class="node-title">出分(取中位数)</div>
       <div class="node-big">
         {{ progress.done }}<span class="dim">/{{ progress.total }}</span>
       </div>
-      <div class="node-sub">Run 完成 · 3 票取中位</div>
+      <div class="node-sub">Run 完成数</div>
     </div>
   </div>
 
@@ -130,7 +130,7 @@ function pct(done: number, total: number): number {
   <div v-if="depth && monitorRows.length > 0" class="monitor">
     <table>
       <thead>
-        <tr><th>模型</th><th>刺探</th><th>考试</th><th>裁判</th><th>TPS</th><th>考试成本</th></tr>
+        <tr><th>模型</th><th>预检</th><th>答题</th><th>裁判</th><th>TPS</th><th>答题成本</th></tr>
       </thead>
       <tbody>
         <tr v-for="m in monitorRows" :key="m.model" :class="{ skipped: m.probeOk === false }">

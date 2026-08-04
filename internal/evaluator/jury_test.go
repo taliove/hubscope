@@ -6,7 +6,7 @@ import (
 )
 
 func c(model string, iq, price float64, tps float64) juryCandidate {
-	c := juryCandidate{ModelID: model, TPS: tps}
+	c := juryCandidate{ModelID: model, Family: model, TPS: tps}
 	if iq > 0 {
 		c.IQ = &iq
 	}
@@ -14,6 +14,13 @@ func c(model string, iq, price float64, tps float64) juryCandidate {
 		c.PriceIn = &price
 		c.PriceOut = &price
 	}
+	return c
+}
+
+// cf is c with an explicit vendor family (diversity scenarios).
+func cf(model, family string, iq, price, tps float64) juryCandidate {
+	c := c(model, iq, price, tps)
+	c.Family = family
 	return c
 }
 
@@ -88,6 +95,45 @@ func TestSelectJuryEmptyPool(t *testing.T) {
 	sel := selectJury(nil, JuryPolicyBalanced, "subject")
 	if len(sel.Judges) != 0 {
 		t.Errorf("empty pool must yield an empty jury, got %v", sel.Judges)
+	}
+}
+
+func TestSelectJurySpreadsAcrossFamilies(t *testing.T) {
+	// Three kimi models outrank the alternatives: the jury still spreads
+	// across families before doubling up (2026-08-04 ruling).
+	cands := []juryCandidate{
+		cf("kimi-a", "kimi", 9, 1, 100),
+		cf("kimi-b", "kimi", 8.5, 1, 90),
+		cf("kimi-c", "kimi", 8, 1, 80),
+		cf("claude-a", "claude", 7, 1, 70),
+		cf("glm-a", "glm", 6, 1, 60),
+	}
+	sel := selectJury(cands, JuryPolicyIQ, "subject")
+	families := map[string]int{}
+	for _, j := range sel.Judges {
+		for _, c := range cands {
+			if c.ModelID == j {
+				families[c.Family]++
+			}
+		}
+	}
+	if families["kimi"] > 1 {
+		t.Errorf("jury doubled up on kimi despite alternatives: %v", sel.Judges)
+	}
+	if len(families) != 3 {
+		t.Errorf("jury should cover 3 families, got %v from %v", families, sel.Judges)
+	}
+}
+
+func TestSelectJurySingleFamilyStillFills(t *testing.T) {
+	cands := []juryCandidate{
+		cf("kimi-a", "kimi", 9, 1, 100),
+		cf("kimi-b", "kimi", 8, 1, 90),
+		cf("kimi-c", "kimi", 7, 1, 80),
+	}
+	sel := selectJury(cands, JuryPolicyBalanced, "subject")
+	if len(sel.Judges) != 3 {
+		t.Errorf("single-family hub must still fill the panel, got %v", sel.Judges)
 	}
 }
 

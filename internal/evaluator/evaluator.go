@@ -866,6 +866,7 @@ func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples 
 			cands = append(cands, juryCandidate{
 				ModelDBID: m.ID,
 				ModelID:   m.ModelID,
+				Family:    m.Family,
 				IQ:        info.IQ,
 				PriceIn:   info.PriceIn,
 				PriceOut:  info.PriceOut,

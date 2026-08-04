@@ -32,6 +32,7 @@ func ValidJuryPolicy(s string) bool {
 type juryCandidate struct {
 	ModelDBID int64
 	ModelID   string
+	Family    string   // vendor family (claude/kimi/glm/…); the jury spreads across families
 	IQ        *float64 // registry tier 1–10
 	PriceIn   *float64 // USD per 1M input tokens
 	PriceOut  *float64
@@ -116,13 +117,46 @@ func selectJury(cands []juryCandidate, policy, subjectModelID string) jurySelect
 	} else {
 		sel.SelfIncluded = containsModel(cands, subjectModelID)
 	}
-	for i, c := range rank(pool) {
-		if i == 3 {
-			break
-		}
-		sel.Judges = append(sel.Judges, c.ModelID)
-	}
+	sel.Judges = pickDiverse(rank(pool), 3)
 	return sel
+}
+
+// pickDiverse takes up to n judges from the ranked pool, preferring vendor
+// diversity (2026-08-04 UX ruling): one judge per family on the first pass,
+// then the remaining slots in rank order. A single-family hub still fills
+// the panel — diversity never starves the jury.
+func pickDiverse(ranked []juryCandidate, n int) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range ranked {
+		if len(out) == n {
+			return out
+		}
+		if seen[c.Family] {
+			continue
+		}
+		seen[c.Family] = true
+		out = append(out, c.ModelID)
+	}
+	for _, c := range ranked {
+		if len(out) == n {
+			return out
+		}
+		if containsString(out, c.ModelID) {
+			continue
+		}
+		out = append(out, c.ModelID)
+	}
+	return out
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func containsModel(cands []juryCandidate, modelID string) bool {

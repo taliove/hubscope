@@ -233,7 +233,7 @@ async function onCancelTracked() {
   if (!campaign) return
   try {
     await ElMessageBox.confirm(
-      `将停止批次 #${campaign.id}:未开始的评估单元放弃,在飞的跑完后批次判失败;已判分结果保留。`,
+      `将停止批次 #${campaign.id}:未开始的题目放弃,正在进行的跑完后批次判失败;已判分结果保留。`,
       '取消批次',
       { confirmButtonText: '停止批次', cancelButtonText: '返回', type: 'warning' },
     )

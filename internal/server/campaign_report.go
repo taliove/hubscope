@@ -245,7 +245,13 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	}
 	weights := effectiveWeights(suites, configured)
 
+	// A running campaign reads the live caliber (partial scores land as
+	// cases settle); a settled one reads the done-only caliber. The
+	// baseline always uses the settled caliber.
 	scores, err := s.db.ListCampaignSuiteScores(id)
+	if campaign.Status == store.CampaignStatusRunning {
+		scores, err = s.db.ListCampaignLiveSuiteScores(id)
+	}
 	if err != nil {
 		return fail(http.StatusInternalServerError, "failed to aggregate campaign scores")
 	}

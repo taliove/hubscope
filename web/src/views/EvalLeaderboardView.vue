@@ -418,6 +418,10 @@ function isUnfinished(status: CampaignStatus): boolean {
 // pauses in a hidden tab and refreshes immediately on return
 // (ui-guidelines §6); a batch that settles while hidden is observed by
 // that return refresh, so the settle transition semantics are unchanged.
+// The report grew heavier with the jury payloads (GH #178): a tick must
+// never stack on a still-running one, or slow ticks pile requests into the
+// read rate limiter (2026-08-04 incident: 429 on the live board).
+let pollBusy = false
 let poll: VisibilityPollHandle | null = null
 function armPolling() {
   poll?.clear()
@@ -425,7 +429,14 @@ function armPolling() {
   if (selected.value && isUnfinished(selected.value.status)) {
     poll = createVisibilityPoll(
       () => {
-        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()]).then(armPolling)
+        if (pollBusy) return
+        pollBusy = true
+        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()])
+          .catch(() => {})
+          .finally(() => {
+            pollBusy = false
+            armPolling()
+          })
       },
       { intervalMs: 3000 },
     )
