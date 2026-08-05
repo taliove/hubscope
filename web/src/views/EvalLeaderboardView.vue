@@ -144,7 +144,7 @@
                         type="primary"
                         :loading="restarting"
                         @click="onRestart"
-                      >重启批次</el-button>
+                      >续跑批次</el-button>
                       <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link">到评估运营查看运行详情</router-link>
                     </span>
                   </div>
@@ -610,11 +610,11 @@ async function onRestart() {
   if (selectedId.value === null) return
   restarting.value = true
   try {
-    const fresh = await restartCampaign(selectedId.value)
-    ElMessage.success(`已重启为批次 #${fresh.id}`)
+    const resumed = await restartCampaign(selectedId.value)
+    ElMessage.success(`已续跑批次 #${resumed.id}:只补未完成与未判分的题,已有结果全部保留`)
     activeTab.value = 'board'
     await loadCampaigns()
-    switchBatch(fresh.id)
+    switchBatch(resumed.id)
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {

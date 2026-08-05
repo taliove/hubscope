@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -359,6 +360,49 @@ func (db *DB) ReopenCampaignForUnitRetryAny(id int64, units []RetryUnit) (bool, 
 		)
 	`, append([]interface{}{id}, args...)...); err != nil {
 		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ReopenCampaignRuns reopens a settled campaign and the listed runs for a
+// resume (2026-08-05 ruling): only runs with incomplete cells rejoin
+// execution, so fully completed runs keep their terminal state (the GH #39
+// guard). Returns false when the campaign was not settled — a concurrent
+// resume loses the race instead of double-firing.
+func (db *DB) ReopenCampaignRuns(id int64, runIDs []int64) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	if len(runIDs) > 0 {
+		placeholders := make([]string, len(runIDs))
+		args := make([]interface{}, 0, len(runIDs)+1)
+		args = append(args, id)
+		for i, rid := range runIDs {
+			placeholders[i] = "?"
+			args = append(args, rid)
+		}
+		if _, err := tx.Exec(`
+			UPDATE eval_runs SET status = 'running', finished_at = NULL
+			WHERE campaign_id = ? AND status IN ('done', 'failed') AND id IN (`+strings.Join(placeholders, ",")+`)
+		`, args...); err != nil {
+			return false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err

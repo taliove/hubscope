@@ -89,9 +89,9 @@ export async function confirmJury(id: number): Promise<void> {
   return http.post<void>(`/campaigns/${id}/confirm-jury`)
 }
 
-// Restart a settled batch with its exact plan (same suites, same member
-// models) as a new campaign (2026-08-05 ops ruling). Returns the new
-// campaign.
+// Resume a settled batch where it stopped (2026-08-05 ruling): answered
+// units keep their results and scores; only missing or null-score units
+// re-run. Returns the same campaign (reopened to running).
 export async function restartCampaign(id: number): Promise<Campaign> {
   return http.post<Campaign>(`/campaigns/${id}/restart`)
 }

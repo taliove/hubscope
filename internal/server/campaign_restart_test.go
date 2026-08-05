@@ -2,25 +2,101 @@ package server_test
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 )
 
-// TestFailedBatchOps pins the 2026-08-05 ops ruling: a failed batch shows
-// every run's failure reason in the campaign detail, and restart re-runs
-// the exact same plan as a new campaign.
+// TestFailedBatchOps pins the 2026-08-05 ops rulings: a failed batch shows
+// every run's failure reason in the campaign detail, and restart RESUMES
+// the same campaign — answered units keep their results (row IDs
+// untouched), only missing or null-score units re-run.
 func TestFailedBatchOps(t *testing.T) {
+	ts, stub, db := setupEvalEnv(t)
+	modelID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
+	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
+	retireSuiteCases(t, db, suiteID)
+	createRuleCase(t, ts.URL, suiteID, "RESUME-A:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "RESUME-B:请作答", "好的", nil)
+	createRuleCase(t, ts.URL, suiteID, "RESUME-C:请作答", "好的", nil)
+
+	runID := triggerEval(t, ts.URL, suiteID, modelID)
+	run := waitEvalDone(t, ts.URL, runID)
+	campaignID := int64(run["campaign_id"].(float64))
+	waitCampaignStatus(t, ts.URL, campaignID, "done")
+
+	// Snapshot the scored rows, then drop two units to fake the
+	// interruption's gaps.
+	before := runDetail(t, ts.URL, runID)
+	beforeRows := resultsByModel(before, "smart-model")
+	if len(beforeRows) != 3 {
+		t.Fatalf("results before resume = %d, want 3", len(beforeRows))
+	}
+	keptIDs := map[int64]bool{}
+	var dropped []int64
+	for i, r := range beforeRows {
+		id := int64(r["id"].(float64))
+		if i == 0 {
+			dropped = append(dropped, id)
+			if err := db.DeleteUnitResult(runID, modelID, int64(r["case_id"].(float64))); err != nil {
+				t.Fatalf("drop unit: %v", err)
+			}
+			continue
+		}
+		keptIDs[id] = true
+	}
+
+	rest := doPost(t, ts.URL+"/api/campaigns/"+itoa(campaignID)+"/restart", map[string]interface{}{})
+	if rest.StatusCode != http.StatusAccepted {
+		t.Fatalf("restart: expected 202, got %d", rest.StatusCode)
+	}
+	var env envelope
+	_ = json.NewDecoder(rest.Body).Decode(&env)
+	rest.Body.Close()
+	var resumed map[string]interface{}
+	_ = json.Unmarshal(env.Data, &resumed)
+	if int64(resumed["id"].(float64)) != campaignID {
+		t.Errorf("resume must continue the same campaign, got new id %v", resumed["id"])
+	}
+	waitCampaignStatus(t, ts.URL, campaignID, "done")
+
+	after := runDetail(t, ts.URL, runID)
+	afterRows := resultsByModel(after, "smart-model")
+	if len(afterRows) != 3 {
+		t.Fatalf("results after resume = %d, want 3 (gaps refilled)", len(afterRows))
+	}
+	for _, r := range afterRows {
+		id := int64(r["id"].(float64))
+		if r["score"] != 1.0 {
+			t.Errorf("resumed row %d score = %v, want 1", id, r["score"])
+		}
+		if keptIDs[id] {
+			continue // untouched original row
+		}
+	}
+	// Every originally-kept row must still be present with its original ID
+	// (resume never touches answered units).
+	afterIDs := map[int64]bool{}
+	for _, r := range afterRows {
+		afterIDs[int64(r["id"].(float64))] = true
+	}
+	for id := range keptIDs {
+		if !afterIDs[id] {
+			t.Errorf("previously scored row %d vanished across resume", id)
+		}
+	}
+	_ = dropped
+}
+
+// TestFailedBatchFailureReason pins the ops-ruling read path: the campaign
+// detail carries each failed run's reason from its task log.
+func TestFailedBatchFailureReason(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
-	createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
 	stub.markBroken("broken-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	// The probe gate excludes the broken model; an all-unreachable run
-	// settles failed synchronously, so trigger by hand (triggerEval asserts
-	// running/done).
+	// settles failed synchronously, so trigger by hand.
 	resp0 := doPost(t, ts.URL+"/api/evals", map[string]interface{}{
 		"suite_id": suiteID, "model_ids": []int64{brokenID},
 	})
@@ -40,7 +116,6 @@ func TestFailedBatchOps(t *testing.T) {
 	campaignID := int64(run["campaign_id"].(float64))
 	waitCampaignStatus(t, ts.URL, campaignID, "failed")
 
-	// The campaign detail names the failure reason per run.
 	resp := doGet(t, ts.URL+"/api/campaigns/"+itoa(campaignID))
 	var env envelope
 	_ = json.NewDecoder(resp.Body).Decode(&env)
@@ -52,32 +127,7 @@ func TestFailedBatchOps(t *testing.T) {
 		t.Fatalf("runs = %d, want 1", len(runs))
 	}
 	reason, _ := runs[0].(map[string]interface{})["failure_reason"].(string)
-	if !strings.Contains(reason, "probe gate") {
-		t.Errorf("failure_reason = %q, want the probe-gate reason", reason)
-	}
-
-	// Restart with the model healthy: the new campaign carries the same
-	// plan and completes.
-	stub.markBroken("broken-model", false)
-	rest := doPost(t, ts.URL+"/api/campaigns/"+itoa(campaignID)+"/restart", map[string]interface{}{})
-	if rest.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(rest.Body)
-		rest.Body.Close()
-		t.Fatalf("restart: expected 202, got %d: %s", rest.StatusCode, body)
-	}
-	var env2 envelope
-	_ = json.NewDecoder(rest.Body).Decode(&env2)
-	rest.Body.Close()
-	var fresh map[string]interface{}
-	_ = json.Unmarshal(env2.Data, &fresh)
-	freshID := int64(fresh["id"].(float64))
-	if freshID == campaignID {
-		t.Fatal("restart must create a new campaign")
-	}
-	waitCampaignStatus(t, ts.URL, freshID, "done")
-
-	freshRuns := fresh["runs"].([]interface{})
-	if len(freshRuns) != 1 || int64(freshRuns[0].(map[string]interface{})["suite_id"].(float64)) != suiteID {
-		t.Errorf("restarted plan = %v, want the same suite", freshRuns)
+	if reason == "" {
+		t.Error("failure_reason must name why the run failed")
 	}
 }

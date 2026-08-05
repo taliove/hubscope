@@ -299,6 +299,104 @@ func (e *Evaluator) retryModelAny(ctx context.Context, p *pipeline, prep *prepar
 	}
 }
 
+// ResumeCampaign restarts an interrupted batch where it stopped (2026-08-05
+// ruling): answered units keep their results and scores; only missing
+// units (the interruption never asked them) and null-score units re-run.
+// The original jury snapshot rides along (judgesFor reads it off the run),
+// and the confirmation gate is not re-engaged — the operator reviewed this
+// plan already.
+func (e *Evaluator) ResumeCampaign(ctx context.Context, campaignID int64) {
+	ctx = e.registerCancel(ctx, campaignID)
+	defer e.unregisterCancel(campaignID)
+
+	runs, err := e.db.ListEvalRunsByCampaign(campaignID)
+	if err != nil {
+		slog.Error("evaluator: load campaign runs for resume", "campaign_id", campaignID, "error", err)
+		return
+	}
+	members, err := e.db.ListCampaignMembers(campaignID)
+	if err != nil {
+		slog.Error("evaluator: load campaign members for resume", "campaign_id", campaignID, "error", err)
+		return
+	}
+	defaultSamples := e.resolveDefaultSampleCount()
+
+	var cells []evalCell
+	var preps []*preparedRun
+	reopenSet := map[int64]bool{}
+	var reopenRuns []int64
+	for i := range runs {
+		run := &runs[i]
+		cases, err := e.db.ListEnabledCases(run.SuiteID)
+		if err != nil {
+			slog.Error("evaluator: list cases for resume", "run_id", run.ID, "error", err)
+			continue
+		}
+		existing := map[int64]map[int64]*float64{} // model → case → score presence
+		results, err := e.db.ListEvalResults(run.ID)
+		if err != nil {
+			slog.Error("evaluator: list results for resume", "run_id", run.ID, "error", err)
+			continue
+		}
+		for _, r := range results {
+			if existing[r.ModelDBID] == nil {
+				existing[r.ModelDBID] = map[int64]*float64{}
+			}
+			existing[r.ModelDBID][r.CaseID] = r.Score
+		}
+		for _, m := range members {
+			var todo []store.Case
+			for _, c := range cases {
+				score, done := existing[m.ModelDBID][c.ID]
+				if !done || score == nil {
+					todo = append(todo, c)
+				}
+			}
+			if len(todo) == 0 {
+				continue
+			}
+			prep := &preparedRun{run: run, cases: todo}
+			preps = append(preps, prep)
+			cells = append(cells, evalCell{prep: prep, modelDBID: m.ModelDBID})
+			if !reopenSet[run.ID] {
+				reopenSet[run.ID] = true
+				reopenRuns = append(reopenRuns, run.ID)
+			}
+		}
+	}
+	if len(cells) == 0 {
+		// Nothing incomplete: a settled batch stays settled; the caller's
+		// reopen was never invoked, so no state moved at all.
+		return
+	}
+
+	reopened, err := e.db.ReopenCampaignRuns(campaignID, reopenRuns)
+	if err != nil {
+		slog.Error("evaluator: reopen for resume", "campaign_id", campaignID, "error", err)
+		return
+	}
+	if !reopened {
+		slog.Info("evaluator: resume lost the settle-state race", "campaign_id", campaignID)
+		return
+	}
+
+	p := newPipeline(e, preps)
+	p.finishRun = func(prep *preparedRun) { e.finishRetriedRun(prep.run.ID, "done") }
+	p.runJudgePool(ctx, nil)
+	e.runCellPool(ctx, cells, nil, func(cctx context.Context, cell evalCell) {
+		e.retryModelAny(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, defaultSamples)
+		p.markCellsDone(cell.prep.run.ID)
+	})
+	p.closeJudgeQueue()
+
+	for _, prep := range preps {
+		if !p.isFinished(prep.run.ID) {
+			e.finishRetriedRun(prep.run.ID, "failed")
+		}
+	}
+	e.SettleCampaign(ctx, campaignID)
+}
+
 // finishRetriedRun stamps the retry's terminal status onto a reopened run
 // (GH #39). Retry runs carry no task-center mirror — the original run's task
 // settled with it — so this is a plain store transition.
