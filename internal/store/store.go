@@ -526,6 +526,18 @@ func (db *DB) migrate() error {
 
 	// Tasks left pending/running mean the process died mid-execution; close
 	// them out as failed so the task center shows no phantom running jobs.
+	// Each interrupted task gets an error line first (2026-08-05 ops
+	// ruling): the campaign detail's failure_reason surfaces it, so a
+	// restart-stamped batch reads as "interrupted by restart", never as an
+	// unexplained failure.
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.conn.Exec(`
+		INSERT INTO task_logs (task_id, level, message, at)
+		SELECT id, 'error', 'interrupted by process restart', ? FROM tasks
+		WHERE status IN ('pending', 'running')
+	`, now); err != nil {
+		return err
+	}
 	if _, err := db.conn.Exec(
 		"UPDATE tasks SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
 		time.Now().UTC().Format(time.RFC3339Nano),
