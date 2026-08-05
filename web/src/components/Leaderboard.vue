@@ -134,8 +134,7 @@
           <span class="model">
             <span class="model-line">
               <VendorTile :family="row.family" />
-              <VendorTile :family="row.family" />
-          <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
+              <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
               <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
             </span>
             <!-- Judged-incomplete watermark (ticket 92, spec 0014 decision A;
@@ -213,6 +212,7 @@
             }"
             >{{ live ? liveRankText(row.total_score, index) : row.complete === false ? '–' : index + 1 }}</span
           >
+          <VendorTile :family="row.family" />
           <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
           <span class="total">
             <span class="total-value">{{ formatScore(row.total_score) }}</span>
