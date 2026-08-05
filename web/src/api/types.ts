@@ -275,7 +275,16 @@ export interface EvalRun {
   nadir: number // run-level snapshot of the suite's normalization constant (ADR 0009)
   trigger: EvalTrigger
   judge_model: string
+  // Jury snapshot (spec 0020 / ADR 0016): policy plus per-model judges
+  // (keys are model DB IDs); null for pre-jury single-judge runs.
+  jury_models: { policy: string; juries: Record<string, string[]> } | null
+  // Estimated cost split (GH #178); null when unset or when some
+  // component's price is not registered.
+  estimated_cost: { exam: number; judge: number } | null
   status: EvalRunStatus
+  // The run task's last error line, present only on failed runs
+  // (2026-08-05 ops ruling).
+  failure_reason?: string
   started_at: string // RFC3339
   finished_at: string | null
   score: number | null // nadir-normalized (ADR 0009) mean of non-null result scores, 0~1 scale
@@ -422,6 +431,17 @@ export interface CampaignReport extends Campaign {
   // keys (operational data never crosses the session boundary).
   cost?: CampaignCost
   cost_rows?: CampaignCostRow[]
+  // Live queue state (GH #178), present only while the batch executes.
+  queue_depth?: QueueDepth
+  // Registry-priced cost split of the whole batch (GH #178, console-only);
+  // unknown_runs counts runs whose estimate is null (price not registered).
+  estimated_cost?: { exam: number; judge: number; unknown_runs: number }
+  // Jury panel + probe outcomes (GH #179, console-only); absent on
+  // pre-jury batches.
+  jury?: JuryInfo
+  // Manual batch parked at the jury confirmation gate (2026-08-04
+  // ruling); the console shows the plan-confirm dialog while true.
+  awaiting_confirmation?: boolean
 }
 
 // Batch-level cost summary (GH #42): Σ latency / Σ input / Σ output tokens
@@ -443,6 +463,42 @@ export interface CampaignCostRow {
   latency_ms: number
   input_tokens: number | null
   output_tokens: number | null
+  // Mean output speed of the model in the run (GH #178); null when it
+  // produced no measurable answer.
+  avg_tps: number | null
+  // Registry-priced cost of the row's answer tokens (GH #178); null when
+  // the model's price is not registered.
+  exam_cost: number | null
+}
+
+// Live two-stage queue state of a running batch (GH #178); models carries
+// the per-subject judge progress for the ops monitor table (GH #179).
+export interface QueueDepth {
+  exam_pending: number
+  exam_inflight: number
+  judge_pending: number
+  judge_inflight: number
+  models: { model_db_id: number; judge_done: number; judge_total: number }[]
+  // Probe-gate completion (probe_done < probe_total = still probing).
+  probe_done: number
+  probe_total: number
+}
+
+// One probed model's gate outcome from the jury snapshot (GH #179).
+export interface JuryProbe {
+  ok: boolean
+  succ: number
+  rounds: number
+  tps: number
+}
+
+// Campaign-level jury panel + probe outcomes (GH #179, console-only).
+// juries maps each subject's model DB ID (string) to its own ≤3 judges.
+export interface JuryInfo {
+  policy: string
+  judges: string[]
+  probe: Record<string, JuryProbe>
+  juries: Record<string, string[]>
 }
 
 // Targeted retry (retry-units): one (model, case) unit of a settled batch
@@ -518,6 +574,8 @@ export interface ShareLink {
 export interface EvalResult {
   id: number
   model_id: string // the model identifier string
+  model_db_id: number
+  family: string
   case_id: number
   answer_text: string | null
   score: number | null // null when the case could not be judged
@@ -526,10 +584,33 @@ export interface EvalResult {
   input_tokens: number | null
   output_tokens: number | null
   model_deleted: boolean // model no longer exists; history views badge it
+  // Per-jury-slot votes of the case's latest attempts (GH #178); absent
+  // for rule verdicts.
+  judge_scores?: JudgeVote[]
+  // Max-min disagreement across the case's non-null votes (GH #178);
+  // absent when fewer than two votes scored.
+  spread?: number | null
+}
+
+// One jury vote on one sample (GH #178).
+export interface JudgeVote {
+  sample_no: number
+  slot: number
+  judge_model: string
+  score: number | null
+}
+
+// One judge's tally inside a run (GH #179).
+export interface JurySummaryEntry {
+  judge_model: string
+  votes: number
+  fails: number
+  cost: number | null // registry-priced; null when price unregistered
 }
 
 export interface EvalRunDetail extends EvalRun {
   results: EvalResult[]
+  jury_summary?: JurySummaryEntry[]
 }
 
 // Model evaluation summary types (ticket 60.1): the latest campaign evaluation

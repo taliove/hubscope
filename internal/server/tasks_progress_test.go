@@ -41,16 +41,18 @@ func TestEvalRunTaskProgressAndCampaignLink(t *testing.T) {
 	// pins exactly one done (model, case) unit.
 	setEvalConcurrency(t, ts.URL, 1)
 	stub.resetCalls()
-	stub.blockModelAfter("smart-model", 1)
+	// The count-based model gate lets the probe stage's three rounds
+	// through (GH #174) and freezes the model after its first answer call.
+	stub.blockModelAfter("smart-model", 4)
 	t.Cleanup(func() { stub.releaseModel("smart-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
 
-	// The second call being recorded proves the freeze point: the first
-	// case settled, the second hangs on the stub gate.
+	// The second case call being recorded proves the freeze point: the
+	// first case settled, the second hangs on the stub gate.
 	waitFor(t, "second eval call reaching the stub", func() bool {
-		return stub.callTotal("smart-model") >= 2
+		return stub.callTotal("smart-model") >= 5
 	})
 
 	items := taskItems(t, listTasks(t, ts.URL, "type=eval_run"))

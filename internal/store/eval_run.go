@@ -24,6 +24,13 @@ type EvalRun struct {
 	Status       string
 	StartedAt    time.Time
 	FinishedAt   *time.Time
+	// JuryModels snapshots the run's jury selection (JSON: policy + per-model
+	// judges; spec 0020 / ADR 0016). Empty for pre-jury single-judge runs.
+	JuryModels string
+	// EstimatedCost holds the run's estimated cost as a JSON split
+	// {"exam":x,"judge":y}; empty when unset or when some component's price
+	// is not registered (GH #178).
+	EstimatedCost string
 }
 
 // LatestEvalScore is the aggregate score of the most recent done run for one
@@ -53,6 +60,10 @@ type LatestEvalScore struct {
 const (
 	VerdictProfileV1 = "v1"
 	VerdictProfileV2 = "v2"
+	// VerdictProfileV3 is the jury-median caliber (spec 0020, ADR 0016):
+	// judge cases are scored by up to three judges and the sample score is
+	// their median. Rule verdicts stay V2 — the pipeline did not change.
+	VerdictProfileV3 = "v3"
 )
 
 // EvalResult is the outcome of one (model, case) pair inside a run. Score is
@@ -80,14 +91,14 @@ type EvalResult struct {
 
 // evalRunColumns is the canonical eval_runs column list. "trigger" is a
 // reserved SQLite keyword and must stay quoted.
-const evalRunColumns = `id, campaign_id, suite_id, suite_version, nadir, "trigger", judge_model, status, started_at, finished_at`
+const evalRunColumns = `id, campaign_id, suite_id, suite_version, nadir, "trigger", judge_model, status, started_at, finished_at, jury_models, estimated_cost`
 
 // scanEvalRun scans one eval_runs row.
 func scanEvalRun(s rowScanner) (EvalRun, error) {
 	var r EvalRun
 	var startedAt string
-	var finishedAt sql.NullString
-	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Nadir, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt); err != nil {
+	var finishedAt, juryModels, estimatedCost sql.NullString
+	if err := s.Scan(&r.ID, &r.CampaignID, &r.SuiteID, &r.SuiteVersion, &r.Nadir, &r.Trigger, &r.JudgeModel, &r.Status, &startedAt, &finishedAt, &juryModels, &estimatedCost); err != nil {
 		return EvalRun{}, err
 	}
 	r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
@@ -95,6 +106,8 @@ func scanEvalRun(s rowScanner) (EvalRun, error) {
 		t, _ := time.Parse(time.RFC3339, finishedAt.String)
 		r.FinishedAt = &t
 	}
+	r.JuryModels = juryModels.String
+	r.EstimatedCost = estimatedCost.String
 	return r, nil
 }
 
@@ -650,6 +663,56 @@ func (db *DB) DeleteNullScoreResult(runID, modelDBID, caseID int64) error {
 		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ? AND score IS NULL
 	`, runID, modelDBID, caseID)
 	return err
+}
+
+// CampaignAnsweredUnits returns the subset of the requested units that
+// already hold a result row of ANY score (2026-08-04 retry-any ruling):
+// only those are re-answerable on demand — a unit without a row is
+// mid-flight or pending and the running batch will answer it anyway.
+func (db *DB) CampaignAnsweredUnits(campaignID int64, units []RetryUnit) (map[RetryUnit]struct{}, error) {
+	where, args := retryUnitWhere("res", units)
+	rows, err := db.conn.Query(`
+		SELECT res.model_db_id, res.case_id FROM eval_results res
+		JOIN eval_runs r ON r.id = res.eval_run_id
+		WHERE r.campaign_id = ? AND (`+where+`)
+	`, append([]interface{}{campaignID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[RetryUnit]struct{}, len(units))
+	for rows.Next() {
+		var u RetryUnit
+		if err := rows.Scan(&u.ModelDBID, &u.CaseID); err != nil {
+			return nil, err
+		}
+		out[u] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
+// DeleteUnitResult removes a unit's result row regardless of score —
+// exclusively for the operator-initiated re-answer flow (2026-08-04
+// ruling), which re-answers and re-judges on explicit request. Contrast
+// DeleteNullScoreResult (W7): the null-only guard there stays hardcoded;
+// this method must never be called from any path but the retry-any one.
+func (db *DB) DeleteUnitResult(runID, modelDBID, caseID int64) error {
+	_, err := db.conn.Exec(`
+		DELETE FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ?
+	`, runID, modelDBID, caseID)
+	return err
+}
+
+// HasResult reports whether the unit holds any result row.
+func (db *DB) HasResult(runID, modelDBID, caseID int64) (bool, error) {
+	var n int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM eval_results
+		WHERE eval_run_id = ? AND model_db_id = ? AND case_id = ?
+	`, runID, modelDBID, caseID).Scan(&n)
+	return n > 0, err
 }
 
 // HasScheduledEvalRunSince reports whether any scheduled eval run started at

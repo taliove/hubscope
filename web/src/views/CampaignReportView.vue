@@ -81,6 +81,10 @@
             @query="onQuery"
             @select="openTrend"
           />
+          <EvalValueBoard
+            v-if="costViewEnabled && viewMode === 'scores' && reportView === 'cost'"
+            :report="report"
+          />
           <EvalCostMatrix
             v-if="costViewEnabled && viewMode === 'scores' && reportView === 'cost'"
             :report="report"
@@ -126,6 +130,7 @@
           @select="openTrend"
           @cell-select="onCellSelect"
         />
+        <EvalValueBoard v-if="costViewEnabled && reportView === 'cost'" :report="report" />
         <EvalCostMatrix v-if="costViewEnabled && reportView === 'cost'" :report="report" />
 
         <!-- Cost detail table (GH #42, console-only): one row per model x
@@ -173,7 +178,6 @@
         :model-id="drilldownModelId"
         :suites="drilldownSuites"
         :retryable="true"
-        :model-db-ids="modelDbIdMap"
         @close="drilldownRunId = null"
         @retried="onDialogRetried"
       />
@@ -192,6 +196,7 @@ import { listSuites } from '@/api/evals'
 import { createShareLink, getSharedReport, shareLinkUrl } from '@/api/shareLinks'
 import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalCostMatrix from '@/components/EvalCostMatrix.vue'
+import EvalValueBoard from '@/components/EvalValueBoard.vue'
 import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
@@ -367,15 +372,6 @@ async function onCellSelect({ row, suiteKey }: { row: ReportRow; suiteKey: strin
   drilldownSuites.value = suitesCache
   drilldownRunId.value = runId
 }
-
-// model_id → model_db_id lookup for the run detail dialog's targeted
-// retry, built from the report rows (the run detail payload carries only
-// the model string).
-const modelDbIdMap = computed(() => {
-  const map: Record<string, number> = {}
-  for (const row of report.value?.rows ?? []) map[row.model_id] = row.model_db_id
-  return map
-})
 
 // A retry launched from the run detail dialog reverts the batch to running:
 // drop the drill-down's run cache and reload, which re-arms the polling.

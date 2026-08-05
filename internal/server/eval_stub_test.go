@@ -29,6 +29,11 @@ type evalStubHub struct {
 	bad map[string]bool
 	// broken marks models whose calls fail with HTTP 503.
 	broken map[string]bool
+	// caseBroken marks models that pass the probe gate but fail every
+	// non-probe call with HTTP 503 (GH #174): the backstop scenarios
+	// (circuit breaker, all-dead abort) need a model the gate admits —
+	// a fully broken model never reaches a case any more.
+	caseBroken map[string]bool
 	// gate, when non-nil, blocks every response until released; tests use it
 	// to freeze a run mid-flight (e.g. to cancel its context deterministically).
 	gate chan struct{}
@@ -56,6 +61,8 @@ type evalStubHub struct {
 	answerSeq map[string][]string
 	// judgeSeq scripts cycled judge responses by prompt marker.
 	judgeSeq map[string][]string
+	// judgeSeqFor scripts cycled judge responses per judge model (GH #176).
+	judgeSeqFor map[string][]string
 	// failNext scripts the next n completion calls of (model, prompt marker)
 	// to fail with HTTP 503 — the answer/judge retry scenarios (GH #27).
 	failNext map[string]int
@@ -68,16 +75,18 @@ type evalStubHub struct {
 
 func newEvalStubHub() *evalStubHub {
 	stub := &evalStubHub{
-		calls:      map[string]map[string]bool{},
-		callCounts: map[string]int{},
-		bad:        map[string]bool{},
-		broken:     map[string]bool{},
-		answerSeq:  map[string][]string{},
-		judgeSeq:   map[string][]string{},
-		failNext:   map[string]int{},
-		totalCalls: map[string]int{},
-		gateAfter:  map[string]int{},
-		modelGates: map[string]chan struct{}{},
+		calls:       map[string]map[string]bool{},
+		callCounts:  map[string]int{},
+		bad:         map[string]bool{},
+		broken:      map[string]bool{},
+		caseBroken:  map[string]bool{},
+		answerSeq:   map[string][]string{},
+		judgeSeq:    map[string][]string{},
+		judgeSeqFor: map[string][]string{},
+		failNext:    map[string]int{},
+		totalCalls:  map[string]int{},
+		gateAfter:   map[string]int{},
+		modelGates:  map[string]chan struct{}{},
 	}
 	stub.Server = httptest.NewServer(http.HandlerFunc(stub.handle))
 	return stub
@@ -157,6 +166,15 @@ func (h *evalStubHub) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{"message": "No available providers for this model"},
+		})
+		return
+	}
+	// Case-broken models answer the probe gate's prompt (staying inside the
+	// batch) and fail everything else.
+	if h.caseBroken[req.Model] && prompt != evalProbePrompt {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]string{"message": "case-scoped failure"},
 		})
 		return
 	}
@@ -254,6 +272,15 @@ func (h *evalStubHub) failNextCalls(model, marker string, n int) {
 	h.failNext[model+"\x00"+marker] = n
 }
 
+// setJudgeSeqFor scripts cycled judge responses for one model on prompts
+// carrying the judge marker (GH #176): jury scenarios need distinct
+// verdicts per judge, which the prompt-only setJudgeSeq cannot express.
+func (h *evalStubHub) setJudgeSeqFor(model string, seq ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.judgeSeqFor[model] = seq
+}
+
 // consumeScriptedFailure reports whether this call was scripted to fail,
 // decrementing the script's remaining budget.
 func (h *evalStubHub) consumeScriptedFailure(model, prompt string) bool {
@@ -311,6 +338,23 @@ func (h *evalStubHub) sawModel(model string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.calls[model]) > 0
+}
+
+// evalProbePrompt mirrors the evaluator's probeGatePrompt constant: the
+// prompt the probe gate samples a model with. Case-broken models must
+// answer it (they pass the gate) while failing every case prompt.
+const evalProbePrompt = "ping"
+
+// markCaseBroken makes the model fail every non-probe completion call with
+// HTTP 503: it passes the probe gate but fails at case time — the shape
+// every post-gate backstop scenario (circuit breaker, all-dead abort,
+// null-score retry) needs since GH #174. false lifts the break (the
+// monitoring prober's prompt differs from the gate's, so a case-broken
+// model still fails monitoring probe rounds).
+func (h *evalStubHub) markCaseBroken(model string, broken bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.caseBroken[model] = broken
 }
 
 // markBad flips a model between correct (false) and always-wrong (true)

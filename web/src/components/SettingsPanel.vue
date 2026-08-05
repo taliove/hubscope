@@ -160,13 +160,16 @@ const form = reactive<AppSettings>({
   alert_enabled: true,
   score_drop_alert_enabled: true,
   judge_model: 'claude-opus-4-8',
+  jury_policy: 'balanced',
   default_sample_count: 1,
   eval_concurrency: 4,
+  judge_concurrency: 4,
   eval_campaign_budget_minutes: 60,
   suite_weights: {},
   quiet_hours_enabled: false,
   quiet_hours_start: 23,
   quiet_hours_end: 7,
+  model_registry_overrides: [],
 })
 
 // Quiet-hours bounds: integer hours 0–23 rendered as HH:00 via formatHour

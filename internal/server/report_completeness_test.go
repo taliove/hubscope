@@ -164,16 +164,20 @@ func TestReportCompletenessGateSettledBoard(t *testing.T) {
 	// before it is answered).
 	stub.markBad("alpha-model", true)
 	stub.markBad("beta-model", true)
-	stub.markBroken("gamma-model", true)
+	// Case-broken (GH #174): gamma passes the probe gate and fails at case
+	// time — the gate would exclude a fully broken model outright.
+	stub.markCaseBroken("gamma-model", true)
 	stub.resetCalls()
-	stub.blockModelAfter("gamma-model", 2)
+	// 3 probe rounds + one broken mmlu case (2 attempts): the 6th call is
+	// agieval_zh's first case.
+	stub.blockModelAfter("gamma-model", 5)
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 	second := triggerFullSweep(t, ts.URL)
 	secondID := int64(second["id"].(float64))
 	waitFor(t, "gamma frozen before its second-suite call", func() bool {
-		return stub.callTotal("gamma-model") >= 3
+		return stub.callTotal("gamma-model") >= 6
 	})
-	stub.markBroken("gamma-model", false)
+	stub.markCaseBroken("gamma-model", false)
 	stub.releaseModel("gamma-model")
 	waitCampaignStatus(t, ts.URL, secondID, store.CampaignStatusDone)
 
@@ -291,15 +295,16 @@ func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 
 	// One custom exact-rule case per rotation suite (oneCasePerSuite). A
 	// broken case costs two calls (answer + immediate retry, GH #27), so a
-	// broken suite costs each model exactly two calls.
-	stub.markBroken("delta-model", true)
-	stub.markBroken("echo-model", true)
+	// broken suite costs each model exactly two calls. Case-broken
+	// (GH #174): both pass the probe gate and fail at case time.
+	stub.markCaseBroken("delta-model", true)
+	stub.markCaseBroken("echo-model", true)
 	stub.resetCalls()
 	// Both gates armed up front (count-based, no slip window): echo freezes
-	// at agieval_zh's first case (its third call), delta at gsm8k's first
-	// case (its fifth call).
-	stub.blockModelAfter("echo-model", 2)
-	stub.blockModelAfter("delta-model", 4)
+	// at agieval_zh's first case (3 probe rounds + 2 broken-case calls),
+	// delta at gsm8k's first case (3 probe rounds + 4).
+	stub.blockModelAfter("echo-model", 5)
+	stub.blockModelAfter("delta-model", 7)
 	t.Cleanup(func() { stub.releaseModel("echo-model") })
 	t.Cleanup(func() { stub.releaseModel("delta-model") })
 
@@ -308,16 +313,16 @@ func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 	// echo recovers after its broken mmlu cell: unbreak while it is frozen
 	// at agieval_zh's first case, so exactly one suite stays missing.
 	waitFor(t, "echo-model frozen at agieval_zh", func() bool {
-		return stub.callTotal("echo-model") >= 3
+		return stub.callTotal("echo-model") >= 6
 	})
-	stub.markBroken("echo-model", false)
+	stub.markCaseBroken("echo-model", false)
 	stub.releaseModel("echo-model")
 	// delta recovers after two broken suites: unbreak while it is frozen at
 	// gsm8k's first case, so exactly two suites stay missing.
 	waitFor(t, "delta-model frozen at gsm8k", func() bool {
-		return stub.callTotal("delta-model") >= 5
+		return stub.callTotal("delta-model") >= 8
 	})
-	stub.markBroken("delta-model", false)
+	stub.markCaseBroken("delta-model", false)
 	stub.releaseModel("delta-model")
 	waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone)
 
@@ -334,7 +339,9 @@ func TestReportCompletenessGateMultipleIncomplete(t *testing.T) {
 func TestReportCompletenessGateAllIncomplete(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	zetaID := createEvalModel(t, ts.URL, stub.URL, "zeta-model")
-	stub.markBroken("zeta-model", true)
+	// Case-broken (GH #174): the gate admits it, every case fails — an
+	// all-null row set with the model present.
+	stub.markCaseBroken("zeta-model", true)
 
 	runID := triggerEval(t, ts.URL, suiteIDByKey(t, ts.URL, "gsm8k"), zetaID)
 	run := waitEvalDone(t, ts.URL, runID)

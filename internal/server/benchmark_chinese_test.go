@@ -76,8 +76,8 @@ func TestAgievalZhSuiteSeeded(t *testing.T) {
 	if suite["nadir"] != 0.25 {
 		t.Errorf("agieval_zh nadir = %v, want 0.25 (four-option floor)", suite["nadir"])
 	}
-	if len(cases) != 100 {
-		t.Fatalf("agieval_zh cases = %d, want 100 (frozen subset)", len(cases))
+	if len(cases) != 20 {
+		t.Fatalf("agieval_zh cases = %d, want 20 (frozen subset)", len(cases))
 	}
 
 	for i, c := range cases {
@@ -119,8 +119,8 @@ func TestAgievalZhSeedIdempotent(t *testing.T) {
 
 	ts, db := openSuitesServer(t, dbPath)
 	_, cases := agievalSuiteCases(t, ts.URL)
-	if len(cases) != 100 {
-		t.Fatalf("first boot agieval_zh cases = %d, want 100", len(cases))
+	if len(cases) != 20 {
+		t.Fatalf("first boot agieval_zh cases = %d, want 20", len(cases))
 	}
 	// Admin curation: disable one case in place.
 	patchCase(t, ts.URL, cases[0].id, map[string]interface{}{"enabled": false})
@@ -129,8 +129,8 @@ func TestAgievalZhSeedIdempotent(t *testing.T) {
 	ts2, db2 := openSuitesServer(t, dbPath)
 	defer db2.Close()
 	suite, cases2 := agievalSuiteCases(t, ts2.URL)
-	if len(cases2) != 100 {
-		t.Errorf("second boot agieval_zh cases = %d, want 100 (no seed duplicates)", len(cases2))
+	if len(cases2) != 20 {
+		t.Errorf("second boot agieval_zh cases = %d, want 20 (no seed duplicates)", len(cases2))
 	}
 	if v := suite["version"]; v != 2.0 {
 		t.Errorf("agieval_zh version after reopen = %v, want 2 (seed must not rebump)", v)
@@ -144,8 +144,8 @@ func TestAgievalZhSeedIdempotent(t *testing.T) {
 	ts3, db3 := openSuitesServer(t, dbPath)
 	defer db3.Close()
 	_, cases3 := agievalSuiteCases(t, ts3.URL)
-	if len(cases3) != 100 {
-		t.Errorf("third boot agieval_zh cases = %d, want still 100", len(cases3))
+	if len(cases3) != 20 {
+		t.Errorf("third boot agieval_zh cases = %d, want still 20", len(cases3))
 	}
 }
 
@@ -175,8 +175,8 @@ func TestAgievalZhMCQRuleVerdicts(t *testing.T) {
 	}
 
 	smart := resultsByModel(run, "agieval-smart")
-	if len(smart) != 100 {
-		t.Fatalf("smart model has %d results, want 100", len(smart))
+	if len(smart) != 20 {
+		t.Fatalf("smart model has %d results, want 20", len(smart))
 	}
 	for _, r := range smart {
 		if r["score"] != 1.0 {
@@ -199,8 +199,8 @@ func TestAgievalZhMCQRuleVerdicts(t *testing.T) {
 	}
 
 	dumb := resultsByModel(run, "agieval-dumb")
-	if len(dumb) != 100 {
-		t.Fatalf("dumb model has %d results, want 100", len(dumb))
+	if len(dumb) != 20 {
+		t.Fatalf("dumb model has %d results, want 20", len(dumb))
 	}
 	for _, r := range dumb {
 		if r["score"] != 0.0 {
@@ -265,9 +265,9 @@ func TestAgievalZhCampaignReportShowsLanguage(t *testing.T) {
 		t.Fatalf("row suite_scores missing: %v", row)
 	}
 	if scores["agieval_zh"] != 100.0 {
-		t.Errorf("language dimension (agieval_zh) score = %v, want 100 (all correct, nadir-normalized)", scores["agieval_zh"])
+		t.Errorf("language dimension (agieval_zh) score = %v, want 20 (all correct, nadir-normalized)", scores["agieval_zh"])
 	}
 	if row["total_score"] != 100.0 {
-		t.Errorf("total_score = %v, want 100", row["total_score"])
+		t.Errorf("total_score = %v, want 20", row["total_score"])
 	}
 }

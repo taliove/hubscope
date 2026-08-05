@@ -111,10 +111,11 @@ func TestEvalJudge(t *testing.T) {
 // circuit reason instead.
 func TestEvalModelFailure(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
-	// Register while the hub is healthy (creation trial-probes), then break
-	// the model: every eval call 503s from here on.
+	// Register while the hub is healthy (creation trial-probes), then make
+	// the model fail at case time: it passes the probe gate (GH #174) but
+	// every case call 503s from here on.
 	modelID := createEvalModel(t, ts.URL, stub.URL, "flaky-model")
-	stub.markBroken("flaky-model", true)
+	stub.markCaseBroken("flaky-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "gsm8k")
 
 	runID := triggerEval(t, ts.URL, suiteID, modelID)
@@ -125,8 +126,8 @@ func TestEvalModelFailure(t *testing.T) {
 	}
 
 	results := resultsByModel(run, "flaky-model")
-	if len(results) != 100 {
-		t.Fatalf("got %d results, want 100", len(results))
+	if len(results) != 20 {
+		t.Fatalf("got %d results, want 20", len(results))
 	}
 	var callFailed, circuit int
 	for _, r := range results {
@@ -146,8 +147,8 @@ func TestEvalModelFailure(t *testing.T) {
 			t.Errorf("verdict_detail should record the call failure or the circuit reason: %q", detail)
 		}
 	}
-	if callFailed != 5 || circuit != 95 {
-		t.Errorf("failure records: %d call failures + %d circuit-skipped, want 5 + 95", callFailed, circuit)
+	if callFailed != 5 || circuit != 15 {
+		t.Errorf("failure records: %d call failures + %d circuit-skipped, want 5 + 15", callFailed, circuit)
 	}
 	if run["score"] != nil {
 		t.Errorf("run score = %v, want null (nothing scored)", run["score"])

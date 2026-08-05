@@ -111,17 +111,13 @@
                    and batch meta. Both views stay mounted (v-show) so the switch
                    never interrupts polling or resets the family filter. -->
               <template v-if="isUnfinished(report.status)">
-                <EvalBoardHeader v-model:view="viewMode" :report="report" />
-                <EvalProgressGrid v-show="viewMode === 'grid'" :report="report" />
-                <Leaderboard
-                  v-show="viewMode === 'scores'"
-                  :key="report.id"
-                  :report="report"
-                  :family-options="familyOptions"
-                  live
-                  @query="onQuery"
-                  @select="openTrend"
-                />
+                <!-- Live two-stage queue state (GH #179 view A): probe
+                     gate → exam → judge → median, fed by queue_depth. -->
+                <PipelineStrip :report="report" />
+                <!-- One unified model table (2026-08-04 review): probe,
+                     progress, live scores, speed and cost fused; per-suite
+                     detail lives in the row's drawer. -->
+                <EvalLiveBoard :report="report" @cell-select="onCellSelect" />
                 <!-- Case-level live feed (issue #17): console-only, refreshed by
                      the page's own poll timer; unmounts at settle (historical
                      batches never show it — the simple form of the brief's
@@ -136,21 +132,47 @@
               </template>
 
               <template v-else>
-                <el-alert
-                  v-if="report.status === 'failed'"
-                  type="warning"
-                  :closable="false"
-                  class="state-alert"
-                  :title="failedBatchWarning(report.progress.failed)"
-                >
-                  <template #default>
-                    <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link">到评估运营查看失败运行详情</router-link>
-                  </template>
-                </el-alert>
+                <!-- Failed batch: manageable, not a dead end (2026-08-05
+                     ops ruling) — per-run failure reasons up front, restart
+                     the same plan in one click, or inspect the runs. -->
+                <div v-if="report.status === 'failed'" class="failed-panel">
+                  <div class="failed-head">
+                    <span class="failed-title">{{ failedBatchWarning(report.progress.failed) }}</span>
+                    <span class="failed-actions">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        :loading="restarting"
+                        @click="onRestart"
+                      >续跑批次</el-button>
+                      <router-link :to="{ path: '/eval', query: { tab: 'ops' } }" class="failed-link">到评估运营查看运行详情</router-link>
+                    </span>
+                  </div>
+                  <div v-if="failedRunReasons.length > 0" class="failed-runs">
+                    <div v-for="r in failedRunReasons" :key="r.id" class="failed-run-line">
+                      <span class="failed-suite">{{ r.suiteName }}</span>
+                      <span class="failed-reason">{{ r.reason || '执行失败' }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Settled board carries the report page's affordances
+                     (2026-08-05 IA ruling: one batch surface, not two) —
+                     scores/cost switch, share link, PDF export. -->
+                <div class="board-toolbar no-print">
+                  <el-radio-group v-if="costViewEnabled" v-model="settledView" size="small">
+                    <el-radio-button value="scores">分数</el-radio-button>
+                    <el-radio-button value="cost">成本</el-radio-button>
+                  </el-radio-group>
+                  <span class="toolbar-spacer" />
+                  <el-button size="small" :loading="sharing" @click="onShare">复制链接</el-button>
+                  <el-button size="small" @click="onPrint">导出 PDF</el-button>
+                </div>
 
                 <!-- Hero: the leaderboard. Keyed by campaign so toolbar state
                      (suite view, family, sort) resets per batch. -->
                 <Leaderboard
+                  v-show="settledView === 'scores'"
                   :key="report.id"
                   :report="report"
                   :family-options="familyOptions"
@@ -158,6 +180,10 @@
                   @select="openTrend"
                   @cell-select="onCellSelect"
                 />
+                <template v-if="settledView === 'cost' && costViewEnabled">
+                  <EvalValueBoard :report="report" />
+                  <EvalCostMatrix :report="report" />
+                </template>
               </template>
 
               <!-- Row drill-down (ticket 32 pattern, same as the report page): the
@@ -170,7 +196,16 @@
                 :run-id="drilldownRunId"
                 :model-id="drilldownModelId"
                 :suites="drilldownSuites"
+                :retryable="true"
                 @close="drilldownRunId = null"
+                @retried="onDialogRetried"
+              />
+              <!-- Manual batches pause at the jury gate: show the plan,
+                   auto-start at the 60s deadline (2026-08-04 ruling). -->
+              <JuryConfirmDialog
+                v-if="juryConfirmReport"
+                :report="juryConfirmReport"
+                @close="dismissJuryConfirm"
               />
             </template>
           </template>
@@ -178,7 +213,7 @@
       </el-tab-pane>
       <el-tab-pane label="评估运营" name="ops">
         <div class="tab-stack">
-          <EvalOpsPanel />
+          <EvalOpsPanel @triggered="onTriggered" />
         </div>
       </el-tab-pane>
       <el-tab-pane label="题库" name="cases">
@@ -195,15 +230,21 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { listCampaigns, getCampaign, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign } from '@/api/campaigns'
+import { listCampaigns, getCampaign, getCampaignLiveFeed, getCampaignReport, retryCampaignFailed, cancelCampaign, restartCampaign } from '@/api/campaigns'
+import { createShareLink } from '@/api/shareLinks'
+import { shareLinkUrl } from '@/api/shareLinks'
+import { copyText } from '@/utils/clipboard'
 import { listSuites } from '@/api/evals'
 import { fetchAuthStatus, type AuthUser } from '@/api/auth'
-import EvalBoardHeader from '@/components/EvalBoardHeader.vue'
 import EvalLiveFeed from '@/components/EvalLiveFeed.vue'
 import EvalOpsPanel from '@/components/EvalOpsPanel.vue'
-import EvalProgressGrid from '@/components/EvalProgressGrid.vue'
 import CaseLibrary from '@/components/CaseLibrary.vue'
 import EvalRunDetailDialog from '@/components/EvalRunDetailDialog.vue'
+import PipelineStrip from '@/components/PipelineStrip.vue'
+import EvalLiveBoard from '@/components/EvalLiveBoard.vue'
+import EvalValueBoard from '@/components/EvalValueBoard.vue'
+import EvalCostMatrix from '@/components/EvalCostMatrix.vue'
+import JuryConfirmDialog from '@/components/JuryConfirmDialog.vue'
 import Leaderboard from '@/components/Leaderboard.vue'
 import ModelTrendDialog from '@/components/ModelTrendDialog.vue'
 import { formatTime } from '@/utils/format'
@@ -414,6 +455,10 @@ function isUnfinished(status: CampaignStatus): boolean {
 // pauses in a hidden tab and refreshes immediately on return
 // (ui-guidelines §6); a batch that settles while hidden is observed by
 // that return refresh, so the settle transition semantics are unchanged.
+// The report grew heavier with the jury payloads (GH #178): a tick must
+// never stack on a still-running one, or slow ticks pile requests into the
+// read rate limiter (2026-08-04 incident: 429 on the live board).
+let pollBusy = false
 let poll: VisibilityPollHandle | null = null
 function armPolling() {
   poll?.clear()
@@ -421,7 +466,14 @@ function armPolling() {
   if (selected.value && isUnfinished(selected.value.status)) {
     poll = createVisibilityPoll(
       () => {
-        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()]).then(armPolling)
+        if (pollBusy) return
+        pollBusy = true
+        void Promise.all([loadCampaigns(true), loadReport(), loadLiveFeed()])
+          .catch(() => {})
+          .finally(() => {
+            pollBusy = false
+            armPolling()
+          })
       },
       { intervalMs: 3000 },
     )
@@ -498,8 +550,109 @@ async function reload() {
   armPolling()
 }
 
-function switchBatch(id: number) {
-  selectedId.value = id
+// A freshly triggered batch switches straight to the live board (probe
+// gate, both queues) — never trigger-and-nothing-happens (2026-08-04 UX
+// ruling).
+async function onTriggered(campaign: Campaign) {
+  activeTab.value = 'board'
+  await loadCampaigns()
+  switchBatch(campaign.id)
+}
+
+// A retry launched from the run detail dialog lands fresh results in the
+// batch: reload, which re-arms the polling.
+function onDialogRetried() {
+  void reload()
+}
+
+// The jury-confirmation dialog shows once per batch (2026-08-04 ruling):
+// dismissed or auto-started batches keep running without it.
+const confirmDismissed = ref(new Set<number>())
+const juryConfirmReport = computed(() => {
+  const r = report.value
+  if (!r || !r.awaiting_confirmation) return null
+  return confirmDismissed.value.has(r.id) ? null : r
+})
+function dismissJuryConfirm() {
+  if (report.value) confirmDismissed.value.add(report.value.id)
+}
+
+// Failed-batch management (2026-08-05 ops ruling): per-run failure reasons
+// and a one-click restart of the same plan.
+const restarting = ref(false)
+const failedRuns = ref<EvalRun[]>([])
+const failedRunReasons = computed(() =>
+  failedRuns.value
+    .filter((r) => r.status === 'failed')
+    .map((r) => ({
+      id: r.id,
+      suiteName: report.value?.suites.find((s) => s.id === r.suite_id)?.name ?? `套件 #${r.suite_id}`,
+      reason: r.failure_reason ?? '',
+    })),
+)
+
+watch(
+  () => [selectedId.value, report.value?.status] as const,
+  async ([id, status]) => {
+    failedRuns.value = []
+    if (id !== null && status === 'failed') {
+      try {
+        failedRuns.value = (await getCampaign(id)).runs
+      } catch {
+        // The panel degrades to the warning line alone.
+      }
+    }
+  },
+  { immediate: true },
+)
+
+async function onRestart() {
+  if (selectedId.value === null) return
+  restarting.value = true
+  try {
+    const resumed = await restartCampaign(selectedId.value)
+    ElMessage.success(`已续跑批次 #${resumed.id}:只补未完成与未判分的题,已有结果全部保留`)
+    activeTab.value = 'board'
+    await loadCampaigns()
+    switchBatch(resumed.id)
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    restarting.value = false
+  }
+}
+
+// Settled-board affordances (2026-08-05 IA ruling: the eval center is the
+// single batch surface — the report page's console route redirects here).
+const settledView = ref<'scores' | 'cost'>('scores')
+const sharing = ref(false)
+const costViewEnabled = computed(() => report.value?.cost !== undefined)
+
+async function onShare() {
+  if (selectedId.value === null) return
+  sharing.value = true
+  try {
+    const link = await createShareLink(selectedId.value)
+    const url = shareLinkUrl(link.token)
+    if (await copyText(url)) {
+      ElMessage.success('分享链接已复制,无需登录即可打开')
+    } else {
+      await ElMessageBox.alert(url, '分享链接(请手动复制)', { confirmButtonText: '关闭' })
+    }
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    sharing.value = false
+  }
+}
+
+// Print export (ticket 33): the browser's print-to-PDF over the print
+// stylesheet; no server-side rendering or new dependency.
+function onPrint() {
+  window.print()
+}
+
+function switchBatch(id: number) {  selectedId.value = id
   report.value = null
   query.value = { sort: 'total' }
   familyOptions.value = []
@@ -646,5 +799,60 @@ onMounted(() => {
 }
 .failed-link:hover {
   color: var(--hs-brand-hover);
+}
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-3);
+  margin-bottom: var(--hs-space-3);
+}
+.toolbar-spacer {
+  flex: 1;
+}
+.failed-panel {
+  background: #fff;
+  border: 1px solid #ffe1c2;
+  border-radius: 12px;
+  padding: var(--hs-space-4);
+  margin-bottom: var(--hs-space-4);
+}
+.failed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--hs-space-3);
+}
+.failed-title {
+  color: var(--hs-warning-text-base);
+  font-weight: 600;
+}
+.failed-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--hs-space-3);
+}
+.failed-link {
+  color: var(--hs-blue-600);
+  font-size: 13px;
+}
+.failed-runs {
+  margin-top: var(--hs-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.failed-run-line {
+  display: flex;
+  gap: var(--hs-space-3);
+  font-size: 13px;
+}
+.failed-suite {
+  color: var(--hs-gray-700);
+  font-weight: 600;
+  min-width: 140px;
+}
+.failed-reason {
+  color: var(--hs-gray-600);
 }
 </style>

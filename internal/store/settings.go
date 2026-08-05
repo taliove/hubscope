@@ -47,6 +47,18 @@ const (
 	// enabled" even when the switch is on.
 	SettingQuietHoursStart = "quiet_hours_start"
 	SettingQuietHoursEnd   = "quiet_hours_end"
+	// SettingModelRegistryOverrides holds administrator corrections to the
+	// built-in model registry (spec 0020 ticket 1) as a JSON array of
+	// {match, iq_tier?, price_in?, price_out?} entries; overrides merge
+	// field-by-field over the shipped table.
+	SettingModelRegistryOverrides = "model_registry_overrides"
+	// SettingJuryPolicy selects the jury ranking strategy (spec 0020):
+	// balanced, speed, iq, or cost.
+	SettingJuryPolicy = "jury_policy"
+	// SettingJudgeConcurrency bounds the judge-stage worker pool of the
+	// decoupled eval pipeline (spec 0020, GH #176); capped by
+	// MaxEvalConcurrency.
+	SettingJudgeConcurrency = "judge_concurrency"
 )
 
 // Default setting values applied when a key has never been written.
@@ -58,6 +70,12 @@ const (
 	DefaultScoreDropAlertEnabled = true
 	// DefaultJudgeModel matches the eval contract default judge.
 	DefaultJudgeModel = "claude-opus-4-8"
+	// DefaultJuryPolicy ranks jury candidates on the balanced mix (spec 0020).
+	DefaultJuryPolicy = "balanced"
+	// DefaultJudgeConcurrency matches the exam pool out of the box (GH #176):
+	// judging a batch's answers takes about as much hub pressure as
+	// producing them.
+	DefaultJudgeConcurrency = DefaultEvalConcurrency
 	// DefaultSampleCount answers each case once unless configured otherwise.
 	DefaultSampleCount = 1
 	// MaxSampleCount bounds per-case sampling to keep run cost predictable.

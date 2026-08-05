@@ -1,8 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
 
+	"github.com/taliove/hubscope/internal/evaluator"
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -78,6 +83,58 @@ type costRowDTO struct {
 	LatencyMs    int64  `json:"latency_ms"`
 	InputTokens  *int64 `json:"input_tokens"`
 	OutputTokens *int64 `json:"output_tokens"`
+	// AvgTPS is the model's mean output speed in the run (GH #178); null
+	// when it produced no answer.
+	AvgTPS *float64 `json:"avg_tps"`
+	// ExamCost prices the row's answer tokens against the registry
+	// (GH #178); null when the model's price is not registered.
+	ExamCost *float64 `json:"exam_cost"`
+}
+
+// queueDepthDTO is the live queue state of a running campaign's pipeline
+// (GH #178, console-only): exam = answer-call cells, judge = jury votes.
+// Models carries the per-subject judge progress for the ops monitor table
+// (GH #179).
+type queueDepthDTO struct {
+	ExamPending   int             `json:"exam_pending"`
+	ExamInflight  int             `json:"exam_inflight"`
+	JudgePending  int             `json:"judge_pending"`
+	JudgeInflight int             `json:"judge_inflight"`
+	Models        []modelQueueDTO `json:"models"`
+	// ProbeDone/ProbeTotal track the probe gate's completion: while
+	// ProbeDone < ProbeTotal the batch is still probing (2026-08-04 UX
+	// ruling — the probe stage is visible, never an invisible preamble).
+	ProbeDone  int `json:"probe_done"`
+	ProbeTotal int `json:"probe_total"`
+}
+
+// modelQueueDTO is one subject's judge-stage progress.
+type modelQueueDTO struct {
+	ModelDBID  int64 `json:"model_db_id"`
+	JudgeDone  int   `json:"judge_done"`
+	JudgeTotal int   `json:"judge_total"`
+}
+
+// estimatedCostDTO is the campaign-level estimated cost split (GH #178,
+// console-only): the sum of every run's exam/judge portions, with the
+// count of runs whose estimate is null because some component's price is
+// not registered.
+type estimatedCostDTO struct {
+	Exam        float64 `json:"exam"`
+	Judge       float64 `json:"judge"`
+	UnknownRuns int     `json:"unknown_runs"`
+}
+
+// juryInfoDTO is the campaign-level jury summary for the ops monitor table
+// (GH #179): the policy, the judge panel, every probed model's gate
+// outcome, and — per subject — its own exactly-≤3 judges (2026-08-04
+// review: never display the union, it reads as a 4-5 judge jury).
+type juryInfoDTO struct {
+	Policy string                         `json:"policy"`
+	Judges []string                       `json:"judges"`
+	Probe  map[string]evaluator.JuryProbe `json:"probe"`
+	// Juries maps a subject's model DB ID (string) to its judges.
+	Juries map[string][]string `json:"juries"`
 }
 
 // campaignReportDTO is GET /api/campaigns/{id}/report: the campaign, the
@@ -98,6 +155,19 @@ type campaignReportDTO struct {
 	FailedResults int                `json:"failed_results"`
 	Cost          *campaignCostDTO   `json:"cost,omitempty"`
 	CostRows      []costRowDTO       `json:"cost_rows,omitempty"`
+	// EstimatedCost is the campaign's registry-priced cost split (GH #178);
+	// session-only like the other cost fields.
+	EstimatedCost *estimatedCostDTO `json:"estimated_cost,omitempty"`
+	// Jury carries the batch's judge panel and probe outcomes (GH #179);
+	// session-only, null for pre-jury batches.
+	Jury *juryInfoDTO `json:"jury,omitempty"`
+	// QueueDepth is the live two-stage queue state (GH #178), present only
+	// while the campaign is executing on this process.
+	QueueDepth *queueDepthDTO `json:"queue_depth,omitempty"`
+	// AwaitingConfirmation marks a manual batch paused at the jury
+	// confirmation gate (2026-08-04 ruling); the console shows the
+	// confirm dialog while true.
+	AwaitingConfirmation bool `json:"awaiting_confirmation,omitempty"`
 }
 
 // handleGetCampaignReport handles GET /api/campaigns/{id}/report. Only done
@@ -183,7 +253,13 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	}
 	weights := effectiveWeights(suites, configured)
 
+	// A running campaign reads the live caliber (partial scores land as
+	// cases settle); a settled one reads the done-only caliber. The
+	// baseline always uses the settled caliber.
 	scores, err := s.db.ListCampaignSuiteScores(id)
+	if campaign.Status == store.CampaignStatusRunning {
+		scores, err = s.db.ListCampaignLiveSuiteScores(id)
+	}
 	if err != nil {
 		return fail(http.StatusInternalServerError, "failed to aggregate campaign scores")
 	}
@@ -295,6 +371,12 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 	// construction (never serialized as zeroed values).
 	var cost *campaignCostDTO
 	var costRows []costRowDTO
+	var estimated *estimatedCostDTO
+	var queueDepth *queueDepthDTO
+	juryInfo := campaignJuryInfo(runs, shared)
+	if !shared {
+		queueDepth = s.liveQueueDepth(id, campaign.Status)
+	}
 	if withCost {
 		totals, err := s.db.CampaignCostTotals(id)
 		if err != nil {
@@ -319,8 +401,11 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 				LatencyMs:    cr.LatencyMs,
 				InputTokens:  cr.InputTokens,
 				OutputTokens: cr.OutputTokens,
+				AvgTPS:       cr.AvgTPS,
+				ExamCost:     examCostOf(cr, s.registryOverrides()),
 			})
 		}
+		estimated = s.campaignEstimatedCost(id)
 	}
 
 	return campaignReportDTO{
@@ -332,7 +417,136 @@ func (s *Server) buildCampaignReport(r *http.Request, campaign *store.Campaign, 
 		FailedResults: failedResults,
 		Cost:          cost,
 		CostRows:      costRows,
+		// Cost metrics stay console-only (the GH #42 caliber the ticket-54
+		// review registered): the shared/public board strips both the
+		// registry-priced estimate and the live queue state.
+		EstimatedCost: estimated,
+		QueueDepth:    queueDepth,
+		Jury:          juryInfo,
+		AwaitingConfirmation: !shared && campaign.Status == store.CampaignStatusRunning &&
+			s.evaluator.AwaitingConfirmation(id),
 	}, nil
+}
+
+// campaignJuryInfo merges the batch's jury snapshots: the policy and judge
+// panel from the first snapshotted run, probe outcomes keyed by model ID.
+// Console-only — the caller passes shared=false, and a jury-bearing caller
+// on the shared surface gets nil.
+func campaignJuryInfo(runs []store.EvalRun, shared bool) *juryInfoDTO {
+	if shared {
+		return nil
+	}
+	for _, run := range runs {
+		policy, juries, probe := evaluator.ParseJurySnapshot(run.JuryModels)
+		if juries == nil {
+			continue
+		}
+		judges := map[string]bool{}
+		var panel []string
+		mergedJuries := map[string][]string{}
+		for id, js := range juries {
+			key := strconv.FormatInt(id, 10)
+			if _, ok := mergedJuries[key]; !ok {
+				mergedJuries[key] = js
+			}
+			for _, j := range js {
+				if !judges[j] {
+					judges[j] = true
+					panel = append(panel, j)
+				}
+			}
+		}
+		sort.Strings(panel)
+		return &juryInfoDTO{Policy: policy, Judges: panel, Probe: probe, Juries: mergedJuries}
+	}
+	return nil
+}
+
+// campaignEstimatedCost sums every run's registry-priced split; runs with a
+// null estimate are counted, never guessed.
+func (s *Server) campaignEstimatedCost(campaignID int64) *estimatedCostDTO {
+	runs, err := s.db.ListEvalRunsByCampaign(campaignID)
+	if err != nil {
+		return nil
+	}
+	out := &estimatedCostDTO{}
+	for _, run := range runs {
+		if run.EstimatedCost == "" {
+			out.UnknownRuns++
+			continue
+		}
+		var split struct {
+			Exam  float64 `json:"exam"`
+			Judge float64 `json:"judge"`
+		}
+		if err := json.Unmarshal([]byte(run.EstimatedCost), &split); err != nil {
+			out.UnknownRuns++
+			continue
+		}
+		out.Exam += split.Exam
+		out.Judge += split.Judge
+	}
+	return out
+}
+
+// registryOverrides reads the administrator's registry overrides for
+// report-side pricing (GH #178); a corrupt stored value falls back to the
+// built-in table.
+func (s *Server) registryOverrides() []registry.Override {
+	raw, err := s.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		return nil
+	}
+	overrides, err := registry.ParseOverrides(raw)
+	if err != nil {
+		return nil
+	}
+	return overrides
+}
+
+// examCostOf prices one cost row's answer tokens against the registry:
+// null when the model's price is unregistered; unreported token usage
+// counts as zero (unmetered, not unknown) — spec 0020.
+func examCostOf(cr store.CampaignCostRow, overrides []registry.Override) *float64 {
+	info := registry.Lookup(cr.ModelID, overrides)
+	if info.PriceIn == nil || info.PriceOut == nil {
+		return nil
+	}
+	in, out := int64(0), int64(0)
+	if cr.InputTokens != nil {
+		in = *cr.InputTokens
+	}
+	if cr.OutputTokens != nil {
+		out = *cr.OutputTokens
+	}
+	cost := (float64(in)**info.PriceIn + float64(out)**info.PriceOut) / 1e6
+	return &cost
+}
+
+// liveQueueDepth reads the campaign's pipeline queue state while it is
+// executing; nil on settled campaigns or when the batch is not running on
+// this process.
+func (s *Server) liveQueueDepth(campaignID int64, status string) *queueDepthDTO {
+	if status != store.CampaignStatusRunning {
+		return nil
+	}
+	examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal, ok := s.evaluator.LiveQueueDepth(campaignID)
+	if !ok {
+		return nil
+	}
+	models := make([]modelQueueDTO, 0, len(perModel))
+	for _, m := range perModel {
+		models = append(models, modelQueueDTO{ModelDBID: m.ModelDBID, JudgeDone: m.JudgeDone, JudgeTotal: m.JudgeTotal})
+	}
+	return &queueDepthDTO{
+		ExamPending:   examPending,
+		ExamInflight:  examInflight,
+		JudgePending:  judgePending,
+		JudgeInflight: judgeInflight,
+		Models:        models,
+		ProbeDone:     probeDone,
+		ProbeTotal:    probeTotal,
+	}
 }
 
 // reportBaseline resolves the previous done campaign and, when it covered

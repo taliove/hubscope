@@ -182,17 +182,45 @@ type suiteDTO struct {
 // against. CampaignID groups the run into its evaluation batch (added by
 // ticket 29; additive, never changed in place).
 type evalRunDTO struct {
-	ID           int64    `json:"id"`
-	CampaignID   int64    `json:"campaign_id"`
-	SuiteID      int64    `json:"suite_id"`
-	SuiteVersion int      `json:"suite_version"`
-	Nadir        float64  `json:"nadir"`
-	Trigger      string   `json:"trigger"`
-	JudgeModel   string   `json:"judge_model"`
-	Status       string   `json:"status"`
-	StartedAt    string   `json:"started_at"`
-	FinishedAt   *string  `json:"finished_at"`
-	Score        *float64 `json:"score"`
+	ID           int64   `json:"id"`
+	CampaignID   int64   `json:"campaign_id"`
+	SuiteID      int64   `json:"suite_id"`
+	SuiteVersion int     `json:"suite_version"`
+	Nadir        float64 `json:"nadir"`
+	Trigger      string  `json:"trigger"`
+	JudgeModel   string  `json:"judge_model"`
+	// JuryModels carries the run's jury snapshot verbatim (spec 0020 /
+	// ADR 0016): policy plus per-model judges; null for pre-jury runs.
+	JuryModels json.RawMessage `json:"jury_models"`
+	// EstimatedCost carries the run's estimated cost split
+	// {"exam":x,"judge":y} (GH #178); null when unset or when some
+	// component's price is not registered.
+	EstimatedCost json.RawMessage `json:"estimated_cost"`
+	Status        string          `json:"status"`
+	// FailureReason is the run task's last error line, present only on
+	// failed runs (2026-08-05 ops ruling: a failed batch must show why).
+	FailureReason string   `json:"failure_reason,omitempty"`
+	StartedAt     string   `json:"started_at"`
+	FinishedAt    *string  `json:"finished_at"`
+	Score         *float64 `json:"score"`
+}
+
+// jurySummaryDTO is one judge's tally inside a run (GH #179): votes cast,
+// failed calls, and the registry-priced cost of its calls (null when the
+// judge's price is unregistered or the hub reported no tokens).
+type jurySummaryDTO struct {
+	JudgeModel string   `json:"judge_model"`
+	Votes      int      `json:"votes"`
+	Fails      int      `json:"fails"`
+	Cost       *float64 `json:"cost"`
+}
+
+// judgeVoteDTO is one jury vote on one sample (GH #178).
+type judgeVoteDTO struct {
+	SampleNo   int      `json:"sample_no"`
+	Slot       int      `json:"slot"`
+	JudgeModel string   `json:"judge_model"`
+	Score      *float64 `json:"score"`
 }
 
 // evalResultDTO is the API representation of an EvalResult. ModelDeleted
@@ -201,6 +229,8 @@ type evalRunDTO struct {
 type evalResultDTO struct {
 	ID             int64    `json:"id"`
 	ModelID        string   `json:"model_id"`
+	ModelDBID      int64    `json:"model_db_id"`
+	Family         string   `json:"family"`
 	CaseID         int64    `json:"case_id"`
 	AnswerText     *string  `json:"answer_text"`
 	Score          *float64 `json:"score"`
@@ -210,6 +240,12 @@ type evalResultDTO struct {
 	InputTokens    *int     `json:"input_tokens"`
 	OutputTokens   *int     `json:"output_tokens"`
 	ModelDeleted   bool     `json:"model_deleted"`
+	// JudgeScores carries the case's per-jury-slot votes from its latest
+	// answer attempts (GH #178); empty for rule verdicts. Spread is the
+	// max-min disagreement across the case's non-null votes, absent when
+	// fewer than two votes scored.
+	JudgeScores []judgeVoteDTO `json:"judge_scores,omitempty"`
+	Spread      *float64       `json:"spread,omitempty"`
 }
 
 // latestScoreDTO is the API representation of a (suite, model) pair's most
@@ -224,10 +260,12 @@ type latestScoreDTO struct {
 	FinishedAt string   `json:"finished_at"`
 }
 
-// evalRunDetailDTO is an EvalRun plus its per-case results.
+// evalRunDetailDTO is an EvalRun plus its per-case results, with the
+// jury's per-judge tally when the run used a jury (GH #179).
 type evalRunDetailDTO struct {
 	evalRunDTO
-	Results []evalResultDTO `json:"results"`
+	Results     []evalResultDTO  `json:"results"`
+	JurySummary []jurySummaryDTO `json:"jury_summary,omitempty"`
 }
 
 // toLatestScoreDTO maps a store.LatestEvalScore to its API representation.
@@ -291,18 +329,29 @@ func toEvalRunDTO(r store.EvalRun, score *float64) evalRunDTO {
 		finishedAt = &s
 	}
 	return evalRunDTO{
-		ID:           r.ID,
-		CampaignID:   r.CampaignID,
-		SuiteID:      r.SuiteID,
-		SuiteVersion: r.SuiteVersion,
-		Nadir:        r.Nadir,
-		Trigger:      r.Trigger,
-		JudgeModel:   r.JudgeModel,
-		Status:       r.Status,
-		StartedAt:    r.StartedAt.Format(time.RFC3339),
-		FinishedAt:   finishedAt,
-		Score:        score,
+		ID:            r.ID,
+		CampaignID:    r.CampaignID,
+		SuiteID:       r.SuiteID,
+		SuiteVersion:  r.SuiteVersion,
+		Nadir:         r.Nadir,
+		Trigger:       r.Trigger,
+		JudgeModel:    r.JudgeModel,
+		JuryModels:    juryRawMessage(r.JuryModels),
+		EstimatedCost: juryRawMessage(r.EstimatedCost),
+		Status:        r.Status,
+		StartedAt:     r.StartedAt.Format(time.RFC3339),
+		FinishedAt:    finishedAt,
+		Score:         score,
 	}
+}
+
+// juryRawMessage wraps a stored jury snapshot for the API: empty stays null
+// (pre-jury runs), anything else is passed through verbatim.
+func juryRawMessage(snapshot string) json.RawMessage {
+	if snapshot == "" {
+		return nil
+	}
+	return json.RawMessage(snapshot)
 }
 
 // toEvalResultDTO maps a store.EvalResult to the API representation.

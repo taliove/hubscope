@@ -52,3 +52,7 @@ Subset file SHA-256 `6bfe34e5d12c48df82ef79b62ccddf26603b947f146b5e905c16c3611d3
 ## Immutability (W7)
 
 This subset is cast into the `cruxeval` suite once and never edited. Changing the subset means retiring the suite and casting a new one (ADR 0007 / ADR 0013).
+
+## 2026-08-04 trim (100 -> 20)
+
+The shipped subset keeps every 5th row of the frozen 100 (systematic subsample; the stratification documented above is preserved proportionally). Databases that already cast the 100-row bank converge via the one-time benchmark_trim_20 migration at Open, which keeps cases by prompt match and bumps the suite version once.

@@ -230,13 +230,17 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 			return overviewDTO{}, err
 		}
 		for _, ep := range endpoints {
-			// Ping-monitored endpoints (spec 0018 T1): produce no probe records,
-			// so their status is always "unverified" and their (empty) samples
-			// contribute nothing to availability/latency aggregates. They stay
-			// group members — dropping them would make all-Ping groups vanish
-			// from the dashboard, hiding the cards entirely. Only the global
-			// enabled count excludes them (spec AC: not evidence-bearing).
+			// 2026-08-05 ruling: the status overview shows only monitored
+			// endpoints — switched-off (disabled) and unverifiable (Ping:
+			// image/video protocols produce no probe evidence) endpoints
+			// are dropped from the cards AND the aggregates alike, so the
+			// page reads as "what is being watched right now". This
+			// supersedes the earlier "Ping endpoints stay group members"
+			// caliber (spec 0018 T1) and the disabled-bucket counting.
 			isPing := store.IsPingProtocol(ep.Protocol)
+			if !ep.Enabled || isPing {
+				continue
+			}
 
 			stats, err := s.gatherWindowStats(ep.ID, now)
 			if err != nil {
@@ -248,28 +252,21 @@ func (s *Server) buildOverviewDTO(models []store.Model, now time.Time) (overview
 				entry.EvalScore = score
 			}
 
-			// Override status for Ping endpoints: always "unverified" (no probe evidence)
-			if isPing {
-				entry.Status = "unverified"
-			}
-
 			entries = append(entries, entry)
 			families.add(model.Family, entry, stats.samples24h)
 			capabilities.add(model.Capability, entry, stats.samples24h)
 			protocols.add(ep.Protocol, entry, stats.samples24h)
 			global.add("all", entry, stats.samples24h)
-			if ep.Enabled && !isPing {
-				enabledEndpoints++
-				// Ping endpoints never produce probe records (spec 0018
-				// T1), so only evidence-bearing endpoints are queried for
-				// the previous window.
-				total, ok, err := s.db.CountProbeSamplesBetween(ep.ID, now.Add(-2*overviewWindow24h), now.Add(-overviewWindow24h))
-				if err != nil {
-					return overviewDTO{}, err
-				}
-				prevProbes += total
-				prevOK += ok
+			enabledEndpoints++
+			// Same probe weighting over the previous window for the health
+			// index delta (now-48h..now-24h); only evidence-bearing
+			// endpoints reach this loop at all.
+			total, ok, err := s.db.CountProbeSamplesBetween(ep.ID, now.Add(-2*overviewWindow24h), now.Add(-overviewWindow24h))
+			if err != nil {
+				return overviewDTO{}, err
 			}
+			prevProbes += total
+			prevOK += ok
 		}
 	}
 

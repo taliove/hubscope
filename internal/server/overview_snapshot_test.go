@@ -100,8 +100,11 @@ func TestOverviewSnapshotCachesUntilDirty(t *testing.T) {
 	if fifth.GeneratedAt == fourth.GeneratedAt {
 		t.Fatal("snapshot must rebuild after an endpoint write")
 	}
-	if entry := findEntry(t, fifth, ep); entry.Enabled {
-		t.Fatal("disabled endpoint must show enabled=false on the first read after the write")
+	// 2026-08-05 ruling: a disabled endpoint leaves the overview entirely.
+	for _, e := range fifth.Endpoints {
+		if e.EndpointID == ep {
+			t.Fatal("disabled endpoint must leave the overview on the first read after the write")
+		}
 	}
 }
 

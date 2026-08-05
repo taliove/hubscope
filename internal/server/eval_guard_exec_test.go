@@ -46,8 +46,10 @@ func TestCampaignBudgetExceeded(t *testing.T) {
 
 	// In-flight state observed: four cells (one suite each, pool of four)
 	// blocked mid-flight when the budget lapses; the fifth must never start.
-	stub.blockCalls()
-	t.Cleanup(stub.release)
+	// The count-based gate lets the probe stage's three rounds through
+	// first (GH #174), then freezes the cell wave.
+	stub.blockCallsAfter(3)
+	t.Cleanup(stub.releaseGlobal)
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
 
@@ -55,10 +57,10 @@ func TestCampaignBudgetExceeded(t *testing.T) {
 	// clock before the pool is in flight would let the deadline slip past
 	// the advance. Wait for the full wave of blocked calls first.
 	waitFor(t, "four cells blocked in flight", func() bool {
-		return stub.grandTotalCalls() >= 4
+		return stub.grandTotalCalls() >= 7
 	})
 	clock.Advance(61 * time.Minute)
-	stub.release()
+	stub.releaseGlobal()
 
 	// Drain (ticket 100): terminal status covers every tail write.
 	final := waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusFailed, store.CampaignStatusDone)
@@ -88,7 +90,9 @@ func TestCircuitBreakerSkipsFailingModel(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "cb-broken")
 	smartID := createEvalModel(t, ts.URL, stub.URL, "cb-smart")
-	stub.markBroken("cb-broken", true)
+	// Case-broken (GH #174): the model passes the probe gate and fails at
+	// case time — the circuit breaker is the backstop behind the gate.
+	stub.markCaseBroken("cb-broken", true)
 	stub.resetCalls()
 
 	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
@@ -109,11 +113,12 @@ func TestCircuitBreakerSkipsFailingModel(t *testing.T) {
 
 	// 5 consecutive failed cases x 2 attempts (one retry each), then the
 	// circuit opens; the healthy model answers every case exactly once.
-	if got := stub.callTotal("cb-broken"); got != 10 {
-		t.Errorf("broken model calls = %d, want 10 (5 cases x 2 attempts, circuit open)", got)
+	// Both models also paid their three probe-gate rounds up front (GH #174).
+	if got := stub.callTotal("cb-broken"); got != 13 {
+		t.Errorf("broken model calls = %d, want 13 (3 probe rounds + 5 cases x 2 attempts, circuit open)", got)
 	}
-	if got := stub.callTotal("cb-smart"); got != caseCount {
-		t.Errorf("smart model calls = %d, want %d (one per case)", got, caseCount)
+	if got := stub.callTotal("cb-smart"); got != caseCount+3 {
+		t.Errorf("smart model calls = %d, want %d (3 probe rounds + one per case)", got, caseCount+3)
 	}
 
 	// The grid stays complete: every case has a row for the broken model,
@@ -159,7 +164,9 @@ func TestCampaignAbortWhenAllCellsFail(t *testing.T) {
 	ts, stub, _ := setupEvalEnv(t)
 	for _, m := range []string{"abort-m1", "abort-m2", "abort-m3"} {
 		createEvalModel(t, ts.URL, stub.URL, m)
-		stub.markBroken(m, true)
+		// Case-broken (GH #174): the gate admits them, every case fails —
+		// the all-dead abort lives behind the probe gate.
+		stub.markCaseBroken(m, true)
 	}
 	stub.resetCalls()
 
@@ -190,8 +197,9 @@ func TestCampaignAbortWhenAllCellsFail(t *testing.T) {
 	// the three cells whose completion triggers it burn their full 10-call
 	// budget, the fourth in-flight cell is cut short wherever the cancel
 	// lands, and a worker that finishes before the third completion may
-	// take one more cell — bounding the total at seven cells.
-	if got := stub.grandTotalCalls(); got < 30 || got > 70 {
-		t.Errorf("total calls = %d, want within [30, 70] (three completed cells plus in-flight tails; abort dropped the rest)", got)
+	// take one more cell — bounding the total at seven cells. The three
+	// models' probe-gate rounds add 9 calls up front (GH #174).
+	if got := stub.grandTotalCalls(); got < 39 || got > 79 {
+		t.Errorf("total calls = %d, want within [39, 79] (9 probe rounds + three completed cells plus in-flight tails; abort dropped the rest)", got)
 	}
 }

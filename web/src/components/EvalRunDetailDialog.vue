@@ -19,15 +19,47 @@
           <span>开始:{{ formatTime(detail.started_at) }}</span>
           <span>结束:{{ formatTime(detail.finished_at) }}</span>
           <span>聚合分:{{ formatScore(detail.score === null ? null : detail.score * 100) }}</span>
-          <!-- Targeted retry entries: only when the parent marks the batch
-               retryable (settled, console). The per-row buttons re-run one
-               failed unit; this entry re-runs every failed unit of the
-               batch (existing retry-failed). Scored results never move. -->
+          <!-- Retry-any (2026-08-04 ruling): every answered row can be
+               re-answered and re-judged — singly or in a checked batch,
+               on running and settled batches alike. -->
           <el-button v-if="retryable" size="small" :loading="retryingAll" @click="onRetryAll">
             重跑全部失败项
           </el-button>
+          <el-button
+            v-if="retryable"
+            size="small"
+            type="primary"
+            :disabled="selectedRows.length === 0"
+            :loading="retryingSelected"
+            @click="onRetrySelected"
+          >
+            重跑选中({{ selectedRows.length }})
+          </el-button>
         </div>
-        <el-table :data="visibleResults" row-key="id" max-height="480">
+        <!-- Jury rail (GH #179 view B「裁判席」): the viewed model's own
+             ≤3 judges (per-model juries differ — each excludes its
+             subject), each with vote count, failures and priced cost. -->
+        <div v-if="railJudges.length > 0" class="jury-rail">
+          <span class="rail-label">
+            裁判团<template v-if="detail.jury_models">({{ detail.jury_models.policy }})</template>
+          </span>
+          <span v-for="j in railJudges" :key="j.judge_model" class="jury-card">
+            <b>{{ j.judge_model }}</b>
+            <em>{{ j.votes }} 票 · 失败 {{ j.fails }} · {{ j.cost === null ? '价格未登记' : '$' + j.cost.toFixed(4) }}</em>
+          </span>
+        </div>
+        <el-table
+          :data="visibleResults"
+          row-key="id"
+          max-height="480"
+          @selection-change="(rows: EvalResult[]) => (selectedRows = rows)"
+        >
+          <el-table-column
+            v-if="retryable"
+            type="selection"
+            width="36"
+            :selectable="(row: EvalResult) => row.model_db_id > 0"
+          />
           <el-table-column type="expand">
             <template #default="{ row }">
               <div class="expand-panel">
@@ -43,11 +75,43 @@
                   <div class="expand-label">判定理由</div>
                   <pre class="expand-text">{{ row.verdict_detail ?? '-' }}</pre>
                 </div>
+                <!-- Jury breakdown (GH #179 view B「裁判席」): every jury
+                     vote of the case's latest attempt, with the spread as
+                     the disagreement signal. -->
+                <div v-if="row.judge_scores && row.judge_scores.length > 0" class="expand-block">
+                  <div class="expand-label">
+                    裁判团
+                    <el-tag
+                      v-if="row.spread !== null && row.spread !== undefined && row.spread > 0.12"
+                      size="small"
+                      type="danger"
+                      class="spread-tag"
+                    >分歧 {{ row.spread.toFixed(2) }}</el-tag>
+                    <el-tag
+                      v-else-if="row.spread !== null && row.spread !== undefined"
+                      size="small"
+                      type="info"
+                      class="spread-tag"
+                    >分歧 {{ row.spread.toFixed(2) }}</el-tag>
+                  </div>
+                  <div class="jury-votes">
+                    <span
+                      v-for="(v, i) in row.judge_scores"
+                      :key="i"
+                      class="vote-chip"
+                      :class="{ fail: v.score === null }"
+                    >
+                      {{ v.judge_model }} {{ v.score === null ? 'FAIL' : v.score.toFixed(2) }}
+                      <em>样本 {{ v.sample_no }}</em>
+                    </span>
+                  </div>
+                </div>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="模型" min-width="170" show-overflow-tooltip>
             <template #default="{ row }">
+              <VendorTile :family="row.family" />
               <span>{{ row.model_id }}</span>
               <el-tag v-if="row.model_deleted" size="small" type="info" class="deleted-tag">已删除</el-tag>
             </template>
@@ -60,6 +124,28 @@
               <span :class="scoreClass(row.score)">{{ formatScore(row.score === null ? null : row.score * 100) }}</span>
             </template>
           </el-table-column>
+          <!-- Per-judge vote columns (GH #179 view B): only judge-verdict
+               rows carry votes; rule rows render a dash. -->
+          <el-table-column
+            v-for="j in judgeColumns"
+            :key="j"
+            :label="j"
+            min-width="110"
+            align="center"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              <span :class="{ 'vote-fail-cell': voteIsFail(row, j) }">{{ voteFor(row, j) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="judgeColumns.length > 0" label="分歧" width="80" align="center">
+            <template #default="{ row }">
+              <span v-if="row.spread !== null && row.spread !== undefined" :class="{ 'spread-hot': row.spread > 0.12 }">
+                {{ row.spread.toFixed(2) }}
+              </span>
+              <span v-else class="dim">—</span>
+            </template>
+          </el-table-column>
           <el-table-column label="判定理由" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">{{ row.verdict_detail ?? '-' }}</template>
           </el-table-column>
@@ -69,7 +155,7 @@
           <el-table-column v-if="retryable" label="操作" width="80" align="center">
             <template #default="{ row }">
               <el-button
-                v-if="row.score === null && unitRetryable(row)"
+                v-if="unitRetryable(row)"
                 size="small"
                 text
                 type="primary"
@@ -91,9 +177,10 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { getEvalRun } from '@/api/evals'
+import VendorTile from '@/components/VendorTile.vue'
 import { retryCampaignFailed, retryCampaignUnits } from '@/api/campaigns'
 import { formatMs, formatScore, formatTime } from '@/utils/format'
-import type { EvalResult, EvalRunDetail, Suite } from '@/api/types'
+import type { EvalResult, EvalRunDetail, JurySummaryEntry, Suite } from '@/api/types'
 
 // Run detail dialog: per-case prompt, model answer, score, and the judge's
 // reasoning, grouped in an expandable table. The optional modelId filter
@@ -113,7 +200,6 @@ const props = defineProps<{
   suites: Suite[]
   modelId?: string | null
   retryable?: boolean
-  modelDbIds?: Record<string, number>
 }>()
 
 const emit = defineEmits<{ close: []; retried: [] }>()
@@ -194,26 +280,59 @@ function scoreClass(score: number | null): string {
   return 'score-low'
 }
 
-// A failed row is retryable only when its model resolves to a database id
-// (deleted models stay visible as history but cannot be re-asked).
+// The jury's judge columns, in panel order (GH #179 view B).
+const judgeColumns = computed<string[]>(() => {
+  return (detail.value?.jury_summary ?? []).map(j => j.judge_model)
+})
+
+// The rail shows the viewed model's own jury (≤3): per-subject juries
+// differ because each excludes its subject, so a union would read as a
+// 4-5 judge panel (2026-08-04 review). Unfiltered runs show the first
+// subject's panel — its tallies stay per-judge factual either way.
+const railJudges = computed<JurySummaryEntry[]>(() => {
+  const summary = detail.value?.jury_summary ?? []
+  const juries = detail.value?.jury_models?.juries ?? {}
+  const rows = detail.value?.results ?? []
+  const dbid = props.modelId
+    ? rows.find(r => r.model_id === props.modelId)?.model_db_id
+    : rows[0]?.model_db_id
+  const panel = dbid !== undefined ? (juries[String(dbid)] ?? null) : null
+  if (!panel) return summary
+  return summary.filter(j => panel.includes(j.judge_model))
+})
+
+// One row's vote text for one judge column: per-sample scores joined, FAIL
+// for a failed judge call, a dash for rule-verdict rows.
+function voteFor(row: EvalResult, judge: string): string {
+  const votes = (row.judge_scores ?? []).filter(v => v.judge_model === judge)
+  if (votes.length === 0) return '—'
+  return votes.map(v => (v.score === null ? 'FAIL' : v.score.toFixed(2))).join(' / ')
+}
+
+function voteIsFail(row: EvalResult, judge: string): boolean {
+  return (row.judge_scores ?? []).some(v => v.judge_model === judge && v.score === null)
+}
+
+// A row is retryable when its model still resolves (deleted models stay
+// visible as history but cannot be re-asked).
 function unitRetryable(row: EvalResult): boolean {
-  return (props.modelDbIds?.[row.model_id] ?? 0) > 0
+  return row.model_db_id > 0
 }
 
 const retryingResultId = ref<number | null>(null)
 const retryingAll = ref(false)
+const retryingSelected = ref(false)
+const selectedRows = ref<EvalResult[]>([])
 
-// Re-run exactly this row's (model, case) unit. The server skips it with a
-// count when a concurrent judge already scored it — then there is nothing
-// to refresh, so the dialog stays open on that answer.
+// Re-run exactly this row's (model, case) unit: the answer is re-asked and
+// re-judged (2026-08-04 ruling — any score, not just nulls).
 async function onRetryUnit(row: EvalResult) {
   if (!detail.value) return
-  const modelDbId = props.modelDbIds?.[row.model_id]
-  if (!modelDbId) return
+  if (!unitRetryable(row)) return
   try {
     await ElMessageBox.confirm(
-      `将重新评估「${row.model_id}」的这道题(只补这一道未判分的题,已判分结果不变),期间批次回到运行中。`,
-      '重跑失败项',
+      `将重新作答并重新裁判「${row.model_id}」的这道题,当前结果作废重算。`,
+      '重跑该题',
       { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
     )
   } catch {
@@ -222,19 +341,52 @@ async function onRetryUnit(row: EvalResult) {
   retryingResultId.value = row.id
   try {
     const ack = await retryCampaignUnits(detail.value.campaign_id, [
-      { model_db_id: modelDbId, case_id: row.case_id },
+      { model_db_id: row.model_db_id, case_id: row.case_id },
     ])
     if (ack.accepted === 0) {
-      ElMessage.info('该项已有判分结果,无需重跑')
+      ElMessage.info('该项还在作答中,无需重跑')
       return
     }
-    ElMessage.success('已发起重跑,批次回到运行中')
+    ElMessage.success('已发起重跑')
     emit('retried')
     emit('close')
   } catch (err) {
     ElMessage.error((err as Error).message)
   } finally {
     retryingResultId.value = null
+  }
+}
+
+// Re-run every checked row's unit in one request.
+async function onRetrySelected() {
+  if (!detail.value || selectedRows.value.length === 0) return
+  const rows = selectedRows.value.filter(unitRetryable)
+  try {
+    await ElMessageBox.confirm(
+      `将重新作答并重新裁判选中的 ${rows.length} 道题,当前结果作废重算。`,
+      '重跑选中',
+      { confirmButtonText: '开始重跑', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  retryingSelected.value = true
+  try {
+    const ack = await retryCampaignUnits(
+      detail.value.campaign_id,
+      rows.map(r => ({ model_db_id: r.model_db_id, case_id: r.case_id })),
+    )
+    if (ack.accepted === 0) {
+      ElMessage.info('选中项都还在作答中,无需重跑')
+      return
+    }
+    ElMessage.success(`已发起重跑 ${ack.accepted} 项`)
+    emit('retried')
+    emit('close')
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    retryingSelected.value = false
   }
 }
 
@@ -324,5 +476,69 @@ async function onRetryAll() {
 }
 .deleted-tag {
   margin-left: 4px;
+}
+.spread-tag {
+  margin-left: 8px;
+}
+.jury-votes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hs-space-2);
+}
+.vote-chip {
+  background: var(--hs-blue-50);
+  color: var(--hs-gray-900);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.vote-chip.fail {
+  background: #ffecea;
+  color: var(--hs-danger-text-base);
+}
+.vote-chip em {
+  font-style: normal;
+  color: var(--hs-gray-500);
+  margin-left: 6px;
+}
+.jury-rail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--hs-space-2);
+  margin-bottom: var(--hs-space-3);
+  font-size: 13px;
+}
+.rail-label {
+  color: var(--hs-gray-700);
+  font-weight: 600;
+}
+.jury-card {
+  background: var(--hs-gray-50);
+  border: 1px solid var(--hs-gray-100);
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: inline-flex;
+  flex-direction: column;
+}
+.jury-card b {
+  color: var(--hs-gray-900);
+  font-size: 12px;
+}
+.jury-card em {
+  font-style: normal;
+  color: var(--hs-gray-500);
+  font-size: 12px;
+}
+.vote-fail-cell {
+  color: var(--hs-danger-text-base);
+  font-weight: 600;
+}
+.spread-hot {
+  color: var(--hs-danger-text-base);
+  font-weight: 600;
+}
+.dim {
+  color: var(--hs-gray-400);
 }
 </style>

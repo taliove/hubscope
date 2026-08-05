@@ -101,6 +101,10 @@ func run() error {
 	srv := server.New(db,
 		server.WithTrustProxy(envOr("TRUST_PROXY", "") == "true"),
 		server.WithVersion(Version),
+		// The jury confirmation gate (2026-08-04 ruling): manual batches
+		// pause after probing for the operator's review, auto-starting
+		// after 60s.
+		server.WithJuryConfirmTimeout(60*time.Second),
 	)
 	if dist, err := fs.Sub(web.DistFS, "dist"); err == nil {
 		srv.SetStaticFS(dist)

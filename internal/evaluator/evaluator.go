@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/taliove/hubscope/internal/hubclient"
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -32,6 +33,18 @@ const circuitBreakerThreshold = 5
 // all-dead batch aborts (GH #153): when every completed cell produced zero
 // answers, the Hub side is hopeless and unstarted cells are dropped.
 const campaignAbortCells = 3
+
+// Probe gate (spec 0020, GH #174): before the first case burns, every
+// selected model is sampled probeGateRounds times with a tiny completion
+// call; each round gets its own short timeout so a hung model cannot hold
+// the gate, and probing fans out under a small cap.
+const (
+	probeGateRounds    = 3
+	probeGateTimeout   = 30 * time.Second
+	probeGateMaxTokens = 16
+	probeGateParallel  = 8
+	probeGatePrompt    = "ping"
+)
 
 // Evaluator executes eval runs and persists per-case results.
 //
@@ -56,11 +69,44 @@ type Evaluator struct {
 	// stop any of them.
 	cancelMu sync.Mutex
 	cancels  map[int64]context.CancelFunc
+
+	// livePipelines maps a running campaign to its judge-stage pipeline
+	// (GH #178): the campaign report reads the live queue depth of both
+	// stages from it.
+	livePipelines sync.Map // int64 → *pipeline
+
+	// Jury confirmation gate (2026-08-04 ruling): a manually triggered
+	// batch pauses after the probe gate and jury selection until the
+	// operator confirms or the timeout auto-starts it. confirmCh carries
+	// the release, awaitingConfirm backs the API surface.
+	ConfirmTimeout  time.Duration
+	NewConfirmTimer func(d time.Duration) ConfirmTimer
+	confirmCh       map[int64]chan struct{}
+	awaitingConfirm map[int64]bool
 }
+
+// ConfirmTimer is a single-fire countdown (the scheduler.Timer shape,
+// redeclared here to keep the import direction one-way).
+type ConfirmTimer interface {
+	C() <-chan time.Time
+	Stop()
+}
+
+// realConfirmTimer adapts *time.Timer for production.
+type realConfirmTimer struct{ t *time.Timer }
+
+func (r realConfirmTimer) C() <-chan time.Time { return r.t.C }
+func (r realConfirmTimer) Stop()               { r.t.Stop() }
 
 // New creates an Evaluator backed by the given store and hub client.
 func New(db *store.DB, client *hubclient.Client) *Evaluator {
-	return &Evaluator{db: db, client: client, cancels: map[int64]context.CancelFunc{}}
+	return &Evaluator{
+		db:              db,
+		client:          client,
+		cancels:         map[int64]context.CancelFunc{},
+		confirmCh:       map[int64]chan struct{}{},
+		awaitingConfirm: map[int64]bool{},
+	}
 }
 
 // registerCancel derives a cancelable context for one campaign's execution
@@ -94,6 +140,82 @@ func (e *Evaluator) CancelCampaign(campaignID int64) bool {
 		cancel()
 	}
 	return ok
+}
+
+// IsExecuting reports whether the campaign is executing on this process —
+// the live-retry admission check (2026-08-04 ruling).
+func (e *Evaluator) IsExecuting(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	_, ok := e.cancels[campaignID]
+	return ok
+}
+
+// AwaitingConfirmation reports whether the campaign is paused at the jury
+// confirmation gate (2026-08-04 ruling; manual batches only).
+func (e *Evaluator) AwaitingConfirmation(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	return e.awaitingConfirm[campaignID]
+}
+
+// ConfirmCampaign releases the jury confirmation gate immediately. It
+// reports false when the campaign is not awaiting confirmation.
+func (e *Evaluator) ConfirmCampaign(campaignID int64) bool {
+	e.cancelMu.Lock()
+	ch, ok := e.confirmCh[campaignID]
+	e.cancelMu.Unlock()
+	if !ok {
+		return false
+	}
+	close(ch)
+	return true
+}
+
+// awaitJuryConfirmation holds a manually triggered batch after the probe
+// gate and jury selection (2026-08-04 ruling): the operator reviews the
+// probe outcomes and the jury, then confirms — or the timeout starts the
+// batch automatically. Scheduled batches never pause.
+func (e *Evaluator) awaitJuryConfirmation(ctx context.Context, campaignID int64, prepared []*preparedRun) {
+	timeout := e.ConfirmTimeout
+	if timeout <= 0 {
+		return // gate disabled (tests; production wires 60s)
+	}
+	newTimer := e.NewConfirmTimer
+	if newTimer == nil {
+		newTimer = func(d time.Duration) ConfirmTimer { return realConfirmTimer{time.NewTimer(d)} }
+	}
+
+	ch := make(chan struct{})
+	e.cancelMu.Lock()
+	e.confirmCh[campaignID] = ch
+	e.awaitingConfirm[campaignID] = true
+	e.cancelMu.Unlock()
+	for _, prep := range prepared {
+		prep.task.log(store.TaskLogInfo, fmt.Sprintf(
+			"awaiting jury confirmation (auto-start in %ds)", int(timeout.Seconds())))
+	}
+	defer func() {
+		e.cancelMu.Lock()
+		delete(e.confirmCh, campaignID)
+		delete(e.awaitingConfirm, campaignID)
+		e.cancelMu.Unlock()
+	}()
+
+	timer := newTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		for _, prep := range prepared {
+			prep.task.log(store.TaskLogInfo, "jury confirmed by operator, batch starts")
+		}
+	case <-timer.C():
+		for _, prep := range prepared {
+			prep.task.log(store.TaskLogInfo, "jury confirmation timed out, batch auto-started")
+		}
+	case <-ctx.Done():
+		// Canceled at the gate: the standard tail reports the reason.
+	}
 }
 
 // now returns the current time from the injected clock, defaulting to the
@@ -194,6 +316,53 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Probe gate (spec 0020, GH #174): measure every selected model's
+	// reachability before the first case burns. Unreachable models leave
+	// the feed — no cells, no dead rows — and an all-unreachable batch
+	// fails every run with the gate reason instead of settling an empty
+	// success. The gate runs inside the campaign budget: probing is part
+	// of the batch's wall clock. The probe population includes jury
+	// candidates on the same hubs (GH #175): the jury ranking needs their
+	// measured speed, and a candidate is cheap to sample. The pipeline is
+	// registered before the gate so the probe stage is visible in the
+	// report's live queue depth — never an invisible preamble.
+	p := newPipeline(e, prepared)
+	if len(prepared) > 0 {
+		campaignID := prepared[0].run.CampaignID
+		e.livePipelines.Store(campaignID, p)
+		defer e.livePipelines.Delete(campaignID)
+	}
+	samples := e.probeGate(ctx, p, prepared, modelDBIDs, e.juryProbePopulation(modelDBIDs))
+	// A nil gate means the context was canceled mid-probe: the outcome is
+	// meaningless, so feed everything and let the canceled pool drop every
+	// cell — the standard tail then fails the runs with the cancellation
+	// reason instead of a bogus gate verdict.
+	feed := modelDBIDs
+	if samples != nil {
+		feed = make([]int64, 0, len(modelDBIDs))
+		for _, id := range modelDBIDs {
+			if samples[id].reachable {
+				feed = append(feed, id)
+			}
+		}
+		if len(feed) == 0 && len(modelDBIDs) > 0 {
+			for _, prep := range prepared {
+				e.failPreparedRun(prep, "probe gate: every selected model unreachable")
+			}
+			return
+		}
+		// Jury selection (spec 0020, GH #175): one jury per subject from
+		// its own hub's reachable candidates, ranked by the configured
+		// policy; the snapshot lands on every run before the first cell.
+		e.selectJuries(prepared, feed, samples)
+		// Manual batches pause here for the operator's jury confirmation
+		// (2026-08-04 ruling) when the deployment enables the gate;
+		// scheduled batches always run straight through.
+		if e.ConfirmTimeout > 0 && len(prepared) > 0 && prepared[0].run.Trigger == "manual" {
+			e.awaitJuryConfirmation(ctx, prepared[0].run.CampaignID, prepared)
+		}
+	}
+
 	var deadline time.Time
 	if budget := e.resolveCampaignBudgetMinutes(); budget > 0 {
 		deadline = e.now().Add(time.Duration(budget) * time.Minute)
@@ -215,24 +384,26 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 
 	remaining := map[int64]int{}
 	for _, prep := range prepared {
-		remaining[prep.run.ID] = len(modelDBIDs)
+		remaining[prep.run.ID] = len(feed)
 		// A run with no models has no cells to wait for: it evaluates
 		// nothing and finishes done immediately (the serial executor's
 		// zero-model outcome).
-		if len(modelDBIDs) == 0 {
-			e.finishPreparedRun(prep, "done")
+		if len(feed) == 0 {
+			p.markCellsDone(prep.run.ID)
 		}
 	}
 	// GH #169: model-major cell order — the pool takes a model's whole suite
 	// list before the next model's first cell.
 	var cells []evalCell
-	for _, modelDBID := range modelDBIDs {
+	for _, modelDBID := range feed {
 		for _, prep := range prepared {
 			cells = append(cells, evalCell{prep: prep, modelDBID: modelDBID})
 		}
 	}
 
 	var completed, dead int
+	p.runJudgePool(ctx, budgetExceeded)
+	p.setCellsTotal(len(cells))
 	e.runCellPool(ctx, cells, func() bool {
 		if budgetExceeded() {
 			stop("campaign budget exceeded")
@@ -240,7 +411,9 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		}
 		return false
 	}, func(cctx context.Context, cell evalCell) {
-		answered := e.evalModel(cctx, cell.prep.run, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+		p.noteCellStart()
+		answered := e.evalModel(cctx, p, cell.prep, cell.modelDBID, cell.prep.cases, cell.prep.task, defaultSamples)
+		p.noteCellDone()
 		mu.Lock()
 		remaining[cell.prep.run.ID]--
 		done := remaining[cell.prep.run.ID] == 0
@@ -262,28 +435,34 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 			stop("campaign budget exceeded")
 		}
 		if done {
-			// All of the run's cells executed: the run is done regardless
-			// of a later cancellation (the serial executor finished a run
-			// done once its last model completed, too).
-			e.finishPreparedRun(cell.prep, "done")
+			// All of the run's exam cells executed: the run finishes once
+			// its judge queue is also empty (GH #176).
+			p.markCellsDone(cell.prep.run.ID)
 		}
 	})
+	// The exam stage is done (or canceled): stop the judge feed and wait
+	// for in-flight judge calls. Votes never offered stay owed in the
+	// database — the recovery sweep sees them.
+	p.closeJudgeQueue()
 
 	// Cells dropped because the context was canceled never reported back;
 	// their runs fail, matching the serial executor's cancellation outcome.
+	// Runs whose judge queue could not drain fail the same way: their case
+	// grid is incomplete.
 	mu.Lock()
 	defer mu.Unlock()
 	for _, prep := range prepared {
-		if remaining[prep.run.ID] > 0 {
-			reason := stopReason
-			if reason == "" {
-				reason = "execution incomplete"
-				if err := ctx.Err(); err != nil {
-					reason = err.Error()
-				}
-			}
-			e.failPreparedRun(prep, reason)
+		if p.isFinished(prep.run.ID) {
+			continue
 		}
+		reason := stopReason
+		if reason == "" {
+			reason = "execution incomplete"
+			if err := ctx.Err(); err != nil {
+				reason = err.Error()
+			}
+		}
+		e.failPreparedRun(prep, reason)
 	}
 }
 
@@ -518,6 +697,365 @@ func (e *Evaluator) warnJudgeUnreachable(prepared []*preparedRun, modelDBIDs []i
 	}
 }
 
+// probeSample is what the gate learned about one model: reachability (at
+// least one successful round), the successful-round count, and the average
+// measured output speed. Jury selection consumes tps (spec 0020); the cell
+// feed consumes reachable.
+type probeSample struct {
+	reachable bool
+	successes int
+	tps       float64
+}
+
+// probeGate measures each selected model's reachability before any case
+// burns (spec 0020, GH #174): probeGateRounds small completion calls per
+// model, models probed in parallel under a small cap. The outcome decides
+// the cell feed — an unreachable subject is skipped without cells or
+// result rows (the GH #154 retired-model form) — and is named in every
+// run's task log. probeIDs may exceed subjectIDs (jury candidates on the
+// same hubs, GH #175): candidates are sampled for the jury ranking but
+// never gate anything. Outcomes live only in the returned map and the
+// task logs: they never touch the probes table or the status machine
+// (W5 — an eval probe is not monitoring). Models that cannot be probed
+// (gone, retired, no enabled chat endpoint) stay reachable so evalModel's
+// existing setup-failure paths report them unchanged.
+func (e *Evaluator) probeGate(ctx context.Context, p *pipeline, prepared []*preparedRun, subjectIDs, probeIDs []int64) map[int64]probeSample {
+	subjects := make(map[int64]bool, len(subjectIDs))
+	for _, id := range subjectIDs {
+		subjects[id] = true
+	}
+	type probeTarget struct {
+		id       int64
+		hub      *store.Hub
+		protocol string
+		modelID  string
+	}
+	samples := make(map[int64]probeSample, len(probeIDs))
+	var targets []probeTarget
+	for _, id := range probeIDs {
+		samples[id] = probeSample{reachable: true}
+		model, err := e.db.GetModel(id)
+		if err != nil || model.Status == "retired" {
+			continue
+		}
+		hub, err := e.db.GetHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		endpoints, err := e.db.ListEndpointsByModelID(id)
+		if err != nil {
+			continue
+		}
+		protocol, ok := selectProtocol(endpoints)
+		if !ok {
+			continue
+		}
+		targets = append(targets, probeTarget{id: id, hub: hub, protocol: protocol, modelID: model.ModelID})
+	}
+
+	var mu sync.Mutex
+	// The gate fans out under the same hub-pressure budget as the cell
+	// pool (capped by probeGateParallel): an admin who dialed
+	// eval_concurrency down to 1 asked for serial pressure, probes
+	// included.
+	parallel := e.resolveEvalConcurrency()
+	if parallel > probeGateParallel {
+		parallel = probeGateParallel
+	}
+	p.setProbeTotal(len(targets))
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+	for _, tgt := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			sample := e.probeModel(ctx, tgt.hub, tgt.protocol, tgt.modelID)
+			p.noteProbeDone()
+			if ctx.Err() != nil {
+				// A canceled context makes the probe outcome meaningless:
+				// never stamp a model unreachable on a canceled round —
+				// the caller aborts the whole gate instead.
+				return
+			}
+			mu.Lock()
+			samples[tgt.id] = sample
+			mu.Unlock()
+			if sample.reachable || !subjects[tgt.id] {
+				return
+			}
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
+					"model %s unreachable at probe gate (0/%d), skipped: no cases burned",
+					tgt.modelID, probeGateRounds))
+			}
+		}()
+	}
+	wg.Wait()
+	if ctx.Err() != nil {
+		return nil
+	}
+	return samples
+}
+
+// probeModel takes probeGateRounds reachability samples of one model — the
+// full round count, never an early exit: the sample set doubles as the
+// model's stability and speed signal (spec 0020), and a fixed cost keeps
+// batch call-count accounting deterministic. Reachable means at least one
+// success; each round gets its own timeout so a hung model cannot stall
+// the gate.
+func (e *Evaluator) probeModel(ctx context.Context, hub *store.Hub, protocol, modelID string) probeSample {
+	var sample probeSample
+	var tpsSum float64
+	var tpsRounds int
+	for range probeGateRounds {
+		if ctx.Err() != nil {
+			return probeSample{}
+		}
+		rctx, cancel := context.WithTimeout(ctx, probeGateTimeout)
+		res := e.client.Complete(rctx, hub.BaseURL, hub.Token, protocol, modelID, probeGatePrompt, probeGateMaxTokens)
+		cancel()
+		if !res.OK {
+			continue
+		}
+		sample.successes++
+		// A sub-millisecond localhost round is a success too — it just
+		// carries no speed signal.
+		if res.LatencyMs > 0 {
+			outTokens := probeGateMaxTokens
+			if res.OutputTokens != nil && *res.OutputTokens > 0 {
+				outTokens = *res.OutputTokens
+			}
+			tpsSum += float64(outTokens) / (float64(res.LatencyMs) / 1000)
+			tpsRounds++
+		}
+	}
+	sample.reachable = sample.successes > 0
+	if tpsRounds > 0 {
+		sample.tps = tpsSum / float64(tpsRounds)
+	}
+	return sample
+}
+
+// juryProbePopulation returns the probe population for a batch (spec 0020,
+// GH #175): the selected subjects plus every other non-retired chat model
+// on their hubs — the jury candidate pool. Candidates are probed for the
+// ranking inputs (reachability, measured speed) but never gate anything.
+func (e *Evaluator) juryProbePopulation(modelDBIDs []int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	add := func(id int64) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, id := range modelDBIDs {
+		add(id)
+	}
+	hubs := map[int64]bool{}
+	for _, id := range modelDBIDs {
+		model, err := e.db.GetModel(id)
+		if err != nil || hubs[model.HubID] {
+			continue
+		}
+		hubs[model.HubID] = true
+		models, err := e.db.ListModelsByHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			if m.Status == "retired" {
+				continue
+			}
+			endpoints, err := e.db.ListEndpointsByModelID(m.ID)
+			if err != nil {
+				continue
+			}
+			if _, ok := selectProtocol(endpoints); ok {
+				add(m.ID)
+			}
+		}
+	}
+	return out
+}
+
+// probeSummaries renders every probed model's gate outcome for the jury
+// snapshot (GH #179), keyed by model ID.
+func probeSummaries(subjects map[int64]*store.Model, byHub map[int64][]juryCandidate, samples map[int64]probeSample) map[string]probeSummaryDTO {
+	names := map[int64]string{}
+	for id, m := range subjects {
+		names[id] = m.ModelID
+	}
+	for _, cands := range byHub {
+		for _, c := range cands {
+			names[c.ModelDBID] = c.ModelID
+		}
+	}
+	out := map[string]probeSummaryDTO{}
+	for id, sample := range samples {
+		name, ok := names[id]
+		if !ok {
+			continue
+		}
+		out[name] = probeSummaryDTO{
+			OK:     sample.reachable,
+			Succ:   sample.successes,
+			Rounds: probeGateRounds,
+			TPS:    sample.tps,
+		}
+	}
+	return out
+}
+
+// resolveJuryPolicy reads the configured jury policy, falling back to the
+// default on read failure or an unknown stored value.
+func (e *Evaluator) resolveJuryPolicy() string {
+	policy, err := e.db.GetSetting(store.SettingJuryPolicy, store.DefaultJuryPolicy)
+	if err != nil || !ValidJuryPolicy(policy) {
+		if err != nil {
+			slog.Error("evaluator: read jury_policy setting, using default", "error", err)
+		}
+		return store.DefaultJuryPolicy
+	}
+	return policy
+}
+
+// resolveRegistryOverrides reads the administrator's registry overrides;
+// a corrupt stored value falls back to the built-in table (the settings
+// read path's fail-open caliber).
+func (e *Evaluator) resolveRegistryOverrides() []registry.Override {
+	raw, err := e.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		slog.Error("evaluator: read model_registry_overrides, using built-ins", "error", err)
+		return nil
+	}
+	overrides, err := registry.ParseOverrides(raw)
+	if err != nil {
+		slog.Error("evaluator: corrupt model_registry_overrides, using built-ins", "error", err)
+		return nil
+	}
+	return overrides
+}
+
+// selectJuries picks one jury per subject (spec 0020, GH #175): candidates
+// are the subject's own-hub reachable chat models, ranked by the configured
+// policy over registry IQ, gate-measured speed and registry price. The
+// subject is excluded when at least three alternatives exist; a short or
+// self-including jury is logged, never fatal. Every run snapshots the full
+// selection before its first cell (ADR 0016), and the task log names the
+// judges so a surprising pick is visible before the cases burn.
+func (e *Evaluator) selectJuries(prepared []*preparedRun, feed []int64, samples map[int64]probeSample) {
+	policy := e.resolveJuryPolicy()
+	overrides := e.resolveRegistryOverrides()
+
+	// Hub candidates are shared across subjects on the same hub.
+	byHub := map[int64][]juryCandidate{}
+	subjects := map[int64]*store.Model{}
+	for _, id := range feed {
+		model, err := e.db.GetModel(id)
+		if err != nil {
+			continue
+		}
+		subjects[id] = model
+		if _, done := byHub[model.HubID]; done {
+			continue
+		}
+		var cands []juryCandidate
+		models, err := e.db.ListModelsByHub(model.HubID)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			sample, probed := samples[m.ID]
+			if !probed || !sample.reachable {
+				continue
+			}
+			info := registry.Lookup(m.ModelID, overrides)
+			cands = append(cands, juryCandidate{
+				ModelDBID: m.ID,
+				ModelID:   m.ModelID,
+				Family:    m.Family,
+				IQ:        info.IQ,
+				PriceIn:   info.PriceIn,
+				PriceOut:  info.PriceOut,
+				TPS:       sample.tps,
+			})
+		}
+		byHub[model.HubID] = cands
+	}
+
+	juries := map[int64]jurySelection{}
+	for id, model := range subjects {
+		sel := selectJury(byHub[model.HubID], policy, model.ModelID)
+		juries[id] = sel
+		switch {
+		case len(sel.Judges) == 0:
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogWarn, fmt.Sprintf(
+					"model %s: no reachable jury candidates on its hub — judge cases will stay unjudged", model.ModelID))
+			}
+		default:
+			note := ""
+			if sel.SelfIncluded {
+				note = " WARNING: subject serves on its own jury (self-preference bias)"
+			}
+			if len(sel.Judges) < 3 {
+				note += fmt.Sprintf(" short jury: %d judge(s)", len(sel.Judges))
+			}
+			for _, prep := range prepared {
+				prep.task.log(store.TaskLogInfo, fmt.Sprintf(
+					"model %s jury (%s): %s%s", model.ModelID, policy, strings.Join(sel.Judges, ", "), note))
+			}
+		}
+	}
+
+	snapshot := jurySnapshotJSON(policy, juries, probeSummaries(subjects, byHub, samples))
+	for _, prep := range prepared {
+		if err := e.db.SetEvalRunJuryModels(prep.run.ID, snapshot); err != nil {
+			slog.Error("evaluator: snapshot jury on run", "run_id", prep.run.ID, "error", err)
+		}
+		// Keep the in-memory record in step: judgesFor reads it when the
+		// cells fan out, before any later store reload.
+		prep.run.JuryModels = snapshot
+	}
+}
+
+// LiveQueueDepth reports the running campaign's queue state across both
+// pipeline stages (GH #178) plus per-model judge progress (GH #179) and
+// the probe stage's completion; ok is false when no batch is executing
+// for the campaign on this process.
+func (e *Evaluator) LiveQueueDepth(campaignID int64) (examPending, examInflight, judgePending, judgeInflight int, perModel []ModelQueueDepth, probeDone, probeTotal int, ok bool) {
+	v, ok := e.livePipelines.Load(campaignID)
+	if !ok {
+		return 0, 0, 0, 0, nil, 0, 0, false
+	}
+	examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal = v.(*pipeline).queueDepth()
+	return examPending, examInflight, judgePending, judgeInflight, perModel, probeDone, probeTotal, true
+}
+
+// ModelQueueDepth is one subject's judge-stage progress on the live report.
+type ModelQueueDepth = modelQueueDepth
+
+// resolveJudgeConcurrency reads the judge-stage pool size from settings,
+// clamped to [1, store.MaxEvalConcurrency] (GH #176). Read failures fall
+// back to the built-in default.
+func (e *Evaluator) resolveJudgeConcurrency() int {
+	n, err := e.db.GetSettingInt(store.SettingJudgeConcurrency, store.DefaultJudgeConcurrency)
+	if err != nil {
+		slog.Error("evaluator: read judge_concurrency setting, using default", "error", err)
+		return store.DefaultJudgeConcurrency
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > store.MaxEvalConcurrency {
+		return store.MaxEvalConcurrency
+	}
+	return n
+}
+
 // resolveCampaignBudgetMinutes reads the campaign wall-clock budget from
 // settings, clamped to [0, store.MaxEvalCampaignBudgetMin] (GH #153); 0
 // disables the budget. Read failures fall back to the built-in default.
@@ -547,7 +1085,8 @@ func (e *Evaluator) resolveCampaignBudgetMinutes() int {
 // is skipped without any call or result row. The return reports whether
 // any case got an answer at all — the campaign-level abort reads it to
 // detect an all-dead batch.
-func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
+func (e *Evaluator) evalModel(ctx context.Context, p *pipeline, prep *preparedRun, modelDBID int64, cases []store.Case, task *runTask, defaultSamples int) bool {
+	run := prep.run
 	model, err := e.db.GetModel(modelDBID)
 	if err != nil {
 		e.failAllCases(run, modelDBID, "", cases, "model not found")
@@ -601,7 +1140,7 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 	answered := false
 	consecutiveFailed := 0
 	for i, c := range cases {
-		if e.evalCase(ctx, run, hub, protocol, model, c, task, defaultSamples) {
+		if e.evalCase(ctx, p, prep, hub, protocol, model, c, task, defaultSamples) {
 			answered = true
 			consecutiveFailed = 0
 			continue
@@ -617,84 +1156,96 @@ func (e *Evaluator) evalModel(ctx context.Context, run *store.EvalRun, modelDBID
 	return answered
 }
 
-// evalCase answers one case sampleCount times and stores a single result
-// whose score is the average of the judged samples. Samples that cannot be
-// judged (answer call failed, judge failed) contribute no score; when no
-// sample is judged at all the case stays unscored — the same convention as a
-// single unjudged answer. The outcome is logged to the task: scored
-// completions at info, answer/judge failures at warn. The return reports
-// whether any sample got an answer (the circuit breaker counts consecutive
-// unanswered cases).
-func (e *Evaluator) evalCase(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) bool {
+// evalCase answers one case sampleCount times through the exam stage and
+// routes each sample to its verdict path (spec 0020, GH #176): rule
+// verdicts settle inline, judge samples persist to eval_answers and fan
+// out to the jury — the case's eval_results row is written by the pipeline
+// when its last sample settles. The return reports whether any sample got
+// an answer (the circuit breaker counts consecutive unanswered cases).
+func (e *Evaluator) evalCase(ctx context.Context, p *pipeline, prep *preparedRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, task *runTask, defaultSamples int) bool {
+	run := prep.run
 	samples := defaultSamples
 	if c.SampleCount != nil && *c.SampleCount >= 1 {
 		samples = *c.SampleCount
 	}
 
-	result := store.EvalResult{
-		EvalRunID:      run.ID,
-		ModelDBID:      model.ID,
-		ModelID:        model.ModelID,
-		CaseID:         c.ID,
-		VerdictProfile: VerdictProfileCurrent,
+	// Judge cases move to the jury-median caliber (ADR 0016) only when the
+	// run carries a jury snapshot; legacy runs keep the single-judge V2
+	// caliber they were created with.
+	judges, hasJury := e.judgesFor(run, model.ID)
+	profile := VerdictProfileCurrent
+	if c.VerdictType == "judge" && hasJury {
+		profile = store.VerdictProfileV3
 	}
+	p.openCase(prep, model.ID, c.ID, model.ModelID, profile, samples)
 
-	var scoreSum float64
-	var scored int
 	answered := false
-	var details []string
 	for i := 1; i <= samples; i++ {
-		sample := e.evalSample(ctx, run, hub, protocol, model, c)
-		result.LatencyMs += sample.latencyMs
-		result.InputTokens = addIntPtr(result.InputTokens, sample.inputTokens)
-		result.OutputTokens = addIntPtr(result.OutputTokens, sample.outputTokens)
-		if sample.answer != nil {
-			answered = true
-			if result.AnswerText == nil {
-				result.AnswerText = sample.answer
+		out := e.examSample(ctx, run, hub, protocol, model, c, i)
+		if out.answer == nil {
+			p.settleSample(run.ID, model.ID, c.ID, nil, fmt.Sprintf("sample %d/%d: %s", i, samples, out.detail))
+			continue
+		}
+		answered = true
+		p.recordExamCost(run.ID, model.ModelID, out.inputTokens, out.outputTokens)
+		p.recordAnswer(run.ID, model.ID, c.ID, out.latencyMs, out.inputTokens, out.outputTokens, *out.answer)
+		if c.VerdictType == "rule" {
+			score, detail := ruleVerdict(c, *out.answer, profile)
+			if out.detail != "answered" {
+				detail = out.detail + "; " + detail
 			}
+			p.settleSample(run.ID, model.ID, c.ID, score, fmt.Sprintf("sample %d/%d: %s", i, samples, detail))
+			continue
 		}
-		if sample.score != nil {
-			scoreSum += *sample.score
-			scored++
+		if len(judges) == 0 {
+			p.settleSample(run.ID, model.ID, c.ID, nil, fmt.Sprintf("sample %d/%d: no jury available", i, samples))
+			continue
 		}
-		details = append(details, fmt.Sprintf("sample %d/%d: %s", i, samples, sample.detail))
-	}
-
-	if scored > 0 {
-		avg := scoreSum / float64(scored)
-		result.Score = &avg
-	}
-	detail := strings.Join(details, "; ")
-	result.VerdictDetail = &detail
-	e.storeResult(result)
-
-	switch {
-	case result.Score != nil:
-		task.log(store.TaskLogInfo, fmt.Sprintf("case %d done: model=%s score=%.2f", c.ID, model.ModelID, *result.Score))
-	case strings.Contains(detail, "judge"):
-		task.log(store.TaskLogWarn, fmt.Sprintf("case %d judge failed: model=%s detail=%q", c.ID, model.ModelID, detail))
-	default:
-		task.log(store.TaskLogWarn, fmt.Sprintf("case %d failed: model=%s detail=%q", c.ID, model.ModelID, detail))
+		p.enqueueVotes(ctx, judgeJob{
+			prep:            prep,
+			model:           model,
+			hub:             hub,
+			protocol:        protocol,
+			c:               c,
+			answerID:        out.answerID,
+			sampleNo:        i,
+			expectedSamples: samples,
+			answerText:      *out.answer,
+		}, judges)
 	}
 	return answered
 }
 
-// sampleOutcome is one answer-and-verdict attempt for a case.
-type sampleOutcome struct {
+// judgesFor resolves the judge list for one model from the run's jury
+// snapshot (spec 0020). The second return reports whether a snapshot
+// exists at all: legacy runs (no snapshot) fall back to the single
+// judge_model and keep the V2 caliber.
+func (e *Evaluator) judgesFor(run *store.EvalRun, modelDBID int64) ([]string, bool) {
+	_, juries, _ := ParseJurySnapshot(run.JuryModels)
+	if juries == nil {
+		return []string{run.JudgeModel}, false
+	}
+	return juries[modelDBID], true
+}
+
+// examOutcome is one answer-call attempt's exam-stage result: the answer
+// text (nil when every attempt failed), the eval_answers row ID, and the
+// accounting payload.
+type examOutcome struct {
+	answerID     int64
 	answer       *string
-	score        *float64
 	detail       string
 	latencyMs    int
 	inputTokens  *int
 	outputTokens *int
 }
 
-// evalSample executes one answer call plus its verdict. A failed answer call
-// (timeout, connection error, hub 5xx) is retried exactly once, immediately —
-// the 120s request timeout is already the wait (GH #27). The judge call is
-// never retried: a failed judge stays a null score (W7).
-func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case) sampleOutcome {
+// examSample executes one answer call and persists it to eval_answers —
+// before any judge call exists, so a crash never loses a paid completion
+// (ADR 0016). A failed call (timeout, connection error, hub 5xx) is
+// retried exactly once, immediately (GH #27); a canceled context skips
+// the retry.
+func (e *Evaluator) examSample(ctx context.Context, run *store.EvalRun, hub *store.Hub, protocol string, model *store.Model, c store.Case, sampleNo int) examOutcome {
 	res := e.client.Complete(ctx, hub.BaseURL, hub.Token, protocol, model.ModelID, c.Prompt, evalMaxTokens)
 	retried := false
 	if !res.OK && ctx.Err() == nil {
@@ -709,10 +1260,27 @@ func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *sto
 			res.ErrorSummary = retry.ErrorSummary
 		}
 	}
-	out := sampleOutcome{
+	out := examOutcome{
 		latencyMs:    res.LatencyMs,
 		inputTokens:  res.InputTokens,
 		outputTokens: res.OutputTokens,
+	}
+
+	status := store.EvalAnswerAnswered
+	if !res.OK {
+		status = store.EvalAnswerFailed
+	}
+	row := store.EvalAnswer{
+		EvalRunID: run.ID, ModelDBID: model.ID, ModelID: model.ModelID,
+		CaseID: c.ID, SampleNo: sampleNo, Status: status,
+		LatencyMs: res.LatencyMs, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
+	}
+	if res.OK {
+		row.AnswerText = &res.Text
+	}
+	answerID, err := e.db.CreateEvalAnswer(row)
+	if err != nil {
+		slog.Error("evaluator: persist answer", "run_id", run.ID, "case_id", c.ID, "error", err)
 	}
 
 	if !res.OK {
@@ -729,11 +1297,11 @@ func (e *Evaluator) evalSample(ctx context.Context, run *store.EvalRun, hub *sto
 		return out
 	}
 
+	out.answerID = answerID
 	out.answer = &res.Text
-	out.score, out.detail = e.verdict(ctx, hub, protocol, run.JudgeModel, c, res.Text)
+	out.detail = "answered"
 	if retried {
-		// Never claim a first-try success: the detail names the recovery.
-		out.detail += "; answer succeeded on attempt 2 after an initial failure"
+		out.detail = "answered on attempt 2 after an initial failure"
 	}
 	return out
 }
@@ -748,15 +1316,6 @@ func addIntPtr(a, b *int) *int {
 	}
 	sum := *a + *b
 	return &sum
-}
-
-// verdict scores an answer according to the case's verdict type. Rule
-// verdicts run under the current verdict profile (ADR 0008).
-func (e *Evaluator) verdict(ctx context.Context, hub *store.Hub, protocol, judgeModel string, c store.Case, answer string) (*float64, string) {
-	if c.VerdictType == "rule" {
-		return ruleVerdict(c, answer, VerdictProfileCurrent)
-	}
-	return e.judgeVerdict(ctx, hub, protocol, judgeModel, c, answer)
 }
 
 // failAllCases records a failed result (no answer, no score) for every case.

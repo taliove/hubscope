@@ -3,10 +3,13 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/taliove/hubscope/internal/evaluator"
+	"github.com/taliove/hubscope/internal/registry"
 	"github.com/taliove/hubscope/internal/store"
 )
 
@@ -18,8 +21,10 @@ type settingsDTO struct {
 	AlertEnabled          bool               `json:"alert_enabled"`
 	ScoreDropAlertEnabled bool               `json:"score_drop_alert_enabled"`
 	JudgeModel            string             `json:"judge_model"`
+	JuryPolicy            string             `json:"jury_policy"`
 	DefaultSampleCount    int                `json:"default_sample_count"`
 	EvalConcurrency       int                `json:"eval_concurrency"`
+	JudgeConcurrency      int                `json:"judge_concurrency"`
 	EvalCampaignBudgetMin int                `json:"eval_campaign_budget_minutes"`
 	SuiteWeights          map[string]float64 `json:"suite_weights"`
 	// Quiet hours (spec 0017 ticket 4): integer hours 0–23, server-local
@@ -27,23 +32,32 @@ type settingsDTO struct {
 	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
 	QuietHoursStart   int  `json:"quiet_hours_start"`
 	QuietHoursEnd     int  `json:"quiet_hours_end"`
+	// ModelRegistryOverrides carries the administrator corrections to the
+	// built-in model registry (spec 0020 ticket 1); empty when unset or
+	// when the stored value is corrupt (reads fail open to built-ins).
+	ModelRegistryOverrides []registry.Override `json:"model_registry_overrides"`
 }
 
 // settingsPatch is the PUT body: every field is optional; a nil field leaves
 // the stored value unchanged. SuiteWeights is a map: absent (or explicit
 // null) leaves it unchanged, an object replaces the whole weight map.
+// ModelRegistryOverrides follows the same discipline: absent/null leaves it
+// unchanged, an array (including []) replaces the whole override list.
 type settingsPatch struct {
-	LarkWebhookURL        *string            `json:"lark_webhook_url"`
-	AlertEnabled          *bool              `json:"alert_enabled"`
-	ScoreDropAlertEnabled *bool              `json:"score_drop_alert_enabled"`
-	JudgeModel            *string            `json:"judge_model"`
-	DefaultSampleCount    *int               `json:"default_sample_count"`
-	EvalConcurrency       *int               `json:"eval_concurrency"`
-	EvalCampaignBudgetMin *int               `json:"eval_campaign_budget_minutes"`
-	SuiteWeights          map[string]float64 `json:"suite_weights"`
-	QuietHoursEnabled     *bool              `json:"quiet_hours_enabled"`
-	QuietHoursStart       *int               `json:"quiet_hours_start"`
-	QuietHoursEnd         *int               `json:"quiet_hours_end"`
+	LarkWebhookURL         *string             `json:"lark_webhook_url"`
+	AlertEnabled           *bool               `json:"alert_enabled"`
+	ScoreDropAlertEnabled  *bool               `json:"score_drop_alert_enabled"`
+	JudgeModel             *string             `json:"judge_model"`
+	JuryPolicy             *string             `json:"jury_policy"`
+	DefaultSampleCount     *int                `json:"default_sample_count"`
+	EvalConcurrency        *int                `json:"eval_concurrency"`
+	JudgeConcurrency       *int                `json:"judge_concurrency"`
+	EvalCampaignBudgetMin  *int                `json:"eval_campaign_budget_minutes"`
+	SuiteWeights           map[string]float64  `json:"suite_weights"`
+	QuietHoursEnabled      *bool               `json:"quiet_hours_enabled"`
+	QuietHoursStart        *int                `json:"quiet_hours_start"`
+	QuietHoursEnd          *int                `json:"quiet_hours_end"`
+	ModelRegistryOverrides []registry.Override `json:"model_registry_overrides"`
 }
 
 // readSettings loads all settings, applying defaults for keys never written.
@@ -62,10 +76,16 @@ func (s *Server) readSettings() (settingsDTO, error) {
 	if dto.JudgeModel, err = s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel); err != nil {
 		return dto, err
 	}
+	if dto.JuryPolicy, err = s.db.GetSetting(store.SettingJuryPolicy, store.DefaultJuryPolicy); err != nil {
+		return dto, err
+	}
 	if dto.DefaultSampleCount, err = s.db.GetSettingInt(store.SettingDefaultSampleCount, store.DefaultSampleCount); err != nil {
 		return dto, err
 	}
 	if dto.EvalConcurrency, err = s.db.GetSettingInt(store.SettingEvalConcurrency, store.DefaultEvalConcurrency); err != nil {
+		return dto, err
+	}
+	if dto.JudgeConcurrency, err = s.db.GetSettingInt(store.SettingJudgeConcurrency, store.DefaultJudgeConcurrency); err != nil {
 		return dto, err
 	}
 	if dto.EvalCampaignBudgetMin, err = s.db.GetSettingInt(store.SettingEvalCampaignBudgetMin, store.DefaultEvalCampaignBudgetMin); err != nil {
@@ -82,6 +102,21 @@ func (s *Server) readSettings() (settingsDTO, error) {
 	}
 	if dto.QuietHoursEnd, err = s.db.GetSettingInt(store.SettingQuietHoursEnd, store.DefaultQuietHoursEnd); err != nil {
 		return dto, err
+	}
+	rawOverrides, err := s.db.GetSetting(store.SettingModelRegistryOverrides, "")
+	if err != nil {
+		return dto, err
+	}
+	overrides, err := registry.ParseOverrides(rawOverrides)
+	if err != nil {
+		// A hand-edited corrupt value must never break settings reads (the
+		// GetSuiteWeights precedent): fall back to the built-in table.
+		slog.Error("settings: corrupt model_registry_overrides, ignoring", "error", err)
+		overrides = nil
+	}
+	dto.ModelRegistryOverrides = overrides
+	if dto.ModelRegistryOverrides == nil {
+		dto.ModelRegistryOverrides = []registry.Override{}
 	}
 	return dto, nil
 }
@@ -118,6 +153,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		(*patch.EvalConcurrency < 1 || *patch.EvalConcurrency > store.MaxEvalConcurrency) {
 		writeError(w, http.StatusBadRequest,
 			fmt.Sprintf("eval_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
+		return
+	}
+
+	if patch.JudgeConcurrency != nil &&
+		(*patch.JudgeConcurrency < 1 || *patch.JudgeConcurrency > store.MaxEvalConcurrency) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("judge_concurrency must be between 1 and %d", store.MaxEvalConcurrency))
 		return
 	}
 
@@ -165,6 +207,19 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if patch.ModelRegistryOverrides != nil {
+		if err := registry.Validate(patch.ModelRegistryOverrides); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid model_registry_overrides: "+err.Error())
+			return
+		}
+	}
+
+	if patch.JuryPolicy != nil && *patch.JuryPolicy != "" && !evaluator.ValidJuryPolicy(*patch.JuryPolicy) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("jury_policy must be one of balanced, speed, iq, cost; got %q", *patch.JuryPolicy))
+		return
+	}
+
 	updates := []struct {
 		key   string
 		apply func() error
@@ -181,11 +236,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingJudgeModel, func() error {
 			return s.db.SetSetting(store.SettingJudgeModel, *patch.JudgeModel)
 		}},
+		{store.SettingJuryPolicy, func() error {
+			return s.db.SetSetting(store.SettingJuryPolicy, *patch.JuryPolicy)
+		}},
 		{store.SettingDefaultSampleCount, func() error {
 			return s.db.SetSettingInt(store.SettingDefaultSampleCount, *patch.DefaultSampleCount)
 		}},
 		{store.SettingEvalConcurrency, func() error {
 			return s.db.SetSettingInt(store.SettingEvalConcurrency, *patch.EvalConcurrency)
+		}},
+		{store.SettingJudgeConcurrency, func() error {
+			return s.db.SetSettingInt(store.SettingJudgeConcurrency, *patch.JudgeConcurrency)
 		}},
 		{store.SettingEvalCampaignBudgetMin, func() error {
 			return s.db.SetSettingInt(store.SettingEvalCampaignBudgetMin, *patch.EvalCampaignBudgetMin)
@@ -202,19 +263,29 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		{store.SettingQuietHoursEnd, func() error {
 			return s.db.SetSettingInt(store.SettingQuietHoursEnd, *patch.QuietHoursEnd)
 		}},
+		{store.SettingModelRegistryOverrides, func() error {
+			raw, err := json.Marshal(patch.ModelRegistryOverrides)
+			if err != nil {
+				return err
+			}
+			return s.db.SetSetting(store.SettingModelRegistryOverrides, string(raw))
+		}},
 	}
 	present := []bool{
 		patch.LarkWebhookURL != nil,
 		patch.AlertEnabled != nil,
 		patch.ScoreDropAlertEnabled != nil,
 		patch.JudgeModel != nil,
+		patch.JuryPolicy != nil,
 		patch.DefaultSampleCount != nil,
 		patch.EvalConcurrency != nil,
+		patch.JudgeConcurrency != nil,
 		patch.EvalCampaignBudgetMin != nil,
 		patch.SuiteWeights != nil,
 		patch.QuietHoursEnabled != nil,
 		patch.QuietHoursStart != nil,
 		patch.QuietHoursEnd != nil,
+		patch.ModelRegistryOverrides != nil,
 	}
 	for i, u := range updates {
 		if !present[i] {

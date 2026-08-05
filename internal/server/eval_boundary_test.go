@@ -56,16 +56,17 @@ func TestRetiredModelSkippedFromEval(t *testing.T) {
 	}
 	stub.resetCalls()
 
-	// In-flight state observed: the first cell wave is smart-model's four
-	// suite cells (GH #169 model-major order: every suite of model 1
-	// before model 2's first cell), blocked on the stub gate when the
+	// In-flight state observed: the probe stage's six rounds (3 per model,
+	// GH #174) pass the count-based gate, then the first cell wave —
+	// smart-model's four suite cells (GH #169 model-major order: every
+	// suite of model 1 before model 2's first cell) — blocks when the
 	// ghost retires; every ghost cell starts only after the delete.
-	stub.blockCalls()
-	t.Cleanup(stub.release)
+	stub.blockCallsAfter(6)
+	t.Cleanup(stub.releaseGlobal)
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
 	waitFor(t, "first wave blocked in flight", func() bool {
-		return stub.grandTotalCalls() >= 4
+		return stub.grandTotalCalls() >= 10
 	})
 
 	delResp := doDelete(t, fmt.Sprintf("%s/api/models/%d", ts.URL, ghostID))
@@ -75,18 +76,19 @@ func TestRetiredModelSkippedFromEval(t *testing.T) {
 	}
 
 	// Drain (ticket 100): terminal status covers every tail write.
-	stub.release()
+	stub.releaseGlobal()
 	final := waitCampaignStatus(t, ts.URL, campaignID, store.CampaignStatusDone, store.CampaignStatusFailed)
 	if final["status"] != store.CampaignStatusDone {
 		t.Fatalf("campaign status = %v, want done (skipped cells still execute)", final["status"])
 	}
-	// Every ghost cell starts after the retirement and places no call;
+	// Every ghost cell starts after the retirement and places no case call
+	// — only the probe stage's three rounds reached it (GH #174);
 	// smart-model answers all five suites.
-	if got := stub.callTotal("ghost-model"); got != 0 {
-		t.Errorf("ghost model calls = %d, want 0 (all its cells start after the retirement)", got)
+	if got := stub.callTotal("ghost-model"); got != 3 {
+		t.Errorf("ghost model calls = %d, want 3 (probe rounds only; all its cells start after the retirement)", got)
 	}
-	if got := stub.callTotal("smart-model"); got != 5 {
-		t.Errorf("smart model calls = %d, want 5 (all suites)", got)
+	if got := stub.callTotal("smart-model"); got != 8 {
+		t.Errorf("smart model calls = %d, want 8 (3 probe rounds + all five suites)", got)
 	}
 }
 
@@ -155,12 +157,13 @@ func TestRetrySkipsDisabledCase(t *testing.T) {
 	}
 
 	// Exactly one answer + one judge call: case B only. Case A's prompt
-	// never reaches the Hub again.
-	if got := stub.callTotal("smart-model"); got != 1 {
-		t.Errorf("answer calls after retry = %d, want 1 (case B only)", got)
+	// never reaches the Hub again. The jury is the subject itself (GH #175:
+	// the only candidate on its hub), so both calls land on smart-model.
+	if got := stub.callTotal("smart-model"); got != 2 {
+		t.Errorf("smart-model calls after retry = %d, want 2 (1 answer + 1 judge, case B only)", got)
 	}
-	if got := stub.callTotal(store.DefaultJudgeModel); got != 1 {
-		t.Errorf("judge calls after retry = %d, want 1 (case B only)", got)
+	if got := stub.callTotal(store.DefaultJudgeModel); got != 0 {
+		t.Errorf("legacy judge calls after retry = %d, want 0 (the jury replaced judge_model)", got)
 	}
 
 	run = waitEvalDone(t, ts.URL, runID)

@@ -183,23 +183,25 @@ func TestEvalModelMajorCellOrder(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "chat-two")
 
 	stub.resetCalls()
-	stub.blockModel("smart-model")
+	// The count-based gate lets smart-model's three probe-gate rounds
+	// through (GH #174) and freezes its first case call.
+	stub.blockModelAfter("smart-model", 3)
 	t.Cleanup(func() { stub.releaseModel("smart-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
 
 	waitFor(t, "four smart-model cells filling the pool", func() bool {
-		return stub.callTotal("smart-model") >= 4
+		return stub.callTotal("smart-model") >= 7
 	})
 	// The pool holds exactly four cells — all blocked on smart-model's gate,
 	// all model 1's. The fifth smart-model cell cannot start (no free
-	// worker), so the count stays at the pool capacity.
-	if got := stub.callTotal("smart-model"); got != 4 {
-		t.Errorf("smart-model calls at freeze = %d, want 4 (pool capacity, all model-1 cells)", got)
+	// worker), so the case-call count stays at the pool capacity.
+	if got := stub.callTotal("smart-model"); got != 7 {
+		t.Errorf("smart-model calls at freeze = %d, want 7 (3 probe rounds + pool capacity, all model-1 cells)", got)
 	}
-	if got := stub.callTotal("chat-two"); got != 0 {
-		t.Errorf("chat-two calls at freeze = %d, want 0 (model 2 must not start before model 1's suites)", got)
+	if got := stub.callTotal("chat-two"); got != 3 {
+		t.Errorf("chat-two calls at freeze = %d, want 3 (probe rounds only — model 2 must not start before model 1's suites)", got)
 	}
 
 	stub.releaseModel("smart-model")
@@ -243,10 +245,10 @@ func TestCancelStopsNewCells(t *testing.T) {
 	// Freeze the last call of smart-model's first cell: with the pool at 1
 	// and model-major order (GH #169), smart-model's agieval_zh cell is next
 	// in line, and the blocked call guarantees the cancel lands before the
-	// worker could take it. The first run covers mmlu (first suite in bank
-	// order), so the cell costs exactly its enabled-case count of calls.
+	// worker could take it. The probe stage's three rounds (GH #174) sit in
+	// front of the cell's enabled-case count of calls.
 	firstCellCalls := enabledCaseCount(t, ts.URL, suiteIDByKey(t, ts.URL, "mmlu"))
-	stub.blockModelAfter("smart-model", firstCellCalls-1)
+	stub.blockModelAfter("smart-model", 3+firstCellCalls-1)
 	t.Cleanup(func() { stub.releaseModel("smart-model") })
 
 	clock := scheduler.NewFakeClock(time.Date(2026, 7, 19, 1, 30, 0, 0, time.UTC)) // a Sunday
@@ -269,7 +271,7 @@ func TestCancelStopsNewCells(t *testing.T) {
 	})
 
 	waitFor(t, "smart-model's last mmlu call reaching the stub", func() bool {
-		return stub.callTotal("smart-model") >= firstCellCalls
+		return stub.callTotal("smart-model") >= 3+firstCellCalls
 	})
 	cancel()
 	stub.releaseModel("smart-model")
@@ -281,11 +283,11 @@ func TestCancelStopsNewCells(t *testing.T) {
 	})
 	campaigns := listCampaigns(t, ts.URL)
 	campaignID := int64(campaigns[0]["id"].(float64))
-	if got := stub.callTotal("smart-model"); got != firstCellCalls {
-		t.Errorf("smart-model calls = %d, want %d (a canceled pool must not take new cells)", got, firstCellCalls)
+	if got := stub.callTotal("smart-model"); got != 3+firstCellCalls {
+		t.Errorf("smart-model calls = %d, want %d (3 probe rounds + first cell; a canceled pool must not take new cells)", got, 3+firstCellCalls)
 	}
-	if got := stub.callTotal("chat-two"); got != 0 {
-		t.Errorf("chat-two calls = %d, want 0 (model 2's cells come last under model-major order)", got)
+	if got := stub.callTotal("chat-two"); got != 3 {
+		t.Errorf("chat-two calls = %d, want 3 (probe rounds only — model 2's cells come last under model-major order)", got)
 	}
 
 	// A stolen smart-model agieval_zh cell would have persisted null results

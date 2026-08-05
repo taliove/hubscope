@@ -133,6 +133,7 @@
           >
           <span class="model">
             <span class="model-line">
+              <VendorTile :family="row.family" />
               <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
               <el-tag size="small" effect="plain" class="family-tag">{{ row.family }}</el-tag>
             </span>
@@ -145,13 +146,14 @@
           </span>
           <!-- Total column: xl ink number, NEVER band-colored — hierarchy
                comes from size and the thicker 6px bar, not color. In live
-               mode the track stays empty and uncolored so a half-scored
-               total can never read as a bad grade (spec 0004 mirror). -->
+               mode the track is hidden entirely: an always-empty grey bar
+               read as a broken widget (2026-08-04 review, superseding the
+               spec-0004 empty-track mirror). -->
           <span class="total">
             <span class="total-value">{{ formatScore(row.total_score) }}</span>
-            <span class="total-track">
+            <span v-if="!live" class="total-track">
               <span
-                v-if="!live && row.total_score !== null"
+                v-if="row.total_score !== null"
                 class="total-fill"
                 :class="`band-${scoreBand(row.total_score)}`"
                 :style="{ width: totalWidth(row.total_score) }"
@@ -174,11 +176,8 @@
             :clickable="cellDrilldown"
             @activate="emit('cellSelect', { row, suiteKey: s.key })"
           />
-          <span v-if="live" class="live-note">
-            <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
-            <span v-if="countsOf(row).failed > 0" class="live-failed"
-              >{{ countsOf(row).inFlight > 0 ? '· ' : '' }}{{ countsOf(row).failed }} 个失败</span
-            >
+          <span v-if="live && countsOf(row).failed > 0" class="live-note">
+            <span class="live-failed">{{ countsOf(row).failed }} 个失败</span>
           </span>
         </div>
       </div>
@@ -213,12 +212,13 @@
             }"
             >{{ live ? liveRankText(row.total_score, index) : row.complete === false ? '–' : index + 1 }}</span
           >
+          <VendorTile :family="row.family" />
           <span class="model-name" :title="row.model_id">{{ row.model_id }}</span>
           <span class="total">
             <span class="total-value">{{ formatScore(row.total_score) }}</span>
-            <span class="total-track">
+            <span v-if="!live" class="total-track">
               <span
-                v-if="!live && row.total_score !== null"
+                v-if="row.total_score !== null"
                 class="total-fill"
                 :class="`band-${scoreBand(row.total_score)}`"
                 :style="{ width: totalWidth(row.total_score) }"
@@ -255,11 +255,8 @@
         </div>
 
         <!-- Live mode row-end note (same as matrix) -->
-        <div v-if="live" class="live-note">
-          <template v-if="countsOf(row).inFlight > 0">{{ countsOf(row).inFlight }} 个维度进行中</template>
-          <span v-if="countsOf(row).failed > 0" class="live-failed"
-            >{{ countsOf(row).inFlight > 0 ? '· ' : '' }}{{ countsOf(row).failed }} 个失败</span
-          >
+        <div v-if="live && countsOf(row).failed > 0" class="live-note">
+          <span class="live-failed">{{ countsOf(row).failed }} 个失败</span>
         </div>
       </div>
     </div>
@@ -278,6 +275,7 @@ import { Share } from '@element-plus/icons-vue'
 import { formatScore, formatScoreDelta } from '@/utils/format'
 import type { CampaignReport, ReportCell, ReportRow } from '@/api/types'
 import ScoreCell from '@/components/ScoreCell.vue'
+import VendorTile from '@/components/VendorTile.vue'
 import EvalShareDialog from '@/components/EvalShareDialog.vue'
 import { scoreBand, liveCounts, liveRankText } from '@/utils/scoreTier'
 import { nextSortKey } from '@/utils/sortHeader'

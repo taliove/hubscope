@@ -1,15 +1,30 @@
 // Settings and alert-events API calls.
 import { http } from './client'
 
+// One administrator correction to the built-in model registry (spec 0020
+// ticket 1): match is an exact model ID or a prefix with a trailing '*';
+// unset fields keep the built-in values (field-level merge).
+export interface ModelRegistryOverride {
+  match: string
+  iq_tier?: number
+  price_in?: number
+  price_out?: number
+}
+
 export interface AppSettings {
   lark_webhook_url: string
   alert_enabled: boolean
   score_drop_alert_enabled: boolean
   judge_model: string
+  // Jury ranking strategy (spec 0020 / GH #175).
+  jury_policy: 'balanced' | 'speed' | 'iq' | 'cost'
   default_sample_count: number
   // Eval worker-pool size: how many (suite × model) cells run at once
   // (GH #26); 1-16, default 4.
   eval_concurrency: number
+  // Judge-stage worker-pool size of the decoupled pipeline (GH #176);
+  // 1-16, default follows eval_concurrency.
+  judge_concurrency: number
   // Campaign wall-clock budget in minutes (GH #153): a batch outliving it
   // drops unstarted cells and settles failed; 0 disables. Default 120.
   eval_campaign_budget_minutes: number
@@ -23,6 +38,9 @@ export interface AppSettings {
   quiet_hours_enabled: boolean
   quiet_hours_start: number
   quiet_hours_end: number
+  // Administrator corrections to the built-in model registry (spec 0020
+  // ticket 1); empty when unset.
+  model_registry_overrides: ModelRegistryOverride[]
 }
 
 export type UpdateSettingsPayload = Partial<AppSettings>

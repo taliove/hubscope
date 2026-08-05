@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
@@ -95,6 +96,26 @@ func WithNow(now func() time.Time) Option {
 func WithAlertClock(clock scheduler.Clock) Option {
 	return func(s *Server) {
 		s.alerter.UseClock(clock)
+	}
+}
+
+// WithEvalClock drives the evaluator's timers (the jury-confirmation
+// countdown) off the given clock — tests advance a scheduler.FakeClock
+// instead of waiting out the real 60s (W4).
+func WithEvalClock(clock scheduler.Clock) Option {
+	return func(s *Server) {
+		s.evaluator.NewConfirmTimer = func(d time.Duration) evaluator.ConfirmTimer {
+			return clock.NewTimer(d)
+		}
+	}
+}
+
+// WithJuryConfirmTimeout enables the manual-batch jury confirmation gate
+// (2026-08-04 ruling) with the given auto-start timeout. Production wires
+// 60s; the default (0) keeps the gate off so tests opt in explicitly.
+func WithJuryConfirmTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		s.evaluator.ConfirmTimeout = d
 	}
 }
 
@@ -235,6 +256,10 @@ func New(db *store.DB, opts ...Option) *Server {
 	// invalidate the overview on completion — they create, retire and
 	// reactivate models and endpoints.
 	s.discovery.AfterSync = func(hubID int64) { s.InvalidateOverview() }
+	// Crash recovery (GH #176): drain judge work a dead process left
+	// behind. store.Open has already stamped the interrupted runs failed;
+	// this rescues their suppressed case results before traffic starts.
+	s.evaluator.RecoverInterruptedRuns(context.Background())
 	// Brute-force login alerts fire through the same single Evaluator
 	// instance (W5), throttled by the server-side tracker.
 	s.loginAlertTracker = newLoginAlertTracker(defaultLoginAlertPolicy(), s.alerter.HandleLoginFailures)
@@ -356,6 +381,8 @@ func (s *Server) routes() chi.Router {
 				r.Post("/campaigns/{id}/retry-failed", s.handleRetryCampaignFailed)
 				r.Post("/campaigns/{id}/retry-units", s.handleRetryCampaignUnits)
 				r.Post("/campaigns/{id}/cancel", s.handleCancelCampaign)
+				r.Post("/campaigns/{id}/confirm-jury", s.handleConfirmJury)
+				r.Post("/campaigns/{id}/restart", s.handleRestartCampaign)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})

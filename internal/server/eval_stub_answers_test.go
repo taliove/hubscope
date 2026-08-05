@@ -15,6 +15,18 @@ import "strings"
 // samples.
 func (h *evalStubHub) answerFor(model, prompt string) string {
 	if strings.Contains(prompt, "你是评估裁判") {
+		h.mu.Lock()
+		seq := h.judgeSeqFor[model]
+		h.mu.Unlock()
+		if len(seq) > 0 {
+			text := seq[0]
+			if len(seq) > 1 {
+				h.mu.Lock()
+				h.judgeSeqFor[model] = seq[1:]
+				h.mu.Unlock()
+			}
+			return text
+		}
 		if text, ok := h.nextSeq(h.judgeSeq, prompt); ok {
 			return text
 		}

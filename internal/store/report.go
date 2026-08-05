@@ -107,7 +107,8 @@ func (db *DB) CampaignCostTotals(campaignID int64) (CampaignCostTotals, error) {
 // — the report page's per-(model, suite-run) detail table. InputTokens and
 // OutputTokens stay nil when the model recorded no token at all in the run
 // (the detail table renders a dash), while the batch and cell sums count
-// those same nulls as 0.
+// those same nulls as 0. AvgTPS is the run's mean output speed over
+// answered samples (GH #178); nil when the model produced no answer.
 type CampaignCostRow struct {
 	ModelID      string
 	SuiteKey     string
@@ -116,6 +117,7 @@ type CampaignCostRow struct {
 	LatencyMs    int64
 	InputTokens  *int64
 	OutputTokens *int64
+	AvgTPS       *float64
 }
 
 // ListCampaignCostRows aggregates a campaign's cost per (run, model), the
@@ -126,7 +128,10 @@ func (db *DB) ListCampaignCostRows(campaignID int64) ([]CampaignCostRow, error) 
 	rows, err := db.conn.Query(`
 		SELECT res.model_id, s.key, s.name, r.status,
 			COALESCE(SUM(res.latency_ms), 0),
-			SUM(res.input_tokens), SUM(res.output_tokens)
+			SUM(res.input_tokens), SUM(res.output_tokens),
+			(SELECT CAST(SUM(a.output_tokens) AS REAL) * 1000 / NULLIF(SUM(a.latency_ms), 0)
+			 FROM eval_answers a
+			 WHERE a.eval_run_id = r.id AND a.model_db_id = res.model_db_id AND a.status = 'answered')
 		FROM eval_runs r
 		JOIN eval_results res ON res.eval_run_id = r.id
 		JOIN suites s ON s.id = r.suite_id
@@ -144,7 +149,7 @@ func (db *DB) ListCampaignCostRows(campaignID int64) ([]CampaignCostRow, error) 
 	for rows.Next() {
 		var cr CampaignCostRow
 		if err := rows.Scan(&cr.ModelID, &cr.SuiteKey, &cr.SuiteName, &cr.RunStatus,
-			&cr.LatencyMs, &cr.InputTokens, &cr.OutputTokens); err != nil {
+			&cr.LatencyMs, &cr.InputTokens, &cr.OutputTokens, &cr.AvgTPS); err != nil {
 			return nil, err
 		}
 		out = append(out, cr)
@@ -191,13 +196,26 @@ func (db *DB) CampaignVerdictProfiles(campaignID int64) (map[int64]string, error
 // (unjudged cases) never enter the average — SQLite AVG skips NULLs, the
 // same convention as the read-time run aggregation.
 func (db *DB) ListCampaignSuiteScores(campaignID int64) ([]CampaignSuiteScore, error) {
+	return db.listCampaignSuiteScores(campaignID, "r.status = 'done'")
+}
+
+// ListCampaignLiveSuiteScores additionally counts running runs (GH #179,
+// 2026-08-04 UX ruling): a model's partial suite score is visible as soon
+// as its first case settles — "跑了一题就算分". The cells' coverage markers
+// already name the judging denominator, so the partial mean never poses as
+// complete.
+func (db *DB) ListCampaignLiveSuiteScores(campaignID int64) ([]CampaignSuiteScore, error) {
+	return db.listCampaignSuiteScores(campaignID, "r.status IN ('done', 'running')")
+}
+
+func (db *DB) listCampaignSuiteScores(campaignID int64, statusFilter string) ([]CampaignSuiteScore, error) {
 	rows, err := db.conn.Query(`
 		SELECT res.model_db_id, res.model_id, m.family, s.key, AVG(res.score)
 		FROM eval_runs r
 		JOIN eval_results res ON res.eval_run_id = r.id
 		JOIN suites s ON s.id = r.suite_id
 		JOIN models m ON m.id = res.model_db_id
-		WHERE r.campaign_id = ? AND r.status = 'done' AND m.status != 'retired'
+		WHERE r.campaign_id = ? AND `+statusFilter+` AND m.status != 'retired'
 		GROUP BY res.model_db_id, r.suite_id
 		ORDER BY res.model_db_id, r.suite_id
 	`, campaignID)

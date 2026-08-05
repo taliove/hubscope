@@ -90,6 +90,13 @@ import type { Campaign, EvalRun, Model, Suite } from '@/api/types'
 // the tracked campaign, and the campaign-grouped run history. The panel
 // fetches its own data so the admin view's resource data flow stays
 // untouched; a settled campaign reloads everything.
+const emit = defineEmits<{
+  // A fresh batch was accepted: the parent switches to the live board so
+  // the probe gate and both queues are visible from the first second
+  // (2026-08-04 UX ruling — never trigger-and-nothing-happens).
+  triggered: [campaign: Campaign]
+}>()
+
 const suites = ref<Suite[]>([])
 const models = ref<Model[]>([])
 const runs = ref<EvalRun[]>([])
@@ -182,6 +189,7 @@ async function reload() {
 function startTracking(campaign: Campaign) {
   trackedCampaign.value = campaign
   tracking.value = true
+  emit('triggered', campaign)
   stopPolling()
   pollHandle = createVisibilityPoll(
     async () => {
@@ -225,7 +233,7 @@ async function onCancelTracked() {
   if (!campaign) return
   try {
     await ElMessageBox.confirm(
-      `将停止批次 #${campaign.id}:未开始的评估单元放弃,在飞的跑完后批次判失败;已判分结果保留。`,
+      `将停止批次 #${campaign.id}:未开始的题目放弃,正在进行的跑完后批次判失败;已判分结果保留。`,
       '取消批次',
       { confirmButtonText: '停止批次', cancelButtonText: '返回', type: 'warning' },
     )

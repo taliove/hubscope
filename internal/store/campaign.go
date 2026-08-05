@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -326,6 +327,89 @@ func (db *DB) ReopenCampaignForUnitRetry(id int64, units []RetryUnit) (bool, err
 	return true, nil
 }
 
+// ReopenCampaignForUnitRetryAny is the retry-any (2026-08-04 ruling)
+// variant of ReopenCampaignForUnitRetry: runs holding at least one
+// requested unit rejoin execution regardless of the unit's score — the
+// operator asked to re-answer and re-judge those answers. The state-guard
+// race semantics are unchanged.
+func (db *DB) ReopenCampaignForUnitRetryAny(id int64, units []RetryUnit) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	where, args := retryUnitWhere("res", units)
+	if _, err := tx.Exec(`
+		UPDATE eval_runs SET status = 'running', finished_at = NULL
+		WHERE campaign_id = ? AND status IN ('done', 'failed')
+		AND EXISTS (
+			SELECT 1 FROM eval_results res
+			WHERE res.eval_run_id = eval_runs.id
+			AND (`+where+`)
+		)
+	`, append([]interface{}{id}, args...)...); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ReopenCampaignRuns reopens a settled campaign and the listed runs for a
+// resume (2026-08-05 ruling): only runs with incomplete cells rejoin
+// execution, so fully completed runs keep their terminal state (the GH #39
+// guard). Returns false when the campaign was not settled — a concurrent
+// resume loses the race instead of double-firing.
+func (db *DB) ReopenCampaignRuns(id int64, runIDs []int64) (bool, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`
+		UPDATE campaigns SET status = ?, finished_at = NULL
+		WHERE id = ? AND status IN (?, ?)
+	`, CampaignStatusRunning, id, CampaignStatusDone, CampaignStatusFailed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	if len(runIDs) > 0 {
+		placeholders := make([]string, len(runIDs))
+		args := make([]interface{}, 0, len(runIDs)+1)
+		args = append(args, id)
+		for i, rid := range runIDs {
+			placeholders[i] = "?"
+			args = append(args, rid)
+		}
+		if _, err := tx.Exec(`
+			UPDATE eval_runs SET status = 'running', finished_at = NULL
+			WHERE campaign_id = ? AND status IN ('done', 'failed') AND id IN (`+strings.Join(placeholders, ",")+`)
+		`, args...); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CountCampaignNullScoreResults counts the campaign's failed results — the
 // eval_results rows whose score IS NULL across every member run (GH #28). It
 // is the retry-failed precondition and the report's failed_results field.
@@ -411,7 +495,7 @@ func (db *DB) HasUnfinishedCampaign() (bool, error) {
 // campaigns serve as baselines, matching the reporting unit semantics.
 func (db *DB) PreviousDoneCampaignRun(campaignID, suiteID int64) (*EvalRun, error) {
 	r, err := scanEvalRun(db.conn.QueryRow(`
-		SELECT r.id, r.campaign_id, r.suite_id, r.suite_version, r.nadir, r."trigger", r.judge_model, r.status, r.started_at, r.finished_at
+		SELECT r.id, r.campaign_id, r.suite_id, r.suite_version, r.nadir, r."trigger", r.judge_model, r.status, r.started_at, r.finished_at, r.jury_models, r.estimated_cost
 		FROM eval_runs r
 		JOIN campaigns c ON c.id = r.campaign_id
 		WHERE c.status = ? AND r.status = 'done' AND r.suite_id = ? AND r.campaign_id < ?

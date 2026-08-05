@@ -113,7 +113,8 @@ func TestOverviewGrouping(t *testing.T) {
 
 	payload := fetchGroupedOverview(t, ts.URL)
 
-	// Entries carry both classification dimensions.
+	// Entries carry both classification dimensions; Ping (image) and
+	// disabled endpoints no longer appear at all (2026-08-05 ruling).
 	byID := map[int64]overviewEntry{}
 	for _, e := range payload.Endpoints {
 		byID[e.EndpointID] = e
@@ -124,19 +125,20 @@ func TestOverviewGrouping(t *testing.T) {
 	if cap := byID[e5].Capability; cap != "chat" {
 		t.Errorf("e5 capability: expected chat, got %q", cap)
 	}
-	if cap := byID[e3].Capability; cap != "image" {
-		t.Errorf("e3 capability: expected image, got %q", cap)
+	if _, present := byID[e3]; present {
+		t.Error("e3 (Ping/image endpoint) must not appear on the overview")
+	}
+	if _, present := byID[e6]; present {
+		t.Error("e6 (disabled) must not appear on the overview")
 	}
 
 	// Family groups.
 	gpt := findGroup(t, payload.ByFamily, "gpt")
-	if gpt.EndpointCount != 4 {
-		t.Errorf("gpt endpoints: expected 4, got %d", gpt.EndpointCount)
+	if gpt.EndpointCount != 2 {
+		t.Errorf("gpt endpoints: expected 2 (Ping endpoints excluded), got %d", gpt.EndpointCount)
 	}
-	// spec 0018 T1: Ping endpoints (gpt-image-2's images_*) stay group members
-	// but bucket as "unverified", separate from the health counts.
-	if gpt.StatusCounts["degraded"] != 1 || gpt.StatusCounts["healthy"] != 1 || gpt.StatusCounts["unverified"] != 2 {
-		t.Errorf("gpt status counts: expected degraded=1 healthy=1 unverified=2, got %v", gpt.StatusCounts)
+	if gpt.StatusCounts["degraded"] != 1 || gpt.StatusCounts["healthy"] != 1 || len(gpt.StatusCounts) != 2 {
+		t.Errorf("gpt status counts: expected degraded=1 healthy=1 only, got %v", gpt.StatusCounts)
 	}
 	if gpt.Availability24h == nil || !approxEq(*gpt.Availability24h, 0.8) {
 		t.Errorf("gpt availability: expected 0.8, got %v", gpt.Availability24h)
@@ -146,8 +148,8 @@ func TestOverviewGrouping(t *testing.T) {
 	}
 
 	qwenG := findGroup(t, payload.ByFamily, "qwen")
-	if qwenG.StatusCounts["failing"] != 1 || qwenG.StatusCounts["disabled"] != 1 {
-		t.Errorf("qwen status counts: expected failing=1 disabled=1, got %v", qwenG.StatusCounts)
+	if qwenG.EndpointCount != 1 || qwenG.StatusCounts["failing"] != 1 || len(qwenG.StatusCounts) != 1 {
+		t.Errorf("qwen group: expected only failing=1 (disabled e6 excluded), got %+v", qwenG)
 	}
 	// 0.5 from e5 alone; e6's failed probe must not dilute the metric.
 	if qwenG.Availability24h == nil || !approxEq(*qwenG.Availability24h, 0.5) {
@@ -156,12 +158,12 @@ func TestOverviewGrouping(t *testing.T) {
 
 	// Capability groups.
 	chat := findGroup(t, payload.ByCapability, "chat")
-	if chat.EndpointCount != 4 {
-		t.Errorf("chat endpoints: expected 4, got %d", chat.EndpointCount)
+	if chat.EndpointCount != 3 {
+		t.Errorf("chat endpoints: expected 3 (disabled excluded), got %d", chat.EndpointCount)
 	}
-	want := map[string]int{"degraded": 1, "healthy": 1, "failing": 1, "disabled": 1}
+	want := map[string]int{"degraded": 1, "healthy": 1, "failing": 1}
 	for k, v := range want {
-		if chat.StatusCounts[k] != v {
+		if chat.StatusCounts[k] != v || len(chat.StatusCounts) != 3 {
 			t.Errorf("chat status counts: expected %v, got %v", want, chat.StatusCounts)
 			break
 		}
@@ -170,14 +172,11 @@ func TestOverviewGrouping(t *testing.T) {
 		t.Errorf("chat availability: expected 0.667, got %v", chat.Availability24h)
 	}
 
-	image := findGroup(t, payload.ByCapability, "image")
-	// spec 0018 T1: image endpoints are Ping-monitored — no probe samples, so
-	// the group buckets them as unverified with null metrics (no 24h data).
-	if image.EndpointCount != 2 || image.StatusCounts["unverified"] != 2 {
-		t.Errorf("image group: expected 2 unverified endpoints, got %+v", image)
-	}
-	if image.Availability24h != nil || image.AvgLatencyMs != nil {
-		t.Errorf("image group has no 24h data: expected null metrics, got %+v", image)
+	// The all-Ping image capability vanishes from the board entirely.
+	for _, g := range payload.ByCapability {
+		if g.Key == "image" {
+			t.Errorf("image group must vanish when every member is unverified, got %+v", g)
+		}
 	}
 }
 

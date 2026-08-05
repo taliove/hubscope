@@ -217,6 +217,45 @@ func (db *DB) migrate() error {
 		-- GH #150: ListModelTrend filters eval_results by model_db_id.
 		CREATE INDEX IF NOT EXISTS idx_eval_results_model ON eval_results(model_db_id);
 
+	-- Spec 0020 (ADR 0016): decoupled eval pipeline persistence. Answers
+	-- land here before entering the judge queue, so a crash mid-judging
+	-- never loses paid completions; judge scores carry one row per
+	-- (answer, jury slot) with NULL score for a failed judge call (W7).
+	CREATE TABLE IF NOT EXISTS eval_answers (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		eval_run_id INTEGER NOT NULL,
+		model_db_id INTEGER NOT NULL,
+		model_id TEXT NOT NULL,
+		case_id INTEGER NOT NULL,
+		sample_no INTEGER NOT NULL,
+		attempt INTEGER NOT NULL DEFAULT 1,
+		status TEXT NOT NULL,
+		answer_text TEXT,
+		latency_ms INTEGER NOT NULL DEFAULT 0,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id)
+	);
+
+	-- Not unique: retry-failed re-answers a cell as a new attempt row.
+	CREATE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no);
+
+	CREATE TABLE IF NOT EXISTS eval_judge_scores (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		answer_id INTEGER NOT NULL,
+		slot INTEGER NOT NULL,
+		judge_model TEXT NOT NULL,
+		score REAL,
+		latency_ms INTEGER NOT NULL DEFAULT 0,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (answer_id) REFERENCES eval_answers(id)
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_judge_scores_slot ON eval_judge_scores(answer_id, slot);
+
 		CREATE TABLE IF NOT EXISTS settings (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -405,6 +444,36 @@ func (db *DB) migrate() error {
 	if err := db.ensureColumn("eval_runs", "campaign_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// GH #173 (spec 0020, ADR 0016): the run snapshots its jury (JSON:
+	// policy + slot model IDs; NULL = a pre-jury single-judge run) and
+	// accumulates the estimated cost (NULL = some component's price is not
+	// registered). Both nullable — historical runs need no backfill.
+	if err := db.ensureColumn("eval_runs", "jury_models", "TEXT NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_runs", "estimated_cost", "REAL NULL"); err != nil {
+		return err
+	}
+	// GH #176: retry-failed re-answers a cell as a new attempt, so the
+	// answers cell index must not be unique. The unique index only ever
+	// shipped on the spec-0020 development branch, but dropping it here is
+	// idempotent insurance for databases created from it.
+	if _, err := db.conn.Exec("DROP INDEX IF EXISTS idx_eval_answers_cell"); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec("CREATE INDEX IF NOT EXISTS idx_eval_answers_cell ON eval_answers(eval_run_id, model_db_id, case_id, sample_no)"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_answers", "attempt", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	// GH #179: judge-call token usage for per-judge cost accounting.
+	if err := db.ensureColumn("eval_judge_scores", "input_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("eval_judge_scores", "output_tokens", "INTEGER NULL"); err != nil {
+		return err
+	}
 	if err := db.backfillRunCampaigns(); err != nil {
 		return err
 	}
@@ -457,6 +526,18 @@ func (db *DB) migrate() error {
 
 	// Tasks left pending/running mean the process died mid-execution; close
 	// them out as failed so the task center shows no phantom running jobs.
+	// Each interrupted task gets an error line first (2026-08-05 ops
+	// ruling): the campaign detail's failure_reason surfaces it, so a
+	// restart-stamped batch reads as "interrupted by restart", never as an
+	// unexplained failure.
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.conn.Exec(`
+		INSERT INTO task_logs (task_id, level, message, at)
+		SELECT id, 'error', 'interrupted by process restart', ? FROM tasks
+		WHERE status IN ('pending', 'running')
+	`, now); err != nil {
+		return err
+	}
 	if _, err := db.conn.Exec(
 		"UPDATE tasks SET status = 'failed', finished_at = ? WHERE status IN ('pending', 'running')",
 		time.Now().UTC().Format(time.RFC3339Nano),
@@ -495,6 +576,13 @@ func (db *DB) migrate() error {
 	// them disabled under tickets 94-98 would otherwise lose them to the
 	// purge in the same boot that retires the v3 suites.
 	if err := db.enableBenchmarkSuitesAtCutover(); err != nil {
+		return err
+	}
+	// GH #178-era scope cut: the five benchmark suites shrink from 100 to
+	// 20 cases each (systematic every-5th subsample, stratification
+	// preserved). Fresh databases seed 20 directly; this one-time migration
+	// converges databases that already cast the 100-row bank.
+	if err := db.trimBenchmarkSuitesToTwenty(); err != nil {
 		return err
 	}
 	// Mid-state fallback of the same cutover (GH #15): retire the v3 suites

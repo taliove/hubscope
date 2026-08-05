@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/taliove/hubscope/internal/store"
@@ -84,22 +85,26 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	createEvalModel(t, ts.URL, stub.URL, "alpha-model")
 	createEvalModel(t, ts.URL, stub.URL, "beta-model")
 	createEvalModel(t, ts.URL, stub.URL, "gamma-model")
-	stub.markBroken("gamma-model", true)
+	stub.markCaseBroken("gamma-model", true)
 	// Serial cell order (GH #26 pool at 1, GH #169 model-major): gamma's
 	// call count gates suite boundaries only under a deterministic
-	// model→suite order.
+	// model→suite order. Case-broken (GH #174): gamma passes the probe
+	// gate and fails at case time, burning the same per-cell circuit
+	// budget as the old fully-broken shape.
 	setEvalConcurrency(t, ts.URL, 1)
 	stub.resetCalls()
-	stub.blockModelAfter("gamma-model", 42)
+	// 3 probe rounds + 4 suites x 10-call circuit budget + ifeval's first
+	// case (2 attempts): the 46th call is ifeval's second case.
+	stub.blockModelAfter("gamma-model", 45)
 	t.Cleanup(func() { stub.releaseModel("gamma-model") })
 
 	campaign := triggerFullSweep(t, ts.URL)
 	campaignID := int64(campaign["id"].(float64))
-	// Gamma's 43rd call being recorded proves the freeze point: gamma is
+	// Gamma's 46th call being recorded proves the freeze point: gamma is
 	// blocked on its second ifeval case, the four earlier suites settled
 	// for everyone.
-	waitFor(t, "gamma's 43rd call reaching the stub", func() bool {
-		return stub.callTotal("gamma-model") >= 43
+	waitFor(t, "gamma's 46th call reaching the stub", func() bool {
+		return stub.callTotal("gamma-model") >= 46
 	})
 
 	report := getCampaignReport(t, ts.URL, campaignID, "")
@@ -133,21 +138,23 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 		}
 	}
 
-	// Unscored suites drop out of the totals (numerator and denominator
-	// alike): gamma judged nothing (null total), alpha and beta average
-	// their four scored suites only — ifeval is not done and must not
-	// dilute the total.
+	// Live caliber (2026-08-04 ruling): a suite's score lands as soon as
+	// its cases settle — "跑了一题就算分". Alpha and beta finished ifeval
+	// with 4 of 23 passing (default answers): suite score 400/23, total
+	// the five-suite mean (80/23). Gamma judged nothing (null total).
 	if rows[2]["total_score"] != nil {
 		t.Errorf("gamma total_score = %v, want null (nothing judged)", rows[2]["total_score"])
 	}
 	for _, row := range rows[:2] {
 		scores, _ := row["suite_scores"].(map[string]interface{})
-		if scores["ifeval"] != nil {
-			t.Errorf("model %v ifeval score = %v, want null (suite still running)", row["model_id"], scores["ifeval"])
+		ifeval, _ := scores["ifeval"].(float64)
+		if math.Abs(ifeval-400.0/23) > 1e-9 {
+			t.Errorf("model %v ifeval score = %v, want %v (4/23 passing, live partial)", row["model_id"], scores["ifeval"], 400.0/23)
 		}
-		if row["total_score"] != 0.0 {
-			t.Errorf("model %v total_score = %v, want 0 (mean of the four done suites, all scored 0 by the default answers)",
-				row["model_id"], row["total_score"])
+		total, _ := row["total_score"].(float64)
+		if math.Abs(total-80.0/23) > 1e-9 {
+			t.Errorf("model %v total_score = %v, want %v (mean with the live ifeval score)",
+				row["model_id"], row["total_score"], 80.0/23)
 		}
 	}
 	assertRowTotals(t, report)
@@ -170,15 +177,15 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 	// TestCampaignPartialFailureAggregatesFailed.
 	alpha, beta, gamma := rows[0], rows[1], rows[2]
 	for _, key := range []string{"mmlu", "agieval_zh", "gsm8k", "cruxeval"} {
-		assertCell(t, alpha, key, "done", 100, 100)
-		assertCell(t, beta, key, "done", 100, 100)
-		assertCell(t, gamma, key, "done", 0, 100)
+		assertCell(t, alpha, key, "done", 20, 20)
+		assertCell(t, beta, key, "done", 20, 20)
+		assertCell(t, gamma, key, "done", 0, 20)
 	}
 	// Alpha's and beta's ifeval results are complete inside the still-
 	// running run: their cells read done while gamma's is mid-flight.
-	assertCell(t, alpha, "ifeval", "done", 100, 100)
-	assertCell(t, beta, "ifeval", "done", 100, 100)
-	assertCell(t, gamma, "ifeval", "running", 0, 100)
+	assertCell(t, alpha, "ifeval", "done", 23, 23)
+	assertCell(t, beta, "ifeval", "done", 23, 23)
+	assertCell(t, gamma, "ifeval", "running", 0, 23)
 
 	// Settle: release gamma and let the sweep finish. The report then serves
 	// the full ranked board — alpha and beta tied at 0 (ties break by model
@@ -221,7 +228,11 @@ func TestCampaignReportProgressGrid(t *testing.T) {
 			continue
 		}
 		for _, key := range benchmarkRotation {
-			assertCell(t, row, key, "done", 100, 100)
+			want := 20
+			if key == "ifeval" {
+				want = 23
+			}
+			assertCell(t, row, key, "done", want, want)
 		}
 	}
 }

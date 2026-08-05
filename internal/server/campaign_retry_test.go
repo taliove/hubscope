@@ -69,7 +69,9 @@ func TestRetryFailedRefillsNullScoresOnly(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	// Case-broken (GH #174): the gate admits the model, cases fail — the
+	// null-score rows the retry refills.
+	stub.markCaseBroken("broken-model", true)
 	// Custom exact-rule bank: the default stub answer scores 1 once the
 	// model recovers, so the refill is observable as null -> 1.
 	installCustomBank(t, ts.URL, db, oneCasePerSuite())
@@ -123,7 +125,7 @@ func TestRetryFailedRefillsNullScoresOnly(t *testing.T) {
 
 	// The model recovers: the second retry fills every null, again leaving
 	// the scored rows untouched.
-	stub.markBroken("broken-model", false)
+	stub.markCaseBroken("broken-model", false)
 	resp = postRetryFailed(t, ts.URL, campaignID)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {

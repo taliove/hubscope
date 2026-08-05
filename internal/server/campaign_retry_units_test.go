@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -50,7 +49,7 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 	ts, stub, db := setupEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 	// Custom exact-rule bank (two cases in mmlu): the default stub answer
 	// scores 1 once the model recovers, so a refill is observable as
 	// null -> 1.
@@ -78,7 +77,7 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 	scoredCase := int64(smartBefore[0]["case_id"].(float64))
 
 	// The model recovers before the retry, so the retried unit refills.
-	stub.markBroken("broken-model", false)
+	stub.markCaseBroken("broken-model", false)
 
 	// One null unit plus one already-scored unit: accepted=1, skipped=1.
 	resp := postRetryUnits(t, ts.URL, campaignID, []map[string]int64{
@@ -91,14 +90,18 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 		t.Fatalf("retry-units: expected 202, got %d (%s)", resp.StatusCode, body)
 	}
 	accepted, skipped := retryUnitsAck(t, resp)
-	if accepted != 1 || skipped != 1 {
-		t.Errorf("retry-units ack = {accepted:%d skipped:%d}, want {1 1}", accepted, skipped)
+	if accepted != 2 || skipped != 0 {
+		t.Errorf("retry-units ack = {accepted:%d skipped:%d}, want {2 0} (retry-any: a scored unit is re-asked too, 2026-08-04 ruling)", accepted, skipped)
 	}
 	waitCampaignStatus(t, ts.URL, campaignID, "done")
 
 	mid := runDetail(t, ts.URL, runID)
-	if !reflect.DeepEqual(smartBefore, resultsByModel(mid, "smart-model")) {
-		t.Error("scored results must stay byte-identical across a targeted retry (W7)")
+	// The scored unit was re-answered and re-scored to the same value (the
+	// stub answers deterministically) — the row is new, the score is not.
+	for _, r := range resultsByModel(mid, "smart-model") {
+		if r["score"] != 1.0 {
+			t.Errorf("smart case %v score = %v, want 1 after re-answer", r["case_id"], r["score"])
+		}
 	}
 	brokenMid := map[int64]interface{}{}
 	for _, r := range resultsByModel(mid, "broken-model") {
@@ -129,8 +132,10 @@ func TestRetryUnitsRetriesOnlyRequestedNulls(t *testing.T) {
 	waitCampaignStatus(t, ts.URL, campaignID, "done")
 
 	after := runDetail(t, ts.URL, runID)
-	if !reflect.DeepEqual(smartBefore, resultsByModel(after, "smart-model")) {
-		t.Error("scored results must stay byte-identical across the second targeted retry (W7)")
+	for _, r := range resultsByModel(after, "smart-model") {
+		if r["score"] != 1.0 {
+			t.Errorf("smart case %v score = %v, want 1 after second retry", r["case_id"], r["score"])
+		}
 	}
 	for _, r := range resultsByModel(after, "broken-model") {
 		if r["score"] != 1.0 {
@@ -191,9 +196,9 @@ func TestRetryUnitsGuards(t *testing.T) {
 		t.Errorf("non-positive model_db_id: expected 400, got %d", resp.StatusCode)
 	}
 
-	// An already-judged unit: skipped and counted, nothing re-runs — 200
-	// with the counts, and the campaign never leaves done.
-	resp = postRetryUnits(t, ts.URL, campaignID, []map[string]int64{retryUnit(smartID, scoredCase)})
+	// A unit the campaign never recorded: skipped and counted, nothing
+	// re-runs — 200 with the counts, and the campaign never leaves done.
+	resp = postRetryUnits(t, ts.URL, campaignID, []map[string]int64{retryUnit(smartID, 999999)})
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -228,10 +233,10 @@ func TestRetryUnitsGuards(t *testing.T) {
 func TestRetryUnitsRequiresSettledCampaignAndMutex(t *testing.T) {
 	// Async eval: campaign A settles carrying a failed unit while campaign B
 	// blocks mid-run; drained by stub.release + waitCampaignStatus(done).
-	ts, stub, _ := setupAsyncEvalEnv(t)
+	ts, stub, db := setupAsyncEvalEnv(t)
 	smartID := createEvalModel(t, ts.URL, stub.URL, "smart-model")
 	brokenID := createEvalModel(t, ts.URL, stub.URL, "broken-model")
-	stub.markBroken("broken-model", true)
+	stub.markCaseBroken("broken-model", true)
 	suiteID := suiteIDByKey(t, ts.URL, "mmlu")
 
 	// Campaign A settles done with the broken model's null-score units.
@@ -245,21 +250,27 @@ func TestRetryUnitsRequiresSettledCampaignAndMutex(t *testing.T) {
 	}
 	nullCase := int64(brokenResults[0]["case_id"].(float64))
 
-	// Campaign B starts and blocks mid-run.
+	// Campaign B starts and blocks after its first case settles (3 probe
+	// rounds + 1 answer; the 5th call is case 2's answer).
 	stub.resetCalls()
-	stub.blockCalls()
-	t.Cleanup(stub.release)
+	stub.blockCallsAfter(4)
+	t.Cleanup(stub.releaseGlobal)
 	runBID := triggerEval(t, ts.URL, suiteID, smartID)
-	waitFor(t, "campaign B's first call reaching the stub", func() bool {
-		return stub.sawModel("smart-model")
+	firstCase, err := db.ListEnabledCases(suiteID)
+	if err != nil || len(firstCase) == 0 {
+		t.Fatalf("list mmlu cases: %v (n=%d)", err, len(firstCase))
+	}
+	waitFor(t, "campaign B's first case settled and second blocked", func() bool {
+		return stub.callTotal("smart-model") >= 4
 	})
 	campaignB := campaignIDOfRun(t, runDetail(t, ts.URL, runBID))
 
-	// The running campaign itself is not settled → 409.
-	resp := postRetryUnits(t, ts.URL, campaignB, []map[string]int64{retryUnit(smartID, nullCase)})
+	// The running campaign accepts live retries (2026-08-04 ruling): the
+	// unit already has a result, so it is re-answered in flight — 202.
+	resp := postRetryUnits(t, ts.URL, campaignB, []map[string]int64{retryUnit(smartID, firstCase[0].ID)})
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Errorf("retry-units on running campaign: expected 409, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Errorf("retry-units on running campaign: expected 202, got %d", resp.StatusCode)
 	}
 
 	// Another campaign active: the cross-campaign mutex conflicts even
@@ -274,6 +285,6 @@ func TestRetryUnitsRequiresSettledCampaignAndMutex(t *testing.T) {
 		t.Errorf("409 body should name the active-campaign conflict, got %s", body)
 	}
 
-	stub.release()
+	stub.releaseGlobal()
 	waitCampaignStatus(t, ts.URL, campaignB, "done")
 }

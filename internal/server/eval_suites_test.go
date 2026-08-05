@@ -88,8 +88,15 @@ func TestSuitesSeeded(t *testing.T) {
 			t.Errorf("suite %q nadir = %v, want %v", key, s["nadir"], w.nadir)
 		}
 		cases := s["cases"].([]interface{})
-		if len(cases) != 100 {
-			t.Errorf("suite %q has %d cases, want 100 (frozen subset)", key, len(cases))
+		// ifeval keeps 23: one single-instruction case per ported type (22)
+		// plus the multi-instruction combo — the checker coverage contract
+		// outranks the round number.
+		want := 20
+		if key == "ifeval" {
+			want = 23
+		}
+		if len(cases) != want {
+			t.Errorf("suite %q has %d cases, want %d (frozen subset)", key, len(cases), want)
 		}
 		for _, c := range cases {
 			cm := c.(map[string]interface{})
