@@ -257,6 +257,29 @@ func (e *Evaluator) RetryAnsweredUnits(ctx context.Context, campaignID int64, un
 	}
 }
 
+// probeModelForResume re-samples one member model's reachability for the
+// resume flow; any setup gap or full-round failure keeps the model's gaps
+// for the next resume.
+func (e *Evaluator) probeModelForResume(ctx context.Context, modelDBID int64) bool {
+	model, err := e.db.GetModel(modelDBID)
+	if err != nil || model.Status == "retired" {
+		return false
+	}
+	hub, err := e.db.GetHub(model.HubID)
+	if err != nil {
+		return false
+	}
+	endpoints, err := e.db.ListEndpointsByModelID(modelDBID)
+	if err != nil {
+		return false
+	}
+	protocol, ok := selectProtocol(endpoints)
+	if !ok {
+		return false
+	}
+	return e.probeModel(ctx, hub, protocol, model.ModelID).reachable
+}
+
 // retryModelAny re-evaluates one (run, model) cell's requested cases,
 // deleting each unit's prior result regardless of score (2026-08-04
 // ruling). Same setup guards as retryModel.
@@ -321,6 +344,14 @@ func (e *Evaluator) ResumeCampaign(ctx context.Context, campaignID int64) {
 	}
 	defaultSamples := e.resolveDefaultSampleCount()
 
+	// Re-probe every member first (2026-08-05 ruling: 预检可以重新跑) —
+	// a model still unreachable keeps its gaps for the next resume instead
+	// of burning circuit-breaker calls against a dead endpoint.
+	reachable := map[int64]bool{}
+	for _, m := range members {
+		reachable[m.ModelDBID] = e.probeModelForResume(ctx, m.ModelDBID)
+	}
+
 	var cells []evalCell
 	var preps []*preparedRun
 	reopenSet := map[int64]bool{}
@@ -345,6 +376,9 @@ func (e *Evaluator) ResumeCampaign(ctx context.Context, campaignID int64) {
 			existing[r.ModelDBID][r.CaseID] = r.Score
 		}
 		for _, m := range members {
+			if !reachable[m.ModelDBID] {
+				continue
+			}
 			var todo []store.Case
 			for _, c := range cases {
 				score, done := existing[m.ModelDBID][c.ID]
