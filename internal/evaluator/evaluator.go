@@ -78,11 +78,13 @@ type Evaluator struct {
 	// Jury confirmation gate (2026-08-04 ruling): a manually triggered
 	// batch pauses after the probe gate and jury selection until the
 	// operator confirms or the timeout auto-starts it. confirmCh carries
-	// the release, awaitingConfirm backs the API surface.
+	// the release, awaitingConfirm backs the API surface. skipConfirm holds
+	// campaigns whose plan the operator already approved (batch restart).
 	ConfirmTimeout  time.Duration
 	NewConfirmTimer func(d time.Duration) ConfirmTimer
 	confirmCh       map[int64]chan struct{}
 	awaitingConfirm map[int64]bool
+	skipConfirm     map[int64]bool
 }
 
 // ConfirmTimer is a single-fire countdown (the scheduler.Timer shape,
@@ -106,6 +108,7 @@ func New(db *store.DB, client *hubclient.Client) *Evaluator {
 		cancels:         map[int64]context.CancelFunc{},
 		confirmCh:       map[int64]chan struct{}{},
 		awaitingConfirm: map[int64]bool{},
+		skipConfirm:     map[int64]bool{},
 	}
 }
 
@@ -170,6 +173,26 @@ func (e *Evaluator) ConfirmCampaign(campaignID int64) bool {
 	}
 	close(ch)
 	return true
+}
+
+// SkipJuryConfirm pre-approves a campaign's jury plan: a restarted batch
+// re-runs a plan the operator already reviewed, so the gate does not
+// engage (2026-08-05 ops ruling).
+func (e *Evaluator) SkipJuryConfirm(campaignID int64) {
+	e.cancelMu.Lock()
+	e.skipConfirm[campaignID] = true
+	e.cancelMu.Unlock()
+}
+
+// juryConfirmSkipped reports and consumes the skip marker.
+func (e *Evaluator) juryConfirmSkipped(campaignID int64) bool {
+	e.cancelMu.Lock()
+	defer e.cancelMu.Unlock()
+	if e.skipConfirm[campaignID] {
+		delete(e.skipConfirm, campaignID)
+		return true
+	}
+	return false
 }
 
 // awaitJuryConfirmation holds a manually triggered batch after the probe
@@ -358,7 +381,8 @@ func (e *Evaluator) executePrepared(ctx context.Context, prepared []*preparedRun
 		// Manual batches pause here for the operator's jury confirmation
 		// (2026-08-04 ruling) when the deployment enables the gate;
 		// scheduled batches always run straight through.
-		if e.ConfirmTimeout > 0 && len(prepared) > 0 && prepared[0].run.Trigger == "manual" {
+		if e.ConfirmTimeout > 0 && len(prepared) > 0 && prepared[0].run.Trigger == "manual" &&
+			!e.juryConfirmSkipped(prepared[0].run.CampaignID) {
 			e.awaitJuryConfirmation(ctx, prepared[0].run.CampaignID, prepared)
 		}
 	}

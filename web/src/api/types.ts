@@ -282,6 +282,9 @@ export interface EvalRun {
   // component's price is not registered.
   estimated_cost: { exam: number; judge: number } | null
   status: EvalRunStatus
+  // The run task's last error line, present only on failed runs
+  // (2026-08-05 ops ruling).
+  failure_reason?: string
   started_at: string // RFC3339
   finished_at: string | null
   score: number | null // nadir-normalized (ADR 0009) mean of non-null result scores, 0~1 scale

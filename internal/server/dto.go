@@ -197,9 +197,12 @@ type evalRunDTO struct {
 	// component's price is not registered.
 	EstimatedCost json.RawMessage `json:"estimated_cost"`
 	Status        string          `json:"status"`
-	StartedAt     string          `json:"started_at"`
-	FinishedAt    *string         `json:"finished_at"`
-	Score         *float64        `json:"score"`
+	// FailureReason is the run task's last error line, present only on
+	// failed runs (2026-08-05 ops ruling: a failed batch must show why).
+	FailureReason string   `json:"failure_reason,omitempty"`
+	StartedAt     string   `json:"started_at"`
+	FinishedAt    *string  `json:"finished_at"`
+	Score         *float64 `json:"score"`
 }
 
 // jurySummaryDTO is one judge's tally inside a run (GH #179): votes cast,

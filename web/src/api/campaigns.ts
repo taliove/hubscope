@@ -88,3 +88,10 @@ export async function cancelCampaign(id: number): Promise<void> {
 export async function confirmJury(id: number): Promise<void> {
   return http.post<void>(`/campaigns/${id}/confirm-jury`)
 }
+
+// Restart a settled batch with its exact plan (same suites, same member
+// models) as a new campaign (2026-08-05 ops ruling). Returns the new
+// campaign.
+export async function restartCampaign(id: number): Promise<Campaign> {
+  return http.post<Campaign>(`/campaigns/${id}/restart`)
+}

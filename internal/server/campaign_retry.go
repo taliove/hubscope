@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/taliove/hubscope/internal/store"
 )
@@ -225,6 +226,75 @@ func (s *Server) handleRetryCampaignUnits(w http.ResponseWriter, r *http.Request
 	s.audit(r, "eval.retry_units", "campaign", strconv.FormatInt(campaign.ID, 10),
 		fmt.Sprintf("accepted=%d skipped=%d", resp.Accepted, resp.Skipped), "accepted")
 	writeData(w, http.StatusAccepted, resp)
+}
+
+// handleRestartCampaign handles POST /api/campaigns/{id}/restart (2026-08-05
+// ops ruling): re-runs a settled batch's exact plan — same suites, same
+// member models — as a new manual campaign. The jury confirmation gate is
+// pre-approved (the operator reviewed this plan already); a running batch
+// conflicts.
+func (s *Server) handleRestartCampaign(w http.ResponseWriter, r *http.Request) {
+	campaign, ok := s.loadVisibleCampaign(w, r)
+	if !ok {
+		return
+	}
+	if campaign.Status == store.CampaignStatusRunning || campaign.Status == store.CampaignStatusPending {
+		writeError(w, http.StatusConflict, "campaign is still running")
+		return
+	}
+	active, err := s.db.HasUnfinishedCampaign()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check active campaigns")
+		return
+	}
+	if active {
+		writeError(w, http.StatusConflict, "an evaluation campaign is already running")
+		return
+	}
+
+	runs, err := s.db.ListEvalRunsByCampaign(campaign.ID)
+	if err != nil || len(runs) == 0 {
+		writeError(w, http.StatusConflict, "campaign has no runs to restart")
+		return
+	}
+	var suites []store.Suite
+	for _, run := range runs {
+		suite, err := s.db.GetSuite(run.SuiteID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load campaign suites")
+			return
+		}
+		suites = append(suites, *suite)
+	}
+	members, err := s.db.ListCampaignMembers(campaign.ID)
+	if err != nil || len(members) == 0 {
+		writeError(w, http.StatusConflict, "campaign has no member models to restart")
+		return
+	}
+	modelIDs := make([]int64, 0, len(members))
+	for _, m := range members {
+		modelIDs = append(modelIDs, m.ModelDBID)
+	}
+
+	fresh, err := s.db.CreateCampaign("manual", modelIDs, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create campaign")
+		return
+	}
+	s.evaluator.SkipJuryConfirm(fresh.ID)
+	judgeModel, err := s.db.GetSetting(store.SettingJudgeModel, store.DefaultJudgeModel)
+	if err != nil {
+		judgeModel = store.DefaultJudgeModel
+	}
+	if s.syncEval {
+		s.evaluator.RunCampaign(context.Background(), fresh.ID, "manual", suites, modelIDs, judgeModel)
+	} else {
+		go s.evaluator.RunCampaign(context.Background(), fresh.ID, "manual", suites, modelIDs, judgeModel)
+	}
+
+	s.audit(r, "eval.restart", "campaign", strconv.FormatInt(campaign.ID, 10),
+		fmt.Sprintf("new_campaign=%d suites=%d models=%d", fresh.ID, len(suites), len(modelIDs)), "accepted")
+	s.writeCampaignCreated(w, fresh.ID)
 }
 
 // handleConfirmJury handles POST /api/campaigns/{id}/confirm-jury

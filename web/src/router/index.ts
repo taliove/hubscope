@@ -52,8 +52,11 @@ const router = createRouter({
     {
       path: '/campaigns/:id/report',
       name: 'campaign-report',
-      component: () => import('@/views/CampaignReportView.vue'),
-      // Session-gated like the eval center it is entered from (ticket 31).
+      // 2026-08-05 IA ruling: the eval center is the single batch surface —
+      // the console report page folded into it; deep links redirect with
+      // the batch selected. The token-gated shared report below is
+      // untouched.
+      redirect: (to) => ({ path: '/eval', query: { batch: to.params.id as string } }),
     },
     {
       path: '/report/:token',

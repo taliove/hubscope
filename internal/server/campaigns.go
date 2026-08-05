@@ -172,6 +172,11 @@ func (s *Server) buildCampaignDetail(campaign store.Campaign, runs []store.EvalR
 	if err != nil {
 		return campaignDetailDTO{}, err
 	}
+	// Failure reasons ride along: a failed batch must show why (2026-08-05).
+	failReasons, err := s.db.LastErrorLogByRun(runIDs)
+	if err != nil {
+		return campaignDetailDTO{}, err
+	}
 
 	withProgress := store.CampaignWithProgress{Campaign: campaign}
 	runDTOs := make([]evalRunDTO, 0, len(runs))
@@ -185,7 +190,9 @@ func (s *Server) buildCampaignDetail(campaign store.Campaign, runs []store.EvalR
 		default:
 			withProgress.Progress.Running++
 		}
-		runDTOs = append(runDTOs, toEvalRunDTO(run, runScoreFromAvg(avgs, run)))
+		dto := toEvalRunDTO(run, runScoreFromAvg(avgs, run))
+		dto.FailureReason = failReasons[run.ID]
+		runDTOs = append(runDTOs, dto)
 	}
 	return campaignDetailDTO{
 		campaignDTO: toCampaignDTO(withProgress),

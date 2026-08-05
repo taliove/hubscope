@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -261,6 +262,41 @@ func (db *DB) listTasks(hubID int64, page, pageSize int, taskType, status string
 		tasks = append(tasks, task)
 	}
 	return tasks, total, rows.Err()
+}
+
+// LastErrorLogByRun returns each eval run task's last error line, keyed by
+// run ID — the failure reasons of a failed batch (2026-08-05 ops ruling).
+func (db *DB) LastErrorLogByRun(runIDs []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(runIDs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(runIDs))
+	args := make([]interface{}, len(runIDs))
+	for i, id := range runIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := db.conn.Query(`
+		SELECT t.entity_id, l.message FROM task_logs l
+		JOIN tasks t ON t.id = l.task_id
+		WHERE t.entity_type = 'eval_run' AND t.entity_id IN (`+strings.Join(placeholders, ",")+`)
+			AND l.level = 'error'
+		ORDER BY t.entity_id, l.id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var runID int64
+		var msg string
+		if err := rows.Scan(&runID, &msg); err != nil {
+			return nil, err
+		}
+		out[runID] = msg // last error wins (ordered by log id)
+	}
+	return out, rows.Err()
 }
 
 // SetTaskCreatedAt backdates a task's creation timestamp. It exists for

@@ -382,6 +382,7 @@ func (s *Server) routes() chi.Router {
 				r.Post("/campaigns/{id}/retry-units", s.handleRetryCampaignUnits)
 				r.Post("/campaigns/{id}/cancel", s.handleCancelCampaign)
 				r.Post("/campaigns/{id}/confirm-jury", s.handleConfirmJury)
+				r.Post("/campaigns/{id}/restart", s.handleRestartCampaign)
 				r.Post("/campaigns/{id}/share-links", s.handleCreateShareLink)
 				r.Delete("/share-links/{id}", s.handleRevokeShareLink)
 			})
